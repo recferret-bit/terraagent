@@ -51,7 +51,8 @@ describe('Particle geometries & preset registry (@terra/render/particles)', () =
 
   it('resolves targetKind accurately from terrain, deposit, mode, and biome', () => {
     expect(ParticlePresetRegistry.resolveTargetKind({ terrainKey: 'forest', biomeKey: 'oceanForest' })).toBe('tree');
-    expect(ParticlePresetRegistry.resolveTargetKind({ terrainKey: 'forest', biomeKey: 'dune' })).toBe('rock');
+    expect(ParticlePresetRegistry.resolveTargetKind({ terrainKey: 'forest', biomeKey: 'dune' })).toBe('tree');
+    expect(ParticlePresetRegistry.resolveTargetKind({ terrainKey: 'rock', biomeKey: 'dune' })).toBe('rock');
     expect(ParticlePresetRegistry.resolveTargetKind({ terrainKey: 'rock', biomeKey: 'forestRock' })).toBe('rock');
     expect(ParticlePresetRegistry.resolveTargetKind({ terrainKey: 'slope', biomeKey: 'dune' })).toBe('dune');
     expect(ParticlePresetRegistry.resolveTargetKind({ terrainKey: 'hole', biomeKey: 'oceanForest' })).toBe('hole');

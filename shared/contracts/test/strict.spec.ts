@@ -6,9 +6,26 @@ const cmd = { v: 1, t: 'cmd', id: newId('cm'), d: { kind: 'dev.ping', args: {} }
 
 describe('client messages parse strictly (PR-01)', () => {
   it('accepts valid messages', () => {
-    for (const m of [hello, cmd, { v: 1, t: 'join', d: { planetId: newId('pl') } }, { v: 1, t: 'ping', d: { clientTimeMs: 1 } }, { v: 1, t: 'leave', d: {} }]) {
+    const pl = newId('pl');
+    for (const m of [
+      hello,
+      cmd,
+      { v: 1, t: 'join', d: { planetId: pl } },
+      { v: 1, t: 'join', d: { planetId: pl, sectorId: 's', colonyId: 'c'.repeat(64) } },
+      { v: 1, t: 'ping', d: { clientTimeMs: 1 } },
+      { v: 1, t: 'leave', d: {} },
+    ]) {
       expect(ClientMessage.safeParse(m).success, JSON.stringify(m)).toBe(true);
     }
+  });
+
+  it('enforces join sectorId and colonyId length bounds and rejects unknown join keys', () => {
+    const pl = newId('pl');
+    expect(ClientMessage.safeParse({ v: 1, t: 'join', d: { planetId: pl, sectorId: '' } }).success).toBe(false);
+    expect(ClientMessage.safeParse({ v: 1, t: 'join', d: { planetId: pl, colonyId: '' } }).success).toBe(false);
+    expect(ClientMessage.safeParse({ v: 1, t: 'join', d: { planetId: pl, sectorId: 's'.repeat(65) } }).success).toBe(false);
+    expect(ClientMessage.safeParse({ v: 1, t: 'join', d: { planetId: pl, colonyId: 'c'.repeat(65) } }).success).toBe(false);
+    expect(ClientMessage.safeParse({ v: 1, t: 'join', d: { planetId: pl, extra: true } }).success).toBe(false);
   });
 
   it('rejects unknown fields at the envelope, payload and nested levels', () => {

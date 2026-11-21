@@ -31,7 +31,7 @@ const ROLES = new Map<number, PresenceRole>([
   [ENTITY_KIND.hiveGreenSpitter, 'fauna'],
 ]);
 
-/** Registers the presence role of an entity kind (e.g. `registerPresenceRole(KIND_SKITTER, 'fauna')`). */
+/** Registers the presence role of an entity kind (e.g. `registerPresenceRole(KIND_BLACK_ANT, 'fauna')`). */
 export function registerPresenceRole(kind: number, role: PresenceRole): void {
   const prev = ROLES.get(kind);
   if (prev && prev !== role) throw new Error(`entity kind ${kind} already has presence role ${prev}`);

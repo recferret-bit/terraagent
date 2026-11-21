@@ -123,4 +123,113 @@ export function isTileUneven(
   return true;
 }
 
+/** FNV-1a 32-bit unsigned string hash over UTF-16 code units (engine-wide canonical string hash). */
+export function fnv1a32(s: string, h = 0x811c9dc5): number {
+  let out = h >>> 0;
+  for (let i = 0; i < s.length; i++) {
+    out = Math.imul(out ^ s.charCodeAt(i), 0x01000193) >>> 0;
+  }
+  return out >>> 0;
+}
+
+/**
+ * Deterministic 32-bit unsigned seed derived from any numeric or string planet seed.
+ * Numeric inputs are normalized idempotently (`hashGroundSeed(hashGroundSeed(s)) === hashGroundSeed(s)`),
+ * while string seeds are hashed via FNV-1a + Murmur3 `fmix32` avalanche so every player joining a planet
+ * computes the exact same non-zero `u32` seed across JS engines.
+ */
+export function hashGroundSeed(seed: string | number | null | undefined, fallback = 17): number {
+  const fb = (Math.trunc(fallback) >>> 0) || 17;
+  if (seed === null || seed === undefined || seed === '') return fb;
+  if (typeof seed === 'number') {
+    if (!Number.isFinite(seed)) return fb;
+    return (Math.trunc(seed) >>> 0) || fb;
+  }
+  let h = fnv1a32(seed);
+  h = Math.imul(h ^ (h >>> 16), 0x85ebca6b) >>> 0;
+  h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35) >>> 0;
+  h = (h ^ (h >>> 16)) >>> 0;
+  return h || fb;
+}
+
+/**
+ * Parses an optional URL/config seed parameter (`?seed=<number|hash>`).
+ * Returns `undefined` when absent/blank; preserves positive integer literals (`"42"` -> `42`) for numeric
+ * seed compatibility, and hashes string hashes or `"0"` deterministically via `hashGroundSeed`.
+ */
+export function parseGroundSeedInput(
+  raw: string | number | null | undefined,
+  fallback = 17,
+): number | undefined {
+  if (raw === null || raw === undefined) return undefined;
+  if (typeof raw === 'number') {
+    return Number.isFinite(raw) ? hashGroundSeed(raw, fallback) : undefined;
+  }
+  const trimmed = raw.trim();
+  if (!trimmed) return undefined;
+  if (/^[+-]?\d+$/.test(trimmed)) {
+    const n = Number(trimmed);
+    if (Number.isSafeInteger(n)) {
+      const u = Math.trunc(n) >>> 0;
+      if (u !== 0) return u;
+    }
+  }
+  return hashGroundSeed(trimmed, fallback);
+}
+
+/**
+ * Combines a planet `seed` with a stream/feature `salt` into an independent 32-bit stream seed.
+ * When `seed === 0`, returns `salt >>> 0` so unseeded unit-test calls remain deterministic.
+ */
+export function mixGroundSeed(seed: number, salt: number): number {
+  const s = seed >>> 0;
+  const k = salt >>> 0;
+  if (s === 0) return k;
+  let h = (s ^ Math.imul(k + 0x9e3779b9, 0x85ebca6b)) >>> 0;
+  h = Math.imul(h ^ (h >>> 16), 0x7feb352d) >>> 0;
+  h = Math.imul(h ^ (h >>> 15), 0x846ca68b) >>> 0;
+  return (h ^ (h >>> 16)) >>> 0;
+}
+
+/** Pure 32-bit integer lattice hash in `[0, 2^32)`. Shared by `@terra/sim` worldgen and `@terra/render` hex scatter. */
+export function latticeHashU32(ix: number, iy: number, seed = 0): number {
+  let h = (seed ^ Math.imul(ix, 0x9e3779b1) ^ Math.imul(iy, 0x85ebca6b)) >>> 0;
+  h = Math.imul(h ^ (h >>> 16), 0x7feb352d) >>> 0;
+  h = Math.imul(h ^ (h >>> 15), 0x846ca68b) >>> 0;
+  return (h ^ (h >>> 16)) >>> 0;
+}
+
+/** Pure 32-bit integer lattice hash in `[0, 1)`. */
+export function latticeHash01(ix: number, iy: number, seed = 0): number {
+  return latticeHashU32(ix, iy, seed) / 4294967296;
+}
+
+/** Smoothstep 2D value noise in `[0, 1)`, evaluated with `Math.fround` for cross-engine parity. */
+export function valueNoise2d(x: number, y: number, scale: number, seed: number): number {
+  const sx = x * scale;
+  const sy = y * scale;
+  const x0 = Math.floor(sx);
+  const y0 = Math.floor(sy);
+  const fx = sx - x0;
+  const fy = sy - y0;
+  const ux = fx * fx * (3 - 2 * fx);
+  const uy = fy * fy * (3 - 2 * fy);
+  const v00 = latticeHash01(x0, y0, seed);
+  const v10 = latticeHash01(x0 + 1, y0, seed);
+  const v01 = latticeHash01(x0, y0 + 1, seed);
+  const v11 = latticeHash01(x0 + 1, y0 + 1, seed);
+  const a = v00 + (v10 - v00) * ux;
+  const b = v01 + (v11 - v01) * ux;
+  return Math.fround(a + (b - a) * uy);
+}
+
+/** 3-octave fractal value noise in `[0, 1)`, evaluated with `Math.fround` for cross-engine parity. */
+export function fbm2d(x: number, y: number, baseScale: number, seed: number): number {
+  const o1 = valueNoise2d(x, y, baseScale, seed);
+  const o2 = valueNoise2d(x + 17.3, y - 9.1, baseScale * 2, (seed + 0x9e3779b9) >>> 0);
+  const o3 = valueNoise2d(x - 31.7, y + 23.5, baseScale * 4, (seed + 0x3c6ef372) >>> 0);
+  return Math.fround(o1 * 0.57 + o2 * 0.29 + o3 * 0.14);
+}
+
+
 

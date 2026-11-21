@@ -102,3 +102,16 @@ float frontierRing = smoothstep(0.42, 0.50, tfProgress) * (1.0 - smoothstep(0.50
 vec3 terrainAlbedo = mix(barrenBiomeColor, lushTerraformedColor, smoothstep(0.45, 0.55, tfProgress));
 terrainAlbedo += vec3(0.06, 0.95, 0.55) * frontierRing * 3.5; // HDR Emerald glow on frontier
 ```
+
+---
+
+## 6. Botanical Multi-Breed Atlas, Vertebrate Pelage/Plumage & Aquatic Evasion
+
+1. **Multi-Breed Foliage Atlas (`Scatter.ts`):**
+   - `buildBiomeTreeAtlasGeo(biome, seed)` packs 3–4 endemic tree breeds into one `BufferGeometry` with `attribute float aBreed`.
+   - `buildInstanced(..., { encodeBreedInColor: true })` quantizes `breedIndex` (`floor(instanceColor.r / 8.0)`) and per-tree `windMul` (`floor(instanceColor.b / 8.0) * 0.1`) into `instanceColor` so `propFocusCompaction` and shadow passes stay 100% aligned.
+   - `createFoliageMaterial` binds `ProceduralTextureRegistry.get('treeBarkFissures', 128)` (`uBarkMap`, `uBarkRoughMap`) for woody bark fissure detail.
+2. **Vertebrate Pelage (`aOrganic = 6`) & Avian Plumage (`aOrganic = 7`) (`organicSurface.ts`):**
+   - `UnifiedColonyMaterial` binds `uFurPelageMap` and `uFurRoughnessMap` (`ProceduralTextureRegistry.get('warmFurPelage', 128)`) for warm-blooded animals (`tissue = 6`) and evaluates pennaceous barbule/vane sheen for birds (`tissue = 7`), keeping screen-space normal derivatives (`dFdx`/`dFdy`) outside tissue-dependent branches.
+3. **Unified Aquatic Threat Evasion (`WaterFauna.ts`, `fishMaterial.ts`, `jellyMaterial.ts`):**
+   - `PlanetBiosphere` forwards active robot aggressors, shoreline terraforming disturbances, and combat hotspots into `WaterFauna.setThreats(...)` (`uniform vec4 uThreatZones[8]`, `uThreatCount`), causing nearby fish schools, rays, and jellies to scatter radially, dive deeper, and boost tail-beat frequency in pure GPU vertex math.

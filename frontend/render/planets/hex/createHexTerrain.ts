@@ -1,20 +1,25 @@
 import * as THREE from 'three';
-import { hexIndex } from '@terra/sim/grid/hex';
+import { hashGroundSeed, hexIndex } from '@terra/sim/grid/hex';
+import type { PlanetBiosphere } from '../../biosphere/biosphereTypes';
 import { enqueueDeferredDispose } from '../../core/deferredDispose';
+import {
+  BiomeOrchestrator,
+  BiomeWorkerClient,
+  buildBiomeOrchestratorConfig,
+  serializeBiomeOrchestratorConfig,
+  type BiomeGeneratedPayload,
+  type BiomeOrchestratorConfig,
+  type BugsOrchestrator,
+} from '../../orchestrators';
 import type { PlanetSpec } from '../PlanetSpec';
-import { createTerrainMaterial, terrainUniforms } from '../../visuals/terrain/terrainMaterial';
-import { computeEffectiveHeights, HEX_TERRAIN, type HexTileLayers } from './chunkMesh';
-import { createHexChunkSet, type PrecomputedChunkEntry } from './chunkSet';
-import { createHexPropScatter, type HexPropScatter } from './chunkPropScatter';
-import { createBorderController } from './borderController';
-import { addHexEdges } from './hexEdges';
-import { planetExtent, rayGround, tileAt, waterSurfaceHit } from './hexMath';
-import { createHexWater, HEX_WATER_LEVEL, type HexWater, type PrecomputedHexWater } from './hexWater';
-import { createHexAmbient } from './hexAmbient';
-import { getWindUniforms } from '../../core/windConfig';
-import { makeHeightSampler } from './heightSampler';
+import { HEX_TERRAIN, type HexTileLayers } from './chunkMesh';
+import type { HexPropScatter } from './chunkPropScatter';
+import type { PrecomputedChunkEntry } from './chunkSet';
+import type { HexFloraLayer } from './flora/HexFloraLayer';
+import { rayGround, tileAt, tileXZ, waterSurfaceHit } from './hexMath';
+import { HEX_WATER_LEVEL, type HexWater, type PrecomputedHexWater } from './hexWater';
 import type { TerritoryBorderStats } from './territoryBorder';
-import { createHexTileTint, type PrecomputedTileTintBuffers } from './tileTint';
+import type { PrecomputedTileTintBuffers } from './tileTint';
 
 export interface PrecomputedHexTerrainData {
   radius: number;
@@ -44,20 +49,19 @@ export interface HexTerrain {
   readonly uniforms: Record<string, THREE.IUniform>;
   readonly water: HexWater;
   readonly props: HexPropScatter;
+  readonly flora: HexFloraLayer;
+  readonly biosphere: PlanetBiosphere;
+  readonly biomeOrchestrator: BiomeOrchestrator;
   readonly borderMesh: THREE.Mesh;
   readonly radius: number;
+  /** Deterministic 32-bit unsigned planet seed driving relief detail, tints, props, forest stands, and flora. */
+  readonly seed: number;
   /** Half-extent (m) of the largest square inside the planet: a camera clamped to it never leaves the ground. */
   readonly halfSize: number;
   heightAt(x: number, z: number): number;
   /** Ray (or NDC point + camera) → tile under it, or null when it misses the planet. */
   pick(ray: THREE.Raycaster | THREE.Vector2, camera?: THREE.Camera): HexPick | null;
-  /**
-   * New tile layers (or changed tile indices when `tiles` was mutated in-place). With `changed`, only the chunks and
-   * props a changed tile can reach are rebuilt, and the water only when a changed tile gained or lost water; an empty
-   * `changed` rebuilds nothing but the borders. Without `changed`, everything is rebuilt.
-   */
   updateTiles(tilesOrChanged?: HexTiles | ArrayLike<number>, changed?: ArrayLike<number>): void;
-  /** Mutates a single tile's state in place (including optional deposit richness) and incrementally rebuilds chunks/props. */
   setTileState(
     q: number,
     r: number,
@@ -67,15 +71,10 @@ export interface HexTerrain {
     deposit?: number,
     richness?: number,
   ): void;
-  /** Rebuilds only the territory borders (owner layer changed), optionally from new tile layers with the same ground. */
   refreshBorders(tiles?: HexTiles): void;
-  /** Advances shader time (`uTime`) for foliage sway and water ripples. */
   tick(dt: number): void;
-  /** Returns current territory border geometry statistics. */
   getTerritoryBorderStats(): TerritoryBorderStats;
-  /** Enables or disables the colour-blind hatch pattern along territory borders. */
   setColorBlindMode(enabled: boolean): void;
-  /** Overrides colony border colours (`ownerIndex -> hexColor`). */
   setColonyColors(colors: Record<number, number>): void;
   /** Advances progressive chunk/prop assembly within `budgetMs` when built with `progressive: true`; returns true when complete. */
   stepProgressiveBuild(budgetMs?: number): boolean;
@@ -100,6 +99,14 @@ export interface HexTerrainOptions {
   colorBlindMode?: boolean;
   /** Optional custom colony border colour overrides (`owner -> 0xrrggbb`). */
   colonyColors?: Record<number, number>;
+  /** Optional explicit JSON config (string or object) passed into `BiomeOrchestrator`. */
+  biomeConfigJson?: string | BiomeOrchestratorConfig;
+  /** Optional shared `BugsOrchestrator` (e.g. from `EntityMeshes`) managed by `BiomeOrchestrator`. */
+  bugsOrchestrator?: BugsOrchestrator;
+  /** Whether to eagerly prewarm `BugsOrchestrator` pools on level load. */
+  prewarmBugs?: boolean;
+  /** Optional Worker-generated payload (`BiomeWorkerClient.generate`) so creation skips main-thread CPU generation. */
+  pregenerated?: BiomeGeneratedPayload;
   /** Optional worker-precomputed buffers (`@terra/render/planets/prep`). */
   precomputed?: PrecomputedHexTerrainData;
   /** When true, spreads initial chunk + prop mesh creation across frames via `stepProgressiveBuild()`. */
@@ -108,7 +115,6 @@ export interface HexTerrainOptions {
   priorityTile?: { q: number; r: number };
 }
 
-/** Placeholder only: the hex terrain's `uWind` is replaced by the shared F8 wind direction (`core/windConfig.ts`). */
 const activeTerrains = new Set<HexTerrain>();
 let globalColorBlindMode = false;
 
@@ -163,28 +169,22 @@ function applyTileStateMutation(
   }
 }
 
-function pickHexTerrain(
+function pickHexTile(
   radius: number,
-  tiles: HexTiles,
-  heightAt: (x: number, z: number) => number,
-  props: HexPropScatter,
-  ray: THREE.Raycaster,
   input: THREE.Raycaster | THREE.Vector2,
-  camera?: THREE.Camera,
+  camera: THREE.Camera | undefined,
+  sharedRay: THREE.Raycaster,
+  heightAt: (x: number, z: number) => number,
+  isWaterAt: (x: number, z: number) => boolean,
+  props: HexPropScatter,
 ): HexPick | null {
   let r = input as THREE.Raycaster;
   if (input instanceof THREE.Vector2) {
-    ray.setFromCamera(input, camera!);
-    r = ray;
+    sharedRay.setFromCamera(input, camera!);
+    r = sharedRay;
   }
-  const isWaterAt = (x: number, z: number): boolean => {
-    const t = tileAt(radius, x, z);
-    const code = t ? tiles.terrain[t.i] : undefined;
-    return code === HEX_TERRAIN.shallow || code === HEX_TERRAIN.deep;
-  };
   const ground = rayGround(r.ray.origin, r.ray.direction, heightAt);
   const hit = waterSurfaceHit(r.ray.origin, r.ray.direction, HEX_WATER_LEVEL, ground, isWaterAt) ?? ground;
-  // A click on a tree canopy or a rock picks the tile that prop stands on, not the ground behind it.
   const prop = props.pickProp(r);
   if (prop && (!hit || prop.distance < r.ray.origin.distanceTo(new THREE.Vector3(hit.x, hit.y, hit.z)))) {
     const i = hexIndex(radius).indexOf(prop.q, prop.r);
@@ -193,115 +193,100 @@ function pickHexTerrain(
   return hit ? tileAt(radius, hit.x, hit.z) : null;
 }
 
-function createTerrainDisposer(
-  getHandle: () => HexTerrain,
-  group: THREE.Group,
-  parts: {
-    chunks: { dispose(): void };
-    water: { dispose(): void };
-    props: { dispose(): void };
-    borders: { dispose(): void };
-    material: { dispose(): void };
-    tint: { dispose(): void };
-    ambient: { dispose(): void };
-  },
-) {
-  let disposed = false;
-  let subDisposed = false;
-  return {
-    disposeDeferred() {
-      if (disposed) return;
-      activeTerrains.delete(getHandle());
-      group.removeFromParent();
-      enqueueDeferredDispose(
-        () => { if (!subDisposed) { parts.chunks.dispose(); parts.water.dispose(); } },
-        () => { if (!subDisposed) { parts.props.dispose(); parts.borders.dispose(); } },
-        () => {
-          if (!subDisposed) {
-            subDisposed = true;
-            parts.material.dispose(); parts.tint.dispose(); parts.ambient.dispose();
-          }
-          getHandle().dispose();
-        },
-      );
-    },
-    dispose() {
-      if (disposed) return;
-      disposed = true;
-      activeTerrains.delete(getHandle());
-      if (!subDisposed) {
-        subDisposed = true;
-        parts.chunks.dispose(); parts.water.dispose(); parts.props.dispose(); parts.borders.dispose();
-        parts.material.dispose(); parts.tint.dispose(); parts.ambient.dispose();
-      }
-      group.removeFromParent();
-    },
-  };
+function emitTileHabitatDisturbances(
+  hx: ReturnType<typeof hexIndex>,
+  prevTerrain: Uint8Array,
+  prevPrep: Uint8Array,
+  layers: HexTileLayers,
+  changed: ArrayLike<number> | undefined,
+  biosphere: PlanetBiosphere,
+): void {
+  const n = changed ? changed.length : hx.count;
+  for (let k = 0; k < n; k++) {
+    const ti = changed ? changed[k]! : k;
+    if (ti < 0 || ti >= hx.count) continue;
+    const oldT = prevTerrain[ti]!;
+    const newT = layers.terrain?.[ti] ?? 0;
+    const oldP = prevPrep[ti]!;
+    const newP = layers.prep?.[ti] ?? 0;
+    if (
+      (oldT === HEX_TERRAIN.forest && newT !== HEX_TERRAIN.forest) ||
+      ((oldT === HEX_TERRAIN.shallow || oldT === HEX_TERRAIN.deep) && newT !== oldT) ||
+      (oldP === 0 && newP !== 0)
+    ) {
+      const [dx, dz] = tileXZ(hx.q[ti]!, hx.r[ti]!);
+      biosphere.noteHabitatDisturbance(dx, dz, 14, 7.0);
+    }
+    prevTerrain[ti] = newT;
+    prevPrep[ti] = newP;
+  }
 }
 
-/** Hex terrain from the sim tile grid: 32x32-tile chunks, class relief, hydro water plane, and per-tile prop scatter. */
+/**
+ * Hex terrain powered by `BiomeOrchestrator`: parses the unified biome JSON configuration and coordinates
+ * `TerrainOrchestrator`, `TreesOrchestrator`, `GroundObjectsOrchestrator`, `ResourcesOrchestrator`,
+ * `BirdsOrchestrator`, `AnimalsOrchestrator`, and `BugsOrchestrator` with pre-allocated object pools.
+ */
 export function createHexTerrain(opts: HexTerrainOptions): HexTerrain {
-  const { radius, look } = opts;
+  const { radius } = opts;
+  const planetSeed = hashGroundSeed(opts.look.seed, 17);
+  const look: PlanetSpec = opts.look.seed === planetSeed ? opts.look : { ...opts.look, seed: planetSeed };
   const hx = hexIndex(radius);
   let tiles = opts.tiles;
   let elapsedTime = 0;
-  const chunkLayers = (): HexTileLayers => ({ ...tiles, kind: look.kind });
-  const pre = opts.precomputed && opts.precomputed.radius === radius && opts.precomputed.kind === look.kind
-    ? opts.precomputed
-    : undefined;
-  let effHeights = pre?.effHeights && pre.effHeights.length === hx.count
-    ? pre.effHeights
-    : computeEffectiveHeights(radius, chunkLayers());
-  const ext = planetExtent(radius);
-  const tint = createHexTileTint(radius, chunkLayers(), pre?.tint);
-  // Dune ripples follow the same shared wind object as dust, trees and waves (by reference: F8 WIND re-orients them).
-  const uniforms: Record<string, THREE.IUniform> = { ...terrainUniforms(look, HEX_WATER_LEVEL, ext.x * 1.2, [0, 0], tint.terraformTexture), ...tint.uniforms, uWind: getWindUniforms().uWindDir };
-  const edge: THREE.IUniform<number> = { value: opts.edges ?? 0.55 };
-  const material = createTerrainMaterial(uniforms, (sh) => addHexEdges(sh, edge));
-  // three keys programs on `onBeforeCompile.toString()`, which is the same closure for the plain heightfield terrain:
-  // without its own key a renderer showing both would reuse one program (no tint / water gate, or missing attributes).
-  material.customProgramCacheKey = () => 'taHexTerrain';
-  const group = new THREE.Group();
-  group.name = 'hexTerrain';
-  const heightAt = makeHeightSampler(radius, () => effHeights);
-  const water = createHexWater(radius, look, tiles, pre?.water);
-  const props = createHexPropScatter(look);
-  const borders = createBorderController(radius, tiles, effHeights, opts.colorBlindMode ?? globalColorBlindMode, opts.colonyColors);
-  const chunks = createHexChunkSet(radius, group, material, props, heightAt, {
-    precomputed: pre?.chunks,
-    progressive: opts.progressive,
-    priorityTile: opts.priorityTile,
+  const jsonOrConfig =
+    opts.biomeConfigJson ??
+    serializeBiomeOrchestratorConfig(buildBiomeOrchestratorConfig(look, radius, { edges: opts.edges }));
+  const biomeOrchestrator = new BiomeOrchestrator(jsonOrConfig, { ...tiles, kind: look.kind, seed: planetSeed }, {
+    look,
+    colorBlindMode: opts.colorBlindMode ?? globalColorBlindMode,
+    colonyColors: opts.colonyColors,
+    bugsOrchestrator: opts.bugsOrchestrator,
+    prewarmBugs: opts.prewarmBugs,
+    pregenerated: opts.pregenerated,
   });
 
-  if (opts.progressive) chunks.beginProgressive(chunkLayers(), effHeights);
-  else chunks.rebuild(chunkLayers(), effHeights);
-  const ambient = createHexAmbient(look, ext.z);
-  group.add(water.group, props.group, borders.mesh, ambient.points);
+  const tOrch = biomeOrchestrator.terrainOrchestrator;
+  const { group, material, uniforms, water, borderMesh, halfSize, heightAt } = tOrch;
+  const { props, flora, biosphere } = biomeOrchestrator;
+  const prevTerrainSnap = Uint8Array.from({ length: hx.count }, (_, i) => tiles.terrain[i] ?? 0);
+  const prevPrepSnap = Uint8Array.from({ length: hx.count }, (_, i) => tiles.prep?.[i] ?? 0);
+  const isWaterAt = (x: number, z: number): boolean => {
+    const t = tileAt(radius, x, z);
+    const code = t ? tiles.terrain[t.i] : undefined;
+    return code === HEX_TERRAIN.shallow || code === HEX_TERRAIN.deep;
+  };
   const ray = new THREE.Raycaster();
+  let disposed = false;
 
-  const disposer = createTerrainDisposer(() => handle, group, { chunks, water, props, borders, material, tint, ambient });
   const handle: HexTerrain = {
-    group, material, uniforms, water, props, borderMesh: borders.mesh, radius, halfSize: ext.z, heightAt,
+    group,
+    material,
+    uniforms,
+    water,
+    props,
+    flora,
+    biosphere,
+    biomeOrchestrator,
+    borderMesh,
+    radius,
+    seed: biomeOrchestrator.config.planet.seed,
+    halfSize,
+    heightAt,
     get chunks() {
-      if (!chunks.isComplete()) chunks.finishProgressive();
-      return [...chunks.meshes.values()];
+      return tOrch.chunks;
     },
-    pick(input, camera) {
-      if (!chunks.isComplete()) chunks.finishProgressive();
-      return pickHexTerrain(radius, tiles, heightAt, props, ray, input, camera);
-    },
+    pick: (input, camera) => pickHexTile(radius, input, camera, ray, heightAt, isWaterAt, props),
     updateTiles(nextOrChanged, maybeChanged) {
       const resolved = resolveTilesAndChanged(tiles, nextOrChanged, maybeChanged);
       tiles = resolved.tiles;
       const changed = resolved.changed;
       if (!changed || changed.length > 0) {
-        const layers = chunkLayers();
-        effHeights = computeEffectiveHeights(radius, layers);
-        tint.update(layers, changed);
-        chunks.rebuild(layers, effHeights, changed);
-        water.update(tiles, changed);
+        const layers: HexTileLayers = { ...tiles, kind: look.kind, seed: handle.seed };
+        emitTileHabitatDisturbances(hx, prevTerrainSnap, prevPrepSnap, layers, changed, biosphere);
+        biomeOrchestrator.updateTiles(layers, changed);
       }
-      borders.rebuild(tiles, effHeights);
+      tOrch.rebuildBorders(tiles);
     },
     setTileState(q, r, terrainVal, prepVal, heightVal, depositVal, richnessVal) {
       const idx = hx.indexOf(q, r);
@@ -311,26 +296,55 @@ export function createHexTerrain(opts: HexTerrainOptions): HexTerrain {
     },
     refreshBorders(next) {
       if (next) tiles = next;
-      borders.rebuild(tiles, effHeights);
+      tOrch.rebuildBorders(tiles);
     },
     tick(dt) {
       elapsedTime += Math.max(0, dt);
-      if (uniforms.uTime) uniforms.uTime.value = elapsedTime;
-      if (water.uniforms.uTime) water.uniforms.uTime.value = elapsedTime;
-      props.timeU.value = elapsedTime;
-      props.cullToFocus(); // hide what lies off the view focus (one frame stale; covered by the focus's 4 m edge pad)
-      water.cullToFocus(); // surface + fauna buckets
-      ambient.setTime(elapsedTime);
+      biomeOrchestrator.tick(dt, elapsedTime);
     },
-    getTerritoryBorderStats: () => borders.getStats(),
-    setColorBlindMode: (enabled) => borders.setColorBlindMode(enabled, tiles, effHeights),
-    setColonyColors: (colors) => borders.setColonyColors(colors, tiles, effHeights),
-    stepProgressiveBuild: (budgetMs) => chunks.stepProgressive(budgetMs),
-    finishProgressiveBuild: () => chunks.finishProgressive(),
-    isBuildComplete: () => chunks.isComplete(),
-    disposeDeferred: () => disposer.disposeDeferred(),
-    dispose: () => disposer.dispose(),
+    getTerritoryBorderStats: () => tOrch.getTerritoryBorderStats(),
+    setColorBlindMode: (enabled) => tOrch.setColorBlindMode(enabled, tiles),
+    setColonyColors: (colors) => tOrch.setColonyColors(colors, tiles),
+    stepProgressiveBuild: () => true,
+    finishProgressiveBuild() {},
+    isBuildComplete: () => true,
+    disposeDeferred() {
+      if (disposed) return;
+      disposed = true;
+      activeTerrains.delete(handle);
+      group.removeFromParent();
+      enqueueDeferredDispose(() => biomeOrchestrator.dispose());
+    },
+    dispose() {
+      if (disposed) return;
+      disposed = true;
+      activeTerrains.delete(handle);
+      biomeOrchestrator.dispose();
+    },
   };
   activeTerrains.add(handle);
   return handle;
+}
+
+/**
+ * Generates terrain chunks, trees, ground objects, resource deposits, habitat anchors, birds, and animals
+ * inside the dedicated `biome.worker.ts` thread, then hydrates the `HexTerrain` GPU pools on the main thread.
+ */
+export async function createHexTerrainInWorker(
+  opts: HexTerrainOptions & { workerClient?: BiomeWorkerClient },
+): Promise<HexTerrain> {
+  const planetSeed = hashGroundSeed(opts.look.seed, 17);
+  const look: PlanetSpec = opts.look.seed === planetSeed ? opts.look : { ...opts.look, seed: planetSeed };
+  const jsonConfig =
+    typeof opts.biomeConfigJson === 'string'
+      ? opts.biomeConfigJson
+      : serializeBiomeOrchestratorConfig(
+          opts.biomeConfigJson ?? buildBiomeOrchestratorConfig(look, opts.radius, { edges: opts.edges }),
+        );
+  const pregenerated = await BiomeOrchestrator.generateInWorker(
+    jsonConfig,
+    { ...opts.tiles, kind: look.kind, seed: planetSeed },
+    opts.workerClient,
+  );
+  return createHexTerrain({ ...opts, look, biomeConfigJson: jsonConfig, pregenerated });
 }

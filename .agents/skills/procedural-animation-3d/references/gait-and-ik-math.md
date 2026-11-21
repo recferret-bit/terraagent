@@ -83,3 +83,20 @@ When a unit requires a complex non-cyclic animation (e.g., an unfolding deployme
 1. Evaluate the analytical 2-bone Inverse Kinematics (Law of Cosines) **once at startup/build time** across $N = 32$ keyframes.
 2. Pack the resulting joint transforms or vertex offsets into a `THREE.DataTexture` (`RGBAFormat`, `FloatType`) or vertex attribute channels.
 3. Sample the texture in the vertex shader using `uTime`, keeping runtime CPU cost at $O(1)$.
+
+---
+
+## 5. Organic Quadruped Diagonal Trot, Grazing/Tail Channels & Avian Wing Stroke (`aBioState`)
+
+1. **Quadruped Diagonal Trot & Closed-Form Hock Suspension (`animType = 4, 14, 24` with `aOrganic > 0.5`):**
+   - Forelegs (`pivot.z >= -0.05`) and hindlegs (`pivot.z < -0.05`) offset their sagittal phase by $+\pi$:
+     $$\phi_{\text{quad}}(p_x, p_z) = \mathbb{I}[p_x < 0]\pi + \mathbb{I}[p_z < -0.05]\pi$$
+   - Because `BipedBody (8)` pitches and heaves the hip socket by $\Delta\mathbf{h}$, organic `14` (`shin`) applies a closed-form minimum hock flexion angle:
+     $$\theta_{\text{shin,min}} = \arccos\!\left(1 - \text{clamp}\!\left(\frac{-(\Delta h_y + k_{y0}(\cos\theta_{\text{hip}} - 1)) - 0.005}{\max(0.08, -a_{y0})},\, 0,\, 0.45\right)\right)$$
+     guaranteeing hooves and paws never penetrate below $y = -5\text{ mm}$ across the entire stride.
+2. **Grazing Neck Pitch (`78`), Tail Counterbalance (`88`) & Avian Wing Flap (`92`):**
+   - `animType = 78`: Pitches neck/cranium/antlers/horns downward around X at `pivot` by $(0.34 + 0.07\sin 2g)w_k + 0.035\sin(2g)w$, then rides `BipedBody (8)`.
+   - `animType = 88`: Yaws tail around Y at `pivot` by $0.22\sin(g + 0.8)(0.25 + 0.75 w) + 0.10\sin(2g)w_k$, then rides `BipedBody (8)`.
+   - `animType = 92`: Rolls left/right wings around Z at shoulder `pivot` by $\text{sign}(p_x)(0.48\sin(8t)w + 0.08(1 - w))$ synchronized with `HoverBob (2)`.
+3. **Single-Draw-Call Instanced Biosphere (`aBioState`):**
+   - `useBiosphereInstanceAttributes` (`visuals/unified/instancedBiosphere.ts`) binds `attribute vec4 aBioState` (`[phaseOffset, walkOrFlapWeight, workOrFeedWeight, sleepCrouch]`) so an entire species flock/herd renders in 1 draw call with independent per-animal circadian postures.

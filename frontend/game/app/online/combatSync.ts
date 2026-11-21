@@ -130,6 +130,8 @@ export class CombatSyncController {
       autoImpactOnArrival: false, firedTick: tick, targetId: data.targetId, impactTick: data.impactTick ?? tick,
     });
     if (!isInsectMelee(data.weaponId)) this.projectiles.onProjectileFired(shot);
+    terrain?.biosphere.noteBattleAt(fromPt.x, fromPt.z);
+    terrain?.biosphere.noteBattleAt(toPt.x, toPt.z);
     this.vfxFiredSpawnCount++;
 
     this.firedHistory.push({
@@ -171,6 +173,10 @@ export class CombatSyncController {
       : Array.isArray(data.hitIds) ? data.hitIds.map(Number) : [];
     const q = Math.round(Number(data.q ?? data.at?.q ?? data.to?.q ?? data.aimX ?? data.at?.x ?? data.to?.x ?? 0));
     const r = Math.round(Number(data.r ?? data.at?.r ?? data.to?.r ?? data.aimY ?? data.at?.y ?? data.to?.y ?? 0));
+    if (terrain) {
+      const impPt = axialToWorldVfxPoint(q, r, 0, this.projectiles.tileSizeM);
+      terrain.biosphere.noteBattleAt(impPt.x, impPt.z);
+    }
 
     this.impactHistory.push({
       key, atTick: tick, attackerId: Number(data.attackerId ?? 0),

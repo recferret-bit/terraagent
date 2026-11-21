@@ -1,4 +1,5 @@
 import { insectPartPoses } from '../../animation/insects/validationPoses';
+import { vertebratePartPoses } from '../../animation/vertebrates/validationPoses';
 // Animation poses of a part, mirroring the vertex shader of UnifiedColonyMaterial.
 import type { PartDef } from './types';
 
@@ -36,8 +37,8 @@ const spiderBody = (x: number, y: number, z: number, g: number, w = 1, wk = 0) =
     Math.sin(g * 2) * 0.024 * w + (0.015 + Math.sin(g * 2) * 0.015) * wk,
   );
 
-function bipedLegPoint(x: number, y: number, z: number, px: number, py: number, pz: number, g: number, sub: number, w = 1, wk = 0, _organic = false): [number, number, number] {
-  const tau = g + (px >= 0 ? 0 : Math.PI), s = Math.sin(tau), lift = Math.max(0, Math.cos(tau));
+function bipedLegPoint(x: number, y: number, z: number, px: number, py: number, pz: number, g: number, sub: number, w = 1, wk = 0, organic = false): [number, number, number] {
+  const tau = g + (px >= 0 ? 0 : Math.PI) + (organic && pz < -0.05 ? Math.PI : 0), s = Math.sin(tau), lift = Math.max(0, Math.cos(tau));
   const [bhx, bhy, bhz] = bipedBody(px, py, pz, g, w, wk);
   const dhx = bhx - px, dhy = bhy - py, dhz = bhz - pz;
   const hipAngle = s * 0.22 * w, ch = Math.cos(hipAngle), sh = Math.sin(hipAngle);
@@ -45,13 +46,16 @@ function bipedLegPoint(x: number, y: number, z: number, px: number, py: number, 
     const ry = y - py, rz = z - pz;
     return [x + dhx, py + dhy + ry * ch - rz * sh, pz + dhz + ry * sh + rz * ch];
   }
-  const ky0 = -0.3173 * py, shinAngle = hipAngle + lift * 0.52 * w, cs = Math.cos(shinAngle), ss = Math.sin(shinAngle);
+  const ky0 = -0.3173 * py, ay0 = -0.5769 * py;
+  const baseShin = hipAngle + lift * 0.52 * w;
+  const minShin = organic ? Math.acos(1 - Math.min(0.45, Math.max(0, (-(dhy + ky0 * (ch - 1)) - 0.005) / Math.max(0.08, -ay0)))) : 0;
+  const shinAngle = organic ? Math.max(baseShin, minShin) : baseShin;
+  const cs = Math.cos(shinAngle), ss = Math.sin(shinAngle);
   const kmy = py + dhy + ky0 * ch, kmz = pz + dhz + ky0 * sh;
   if (sub === 1) {
     const uy = y - (py + ky0), uz = z - pz;
     return [x + dhx, kmy + uy * cs - uz * ss, kmz + uy * ss + uz * cs];
   }
-  const ay0 = -0.5769 * py;
   return [x + dhx, kmy + ay0 * cs + (y - (py + ky0 + ay0)), kmz + ay0 * ss + (z - pz)];
 }
 
@@ -109,7 +113,7 @@ function addBodyCarrierPoses(make: MakePoseFn, base: number, sub: number, px: nu
       if (sub === 1) { const rx = x - px, rz = z - pz; tx = px + rx * c - rz * s; tz = pz + rx * s + rz * c; }
       else if (sub === 2) { ty += Math.sin(g + px * 3.1) * 0.025; }
       else if (sub === 3) { tz -= Math.pow(Math.max(Math.sin(g + px * 2.3), 0), 6) * 0.06; }
-      [tx, ty, tz] = organicPose(tx, ty, tz, px, py, pz, g, sub, 0);
+      [tx, ty, tz] = organicPose(tx, ty, tz, px, py, pz, g, sub, 1, 0);
       const [bx, by, bz] = fn(tx, ty, tz, g, 1, 0);
       t[i] = bx; t[i + 1] = by; t[i + 2] = bz;
     });
@@ -121,15 +125,15 @@ function addBodyCarrierPoses(make: MakePoseFn, base: number, sub: number, px: nu
       if (sub === 1) { const rx = x - px, rz = z - pz; tx = px + rx * c - rz * s; tz = pz + rx * s + rz * c; }
       else if (sub === 2) { ty += Math.sin(g + px * 3.1) * 0.025; }
       else if (sub === 3) { tz -= Math.pow(Math.max(Math.sin(g * 2 + px * 2.3), 0), 6) * 0.06; }
-      [tx, ty, tz] = organicPose(tx, ty, tz, px, py, pz, g, sub, 1);
+      [tx, ty, tz] = organicPose(tx, ty, tz, px, py, pz, g, sub, 0, 1);
       const [bx, by, bz] = fn(tx, ty, tz, g, 0, 1);
       t[i] = bx; t[i + 1] = by; t[i + 2] = bz;
     });
   }
 }
 
-/** Mirrors ORGANIC_MOTION: jaws/feelers rotate; gland tissue has a bounded 1.8% strain. */
-function organicPose(x: number, y: number, z: number, px: number, py: number, pz: number, g: number, sub: number, wk: number): [number, number, number] {
+/** Mirrors ORGANIC_MOTION: jaws/feelers rotate; gland tissue has bounded strain; mammalian neck/tail rotate rigidly. */
+function organicPose(x: number, y: number, z: number, px: number, py: number, pz: number, g: number, sub: number, w: number, wk: number): [number, number, number] {
   const side = px >= 0 ? 1 : -1;
   if (sub === 4 || sub === 5) {
     const a = sub === 4 ? -side * (0.06 + 0.24 * wk * (0.5 + 0.5 * Math.sin(g * 2)))
@@ -141,11 +145,22 @@ function organicPose(x: number, y: number, z: number, px: number, py: number, pz
     const pulse = 1 + 0.018 * Math.sin(g + px * 3.1);
     return [px + (x - px) * pulse, py + (y - py) * pulse, pz + (z - pz) * pulse];
   }
+  if (sub === 7) {
+    const pitch = (0.34 + 0.07 * Math.sin(g * 2)) * wk + 0.035 * Math.sin(g * 2) * w;
+    const cp = Math.cos(pitch), sp = Math.sin(pitch), ry = y - py, rz = z - pz;
+    return [x, py + ry * cp - rz * sp, pz + ry * sp + rz * cp];
+  }
+  if (sub === 8) {
+    const yaw = 0.22 * Math.sin(g + 0.8) * (0.25 + 0.75 * w) + 0.10 * Math.sin(g * 2) * wk;
+    const cy = Math.cos(yaw), sy = Math.sin(yaw), rx = x - px, rz = z - pz;
+    return [px + rx * cy - rz * sy, y, pz + rx * sy + rz * cy];
+  }
   return [x, y, z];
 }
 
 export function poses(p: PartDef): Pose[] {
   if (p.insectSpecies !== undefined) return insectPartPoses(p);
+  if (p.vertConfig !== undefined && p.vertRig !== undefined) return vertebratePartPoses(p);
   const src = p.tris, out: Pose[] = [];
   const make: MakePoseFn = (label, f) => {
     const t = new Float32Array(src.length);
@@ -156,7 +171,7 @@ export function poses(p: PartDef): Pose[] {
   const raw = Math.round(p.animType), sub = Math.floor(raw / 10), base = raw - sub * 10;
   if (raw === 60) {
     for (let k = 1; k < 16; k++) make(`gland pulse ${k}`, (x, y, z, i, t) => {
-      const point = organicPose(x, y, z, px, py, pz, k * Math.PI * 2 / 16, 6, 0);
+      const point = organicPose(x, y, z, px, py, pz, k * Math.PI * 2 / 16, 6, 0, 0);
       t[i] = point[0]; t[i + 1] = point[1]; t[i + 2] = point[2];
     });
   } else if (base === 1 && sub === 0) {
@@ -164,8 +179,20 @@ export function poses(p: PartDef): Pose[] {
       const a = (k * Math.PI * 2) / 24, c = Math.cos(a), s = Math.sin(a);
       make(`${k * 15}° of its spin`, (x, y, z, i, t) => { const rx = x - px, rz = z - pz; t[i] = px + rx * c - rz * s; t[i + 1] = y; t[i + 2] = pz + rx * s + rz * c; });
     }
-  } else if (base === 2 && sub === 0) {
-    for (const dy of [-0.05, -0.025, 0.025, 0.05]) make(`${dy > 0 ? '+' : ''}${(dy * 100).toFixed(1)} cm bob`, (x, y, z, i, t) => { t[i] = x; t[i + 1] = y + dy; t[i + 2] = z; });
+  } else if (base === 2 && (sub === 0 || sub === 9)) {
+    const side = px >= 0 ? 1 : -1;
+    for (let k = 1; k <= 8; k++) {
+      const th = (k * Math.PI * 2) / 8, dy = Math.sin(th) * 0.05;
+      const flap = sub === 9 ? side * 0.48 * Math.sin(th * 2) : 0, cf = Math.cos(flap), sf = Math.sin(flap);
+      make(sub === 9 ? `${k * 45}° wing flap` : `${dy >= 0 ? '+' : ''}${(dy * 100).toFixed(1)} cm bob`, (x, y, z, i, t) => {
+        if (sub === 9) {
+          const rx = x - px, ry = y - py;
+          t[i] = px + rx * cf - ry * sf; t[i + 1] = py + rx * sf + ry * cf + dy; t[i + 2] = z;
+        } else {
+          t[i] = x; t[i + 1] = y + dy; t[i + 2] = z;
+        }
+      });
+    }
   } else if (base === 3 && sub === 0) {
     for (const dz of [-0.015, -0.03, -0.045, -0.06]) make(`${(dz * 100).toFixed(1)} cm recoil`, (x, y, z, i, t) => { t[i] = x; t[i + 1] = y; t[i + 2] = z + dz; });
   } else if (base === 4 || base === 6) {

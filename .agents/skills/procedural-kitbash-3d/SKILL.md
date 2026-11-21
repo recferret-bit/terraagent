@@ -57,6 +57,8 @@ Assemble the entity in four layers from bottom to top:
 
 **Resource deposits** (`resource.metalDeposit`, `resource.crystalDeposit`, `resource.oilDeposit`) live in `frontend/render/kitbash/archetypes/units/nature.ts` (there is no separate deposits file). Each is built per depletion stage: register one builder with `registerDepositStageBuilder(id, (stage) => geometry)` (`frontend/render/kitbash/catalog.ts`, `stage` = `'full' | 'half' | 'depleted'`). All three stages are separate meshes that must each pass the validator (`npm run validate:models -- <deposit id>` checks all three); preview them with `/playground.html?inspect=<id>&depositStage=half|depleted`.
 
+**Botanical trees, ground flora & biosphere fauna** (`visuals/terrain/treeBreeds.ts`, `groundFloraGeos.ts`, `planets/hex/flora/forestPipeline.ts`, `archetypes/units/warmFauna.ts`, `avianFauna.ts`): multi-breed biome tree atlases stamp `aBreed` (`0..3`) and explicit `aBark` (`1` on woody trunks/roots, `0` on foliage/blossoms) and run through the 4-stage ecological stand pipeline (`generateTileForestTrees` on `HexTerrain`, `applySurfaceForestPipeline` on `PlanetSurface`); warm-blooded mammals (`tissue = 6`) and birds (`tissue = 7`) follow `procedural-animal-3d` (`sculptedLoft`, `sculptedLimbSegment`, `sculptedWingFoil`, `sculptedFeather`, `>= 22` sub-parts) and rig via `procedural-animal-animation`.
+
 ### Step 3: Encode GPU Animation Channels (Zero CPU Overhead)
 Instead of creating separate child `THREE.Mesh` hierarchies for `AnimationMixer`, tag vertices via `PartOptions` (`animType` + `animPivot`) in [KitbashRegistry.ts](./examples/KitbashRegistry.ts) (see the [`procedural-animation-3d`](../procedural-animation-3d/SKILL.md) skill for coupled limb rigging and gait math):
 - `animType = 0`: Static chassis part.
@@ -70,6 +72,7 @@ Instead of creating separate child `THREE.Mesh` hierarchies for `AnimationMixer`
 - `animType = 8` (`BipedBody`): Full-body step reaction (`robot.hero` pelvis, torso, head, backpack, cables).
 - `animType = 9` (`SpiderBody`): Heavy quadruped/arachnid chassis suspension (`robot.combat` carapace, underbelly, turret, cables).
 - `animType = 18, 28, 38` / `19, 29, 39`: Compound secondary motion (`SpinY 1`, `HoverBob 2`, `RecoilPulse 3`) riding on `BipedBody (8)` or `SpiderBody (9)`.
+- `animType = 49, 59, 69, 60`: Insect organic articulated mandible, antenna, and bounded flexible secretory sacs (`procedural-bug-3d`, `procedural-insect-animation`). Warm-blooded vertebrates (`tissue = 6` / `7`) instead encode semantic `vertRig` attributes (`aVertJoint`, `aVertTip`) via [`procedural-animal-animation`](../procedural-animal-animation/SKILL.md).
 
 ### Step 4: Geometry Validation, then Visual Diagnostic Verification
 After generating a new procedural model, **first** run the numeric check from the [`model-geometry-validator`](../model-geometry-validator/SKILL.md) skill: `npm run validate:models -- <archetype id>`. It must report 0 errors and 0 warnings (floating parts, hairline gaps, z-fighting, parts cutting through each other, cables clipping, animated parts hitting something, plus colour roles, colour separation between functional groups, palette balance and surface detail: rule 5 above). Name your parts (`name` in `PartOptions`) so its report maps back to code.

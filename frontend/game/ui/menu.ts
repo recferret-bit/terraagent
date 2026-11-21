@@ -84,6 +84,7 @@ export class MainMenu {
   kind: PlanetKind;
   seed: number;
   settings: MenuSettings = createInitialMenuSettings();
+  private readonly explicitSeed: number | undefined;
   private planetsByKind: Record<PlanetKind, PlanetSummaryV1>;
   private sectorIntent: SectorIntentV1;
   private queuePaused = false;
@@ -110,6 +111,7 @@ export class MainMenu {
     options?: MainMenuOptions,
   ) {
     this.kind = kind;
+    this.explicitSeed = seed;
     this.seed = seed ?? PLANET_SPECS[kind].seed;
     this.autoProbeColony = Boolean(options?.autoProbeColony);
     this.probeFetch = options?.probeFetch;
@@ -243,7 +245,7 @@ export class MainMenu {
     if (this.activeColony && k !== this.activeColony.kind) return;
     const changed = k !== this.kind;
     this.kind = k;
-    if (changed) this.seed = PLANET_SPECS[k].seed;
+    if (changed) this.seed = this.explicitSeed ?? PLANET_SPECS[k].seed;
     this.el
       .querySelectorAll<HTMLElement>('.world-card')
       .forEach((c) => c.classList.toggle('sel', c.dataset.k === k));

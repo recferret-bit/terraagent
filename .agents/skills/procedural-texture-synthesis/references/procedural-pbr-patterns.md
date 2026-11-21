@@ -28,6 +28,20 @@
   - 45° diagonal repeating bands (`width = 32px`) alternating between `COLONY_PALETTE.hullSecondary` (`#E59838`) and `COLONY_PALETTE.frameGunmetal` (`#242933`).
   - Apply procedural edge chipping along stripe boundaries so it looks weathered.
 
+### D. `treeBarkFissures` (Botanical Tree Trunks & Stilt Roots)
+- **Height & Albedo (`128x128` – `256x256`, `HeightBuffer` headless-safe):**
+  - Domain-warped vertical sinusoidal bark ridges (`14` periods around circumference) + lenticel knots + moss pockets (`knot > 0.68`).
+  - Bound at runtime in `createFoliageMaterial()` (`visuals/terrain/Scatter.ts`) via `uBarkMap` / `uBarkRoughMap` so woody trunks/branches get deep vertical fissure grain and high-roughness crevices while leafy crowns stay crisp.
+
+### E. `meadowGrassClover` & `desertPebbleCrust` (Biome Terrain Micro-Detail)
+- **`meadowGrassClover`:** Multi-scale botanical blade weave (`periods 28 & 64`) + wildflower clover clusters (`period 18`) + Sobel normal & satin-blade roughness maps. Bound to `uMeadowDetailMap` / `uMeadowRoughMap` in `terrainMaterial.ts` (`KIND_OCEAN_FOREST` & `KIND_FOREST_ROCK`).
+- **`desertPebbleCrust`:** Wind-rippled arid sand (`period 10`), desert-varnish pebbles (`period 30`), and sun-baked alkali crack networks (`period 9`). Bound to `uDesertCrustMap` / `uDesertRoughMap` in `terrainMaterial.ts` (`KIND_DUNE`).
+
+### F. `warmFurPelage` (Vertebrate Mammalian Coat)
+- **Height, Albedo & Sheen Roughness:**
+  - Anisotropic hair-strand value noise (`u * 3, period 42`) layered with fine guard-hair striations (`48` strands) and coat dappling (`period 6`).
+  - Bound at runtime in `createUnifiedColonyMaterial()` (`uFurPelageMap` / `uFurRoughnessMap`) and sampled along anatomical UVs in `organicSurface.ts` whenever `aOrganic == 6` (`pelage`).
+
 ---
 
 ## 2. Wrapping Sobel Filter Math (Height $\rightarrow$ Tangent-Space Normal Map)

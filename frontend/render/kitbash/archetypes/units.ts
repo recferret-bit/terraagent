@@ -6,6 +6,7 @@ import './units/guild';
 import './units/flagship';
 import './units/nature';
 import './units/bugs';
+import './units/warmFauna';
+import './units/avianFauna';
 import './units/hives';
-import './units/ambientNests';
 export {};

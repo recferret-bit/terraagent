@@ -66,7 +66,7 @@ class ParticlePresetRegistryImpl {
     if (deposit === 'oil') return 'oil';
 
     if (terrain === 'forest' || mode === 'clear' || terrain === 'tree' || terrain === 'clear') {
-      return isDuneBiome ? 'rock' : 'tree';
+      return 'tree';
     }
     if (terrain === 'rock' || mode === 'break' || terrain === 'break') {
       return 'rock';

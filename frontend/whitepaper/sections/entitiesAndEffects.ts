@@ -76,16 +76,16 @@ export function buildEntitiesAndEffectsSections(stage3D: WhitepaperLiveStage3D):
     'sec-08',
     '08',
     'LIVE 3D CATALOG // ECOLOGY & DEPOSITS',
-    'Alien Fauna, Species Hives, Ambient Nests & Deposit Stages (13 Models)',
-    'Hostile insect species use segmented chitin armor and tripod combat states; ambient Skitters and pelagic Drifters inhabit native nests; resource outcrops shrink visibly across Full, Half, and Depleted extraction stages.',
+    'Alien Fauna, Species Hives & Deposit Stages (9 Models)',
+    'Hostile insect species use segmented chitin armor and tripod combat states emerging from organic species hives; resource outcrops shrink visibly across Full, Half, and Depleted extraction stages.',
   );
   buildFilterableCardSection(
     sec08,
     ECOLOGY_CARDS,
     [
       { key: 'all', label: `All (${ECOLOGY_CARDS.length})` },
-      { key: 'fauna', label: 'Fauna (5)' },
-      { key: 'hives', label: 'Hives & Nests (5)' },
+      { key: 'fauna', label: 'Fauna (3)' },
+      { key: 'hives', label: 'Hives (3)' },
       { key: 'deposits', label: 'Deposits (3)' },
     ],
     stage3D,

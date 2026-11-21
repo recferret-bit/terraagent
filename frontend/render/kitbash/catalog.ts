@@ -1,6 +1,8 @@
 import { attachInsectAnimator, getInsectAnimator } from '../animation/insects/InsectAnimationController';
 import { INSECT_SPECIES, stampInsectRig } from '../animation/insects/rig';
 import { INSECT_ANIMATION } from '../animation/insects/shader';
+import { getVertebrateConfig, isVertebrateGeometry } from '../animation/vertebrates/rig';
+import { VERTEBRATE_ANIMATION } from '../animation/vertebrates/shader';
 import { attachWeaponRig, getWeaponRig } from '../combat/WeaponRig';
 import { WeaponRigRegistry, stampWeaponRig } from '../combat/weaponRigs';
 import { WEAPON_RIG } from '../combat/weaponShader';
@@ -107,6 +109,7 @@ export interface ArchetypeEntry {
 export const REQUIRED_IDS = ['robot.hero', 'ship.carrier', 'ship.dropPod'] as const;
 
 const entries = new Map<string, ArchetypeEntry>();
+const biosphereEntries = new Map<string, ArchetypeEntry>();
 const geometryCache = new Map<string, THREE.BufferGeometry>();
 const strippedGeometryCache = new Map<string, THREE.BufferGeometry | false>();
 
@@ -152,6 +155,10 @@ export const ArchetypeCatalog = {
     geometryCache.delete(entry.id);
     strippedGeometryCache.delete(entry.id);
   },
+  registerBiosphere(entry: ArchetypeEntry) {
+    biosphereEntries.set(entry.id, entry);
+    geometryCache.delete(entry.id);
+  },
   /** Forget a baked mesh so the next `getGeometry` rebuilds it (faction preview). */
   dropGeometry(id: string): void {
     const canonical = resolveCanonicalArchetypeId(id);
@@ -161,10 +168,16 @@ export const ArchetypeCatalog = {
   list(category?: ArchetypeCategory): ArchetypeEntry[] {
     return [...entries.values()].filter((e) => !category || e.category === category);
   },
+  listBiosphere(): ArchetypeEntry[] {
+    return [...biosphereEntries.values()];
+  },
   get(id: string): ArchetypeEntry {
     const canonical = resolveCanonicalArchetypeId(id);
-    const e = entries.get(canonical) ?? entries.get(resolveDepositArchetype(canonical)?.id ?? '');
-    if (!e) throw new Error(`ArchetypeCatalog: unknown "${id}". Have: ${[...entries.keys()].join(', ')}`);
+    const e =
+      entries.get(canonical) ??
+      biosphereEntries.get(canonical) ??
+      entries.get(resolveDepositArchetype(canonical)?.id ?? '');
+    if (!e) throw new Error(`ArchetypeCatalog: unknown "${id}". Have: ${[...entries.keys(), ...biosphereEntries.keys()].join(', ')}`);
     return e;
   },
   /** Returns a clone of the cached merged BufferGeometry so runtime unit spawns skip procedural generation. */
@@ -187,14 +200,14 @@ export const ArchetypeCatalog = {
       geometryCache.set(canonical, cached);
     }
     const cloned = cached.clone();
-    if (cached.userData?.partRanges) {
-      cloned.userData = { ...cloned.userData, partRanges: cached.userData.partRanges };
+    if (cached.userData && Object.keys(cached.userData).length > 0) {
+      cloned.userData = { ...cached.userData };
     }
     return cloned;
   },
   has: (id: string) => {
     const canonical = resolveCanonicalArchetypeId(id);
-    return entries.has(canonical) || resolveDepositArchetype(canonical) !== null;
+    return entries.has(canonical) || biosphereEntries.has(canonical) || resolveDepositArchetype(canonical) !== null;
   },
   /** Warms cached geometries (and plinth-stripped building templates) from `queue` within `budgetMs` per frame. */
   prewarmStep(queue: string[], budgetMs = 1.8): boolean {
@@ -244,16 +257,30 @@ export interface ArchetypeMesh extends THREE.Mesh {
 export function createArchetypeMesh(id: string, biomeKey = 'dune', stage?: DepositVisualStage): ArchetypeMesh {
   const rig = WeaponRigRegistry.get(id);
   const insect = INSECT_SPECIES[id];
+  const geometry = ArchetypeCatalog.getGeometry(id, stage);
+  const vertebrate = isVertebrateGeometry(geometry);
   const made = createUnifiedColonyMaterial({
     biome: biomeKey,
-    shadowNormalBias: id.startsWith('fauna.hive.') ? 0.065 : 0,
-    plugins: [BUILD_SCAFFOLD, SELECTION_PULSE, BUILDING_LIT, RUIN_VARIANT, ...(rig ? [WEAPON_RIG] : []), ...(insect ? [INSECT_ANIMATION] : [])],
+    shadowNormalBias: id.startsWith('fauna.hive.') ? 0.065 : vertebrate ? 0.024 : 0,
+    plugins: [
+      BUILD_SCAFFOLD,
+      SELECTION_PULSE,
+      BUILDING_LIT,
+      RUIN_VARIANT,
+      ...(rig ? [WEAPON_RIG] : []),
+      ...(insect ? [INSECT_ANIMATION] : []),
+      ...(vertebrate ? [VERTEBRATE_ANIMATION] : []),
+    ],
   });
   const { material, depthMaterial } = made;
   const uniforms = made.uniforms as ArchetypeUniforms; // the scaffold plugin adds uBuild*
-  const geometry = ArchetypeCatalog.getGeometry(id, stage);
   if (rig) stampWeaponRig(geometry, rig);
   if (insect) stampInsectRig(geometry);
+  if (vertebrate) {
+    const cfg = getVertebrateConfig(geometry);
+    uniforms.uVertParams?.value?.set(cfg.comY, cfg.sleepDrop, cfg.strideLen, cfg.liftHeight);
+    uniforms.uVertMeta?.value?.set(cfg.gaitFreq, cfg.isBird, cfg.headSleepPitch, cfg.birdSize ?? 0);
+  }
   if (!geometry.boundingBox) geometry.computeBoundingBox();
   // Scaffold cut heights are fractions of the model's own height (RN-14).
   uniforms.uBuildHeight.value = Math.max(0.1, geometry.boundingBox!.max.y);

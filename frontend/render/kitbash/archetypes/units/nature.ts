@@ -11,7 +11,7 @@ import {
   type DepositVisualStage,
 } from '../../catalog';
 import { KitbashBuilder } from '../../KitbashRegistry';
-import { rbox, cyl, sph, strut, sag, cable, mirror, rockGeo, rng, lathe, type V3 } from '../../greebles/unitParts';
+import { rbox, cyl, sph, strut, sag, rockGeo, rng, lathe, type V3 } from '../../greebles/unitParts';
 import { finalizeBuiltGeometry, register } from './common';
 
 export {
@@ -24,106 +24,6 @@ export {
   type CanonicalDepositId,
   type DepositVisualStage,
 };
-
-// ---------------------------------------------------------------------------
-// fauna.skitter — small six-legged scuttler (~0.5 m)
-// ---------------------------------------------------------------------------
-register({
-  id: 'fauna.skitter',
-  label: 'Skitter',
-  category: 'fauna',
-  footprint: [1, 1],
-  notes: 'Six-legged alien beetle, glowing eye stalks, shell plates, whip antennae, tail bulb.',
-  build: (b) => {
-    b.addPart(new THREE.CapsuleGeometry(0.17, 0.3, 6, 12), 'hullSecondary', { position: [0, 0.3, 0], rotation: [Math.PI / 2, 0, 0], scale: [1.15, 1, 0.8] });
-    b.addPart(sph(0.19, 14, 10), 'terraformEmerald', { position: [0, 0.34, -0.17], scale: [1.0, 0.7, 1.2], emissiveIntensity: 3.2 });
-    for (let i = 0; i < 3; i++) {
-      b.addPart(rbox(0.3 - i * 0.03, 0.06, 0.14, 0.02), 'hullPrimary', { position: [0, 0.43 - i * 0.015, -0.12 + i * 0.12], rotation: [0.1 - i * 0.1, 0, 0] });
-    }
-    b.addPart(sph(0.1), 'frameGunmetal', { position: [0, 0.3, 0.3] });
-    mirror((s) => {
-      b.addPart(sph(0.035), 'energyCyan', { position: [0.09 * s, 0.39, 0.35], emissiveIntensity: 4.2 });
-      strut(b, [0.04 * s, 0.32, 0.31], [0.09 * s, 0.39, 0.35], 0.015, 'frameGunmetal');
-      [-0.12, 0.05, 0.2].forEach((z, i) => {
-        const hip: V3 = [0.13 * s, 0.27, z];
-        const knee: V3 = [0.3 * s, 0.4, z + (i - 1) * 0.05];
-        const foot: V3 = [0.42 * s, 0.0, z + (i - 1) * 0.12];
-        strut(b, hip, knee, 0.02, 'frameGunmetal');
-        strut(b, knee, foot, 0.014, 'hullSecondary', {}, 0.02);
-      });
-      cable(b, [[0.05 * s, 0.33, 0.33], [0.2 * s, 0.55, 0.5], [0.3 * s, 0.5, 0.7]] as V3[], 0.008, 'frameGunmetal', { name: 'whip antenna', role: 'whip' });
-    });
-    b.addPart(sph(0.07), 'terraformEmerald', { position: [0, 0.34, -0.37], emissiveIntensity: 3.4 });
-  },
-});
-
-// ---------------------------------------------------------------------------
-// fauna.drifter — flying grazer (~1.8 m bell). Hovers; nothing meets the ground.
-// ---------------------------------------------------------------------------
-const DRIFTER_BOB = { animType: 2 as const, animPivot: [0, 1.2, 0] as V3 };
-const BELL_Y = 1.36;
-const BELL_R: V3 = [0.8, 0.336, 0.92];
-
-/** Centre of a sphere sitting on the bell, overlapping the shell by `sink` metres. */
-function onDrifterBell(theta: number, phi: number, radius: number, sink = 0.045): V3 {
-  const [rx, ry, rz] = BELL_R;
-  const st = Math.sin(theta), ct = Math.cos(theta);
-  const px = rx * st * Math.cos(phi), py = ry * ct, pz = rz * st * Math.sin(phi);
-  const nx = px / (rx * rx), ny = py / (ry * ry), nz = pz / (rz * rz);
-  const n = Math.hypot(nx, ny, nz) || 1;
-  const out = radius - sink;
-  return [px + (nx / n) * out, BELL_Y + py + (ny / n) * out, pz + (nz / n) * out];
-}
-
-function buildDrifter(b: KitbashBuilder): void {
-  const bob = DRIFTER_BOB;
-  b.addPart(sph(0.8, 16, 10), 'hullSecondary', { name: 'drifter bell', position: [0, BELL_Y, 0], scale: [1, 0.42, 1.15], ...bob });
-  b.addPart(cyl(0.82, 0.72, 0.14, 16), 'hullPrimary', { name: 'bell collar', position: [0, 1.25, 0], scale: [1, 1, 1.15], ...bob });
-  b.addPart(sph(0.36, 12, 8), 'frameGunmetal', { name: 'oral disc', position: [0, 1.04, 0], scale: [1.2, 0.52, 1.3], ...bob });
-  for (let i = 0; i < 7; i++) {
-    const a = (i / 7) * Math.PI * 2;
-    b.addPart(sph(0.08, 8, 6), 'terraformEmerald', {
-      name: 'mantle spot', position: [Math.cos(a) * 0.48, 1.61, Math.sin(a) * 0.55], emissiveIntensity: 3.5, ...bob,
-    });
-  }
-  b.addPart(sph(0.15, 10, 8), 'energyCyan', { name: 'crown node', position: [0, 1.66, 0], emissiveIntensity: 4, ...bob });
-  // Ranged spores: a piled cluster on the dorsal rear, not a flat ring of paint.
-  const rear = -Math.PI / 2;
-  const spores: [number, number, number][] = [
-    [0.98, rear, 0.13],
-    [1.16, rear - 0.36, 0.09],
-    [1.14, rear + 0.38, 0.078],
-    [0.82, rear - 0.2, 0.062],
-    [1.28, rear + 0.12, 0.055],
-  ];
-  for (const [theta, phi, radius] of spores) {
-    b.addPart(sph(radius, 8, 6), 'terraformEmerald', {
-      name: 'dorsal spore', position: onDrifterBell(theta, phi, radius), emissiveIntensity: 3.6, ...bob,
-    });
-  }
-  const rand = rng(11);
-  for (let i = 0; i < 6; i++) {
-    const a = (i / 6) * Math.PI * 2 + 0.35;
-    const x = Math.cos(a) * 0.18, z = Math.sin(a) * 0.2;
-    cable(
-      b,
-      [[x, 1.0, z], [x * 1.4 + (rand() - 0.5) * 0.04, 0.78, z * 1.35], [x * 1.65, 0.58, z * 1.5]] as V3[],
-      0.018,
-      i % 2 ? 'terraformEmerald' : 'frameGunmetal',
-      { name: 'drifter tendril', role: 'whip', ...(i % 2 ? { emissiveIntensity: 3.4 } : {}), ...bob },
-    );
-  }
-}
-
-register({
-  id: 'fauna.drifter',
-  label: 'Drifter',
-  category: 'fauna',
-  footprint: [2, 2],
-  snap: false,
-  notes: 'Flying grazer: no ground contact, spore cluster on the back, no wings. Bell, collar and mantle spots bob (animType 2).',
-  build: buildDrifter,
-});
 
 // ---------------------------------------------------------------------------
 // Resource deposits (full / half / depleted visual stages)

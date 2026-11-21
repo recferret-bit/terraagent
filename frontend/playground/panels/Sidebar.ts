@@ -1,23 +1,35 @@
 import { ArchetypeCatalog, type ArchetypeCategory } from '@terra/render/kitbash';
 import { $ } from '../dom';
+import { FLORA_ENTRIES, listFloraEntries, type FloraGroup } from '../content/floraCatalog';
 import { CATS, type PgState } from '../state';
 import { bindDock } from './dock';
+import { NatureBlock } from './NatureBlock';
 
-export interface SidebarHandlers { onSelect(id: string): void; onRow(cat: ArchetypeCategory): void; }
+export interface SidebarHandlers {
+  onSelect(id: string): void;
+  onRow(cat: ArchetypeCategory): void;
+  onFloraRow?: (group: FloraGroup) => void;
+}
 
-type SideTab = 'hive' | 'march' | 'units';
+export type SideTab = 'hive' | 'wildlife' | 'march' | 'units';
 
-const SIDE_TABS: readonly SideTab[] = ['hive', 'march', 'units'];
-const TAB_LABEL: Record<SideTab, string> = { hive: 'HIVE', march: 'MARCH', units: 'UNITS' };
+const SIDE_TABS: readonly SideTab[] = ['hive', 'wildlife', 'march', 'units'];
+const TAB_LABEL: Record<SideTab, string> = { hive: 'HIVE', wildlife: 'WILDLIFE', march: 'MARCH', units: 'UNITS' };
 
-/** Left sidebar: hive-life, group march, and the archetype list on separate tabs. */
+/** Left sidebar: hive-life, planet wildlife levels, group march, and the archetype list on separate tabs. */
 export class Sidebar {
   private expanded = new Set<ArchetypeCategory>(['building']);
+  private natureBlock: NatureBlock;
 
-  constructor(private state: PgState, private on: SidebarHandlers) {}
+  constructor(private state: PgState, private on: SidebarHandlers) {
+    this.natureBlock = new NatureBlock(state, {
+      onPickFlora: (id) => this.on.onSelect(id),
+      onFloraRow: (group) => this.on.onFloraRow?.(group),
+    });
+  }
 
   build() {
-    $('#side').innerHTML = sideShell(ArchetypeCatalog.list().length);
+    $('#side').innerHTML = sideShell(ArchetypeCatalog.list().length + ArchetypeCatalog.listBiosphere().length + FLORA_ENTRIES.length);
     this.bindTabs();
     bindDock({
       id: 'side',
@@ -27,6 +39,10 @@ export class Sidebar {
       showTitle: 'Hide or show the object list',
       mount: $('#stage'),
     });
+    this.natureBlock.mount(
+      $('#side .side-pane[data-side-pane="units"]'),
+      $('#list'),
+    );
     ($('#search') as HTMLInputElement).addEventListener('input', (e) => {
       this.state.filter = (e.target as HTMLInputElement).value.toLowerCase();
       this.render();
@@ -36,7 +52,7 @@ export class Sidebar {
   }
 
   /** Shows one pane. Does not change the scene, the sim, or PgState. */
-  showTab(tab: 'hive' | 'march' | 'units'): void {
+  showTab(tab: SideTab): void {
     const root = $('#side');
     root.querySelectorAll<HTMLButtonElement>('[data-side-tab]').forEach((btn) => {
       const on = btn.dataset.sideTab === tab;
@@ -50,16 +66,24 @@ export class Sidebar {
 
   visibleIds(): string[] {
     const f = this.state.filter;
-    return ArchetypeCatalog.list().filter((e) => !f || (e.id + ' ' + e.label + ' ' + e.category).toLowerCase().includes(f)).map((e) => e.id);
+    const all = [
+      ...ArchetypeCatalog.list(),
+      ...ArchetypeCatalog.listBiosphere(),
+      ...listFloraEntries().map((e) => ({ id: e.id, label: e.label, category: e.group })),
+    ];
+    return all.filter((e) => !f || (e.id + ' ' + e.label + ' ' + e.category).toLowerCase().includes(f)).map((e) => e.id);
   }
 
   render() {
+    this.natureBlock.render();
     const list = $('#list');
     list.innerHTML = '';
     const vis = new Set(this.visibleIds());
     const searching = this.state.filter.length > 0;
     for (const cat of CATS) {
-      const items = ArchetypeCatalog.list(cat).filter((e) => vis.has(e.id));
+      const base = ArchetypeCatalog.list(cat);
+      const entries = cat === 'fauna' ? [...base, ...ArchetypeCatalog.listBiosphere()] : base;
+      const items = entries.filter((e) => vis.has(e.id));
       if (!items.length) continue;
       list.appendChild(this.categoryGroup(cat, items, searching || this.expanded.has(cat)));
     }
@@ -67,6 +91,7 @@ export class Sidebar {
   }
 
   mark() {
+    this.natureBlock.render();
     const { id, row } = this.state;
     document.querySelectorAll<HTMLElement>('.item').forEach((b) => b.classList.toggle('sel', b.dataset.id === id));
     document.querySelectorAll<HTMLElement>('.row-btn').forEach((b) => {
@@ -131,14 +156,15 @@ export class Sidebar {
     $('#side').querySelectorAll<HTMLButtonElement>('[data-side-tab]').forEach((btn) => {
       btn.addEventListener('click', () => {
         const tab = btn.dataset.sideTab;
-        if (tab === 'hive' || tab === 'march' || tab === 'units') this.showTab(tab);
+        if (tab === 'hive' || tab === 'wildlife' || tab === 'march' || tab === 'units') this.showTab(tab);
       });
     });
   }
 
-  /** March wins over a hive fixture; otherwise the archetype list is the default. */
+  /** March wins over a wildlife/hive fixture; otherwise the archetype list is the default. */
   private openingTab(): SideTab {
     if (this.state.march !== null) return 'march';
+    if (this.state.wildlife !== null) return 'wildlife';
     if (this.state.faunaScene !== null) return 'hive';
     return 'units';
   }
@@ -155,6 +181,7 @@ function sideShell(count: number): string {
   return `<div class="brand"><div><a class="wm" href="${hubHref}" title="Return to hub">TERRA<b>AGENT</b></a><small>3D PLAYGROUND · ${count} ARCHETYPES</small></div></div>
   <div class="side-tabs" role="tablist">${tabs}</div>
   <div class="side-pane" data-side-pane="hive" hidden></div>
+  <div class="side-pane" data-side-pane="wildlife" hidden></div>
   <div class="side-pane" data-side-pane="march" hidden></div>
   <div class="side-pane side-units" data-side-pane="units">
   <input id="search" placeholder="Search archetypes…  ( / )" autocomplete="off" />

@@ -42,7 +42,7 @@ function prepBill(state: PlanetState, q: number, r: number) {
   return { unpreparedTiles, totalTiles: tiles.length, subJobs, ...summarizePrepJobs(subJobs) };
 }
 
-function stepToFullPrep(host: SimHost): { seenCounts: number[]; seenTexts: string[] } {
+function _stepToFullPrep(host: SimHost): { seenCounts: number[]; seenTexts: string[] } {
   const state = host.state;
   const initial = getConstructionOrders(state, 0)[0]!;
   const seenCounts: number[] = [initial.preparedCount];

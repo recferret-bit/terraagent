@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { isVertebrateGeometry, shiftVertebrateRigMetadata, stampVertebrateRig } from '../../../animation/vertebrates/rig';
 import { KitbashBuilder, KitbashRegistry, type MaterialZoneId, type MaterialZoneSpec } from '../../KitbashRegistry';
 import { ArchetypeCatalog, type ArchetypeCategory } from '../../catalog';
 import '../../greebles/unitParts';
@@ -12,6 +13,7 @@ export function finalizeBuiltGeometry(
     for (let i = 0; i < pv.count; i++) {
       pv.setY(i, pv.getY(i) * sc); pv.setZ(i, pv.getZ(i) * sc + dy); pv.setW(i, pv.getW(i) * sc);
     }
+    shiftVertebrateRigMetadata(g, sc, dy);
   };
   if (opts.scale) { g.scale(opts.scale, opts.scale, opts.scale); shiftPivot(opts.scale, 0); }
   if (opts.snap !== false) {
@@ -22,6 +24,7 @@ export function finalizeBuiltGeometry(
     g.computeBoundingSphere();
     if (g.boundingSphere) g.boundingSphere.radius *= 1.15;
   }
+  if (isVertebrateGeometry(g)) stampVertebrateRig(g);
   return g;
 }
 
@@ -38,6 +41,8 @@ export function register(opts: {
   scale?: number;
   /** Zone overrides, or a getter read on each build (faction paint). */
   zones?: Partial<Record<MaterialZoneId, MaterialZoneSpec>> | (() => Partial<Record<MaterialZoneId, MaterialZoneSpec>> | undefined);
+  /** Ambient biosphere fauna species (birds & warm-blooded wildlife) rendered by `PlanetBiosphere`. */
+  biosphere?: boolean;
 }) {
   const create = () => {
     const zones = typeof opts.zones === 'function' ? opts.zones() : opts.zones;
@@ -46,12 +51,14 @@ export function register(opts: {
     return finalizeBuiltGeometry(b.build(), opts);
   };
   KitbashRegistry.registerArchetype(opts.id, create);
-  ArchetypeCatalog.register({
+  const entry = {
     id: opts.id,
     label: opts.label,
     category: opts.category,
     footprint: opts.footprint,
     notes: opts.notes,
     create,
-  });
+  };
+  if (opts.biosphere) ArchetypeCatalog.registerBiosphere(entry);
+  else ArchetypeCatalog.register(entry);
 }

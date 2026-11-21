@@ -1,5 +1,6 @@
 export {
   createHexTerrain,
+  createHexTerrainInWorker,
   getActiveHexTerrains,
   getGlobalTerritoryColorBlindMode,
   setGlobalTerritoryColorBlindMode,
@@ -74,3 +75,57 @@ export {
   tileAt,
   tileXZ,
 } from './hexMath';
+export {
+  applySurfaceForestPipeline,
+  evaluateForestStand,
+  generateCandidateTreePlaces,
+  generateTileForestTrees,
+  runForestGenerationPipeline,
+  stratifyStandSites,
+  synthesizeTreePhenotype,
+  type CandidateTreePlace,
+  type CanopyCohort,
+  type ForestPipelineResult,
+  type ForestStandClassification,
+  type ForestStandRegime,
+  type GeneratedForestTree,
+  type StratifiedTreeSite,
+} from './flora/forestPipeline';
+export {
+  createHexFloraLayer,
+  GROUND_FLORA_KINDS,
+  type GroundFloraKind,
+  type HexFloraCounts,
+  type HexFloraLayer,
+} from './flora/HexFloraLayer';
+export {
+  FLORA_FOOTPRINTS,
+  PROP_EXCLUSION_RADIUS,
+  SpatialExclusionGrid,
+  countTileWaterNeighbors,
+  filterSurfacePlacesWithExclusion,
+  placeFloraByCellsWithExclusion,
+  type FloraFootprint,
+} from './flora/floraPlacementPipeline';
+export {
+  canFitObjectFootprint,
+  canFitObjectOnTerrain,
+  classifyHexSiteAtPoint,
+  classifyHexTilePropSite,
+  classifySurfaceSite,
+  floraEcotoneFields,
+  GROUND_OBJECT_SPECS,
+  inspectTileWaterNeighbors,
+  isDuneWadiSlope,
+  isHexBeachSandAtPoint,
+  renderedFloraOuterRadius,
+  sampleHexShoreAtPoint,
+  type EcotoneSample,
+  type GroundObjectCategory,
+  type GroundObjectKind,
+  type GroundObjectSpec,
+  type TerrainSiteSample,
+  type TerrainSubstrate,
+} from './flora/terrainCompatibility';
+export { makeHeightSampler, sampleHexLatticeField } from './heightSampler';
+export { hashGroundSeed, mixGroundSeed, parseGroundSeedInput } from '@terra/sim/grid/hex';
