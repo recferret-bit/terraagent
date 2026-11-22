@@ -1,4 +1,4 @@
-import { Inject, Injectable, Optional } from '@nestjs/common';
+import { Inject, Injectable, Optional, type OnModuleDestroy } from '@nestjs/common';
 import {
   PerformanceWindow,
   StakingOverviewResponse,
@@ -16,8 +16,9 @@ import { FlagsService } from '../../../flags/flags.service.js';
 import { StakingPort } from '../../application/ports/staking.port.js';
 import { nearAdapterFor } from '../../infrastructure/adapter-selection.js';
 import { resolveNearNetworkConfig } from '../../infrastructure/network/near-network.config.js';
+import { resolveStakingTimings } from '../local-staking-timings.js';
 import { resolveWalletPerks } from '../perks/perks.resolver.js';
-import { setPerksDeps, stakingNowMs } from '../perks/perks-deps.js';
+import { releasePerksPriceProvider, setPerksDeps, stakingNowMs } from '../perks/perks-deps.js';
 import { resolveWallet } from '../perks/stake-clock.reader.js';
 import { portHooks } from '../services/port-hooks.js';
 import { StakingPositionSyncService } from '../staking-position-sync.service.js';
@@ -39,7 +40,7 @@ const TX_LIST_LIMIT = 25;
  * Thin orchestrator: price, APY, readers (fills, patron, balances, ecosystem) and the series builder are the parts.
  */
 @Injectable()
-export class StakingPerformanceService {
+export class StakingPerformanceService implements OnModuleDestroy {
   constructor(
     @Inject(FlagsService) private readonly flags: FlagsService,
     @Inject(NearUsdPriceService) private readonly price: NearUsdPriceService,
@@ -53,6 +54,10 @@ export class StakingPerformanceService {
     setPerksDeps({ priceProvider: this.price });
   }
 
+  onModuleDestroy(): void {
+    releasePerksPriceProvider(this.price);
+  }
+
   assertWaveEnabled(): void {
     if (!this.flags.has('W28')) throw new CoreException('NOT_FOUND', { status: 404, message: 'Not found' });
   }
@@ -60,6 +65,7 @@ export class StakingPerformanceService {
   async overview(rawAmount: unknown): Promise<StakingOverviewResponse> {
     this.assertWaveEnabled();
     const network = this.network();
+    const timings = resolveStakingTimings(this.envBag());
     const [price, apy, ecosystem] = await Promise.all([this.price.view(), this.apy(network), readEcosystemTvl(this.prisma)]);
     return StakingOverviewResponse.parse({
       asOfMs: stakingNowMs(),
@@ -68,11 +74,13 @@ export class StakingPerformanceService {
       apy,
       tiers: STAKING_TIERS,
       rules: {
-        feeWarmupMs: STAKING_RULES.feeWarmupMs,
-        earlyExitWindowMs: STAKING_RULES.earlyExitWindowMs,
+        feeWarmupMs: timings.feeWarmupMs,
+        earlyExitWindowMs: timings.earlyExitWindowMs,
         earlyExitFeeBp: STAKING_RULES.earlyExitFeeBp,
         freeTrialTurns: STAKING_RULES.freeTrialTurns,
         standardTakerFeeBp: STAKING_TIERS[0]!.takerFeeBp,
+        unbondingMs: timings.unbondingMs,
+        rewardRateMultiplier: timings.rewardMultiplier,
       },
       projection: projectIncome(parsePreviewAmount(rawAmount), apy.netApyBp, price.nearUsd),
       ecosystem,
@@ -97,7 +105,7 @@ export class StakingPerformanceService {
     const [priceView, apy, ecosystem] = await Promise.all([this.price.view(), this.apy(network), readEcosystemTvl(db)]);
     const nearUsd = priceView.nearUsd;
     const r = await resolveWalletPerks(db, { accountId, env: this.envBag(), w28: true, full: true, nowMs, grossApyBp: apy.grossApyBp });
-    const [balances, txs, fills, patron] = await this.loadWalletLedger(db, r.wallet, accountId, network, nowMs, sinceMs, nearUsd);
+    const [balances, txs, fills, patron] = await this.loadWalletLedger(db, r.wallet, accountId, network, nowMs, sinceMs, nearUsd, apy);
 
     const lst = balances.lst.map((l) => ({ asset: l.asset, amount: nearText(l.amountYocto), nearValue: nearText(lstNearValue(l.asset, l.amountYocto)) }));
     const stakedNear = yoctoToNearNumber(balances.activeYocto) + balances.lst.reduce((s, l) => s + yoctoToNearNumber(lstNearValue(l.asset, l.amountYocto)), 0);
@@ -173,14 +181,19 @@ export class StakingPerformanceService {
     nowMs: number,
     sinceMs: number,
     nearUsd: number,
+    apy: ApyView,
   ) {
     if (!db) return Promise.resolve([EMPTY_BALANCES, [] as TxRecord[], EMPTY_FILL_INCOME, { usd: 0, events: [] }] as const);
+    const timings = resolveStakingTimings(this.envBag());
     return Promise.all([
       readWalletBalances(db, wallet, {
         readMockWallet: network === 'mock',
         nowMs,
         primaryAccountId: accountId,
         readLiveWalletYocto: (acct) => this.readLiveWalletNearYocto(acct),
+        rewardMultiplier: timings.rewardMultiplier,
+        grossApyBp: apy.grossApyBp,
+        protocolYieldShareBp: apy.protocolYieldShareBp,
       }),
       readStakingTxs(db, wallet, sinceMs),
       readFillIncome(db, wallet, { sinceMs, nearUsd }),

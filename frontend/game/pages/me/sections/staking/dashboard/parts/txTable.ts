@@ -1,5 +1,6 @@
 import type { StakingTxRow } from '@terra/contracts';
 import { el } from '../../../../dom';
+import { buildBlockHeaderWithTip } from '../../../../parts/helpTip';
 import { formatNear } from '../../stakingMath';
 
 const KIND_LABEL: Record<StakingTxRow['kind'], string> = {
@@ -37,5 +38,20 @@ export function renderTxTable(txs: readonly StakingTxRow[]): HTMLElement {
     el('thead', {}, el('tr', {}, ...['WHEN (UTC)', 'ACTION', 'AMOUNT', 'TX'].map((h) => el('th', {}, h)))),
     el('tbody', {}, ...(txs.length === 0 ? [el('tr', {}, emptyCell)] : txs.map(row))),
   );
-  return el('div', { className: 'ta-stk-block' }, el('h3', { className: 'label ta-stk-h' }, 'TRANSACTIONS'), el('div', { className: 'ta-stk-scroll' }, table));
+  const header = buildBlockHeaderWithTip(
+    {
+      id: 'staking-txs',
+      title: 'TRANSACTIONS',
+      description:
+        'Audit log of your recent stake, compound, unstake, withdraw, profit-swap, and early-exit fee transactions. On Testnet and Mainnet, hashes link directly to NearBlocks.',
+    },
+    el('h3', { className: 'label ta-stk-h' }, 'TRANSACTIONS'),
+  );
+  return el(
+    'div',
+    { className: 'ta-stk-block plate-sm ta-stk-pad', dataset: { testid: 'staking-tx-block' } },
+    header.head,
+    header.panel,
+    el('div', { className: 'ta-stk-scroll' }, table),
+  );
 }

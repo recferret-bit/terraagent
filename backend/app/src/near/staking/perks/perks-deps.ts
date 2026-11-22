@@ -43,6 +43,13 @@ export function releasePerksClock(clock: () => number): void {
   if (current.clock === clock) current = { ...current, clock: DEFAULT_PERKS_DEPS.clock };
 }
 
+/** Restores the default price provider when `priceProvider` is still the installed one. */
+export function releasePerksPriceProvider(priceProvider: NearUsdPriceProvider): void {
+  if (current.priceProvider === priceProvider) {
+    current = { ...current, priceProvider: DEFAULT_PERKS_DEPS.priceProvider };
+  }
+}
+
 export function resetPerksDeps(): void {
   current = DEFAULT_PERKS_DEPS;
 }

@@ -36,6 +36,7 @@ export interface MapLayerDrawView {
   readonly tiles: ClientTiles | null;
   readonly clientView: ClientView | null;
   readonly ownColonySlot?: number;
+  readonly spectatorAllVision?: boolean;
   readonly colonyColors?: Record<number, number>;
   readonly axialToPixel: AxialToPixelFn;
   readonly pixelToAxial: PixelToAxialFn;

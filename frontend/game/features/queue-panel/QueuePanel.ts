@@ -10,7 +10,7 @@ import {
   type QueueLane,
 } from '@terra/sim';
 import type { FeatureContext, GameView } from '../../core/registry/types';
-import { ownColonyIndex } from '../shared/colony';
+import { isReadOnlySpectator, ownColonyIndex } from '../shared/colony';
 import {
   LANE_TABS,
   STORAGE_HINT_BUTTON_TEXT,
@@ -191,7 +191,7 @@ export class QueuePanel {
   }
 
   enqueue(opts: EnqueueQueueTaskOptions): QueueEntry | null {
-    if (!this.simState) return null;
+    if (this.isReadOnly() || !this.simState) return null;
     const res = enqueueQueueTask(this.simState, { ...opts, colonyIndex: opts.colonyIndex ?? this.colonyIndex });
     this.syncFromSimState();
     return res.ok ? res.entry : null;
@@ -226,7 +226,12 @@ export class QueuePanel {
    * The cancel click: ends this entry and every other open order of the same kind (several terraform orders go at once;
    * the host does it in one `cancelTask { scope: 'sameKind' }`, this mirrors it on a local sim state / entry list).
    */
+  private isReadOnly(): boolean {
+    return isReadOnlySpectator(this.ctx.services);
+  }
+
   cancelTask(taskId: string): void {
+    if (this.isReadOnly()) return;
     const before = this.entries;
     if (this.simState) {
       for (const id of sameKindTaskIds(this.simState, taskId, this.colonyIndex)) cancelQueueTask(this.simState, id, this.colonyIndex);
@@ -243,6 +248,7 @@ export class QueuePanel {
   }
 
   cancelAll(): void {
+    if (this.isReadOnly()) return;
     const before = this.entries;
     if (this.simState) {
       cancelQueueTask(this.simState, 'all', this.colonyIndex);
@@ -257,6 +263,7 @@ export class QueuePanel {
   }
 
   reorderTask(taskId: string, toIndex: number): void {
+    if (this.isReadOnly()) return;
     if (this.simState) {
       reorderQueueTask(this.simState, taskId, { toIndex, colonyIndex: this.colonyIndex });
       this.syncFromSimState();
@@ -271,7 +278,12 @@ export class QueuePanel {
       this.syncFromSimState();
       return;
     }
-    this.colonyIndex = ownColonyIndex(this.ctx.services); // the player's seat (FF-05), not colony 0
+    const nextColony = ownColonyIndex(this.ctx.services); // the player's seat (FF-05), not colony 0
+    if (nextColony !== this.colonyIndex) {
+      this.colonyIndex = nextColony;
+      this.laneKeys.clear();
+      this.laneStructKeys.clear();
+    }
     this.entries = this.withoutHeldCancels(extractQueueEntriesFromView(view, this.colonyIndex));
     this.render();
   }
@@ -295,7 +307,7 @@ export class QueuePanel {
   private updateHeaderSummary(): void {
     const count = this.entries.length;
     this.collapseBtn.textContent = this.collapsed ? `+${count} more` : 'Collapse';
-    this.cancelAllBtn.hidden = count === 0;
+    this.cancelAllBtn.hidden = count === 0 || this.isReadOnly();
   }
 
   private render(): void {
@@ -359,7 +371,7 @@ export class QueuePanel {
     chip.className = 'ta-queue-chip';
     chip.dataset.taskId = entry.taskId;
     chip.dataset.state = entry.state;
-    chip.draggable = true;
+    chip.draggable = !this.isReadOnly();
 
     chip.ondragstart = () => {
       this.draggedTaskId = entry.taskId;
@@ -417,6 +429,9 @@ export class QueuePanel {
   private createChipActions(entry: QueueEntry, index: number, total: number): HTMLElement {
     const actions = document.createElement('div');
     actions.className = 'ta-queue-chip__actions';
+    if (this.isReadOnly()) {
+      return actions;
+    }
 
     if (index > 0) {
       const upBtn = document.createElement('button');

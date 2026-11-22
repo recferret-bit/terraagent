@@ -5,7 +5,7 @@ export const REJECT_CODES = [
   'invalid_args', 'unknown_kind', 'not_own_colony', 'colony_inactive', 'not_own_territory', 'site_blocked',
   'terrain_unbuildable', 'insufficient_resources', 'supply_cap', 'unknown_entity', 'tier_locked', 'worker_tier_locked', 'stage_locked',
   'no_trade_hub', 'raid_protected', 'truce_active', 'would_isolate', 'launch_gate', 'mint_cap', 'market_unavailable',
-  'planet_ended', 'wave_disabled', 'host_unavailable', 'internal',
+  'planet_ended', 'wave_disabled', 'host_unavailable', 'spectator_read_only', 'internal',
   // too many commands from one player (server ingress token bucket, PROTOCOL §4.2)
   'rate_limited',
   // W01 landing: a colony lands once; no two colonies share a slot or land too close (`hq.startingKit.minLandingSeparation`)

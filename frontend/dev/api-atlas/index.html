@@ -11,7 +11,7 @@
   <p class="kicker">GENERATED</p>
   <h1>TerraAgent API atlas</h1>
   <p class="note">Generated file. Regenerate with <code>npm run api:atlas</code>. Do not hand-edit.</p>
-  <p class="counts">160 HTTP · 26 socket messages · 89 commands · 98 events · 35 HTTP routes with no client caller</p>
+  <p class="counts">173 HTTP · 28 socket messages · 89 commands · 98 events · 45 HTTP routes with no client caller</p>
   <nav>
     <a href="#http">HTTP</a>
     <a href="#socket">WebSocket</a>
@@ -83,7 +83,7 @@
   &quot;returnType&quot;: &quot;Promise&lt;AuthResponse&gt;&quot;,
   &quot;note&quot;: &quot;No JSON Schema on this route. Return type is the controller method signature.&quot;
 }</pre></div></details>
-<details class="card" data-k="post /v1/auth/logout backend/app/src/core/auth/auth.controller.ts frontend/design/pilot/pilotaccess.ts frontend/game/app/online/pilotbridge.ts frontend/trade/api/identity.ts"><summary><span class="verb act">POST</span><span class="path">/v1/auth/logout</span><span class="src">backend/app/src/core/auth/auth.controller.ts</span></summary><div class="body"><p class="from"><span class="lbl">called from</span> <code>frontend/design/pilot/PilotAccess.ts</code> <code>frontend/game/app/online/pilotBridge.ts</code> <code>frontend/trade/api/identity.ts</code></p><h3>Request</h3><pre>{
+<details class="card" data-k="post /v1/auth/logout backend/app/src/core/auth/auth.controller.ts frontend/design/pilot/pilotaccess.ts frontend/game/app/online/pilotbridge.ts frontend/game/pages/me/localmodesim.ts frontend/trade/api/identity.ts"><summary><span class="verb act">POST</span><span class="path">/v1/auth/logout</span><span class="src">backend/app/src/core/auth/auth.controller.ts</span></summary><div class="body"><p class="from"><span class="lbl">called from</span> <code>frontend/design/pilot/PilotAccess.ts</code> <code>frontend/game/app/online/pilotBridge.ts</code> <code>frontend/game/pages/me/localModeSim.ts</code> <code>frontend/trade/api/identity.ts</code></p><h3>Request</h3><pre>{
   &quot;params&quot;: [],
   &quot;query&quot;: [],
   &quot;body&quot;: null
@@ -116,7 +116,7 @@
   &quot;returnType&quot;: &quot;Promise&lt;SocialAuthResponse&gt;&quot;,
   &quot;note&quot;: &quot;No JSON Schema on this route. Return type is the controller method signature.&quot;
 }</pre></div></details>
-<details class="card" data-k="post /v1/auth/refresh backend/app/src/core/auth/auth.controller.ts frontend/design/pilot/pilotaccess.ts frontend/game/app/online/bootonline.ts frontend/game/pages/me/api.ts"><summary><span class="verb act">POST</span><span class="path">/v1/auth/refresh</span><span class="src">backend/app/src/core/auth/auth.controller.ts</span></summary><div class="body"><p class="from"><span class="lbl">called from</span> <code>frontend/design/pilot/PilotAccess.ts</code> <code>frontend/game/app/online/bootOnline.ts</code> <code>frontend/game/pages/me/api.ts</code></p><h3>Request</h3><pre>{
+<details class="card" data-k="post /v1/auth/refresh backend/app/src/core/auth/auth.controller.ts frontend/design/pilot/pilotaccess.ts frontend/game/app/online/bootonline.ts frontend/game/pages/me/api.ts frontend/game/pages/me/localmodesim.ts"><summary><span class="verb act">POST</span><span class="path">/v1/auth/refresh</span><span class="src">backend/app/src/core/auth/auth.controller.ts</span></summary><div class="body"><p class="from"><span class="lbl">called from</span> <code>frontend/design/pilot/PilotAccess.ts</code> <code>frontend/game/app/online/bootOnline.ts</code> <code>frontend/game/pages/me/api.ts</code> <code>frontend/game/pages/me/localModeSim.ts</code></p><h3>Request</h3><pre>{
   &quot;params&quot;: [],
   &quot;query&quot;: [],
   &quot;body&quot;: null
@@ -125,7 +125,7 @@
   &quot;returnType&quot;: &quot;Promise&lt;AuthResponse&gt;&quot;,
   &quot;note&quot;: &quot;No JSON Schema on this route. Return type is the controller method signature.&quot;
 }</pre></div></details>
-<details class="card" data-k="post /v1/auth/social backend/app/src/near/identity/social-auth.controller.ts frontend/design/pilot/pilotaccess.ts frontend/game/app/online/pilotbridge.ts frontend/game/pages/me/mepage.ts frontend/trade/api/identity.ts"><summary><span class="verb act">POST</span><span class="path">/v1/auth/social</span><span class="src">backend/app/src/near/identity/social-auth.controller.ts</span></summary><div class="body"><p class="from"><span class="lbl">called from</span> <code>frontend/design/pilot/PilotAccess.ts</code> <code>frontend/game/app/online/pilotBridge.ts</code> <code>frontend/game/pages/me/MePage.ts</code> <code>frontend/trade/api/identity.ts</code></p><h3>Request</h3><pre>{
+<details class="card" data-k="post /v1/auth/social backend/app/src/near/identity/social-auth.controller.ts frontend/design/pilot/pilotaccess.ts frontend/game/app/online/pilotbridge.ts frontend/game/pages/me/mepage.ts frontend/game/pages/me/localmodesim.ts frontend/trade/api/identity.ts"><summary><span class="verb act">POST</span><span class="path">/v1/auth/social</span><span class="src">backend/app/src/near/identity/social-auth.controller.ts</span></summary><div class="body"><p class="from"><span class="lbl">called from</span> <code>frontend/design/pilot/PilotAccess.ts</code> <code>frontend/game/app/online/pilotBridge.ts</code> <code>frontend/game/pages/me/MePage.ts</code> <code>frontend/game/pages/me/localModeSim.ts</code> <code>frontend/trade/api/identity.ts</code></p><h3>Request</h3><pre>{
   &quot;params&quot;: [],
   &quot;query&quot;: [],
   &quot;body&quot;: {
@@ -287,6 +287,17 @@
   &quot;returnType&quot;: null,
   &quot;note&quot;: &quot;No JSON Schema or return type on this controller method.&quot;
 }</pre></div></details>
+<details class="card" data-k="post /v1/dev/chain/faucet backend/app/src/near/infrastructure/dev/chain-dev.controller.ts frontend/game/dev/explorer/api.ts frontend/game/pages/me/sections/staking/dashboard/dashboardactions.ts"><summary><span class="verb act">POST</span><span class="path">/v1/dev/chain/faucet</span><span class="src">backend/app/src/near/infrastructure/dev/chain-dev.controller.ts</span></summary><div class="body"><p class="from"><span class="lbl">called from</span> <code>frontend/game/dev/explorer/api.ts</code> <code>frontend/game/pages/me/sections/staking/dashboard/dashboardActions.ts</code></p><h3>Request</h3><pre>{
+  &quot;params&quot;: [],
+  &quot;query&quot;: [],
+  &quot;body&quot;: {
+    &quot;type&quot;: &quot;unknown&quot;
+  }
+}</pre><h3>Response</h3><pre>{
+  &quot;status&quot;: 200,
+  &quot;returnType&quot;: &quot;Promise&lt;LocalMockFaucetResult&gt;&quot;,
+  &quot;note&quot;: &quot;No JSON Schema on this route. Return type is the controller method signature.&quot;
+}</pre></div></details>
 <details class="card" data-k="get /v1/dev/chain/nfts backend/app/src/near/infrastructure/dev/chain-explorer.controller.ts frontend/game/dev/explorer/api.ts"><summary><span class="verb get">GET</span><span class="path">/v1/dev/chain/nfts</span><span class="src">backend/app/src/near/infrastructure/dev/chain-explorer.controller.ts</span></summary><div class="body"><p class="from"><span class="lbl">called from</span> <code>frontend/game/dev/explorer/api.ts</code></p><h3>Request</h3><pre>{
   &quot;params&quot;: [],
   &quot;query&quot;: [],
@@ -409,7 +420,7 @@
   &quot;returnType&quot;: null,
   &quot;note&quot;: &quot;No JSON Schema or return type on this controller method.&quot;
 }</pre></div></details>
-<details class="card" data-k="post /v1/dev/mock-oauth/token backend/app/src/near/identity/mock-oauth.controller.ts frontend/game/dev/mock-oauth/main.ts"><summary><span class="verb act">POST</span><span class="path">/v1/dev/mock-oauth/token</span><span class="src">backend/app/src/near/identity/mock-oauth.controller.ts</span></summary><div class="body"><p class="from"><span class="lbl">called from</span> <code>frontend/game/dev/mock-oauth/main.ts</code></p><h3>Request</h3><pre>{
+<details class="card" data-k="post /v1/dev/mock-oauth/login backend/app/src/near/identity/mock-oauth.controller.ts frontend/design/pilot/localmockpilot.ts frontend/game/pages/me/localmodesim.ts"><summary><span class="verb act">POST</span><span class="path">/v1/dev/mock-oauth/login</span><span class="src">backend/app/src/near/identity/mock-oauth.controller.ts</span></summary><div class="body"><p class="from"><span class="lbl">called from</span> <code>frontend/design/pilot/localMockPilot.ts</code> <code>frontend/game/pages/me/localModeSim.ts</code></p><h3>Request</h3><pre>{
   &quot;params&quot;: [],
   &quot;query&quot;: [],
   &quot;body&quot;: {
@@ -419,6 +430,17 @@
   &quot;status&quot;: 200,
   &quot;returnType&quot;: &quot;void&quot;,
   &quot;note&quot;: &quot;No JSON Schema on this route. Return type is the controller method signature.&quot;
+}</pre></div></details>
+<details class="card" data-k="post /v1/dev/mock-oauth/token backend/app/src/near/identity/mock-oauth.controller.ts frontend/game/dev/mock-oauth/main.ts"><summary><span class="verb act">POST</span><span class="path">/v1/dev/mock-oauth/token</span><span class="src">backend/app/src/near/identity/mock-oauth.controller.ts</span></summary><div class="body"><p class="from"><span class="lbl">called from</span> <code>frontend/game/dev/mock-oauth/main.ts</code></p><h3>Request</h3><pre>{
+  &quot;params&quot;: [],
+  &quot;query&quot;: [],
+  &quot;body&quot;: {
+    &quot;type&quot;: &quot;unknown&quot;
+  }
+}</pre><h3>Response</h3><pre>{
+  &quot;status&quot;: 200,
+  &quot;returnType&quot;: &quot;&quot;,
+  &quot;note&quot;: &quot;No JSON Schema or return type on this controller method.&quot;
 }</pre></div></details>
 <details class="card" data-k="get /v1/dev/notify backend/app/src/notify/notify-dev.controller.ts "><summary><span class="verb get">GET</span><span class="path">/v1/dev/notify</span><span class="src">backend/app/src/notify/notify-dev.controller.ts</span></summary><div class="body"><p class="from"><span class="lbl">called from</span> <span class="none">no client caller found</span></p><h3>Request</h3><pre>{
   &quot;params&quot;: [],
@@ -456,8 +478,8 @@
   &quot;query&quot;: [],
   &quot;body&quot;: null
 }</pre><h3>Response</h3><pre>{
-  &quot;returnType&quot;: &quot;&quot;,
-  &quot;note&quot;: &quot;No JSON Schema or return type on this controller method.&quot;
+  &quot;returnType&quot;: &quot;Promise&lt;&quot;,
+  &quot;note&quot;: &quot;No JSON Schema on this route. Return type is the controller method signature.&quot;
 }</pre></div></details>
 <details class="card" data-k="get /v1/dev/planets/:planetid/ledger backend/app/src/game/ledger/dev-ledger.controller.ts frontend/game/net/devserver.ts"><summary><span class="verb get">GET</span><span class="path">/v1/dev/planets/:planetId/ledger</span><span class="src">backend/app/src/game/ledger/dev-ledger.controller.ts</span></summary><div class="body"><p class="from"><span class="lbl">called from</span> <code>frontend/game/net/devServer.ts</code></p><h3>Request</h3><pre>{
   &quot;params&quot;: [
@@ -845,6 +867,94 @@
   &quot;returnType&quot;: null,
   &quot;note&quot;: &quot;No JSON Schema or return type on this controller method.&quot;
 }</pre></div></details>
+<details class="card" data-k="post /v1/internal/sim/planets/:planetid/command backend/app/src/game/cluster/internal-sim.controller.ts "><summary><span class="verb act">POST</span><span class="path">/v1/internal/sim/planets/:planetId/command</span><span class="src">backend/app/src/game/cluster/internal-sim.controller.ts</span></summary><div class="body"><p class="from"><span class="lbl">called from</span> <span class="none">no client caller found</span></p><h3>Request</h3><pre>{
+  &quot;params&quot;: [
+    {
+      &quot;name&quot;: &quot;planetId&quot;,
+      &quot;type&quot;: &quot;string&quot;
+    }
+  ],
+  &quot;query&quot;: [],
+  &quot;body&quot;: {
+    &quot;type&quot;: &quot;{ cmd: SimCommandV1 }&quot;
+  }
+}</pre><h3>Response</h3><pre>{
+  &quot;returnType&quot;: &quot;Promise&lt;CommandOutcomeMsg&gt;&quot;,
+  &quot;note&quot;: &quot;No JSON Schema on this route. Return type is the controller method signature.&quot;
+}</pre></div></details>
+<details class="card" data-k="get /v1/internal/sim/planets/:planetid/full-state backend/app/src/game/cluster/internal-sim.controller.ts "><summary><span class="verb get">GET</span><span class="path">/v1/internal/sim/planets/:planetId/full-state</span><span class="src">backend/app/src/game/cluster/internal-sim.controller.ts</span></summary><div class="body"><p class="from"><span class="lbl">called from</span> <span class="none">no client caller found</span></p><h3>Request</h3><pre>{
+  &quot;params&quot;: [
+    {
+      &quot;name&quot;: &quot;planetId&quot;,
+      &quot;type&quot;: &quot;string&quot;
+    }
+  ],
+  &quot;query&quot;: [],
+  &quot;body&quot;: null
+}</pre><h3>Response</h3><pre>{
+  &quot;returnType&quot;: null,
+  &quot;note&quot;: &quot;No JSON Schema or return type on this controller method.&quot;
+}</pre></div></details>
+<details class="card" data-k="post /v1/internal/sim/planets/:planetid/landing-site backend/app/src/game/cluster/internal-sim.controller.ts "><summary><span class="verb act">POST</span><span class="path">/v1/internal/sim/planets/:planetId/landing-site</span><span class="src">backend/app/src/game/cluster/internal-sim.controller.ts</span></summary><div class="body"><p class="from"><span class="lbl">called from</span> <span class="none">no client caller found</span></p><h3>Request</h3><pre>{
+  &quot;params&quot;: [
+    {
+      &quot;name&quot;: &quot;planetId&quot;,
+      &quot;type&quot;: &quot;string&quot;
+    }
+  ],
+  &quot;query&quot;: [],
+  &quot;body&quot;: {
+    &quot;type&quot;: &quot;{ loadOptions?: LoadOptions; colonyIndex: number; timeoutMs?: number }&quot;
+  }
+}</pre><h3>Response</h3><pre>{
+  &quot;returnType&quot;: &quot;Promise&lt;LandingSiteAnswer&gt;&quot;,
+  &quot;note&quot;: &quot;No JSON Schema on this route. Return type is the controller method signature.&quot;
+}</pre></div></details>
+<details class="card" data-k="post /v1/internal/sim/planets/:planetid/load-home backend/app/src/game/cluster/internal-sim.controller.ts "><summary><span class="verb act">POST</span><span class="path">/v1/internal/sim/planets/:planetId/load-home</span><span class="src">backend/app/src/game/cluster/internal-sim.controller.ts</span></summary><div class="body"><p class="from"><span class="lbl">called from</span> <span class="none">no client caller found</span></p><h3>Request</h3><pre>{
+  &quot;params&quot;: [
+    {
+      &quot;name&quot;: &quot;planetId&quot;,
+      &quot;type&quot;: &quot;string&quot;
+    }
+  ],
+  &quot;query&quot;: [],
+  &quot;body&quot;: {
+    &quot;type&quot;: &quot;{ loadOptions?: LoadOptions }&quot;
+  }
+}</pre><h3>Response</h3><pre>{
+  &quot;returnType&quot;: &quot;Promise&lt;&quot;,
+  &quot;note&quot;: &quot;No JSON Schema on this route. Return type is the controller method signature.&quot;
+}</pre></div></details>
+<details class="card" data-k="post /v1/internal/sim/planets/:planetid/load-new backend/app/src/game/cluster/internal-sim.controller.ts "><summary><span class="verb act">POST</span><span class="path">/v1/internal/sim/planets/:planetId/load-new</span><span class="src">backend/app/src/game/cluster/internal-sim.controller.ts</span></summary><div class="body"><p class="from"><span class="lbl">called from</span> <span class="none">no client caller found</span></p><h3>Request</h3><pre>{
+  &quot;params&quot;: [
+    {
+      &quot;name&quot;: &quot;planetId&quot;,
+      &quot;type&quot;: &quot;string&quot;
+    }
+  ],
+  &quot;query&quot;: [],
+  &quot;body&quot;: {
+    &quot;type&quot;: &quot;LoadOptions &amp; { snapshotBase64?: string; scenarioSeats?: number[] }&quot;
+  }
+}</pre><h3>Response</h3><pre>{
+  &quot;returnType&quot;: &quot;Promise&lt;&quot;,
+  &quot;note&quot;: &quot;No JSON Schema on this route. Return type is the controller method signature.&quot;
+}</pre></div></details>
+<details class="card" data-k="post /v1/internal/sim/planets/:planetid/mode backend/app/src/game/cluster/internal-sim.controller.ts "><summary><span class="verb act">POST</span><span class="path">/v1/internal/sim/planets/:planetId/mode</span><span class="src">backend/app/src/game/cluster/internal-sim.controller.ts</span></summary><div class="body"><p class="from"><span class="lbl">called from</span> <span class="none">no client caller found</span></p><h3>Request</h3><pre>{
+  &quot;params&quot;: [
+    {
+      &quot;name&quot;: &quot;planetId&quot;,
+      &quot;type&quot;: &quot;string&quot;
+    }
+  ],
+  &quot;query&quot;: [],
+  &quot;body&quot;: {
+    &quot;type&quot;: &quot;{ mode: 'active' | 'coarse' }&quot;
+  }
+}</pre><h3>Response</h3><pre>{
+  &quot;returnType&quot;: &quot;&quot;,
+  &quot;note&quot;: &quot;No JSON Schema or return type on this controller method.&quot;
+}</pre></div></details>
 <details class="card" data-k="get /v1/market/:planetid backend/app/src/market/api/market.controller.ts frontend/game/features/market/board/boardcontroller.ts frontend/game/net/marketapi.ts"><summary><span class="verb get">GET</span><span class="path">/v1/market/:planetId</span><span class="src">backend/app/src/market/api/market.controller.ts</span></summary><div class="body"><p class="from"><span class="lbl">called from</span> <code>frontend/game/features/market/board/BoardController.ts</code> <code>frontend/game/net/marketApi.ts</code></p><h3>Request</h3><pre>{
   &quot;params&quot;: [
     {
@@ -987,7 +1097,7 @@
   &quot;returnType&quot;: null,
   &quot;note&quot;: &quot;No JSON Schema or return type on this controller method.&quot;
 }</pre></div></details>
-<details class="card" data-k="get /v1/me/achievements backend/app/src/profile/me-achievements.controller.ts frontend/game/pages/me/api.ts frontend/whitepaper/sections/gameplayandengine.ts"><summary><span class="verb get">GET</span><span class="path">/v1/me/achievements</span><span class="src">backend/app/src/profile/me-achievements.controller.ts</span></summary><div class="body"><p class="from"><span class="lbl">called from</span> <code>frontend/game/pages/me/api.ts</code> <code>frontend/whitepaper/sections/gameplayAndEngine.ts</code></p><h3>Request</h3><pre>{
+<details class="card" data-k="get /v1/me/achievements backend/app/src/profile/me-achievements.controller.ts frontend/game/pages/me/api.ts frontend/game/pages/me/localmodesim.ts frontend/whitepaper/sections/gameplayandengine.ts"><summary><span class="verb get">GET</span><span class="path">/v1/me/achievements</span><span class="src">backend/app/src/profile/me-achievements.controller.ts</span></summary><div class="body"><p class="from"><span class="lbl">called from</span> <code>frontend/game/pages/me/api.ts</code> <code>frontend/game/pages/me/localModeSim.ts</code> <code>frontend/whitepaper/sections/gameplayAndEngine.ts</code></p><h3>Request</h3><pre>{
   &quot;params&quot;: [],
   &quot;query&quot;: [],
   &quot;body&quot;: null
@@ -995,7 +1105,7 @@
   &quot;returnType&quot;: &quot;Promise&lt;MeAchievementsResponse&gt;&quot;,
   &quot;note&quot;: &quot;No JSON Schema on this route. Return type is the controller method signature.&quot;
 }</pre></div></details>
-<details class="card" data-k="delete /v1/me/ai-settings backend/app/src/profile/me-profile.controller.ts frontend/game/pages/me/api.ts frontend/whitepaper/sections/gameplayandengine.ts"><summary><span class="verb act">DELETE</span><span class="path">/v1/me/ai-settings</span><span class="src">backend/app/src/profile/me-profile.controller.ts</span></summary><div class="body"><p class="from"><span class="lbl">called from</span> <code>frontend/game/pages/me/api.ts</code> <code>frontend/whitepaper/sections/gameplayAndEngine.ts</code></p><h3>Request</h3><pre>{
+<details class="card" data-k="delete /v1/me/ai-settings backend/app/src/profile/me-profile.controller.ts frontend/game/pages/me/api.ts frontend/game/pages/me/localmodesim.ts frontend/whitepaper/sections/gameplayandengine.ts"><summary><span class="verb act">DELETE</span><span class="path">/v1/me/ai-settings</span><span class="src">backend/app/src/profile/me-profile.controller.ts</span></summary><div class="body"><p class="from"><span class="lbl">called from</span> <code>frontend/game/pages/me/api.ts</code> <code>frontend/game/pages/me/localModeSim.ts</code> <code>frontend/whitepaper/sections/gameplayAndEngine.ts</code></p><h3>Request</h3><pre>{
   &quot;params&quot;: [],
   &quot;query&quot;: [],
   &quot;body&quot;: null
@@ -1003,7 +1113,7 @@
   &quot;returnType&quot;: &quot;Promise&lt;PlayerAiSettings&gt;&quot;,
   &quot;note&quot;: &quot;No JSON Schema on this route. Return type is the controller method signature.&quot;
 }</pre></div></details>
-<details class="card" data-k="get /v1/me/ai-settings backend/app/src/profile/me-profile.controller.ts frontend/game/pages/me/api.ts frontend/whitepaper/sections/gameplayandengine.ts"><summary><span class="verb get">GET</span><span class="path">/v1/me/ai-settings</span><span class="src">backend/app/src/profile/me-profile.controller.ts</span></summary><div class="body"><p class="from"><span class="lbl">called from</span> <code>frontend/game/pages/me/api.ts</code> <code>frontend/whitepaper/sections/gameplayAndEngine.ts</code></p><h3>Request</h3><pre>{
+<details class="card" data-k="get /v1/me/ai-settings backend/app/src/profile/me-profile.controller.ts frontend/game/pages/me/api.ts frontend/game/pages/me/localmodesim.ts frontend/whitepaper/sections/gameplayandengine.ts"><summary><span class="verb get">GET</span><span class="path">/v1/me/ai-settings</span><span class="src">backend/app/src/profile/me-profile.controller.ts</span></summary><div class="body"><p class="from"><span class="lbl">called from</span> <code>frontend/game/pages/me/api.ts</code> <code>frontend/game/pages/me/localModeSim.ts</code> <code>frontend/whitepaper/sections/gameplayAndEngine.ts</code></p><h3>Request</h3><pre>{
   &quot;params&quot;: [],
   &quot;query&quot;: [],
   &quot;body&quot;: null
@@ -1011,7 +1121,18 @@
   &quot;returnType&quot;: &quot;Promise&lt;PlayerAiSettings&gt;&quot;,
   &quot;note&quot;: &quot;No JSON Schema on this route. Return type is the controller method signature.&quot;
 }</pre></div></details>
-<details class="card" data-k="post /v1/me/ai-settings backend/app/src/profile/me-profile.controller.ts frontend/game/pages/me/api.ts frontend/whitepaper/sections/gameplayandengine.ts"><summary><span class="verb act">POST</span><span class="path">/v1/me/ai-settings</span><span class="src">backend/app/src/profile/me-profile.controller.ts</span></summary><div class="body"><p class="from"><span class="lbl">called from</span> <code>frontend/game/pages/me/api.ts</code> <code>frontend/whitepaper/sections/gameplayAndEngine.ts</code></p><h3>Request</h3><pre>{
+<details class="card" data-k="post /v1/me/ai-settings backend/app/src/profile/me-profile.controller.ts frontend/game/pages/me/api.ts frontend/game/pages/me/localmodesim.ts frontend/whitepaper/sections/gameplayandengine.ts"><summary><span class="verb act">POST</span><span class="path">/v1/me/ai-settings</span><span class="src">backend/app/src/profile/me-profile.controller.ts</span></summary><div class="body"><p class="from"><span class="lbl">called from</span> <code>frontend/game/pages/me/api.ts</code> <code>frontend/game/pages/me/localModeSim.ts</code> <code>frontend/whitepaper/sections/gameplayAndEngine.ts</code></p><h3>Request</h3><pre>{
+  &quot;params&quot;: [],
+  &quot;query&quot;: [],
+  &quot;body&quot;: {
+    &quot;type&quot;: &quot;unknown&quot;
+  }
+}</pre><h3>Response</h3><pre>{
+  &quot;status&quot;: 200,
+  &quot;returnType&quot;: &quot;Promise&lt;PlayerAiSettings&gt;&quot;,
+  &quot;note&quot;: &quot;No JSON Schema on this route. Return type is the controller method signature.&quot;
+}</pre></div></details>
+<details class="card" data-k="put /v1/me/ai-settings backend/app/src/profile/me-profile.controller.ts frontend/game/pages/me/api.ts frontend/game/pages/me/localmodesim.ts frontend/whitepaper/sections/gameplayandengine.ts"><summary><span class="verb act">PUT</span><span class="path">/v1/me/ai-settings</span><span class="src">backend/app/src/profile/me-profile.controller.ts</span></summary><div class="body"><p class="from"><span class="lbl">called from</span> <code>frontend/game/pages/me/api.ts</code> <code>frontend/game/pages/me/localModeSim.ts</code> <code>frontend/whitepaper/sections/gameplayAndEngine.ts</code></p><h3>Request</h3><pre>{
   &quot;params&quot;: [],
   &quot;query&quot;: [],
   &quot;body&quot;: {
@@ -1021,21 +1142,12 @@
   &quot;returnType&quot;: &quot;Promise&lt;PlayerAiSettings&gt;&quot;,
   &quot;note&quot;: &quot;No JSON Schema on this route. Return type is the controller method signature.&quot;
 }</pre></div></details>
-<details class="card" data-k="put /v1/me/ai-settings backend/app/src/profile/me-profile.controller.ts frontend/game/pages/me/api.ts frontend/whitepaper/sections/gameplayandengine.ts"><summary><span class="verb act">PUT</span><span class="path">/v1/me/ai-settings</span><span class="src">backend/app/src/profile/me-profile.controller.ts</span></summary><div class="body"><p class="from"><span class="lbl">called from</span> <code>frontend/game/pages/me/api.ts</code> <code>frontend/whitepaper/sections/gameplayAndEngine.ts</code></p><h3>Request</h3><pre>{
-  &quot;params&quot;: [],
-  &quot;query&quot;: [],
-  &quot;body&quot;: {
-    &quot;type&quot;: &quot;unknown&quot;
-  }
-}</pre><h3>Response</h3><pre>{
-  &quot;returnType&quot;: &quot;Promise&lt;PlayerAiSettings&gt;&quot;,
-  &quot;note&quot;: &quot;No JSON Schema on this route. Return type is the controller method signature.&quot;
-}</pre></div></details>
-<details class="card" data-k="post /v1/me/ai-settings/verify backend/app/src/profile/me-profile.controller.ts frontend/game/pages/me/api.ts frontend/game/pages/me/sections/aisettingssection.ts frontend/whitepaper/sections/gameplayandengine.ts"><summary><span class="verb act">POST</span><span class="path">/v1/me/ai-settings/verify</span><span class="src">backend/app/src/profile/me-profile.controller.ts</span></summary><div class="body"><p class="from"><span class="lbl">called from</span> <code>frontend/game/pages/me/api.ts</code> <code>frontend/game/pages/me/sections/AiSettingsSection.ts</code> <code>frontend/whitepaper/sections/gameplayAndEngine.ts</code></p><h3>Request</h3><pre>{
+<details class="card" data-k="post /v1/me/ai-settings/verify backend/app/src/profile/me-profile.controller.ts frontend/game/pages/me/api.ts frontend/game/pages/me/localmodesim.ts frontend/game/pages/me/sections/aisettingssection.ts frontend/whitepaper/sections/gameplayandengine.ts"><summary><span class="verb act">POST</span><span class="path">/v1/me/ai-settings/verify</span><span class="src">backend/app/src/profile/me-profile.controller.ts</span></summary><div class="body"><p class="from"><span class="lbl">called from</span> <code>frontend/game/pages/me/api.ts</code> <code>frontend/game/pages/me/localModeSim.ts</code> <code>frontend/game/pages/me/sections/AiSettingsSection.ts</code> <code>frontend/whitepaper/sections/gameplayAndEngine.ts</code></p><h3>Request</h3><pre>{
   &quot;params&quot;: [],
   &quot;query&quot;: [],
   &quot;body&quot;: null
 }</pre><h3>Response</h3><pre>{
+  &quot;status&quot;: 200,
   &quot;returnType&quot;: &quot;Promise&lt;ResolvedMePlayer&gt;&quot;,
   &quot;note&quot;: &quot;No JSON Schema on this route. Return type is the controller method signature.&quot;
 }</pre></div></details>
@@ -1094,12 +1206,22 @@
   &quot;returnType&quot;: &quot;Promise&lt;HomeResponse&gt;&quot;,
   &quot;note&quot;: &quot;No JSON Schema on this route. Return type is the controller method signature.&quot;
 }</pre></div></details>
-<details class="card" data-k="get /v1/me/profile backend/app/src/profile/me-profile.controller.ts frontend/game/pages/me/api.ts frontend/trade/api/client.ts frontend/whitepaper/sections/gameplayandengine.ts"><summary><span class="verb get">GET</span><span class="path">/v1/me/profile</span><span class="src">backend/app/src/profile/me-profile.controller.ts</span></summary><div class="body"><p class="from"><span class="lbl">called from</span> <code>frontend/game/pages/me/api.ts</code> <code>frontend/trade/api/client.ts</code> <code>frontend/whitepaper/sections/gameplayAndEngine.ts</code></p><h3>Request</h3><pre>{
+<details class="card" data-k="get /v1/me/profile backend/app/src/profile/me-profile.controller.ts frontend/game/pages/me/api.ts frontend/game/pages/me/localmodesim.ts frontend/trade/api/client.ts frontend/whitepaper/sections/gameplayandengine.ts"><summary><span class="verb get">GET</span><span class="path">/v1/me/profile</span><span class="src">backend/app/src/profile/me-profile.controller.ts</span></summary><div class="body"><p class="from"><span class="lbl">called from</span> <code>frontend/game/pages/me/api.ts</code> <code>frontend/game/pages/me/localModeSim.ts</code> <code>frontend/trade/api/client.ts</code> <code>frontend/whitepaper/sections/gameplayAndEngine.ts</code></p><h3>Request</h3><pre>{
   &quot;params&quot;: [],
   &quot;query&quot;: [],
   &quot;body&quot;: null
 }</pre><h3>Response</h3><pre>{
   &quot;returnType&quot;: &quot;Promise&lt;MeProfileResponse&gt;&quot;,
+  &quot;note&quot;: &quot;No JSON Schema on this route. Return type is the controller method signature.&quot;
+}</pre></div></details>
+<details class="card" data-k="put /v1/me/profile/handle backend/app/src/profile/me-profile.controller.ts frontend/game/pages/me/api.ts frontend/game/pages/me/localmodesim.ts frontend/whitepaper/sections/gameplayandengine.ts"><summary><span class="verb act">PUT</span><span class="path">/v1/me/profile/handle</span><span class="src">backend/app/src/profile/me-profile.controller.ts</span></summary><div class="body"><p class="from"><span class="lbl">called from</span> <code>frontend/game/pages/me/api.ts</code> <code>frontend/game/pages/me/localModeSim.ts</code> <code>frontend/whitepaper/sections/gameplayAndEngine.ts</code></p><h3>Request</h3><pre>{
+  &quot;params&quot;: [],
+  &quot;query&quot;: [],
+  &quot;body&quot;: {
+    &quot;type&quot;: &quot;unknown&quot;
+  }
+}</pre><h3>Response</h3><pre>{
+  &quot;returnType&quot;: &quot;Promise&lt;PilotHandleResponse&gt;&quot;,
   &quot;note&quot;: &quot;No JSON Schema on this route. Return type is the controller method signature.&quot;
 }</pre></div></details>
 <details class="card" data-k="post /v1/me/recap/seen backend/app/src/core/home/home.controller.ts frontend/whitepaper/sections/gameplayandengine.ts"><summary><span class="verb act">POST</span><span class="path">/v1/me/recap/seen</span><span class="src">backend/app/src/core/home/home.controller.ts</span></summary><div class="body"><p class="from"><span class="lbl">called from</span> <code>frontend/whitepaper/sections/gameplayAndEngine.ts</code></p><h3>Request</h3><pre>{
@@ -1412,7 +1534,7 @@
   &quot;returnType&quot;: &quot;Promise&lt;StakeProfitsResponse&gt;&quot;,
   &quot;note&quot;: &quot;No JSON Schema on this route. Return type is the controller method signature.&quot;
 }</pre></div></details>
-<details class="card" data-k="get /v1/near/staking backend/app/src/near/staking/staking.controller.ts frontend/game/features/deed/patroncommand.ts frontend/game/features/deed/stakingpanel.ts frontend/game/pages/me/sections/staking/dashboard/dashboardapi.ts frontend/whitepaper/sections/gameplayandengine.ts"><summary><span class="verb get">GET</span><span class="path">/v1/near/staking</span><span class="src">backend/app/src/near/staking/staking.controller.ts</span></summary><div class="body"><p class="from"><span class="lbl">called from</span> <code>frontend/game/features/deed/patronCommand.ts</code> <code>frontend/game/features/deed/stakingPanel.ts</code> <code>frontend/game/pages/me/sections/staking/dashboard/dashboardApi.ts</code> <code>frontend/whitepaper/sections/gameplayAndEngine.ts</code></p><h3>Request</h3><pre>{
+<details class="card" data-k="get /v1/near/staking backend/app/src/near/staking/staking.controller.ts frontend/game/features/deed/patroncommand.ts frontend/game/features/deed/stakingpanel.ts frontend/game/pages/me/localmodesim.ts frontend/game/pages/me/sections/staking/dashboard/dashboardapi.ts frontend/whitepaper/sections/gameplayandengine.ts"><summary><span class="verb get">GET</span><span class="path">/v1/near/staking</span><span class="src">backend/app/src/near/staking/staking.controller.ts</span></summary><div class="body"><p class="from"><span class="lbl">called from</span> <code>frontend/game/features/deed/patronCommand.ts</code> <code>frontend/game/features/deed/stakingPanel.ts</code> <code>frontend/game/pages/me/localModeSim.ts</code> <code>frontend/game/pages/me/sections/staking/dashboard/dashboardApi.ts</code> <code>frontend/whitepaper/sections/gameplayAndEngine.ts</code></p><h3>Request</h3><pre>{
   &quot;params&quot;: [],
   &quot;query&quot;: [
     {
@@ -1463,7 +1585,7 @@
   &quot;returnType&quot;: &quot;Promise&lt;boolean&gt;&quot;,
   &quot;note&quot;: &quot;No JSON Schema on this route. Return type is the controller method signature.&quot;
 }</pre></div></details>
-<details class="card" data-k="get /v1/near/staking/overview backend/app/src/near/staking/staking-performance.controller.ts frontend/game/features/shared/stakingpill/model.ts frontend/game/pages/me/sections/staking/stakingapi.ts frontend/landing/sections/stakenavpill.ts frontend/whitepaper/sections/gameplayandengine.ts"><summary><span class="verb get">GET</span><span class="path">/v1/near/staking/overview</span><span class="src">backend/app/src/near/staking/staking-performance.controller.ts</span></summary><div class="body"><p class="from"><span class="lbl">called from</span> <code>frontend/game/features/shared/stakingPill/model.ts</code> <code>frontend/game/pages/me/sections/staking/stakingApi.ts</code> <code>frontend/landing/sections/stakeNavPill.ts</code> <code>frontend/whitepaper/sections/gameplayAndEngine.ts</code></p><h3>Request</h3><pre>{
+<details class="card" data-k="get /v1/near/staking/overview backend/app/src/near/staking/staking-performance.controller.ts frontend/game/features/shared/stakingpill/model.ts frontend/game/pages/me/localmodesim.ts frontend/game/pages/me/sections/staking/stakingapi.ts frontend/landing/sections/stakenavpill.ts frontend/whitepaper/sections/gameplayandengine.ts"><summary><span class="verb get">GET</span><span class="path">/v1/near/staking/overview</span><span class="src">backend/app/src/near/staking/staking-performance.controller.ts</span></summary><div class="body"><p class="from"><span class="lbl">called from</span> <code>frontend/game/features/shared/stakingPill/model.ts</code> <code>frontend/game/pages/me/localModeSim.ts</code> <code>frontend/game/pages/me/sections/staking/stakingApi.ts</code> <code>frontend/landing/sections/stakeNavPill.ts</code> <code>frontend/whitepaper/sections/gameplayAndEngine.ts</code></p><h3>Request</h3><pre>{
   &quot;params&quot;: [],
   &quot;query&quot;: [
     {
@@ -1488,7 +1610,7 @@
   &quot;returnType&quot;: &quot;Promise&lt;void&gt;&quot;,
   &quot;note&quot;: &quot;No JSON Schema on this route. Return type is the controller method signature.&quot;
 }</pre></div></details>
-<details class="card" data-k="get /v1/near/staking/performance backend/app/src/near/staking/staking-performance.controller.ts frontend/game/pages/me/sections/staking/dashboard/dashboardapi.ts frontend/game/pages/me/sections/staking/dashboard/dashboardtestkit.ts frontend/whitepaper/sections/gameplayandengine.ts"><summary><span class="verb get">GET</span><span class="path">/v1/near/staking/performance</span><span class="src">backend/app/src/near/staking/staking-performance.controller.ts</span></summary><div class="body"><p class="from"><span class="lbl">called from</span> <code>frontend/game/pages/me/sections/staking/dashboard/dashboardApi.ts</code> <code>frontend/game/pages/me/sections/staking/dashboard/dashboardTestKit.ts</code> <code>frontend/whitepaper/sections/gameplayAndEngine.ts</code></p><h3>Request</h3><pre>{
+<details class="card" data-k="get /v1/near/staking/performance backend/app/src/near/staking/staking-performance.controller.ts frontend/game/pages/me/localmodesim.ts frontend/game/pages/me/sections/staking/dashboard/dashboardapi.ts frontend/game/pages/me/sections/staking/dashboard/dashboardtestkit.ts frontend/whitepaper/sections/gameplayandengine.ts"><summary><span class="verb get">GET</span><span class="path">/v1/near/staking/performance</span><span class="src">backend/app/src/near/staking/staking-performance.controller.ts</span></summary><div class="body"><p class="from"><span class="lbl">called from</span> <code>frontend/game/pages/me/localModeSim.ts</code> <code>frontend/game/pages/me/sections/staking/dashboard/dashboardApi.ts</code> <code>frontend/game/pages/me/sections/staking/dashboard/dashboardTestKit.ts</code> <code>frontend/whitepaper/sections/gameplayAndEngine.ts</code></p><h3>Request</h3><pre>{
   &quot;params&quot;: [],
   &quot;query&quot;: [
     {
@@ -1716,6 +1838,107 @@
   &quot;returnType&quot;: &quot;Promise&lt;PlanetSummaryV1&gt;&quot;,
   &quot;note&quot;: &quot;No JSON Schema on this route. Return type is the controller method signature.&quot;
 }</pre></div></details>
+<details class="card" data-k="get /v1/planets/:id/decisions backend/app/src/game/planet-live-state.controller.ts "><summary><span class="verb get">GET</span><span class="path">/v1/planets/:id/decisions</span><span class="src">backend/app/src/game/planet-live-state.controller.ts</span></summary><div class="body"><p class="from"><span class="lbl">called from</span> <span class="none">no client caller found</span></p><h3>Request</h3><pre>{
+  &quot;params&quot;: [
+    {
+      &quot;name&quot;: &quot;id&quot;,
+      &quot;type&quot;: &quot;string&quot;
+    }
+  ],
+  &quot;query&quot;: [
+    {
+      &quot;name&quot;: &quot;sectorId&quot;,
+      &quot;type&quot;: &quot;string&quot;,
+      &quot;optional&quot;: true
+    },
+    {
+      &quot;name&quot;: &quot;colonyIndex&quot;,
+      &quot;type&quot;: &quot;string&quot;,
+      &quot;optional&quot;: true
+    },
+    {
+      &quot;name&quot;: &quot;isBot&quot;,
+      &quot;type&quot;: &quot;string&quot;,
+      &quot;optional&quot;: true
+    },
+    {
+      &quot;name&quot;: &quot;actorSource&quot;,
+      &quot;type&quot;: &quot;string&quot;,
+      &quot;optional&quot;: true
+    },
+    {
+      &quot;name&quot;: &quot;limit&quot;,
+      &quot;type&quot;: &quot;string&quot;,
+      &quot;optional&quot;: true
+    },
+    {
+      &quot;name&quot;: &quot;cursor&quot;,
+      &quot;type&quot;: &quot;string&quot;,
+      &quot;optional&quot;: true
+    }
+  ],
+  &quot;body&quot;: null
+}</pre><h3>Response</h3><pre>{
+  &quot;returnType&quot;: &quot;Promise&lt;AgentDecisionHistoryResponseV1&gt;&quot;,
+  &quot;note&quot;: &quot;No JSON Schema on this route. Return type is the controller method signature.&quot;
+}</pre></div></details>
+<details class="card" data-k="get /v1/planets/:id/inputs backend/app/src/game/planet-live-state.controller.ts "><summary><span class="verb get">GET</span><span class="path">/v1/planets/:id/inputs</span><span class="src">backend/app/src/game/planet-live-state.controller.ts</span></summary><div class="body"><p class="from"><span class="lbl">called from</span> <span class="none">no client caller found</span></p><h3>Request</h3><pre>{
+  &quot;params&quot;: [
+    {
+      &quot;name&quot;: &quot;id&quot;,
+      &quot;type&quot;: &quot;string&quot;
+    }
+  ],
+  &quot;query&quot;: [
+    {
+      &quot;name&quot;: &quot;sectorId&quot;,
+      &quot;type&quot;: &quot;string&quot;,
+      &quot;optional&quot;: true
+    },
+    {
+      &quot;name&quot;: &quot;colonyIndex&quot;,
+      &quot;type&quot;: &quot;string&quot;,
+      &quot;optional&quot;: true
+    },
+    {
+      &quot;name&quot;: &quot;isBot&quot;,
+      &quot;type&quot;: &quot;string&quot;,
+      &quot;optional&quot;: true
+    },
+    {
+      &quot;name&quot;: &quot;source&quot;,
+      &quot;type&quot;: &quot;string&quot;,
+      &quot;optional&quot;: true
+    },
+    {
+      &quot;name&quot;: &quot;limit&quot;,
+      &quot;type&quot;: &quot;string&quot;,
+      &quot;optional&quot;: true
+    },
+    {
+      &quot;name&quot;: &quot;cursor&quot;,
+      &quot;type&quot;: &quot;string&quot;,
+      &quot;optional&quot;: true
+    }
+  ],
+  &quot;body&quot;: null
+}</pre><h3>Response</h3><pre>{
+  &quot;returnType&quot;: &quot;Promise&lt;SimInputHistoryResponseV1&gt;&quot;,
+  &quot;note&quot;: &quot;No JSON Schema on this route. Return type is the controller method signature.&quot;
+}</pre></div></details>
+<details class="card" data-k="get /v1/planets/:id/live backend/app/src/game/planet-live-state.controller.ts "><summary><span class="verb get">GET</span><span class="path">/v1/planets/:id/live</span><span class="src">backend/app/src/game/planet-live-state.controller.ts</span></summary><div class="body"><p class="from"><span class="lbl">called from</span> <span class="none">no client caller found</span></p><h3>Request</h3><pre>{
+  &quot;params&quot;: [
+    {
+      &quot;name&quot;: &quot;id&quot;,
+      &quot;type&quot;: &quot;string&quot;
+    }
+  ],
+  &quot;query&quot;: [],
+  &quot;body&quot;: null
+}</pre><h3>Response</h3><pre>{
+  &quot;returnType&quot;: &quot;Promise&lt;PlanetSectorsLiveStateV1&gt;&quot;,
+  &quot;note&quot;: &quot;No JSON Schema on this route. Return type is the controller method signature.&quot;
+}</pre></div></details>
 <details class="card" data-k="get /v1/planets/:id/sectors backend/app/src/lobby/planets.controller.ts "><summary><span class="verb get">GET</span><span class="path">/v1/planets/:id/sectors</span><span class="src">backend/app/src/lobby/planets.controller.ts</span></summary><div class="body"><p class="from"><span class="lbl">called from</span> <span class="none">no client caller found</span></p><h3>Request</h3><pre>{
   &quot;params&quot;: [
     {
@@ -1768,6 +1991,14 @@
   &quot;body&quot;: null
 }</pre><h3>Response</h3><pre>{
   &quot;returnType&quot;: &quot;Promise&lt;PublicPlanetStatsV1&gt;&quot;,
+  &quot;note&quot;: &quot;No JSON Schema on this route. Return type is the controller method signature.&quot;
+}</pre></div></details>
+<details class="card" data-k="get /v1/planets/workers/leases backend/app/src/game/planet-live-state.controller.ts "><summary><span class="verb get">GET</span><span class="path">/v1/planets/workers/leases</span><span class="src">backend/app/src/game/planet-live-state.controller.ts</span></summary><div class="body"><p class="from"><span class="lbl">called from</span> <span class="none">no client caller found</span></p><h3>Request</h3><pre>{
+  &quot;params&quot;: [],
+  &quot;query&quot;: [],
+  &quot;body&quot;: null
+}</pre><h3>Response</h3><pre>{
+  &quot;returnType&quot;: &quot;Promise&lt;&quot;,
   &quot;note&quot;: &quot;No JSON Schema on this route. Return type is the controller method signature.&quot;
 }</pre></div></details>
 <details class="card" data-k="get /v1/readyz backend/app/src/core/health.controller.ts "><summary><span class="verb get">GET</span><span class="path">/v1/readyz</span><span class="src">backend/app/src/core/health.controller.ts</span></summary><div class="body"><p class="from"><span class="lbl">called from</span> <span class="none">no client caller found</span></p><h3>Request</h3><pre>{
@@ -2785,6 +3016,7 @@
             &quot;planet_ended&quot;,
             &quot;wave_disabled&quot;,
             &quot;host_unavailable&quot;,
+            &quot;spectator_read_only&quot;,
             &quot;internal&quot;,
             &quot;rate_limited&quot;,
             &quot;already_landed&quot;,
@@ -4080,6 +4312,13 @@
           &quot;minLength&quot;: 1,
           &quot;type&quot;: &quot;string&quot;
         },
+        &quot;mode&quot;: {
+          &quot;enum&quot;: [
+            &quot;play&quot;,
+            &quot;spectator&quot;
+          ],
+          &quot;type&quot;: &quot;string&quot;
+        },
         &quot;planetId&quot;: {
           &quot;pattern&quot;: &quot;^pl_[A-Za-z0-9_-]{1,64}$&quot;,
           &quot;type&quot;: &quot;string&quot;
@@ -4866,6 +5105,368 @@
   &quot;type&quot;: &quot;object&quot;
 }</pre><h3>Response</h3><pre>{
   &quot;note&quot;: &quot;No paired response schema. The server answers with a separate message (for example cmd.ack, cmd.reject, welcome, or pong).&quot;
+}</pre></div></details>
+<details class="card" data-k="server → client sim.decision frontend/game/store/local/parts/localbotfeed.ts"><summary><span class="verb server">server → client</span><span class="path">sim.decision</span></summary><div class="body"><p class="from"><span class="lbl">called from</span> <code>frontend/game/store/local/parts/localBotFeed.ts</code></p><h3>Request</h3><pre>{
+  &quot;note&quot;: &quot;Server push. There is no client request body for this message.&quot;
+}</pre><h3>Response</h3><pre>{
+  &quot;$schema&quot;: &quot;https://json-schema.org/draft/2020-12/schema&quot;,
+  &quot;properties&quot;: {
+    &quot;d&quot;: {
+      &quot;properties&quot;: {
+        &quot;items&quot;: {
+          &quot;items&quot;: {
+            &quot;additionalProperties&quot;: false,
+            &quot;properties&quot;: {
+              &quot;actorId&quot;: {
+                &quot;anyOf&quot;: [
+                  {
+                    &quot;maxLength&quot;: 120,
+                    &quot;minLength&quot;: 1,
+                    &quot;type&quot;: &quot;string&quot;
+                  },
+                  {
+                    &quot;type&quot;: &quot;null&quot;
+                  }
+                ]
+              },
+              &quot;actorSource&quot;: {
+                &quot;maxLength&quot;: 64,
+                &quot;minLength&quot;: 1,
+                &quot;type&quot;: &quot;string&quot;
+              },
+              &quot;atTick&quot;: {
+                &quot;maximum&quot;: 9007199254740991,
+                &quot;minimum&quot;: 0,
+                &quot;type&quot;: &quot;integer&quot;
+              },
+              &quot;colonyId&quot;: {
+                &quot;anyOf&quot;: [
+                  {
+                    &quot;maxLength&quot;: 120,
+                    &quot;minLength&quot;: 1,
+                    &quot;type&quot;: &quot;string&quot;
+                  },
+                  {
+                    &quot;type&quot;: &quot;null&quot;
+                  }
+                ]
+              },
+              &quot;colonyIndex&quot;: {
+                &quot;anyOf&quot;: [
+                  {
+                    &quot;maximum&quot;: 255,
+                    &quot;minimum&quot;: 0,
+                    &quot;type&quot;: &quot;integer&quot;
+                  },
+                  {
+                    &quot;type&quot;: &quot;null&quot;
+                  }
+                ]
+              },
+              &quot;commandId&quot;: {
+                &quot;anyOf&quot;: [
+                  {
+                    &quot;maxLength&quot;: 120,
+                    &quot;type&quot;: &quot;string&quot;
+                  },
+                  {
+                    &quot;type&quot;: &quot;null&quot;
+                  }
+                ]
+              },
+              &quot;commandKind&quot;: {
+                &quot;anyOf&quot;: [
+                  {
+                    &quot;maxLength&quot;: 80,
+                    &quot;type&quot;: &quot;string&quot;
+                  },
+                  {
+                    &quot;type&quot;: &quot;null&quot;
+                  }
+                ]
+              },
+              &quot;createdAtMs&quot;: {
+                &quot;maximum&quot;: 9007199254740991,
+                &quot;minimum&quot;: 0,
+                &quot;type&quot;: &quot;integer&quot;
+              },
+              &quot;decisionKind&quot;: {
+                &quot;maxLength&quot;: 64,
+                &quot;minLength&quot;: 1,
+                &quot;type&quot;: &quot;string&quot;
+              },
+              &quot;id&quot;: {
+                &quot;maxLength&quot;: 120,
+                &quot;minLength&quot;: 1,
+                &quot;type&quot;: &quot;string&quot;
+              },
+              &quot;isBot&quot;: {
+                &quot;default&quot;: false,
+                &quot;type&quot;: &quot;boolean&quot;
+              },
+              &quot;outcome&quot;: {
+                &quot;default&quot;: &quot;emitted&quot;,
+                &quot;enum&quot;: [
+                  &quot;emitted&quot;,
+                  &quot;applied&quot;,
+                  &quot;rejected&quot;,
+                  &quot;skipped&quot;
+                ],
+                &quot;type&quot;: &quot;string&quot;
+              },
+              &quot;payload&quot;: {},
+              &quot;planetId&quot;: {
+                &quot;maxLength&quot;: 80,
+                &quot;minLength&quot;: 1,
+                &quot;type&quot;: &quot;string&quot;
+              },
+              &quot;rationale&quot;: {
+                &quot;anyOf&quot;: [
+                  {
+                    &quot;maxLength&quot;: 1000,
+                    &quot;type&quot;: &quot;string&quot;
+                  },
+                  {
+                    &quot;type&quot;: &quot;null&quot;
+                  }
+                ]
+              },
+              &quot;sectorId&quot;: {
+                &quot;default&quot;: &quot;sec_0_0&quot;,
+                &quot;maxLength&quot;: 64,
+                &quot;minLength&quot;: 1,
+                &quot;type&quot;: &quot;string&quot;
+              },
+              &quot;summary&quot;: {
+                &quot;maxLength&quot;: 400,
+                &quot;minLength&quot;: 1,
+                &quot;type&quot;: &quot;string&quot;
+              }
+            },
+            &quot;required&quot;: [
+              &quot;planetId&quot;,
+              &quot;colonyIndex&quot;,
+              &quot;actorSource&quot;,
+              &quot;decisionKind&quot;,
+              &quot;summary&quot;,
+              &quot;atTick&quot;,
+              &quot;createdAtMs&quot;
+            ],
+            &quot;type&quot;: &quot;object&quot;
+          },
+          &quot;type&quot;: &quot;array&quot;
+        }
+      },
+      &quot;required&quot;: [
+        &quot;items&quot;
+      ],
+      &quot;type&quot;: &quot;object&quot;
+    },
+    &quot;id&quot;: {
+      &quot;maxLength&quot;: 40,
+      &quot;minLength&quot;: 1,
+      &quot;type&quot;: &quot;string&quot;
+    },
+    &quot;t&quot;: {
+      &quot;const&quot;: &quot;sim.decision&quot;,
+      &quot;type&quot;: &quot;string&quot;
+    },
+    &quot;tick&quot;: {
+      &quot;maximum&quot;: 9007199254740991,
+      &quot;minimum&quot;: 0,
+      &quot;type&quot;: &quot;integer&quot;
+    },
+    &quot;v&quot;: {
+      &quot;const&quot;: 1,
+      &quot;type&quot;: &quot;number&quot;
+    }
+  },
+  &quot;required&quot;: [
+    &quot;v&quot;,
+    &quot;t&quot;,
+    &quot;d&quot;
+  ],
+  &quot;type&quot;: &quot;object&quot;
+}</pre></div></details>
+<details class="card" data-k="server → client sim.input frontend/game/store/local/parts/localbotfeed.ts"><summary><span class="verb server">server → client</span><span class="path">sim.input</span></summary><div class="body"><p class="from"><span class="lbl">called from</span> <code>frontend/game/store/local/parts/localBotFeed.ts</code></p><h3>Request</h3><pre>{
+  &quot;note&quot;: &quot;Server push. There is no client request body for this message.&quot;
+}</pre><h3>Response</h3><pre>{
+  &quot;$schema&quot;: &quot;https://json-schema.org/draft/2020-12/schema&quot;,
+  &quot;properties&quot;: {
+    &quot;d&quot;: {
+      &quot;properties&quot;: {
+        &quot;items&quot;: {
+          &quot;items&quot;: {
+            &quot;additionalProperties&quot;: false,
+            &quot;properties&quot;: {
+              &quot;actorId&quot;: {
+                &quot;anyOf&quot;: [
+                  {
+                    &quot;maxLength&quot;: 120,
+                    &quot;minLength&quot;: 1,
+                    &quot;type&quot;: &quot;string&quot;
+                  },
+                  {
+                    &quot;type&quot;: &quot;null&quot;
+                  }
+                ]
+              },
+              &quot;args&quot;: {},
+              &quot;atTick&quot;: {
+                &quot;maximum&quot;: 9007199254740991,
+                &quot;minimum&quot;: 0,
+                &quot;type&quot;: &quot;integer&quot;
+              },
+              &quot;colonyId&quot;: {
+                &quot;anyOf&quot;: [
+                  {
+                    &quot;maxLength&quot;: 120,
+                    &quot;minLength&quot;: 1,
+                    &quot;type&quot;: &quot;string&quot;
+                  },
+                  {
+                    &quot;type&quot;: &quot;null&quot;
+                  }
+                ]
+              },
+              &quot;colonyIndex&quot;: {
+                &quot;anyOf&quot;: [
+                  {
+                    &quot;maximum&quot;: 255,
+                    &quot;minimum&quot;: 0,
+                    &quot;type&quot;: &quot;integer&quot;
+                  },
+                  {
+                    &quot;type&quot;: &quot;null&quot;
+                  }
+                ]
+              },
+              &quot;commandId&quot;: {
+                &quot;maxLength&quot;: 120,
+                &quot;minLength&quot;: 1,
+                &quot;type&quot;: &quot;string&quot;
+              },
+              &quot;createdAtMs&quot;: {
+                &quot;maximum&quot;: 9007199254740991,
+                &quot;minimum&quot;: 0,
+                &quot;type&quot;: &quot;integer&quot;
+              },
+              &quot;id&quot;: {
+                &quot;maxLength&quot;: 120,
+                &quot;minLength&quot;: 1,
+                &quot;type&quot;: &quot;string&quot;
+              },
+              &quot;isBot&quot;: {
+                &quot;default&quot;: false,
+                &quot;type&quot;: &quot;boolean&quot;
+              },
+              &quot;kind&quot;: {
+                &quot;maxLength&quot;: 80,
+                &quot;minLength&quot;: 1,
+                &quot;type&quot;: &quot;string&quot;
+              },
+              &quot;planetId&quot;: {
+                &quot;maxLength&quot;: 80,
+                &quot;minLength&quot;: 1,
+                &quot;type&quot;: &quot;string&quot;
+              },
+              &quot;rejectCode&quot;: {
+                &quot;anyOf&quot;: [
+                  {
+                    &quot;maxLength&quot;: 80,
+                    &quot;type&quot;: &quot;string&quot;
+                  },
+                  {
+                    &quot;type&quot;: &quot;null&quot;
+                  }
+                ]
+              },
+              &quot;rejectDetail&quot;: {
+                &quot;anyOf&quot;: [
+                  {
+                    &quot;maxLength&quot;: 400,
+                    &quot;type&quot;: &quot;string&quot;
+                  },
+                  {
+                    &quot;type&quot;: &quot;null&quot;
+                  }
+                ]
+              },
+              &quot;sectorId&quot;: {
+                &quot;default&quot;: &quot;sec_0_0&quot;,
+                &quot;maxLength&quot;: 64,
+                &quot;minLength&quot;: 1,
+                &quot;type&quot;: &quot;string&quot;
+              },
+              &quot;source&quot;: {
+                &quot;enum&quot;: [
+                  &quot;player&quot;,
+                  &quot;bot&quot;,
+                  &quot;ai&quot;,
+                  &quot;director&quot;,
+                  &quot;near&quot;,
+                  &quot;admin&quot;,
+                  &quot;system&quot;,
+                  &quot;dev&quot;,
+                  &quot;module&quot;
+                ],
+                &quot;type&quot;: &quot;string&quot;
+              },
+              &quot;status&quot;: {
+                &quot;default&quot;: &quot;applied&quot;,
+                &quot;enum&quot;: [
+                  &quot;queued&quot;,
+                  &quot;applied&quot;,
+                  &quot;rejected&quot;
+                ],
+                &quot;type&quot;: &quot;string&quot;
+              }
+            },
+            &quot;required&quot;: [
+              &quot;planetId&quot;,
+              &quot;colonyIndex&quot;,
+              &quot;source&quot;,
+              &quot;commandId&quot;,
+              &quot;kind&quot;,
+              &quot;args&quot;,
+              &quot;atTick&quot;,
+              &quot;createdAtMs&quot;
+            ],
+            &quot;type&quot;: &quot;object&quot;
+          },
+          &quot;type&quot;: &quot;array&quot;
+        }
+      },
+      &quot;required&quot;: [
+        &quot;items&quot;
+      ],
+      &quot;type&quot;: &quot;object&quot;
+    },
+    &quot;id&quot;: {
+      &quot;maxLength&quot;: 40,
+      &quot;minLength&quot;: 1,
+      &quot;type&quot;: &quot;string&quot;
+    },
+    &quot;t&quot;: {
+      &quot;const&quot;: &quot;sim.input&quot;,
+      &quot;type&quot;: &quot;string&quot;
+    },
+    &quot;tick&quot;: {
+      &quot;maximum&quot;: 9007199254740991,
+      &quot;minimum&quot;: 0,
+      &quot;type&quot;: &quot;integer&quot;
+    },
+    &quot;v&quot;: {
+      &quot;const&quot;: 1,
+      &quot;type&quot;: &quot;number&quot;
+    }
+  },
+  &quot;required&quot;: [
+    &quot;v&quot;,
+    &quot;t&quot;,
+    &quot;d&quot;
+  ],
+  &quot;type&quot;: &quot;object&quot;
 }</pre></div></details>
 <details class="card" data-k="client → server subscribe "><summary><span class="verb act">client → server</span><span class="path">subscribe</span></summary><div class="body"><p class="from"><span class="lbl">called from</span> <span class="none">no client caller found</span></p><h3>Request</h3><pre>{
   &quot;$schema&quot;: &quot;https://json-schema.org/draft/2020-12/schema&quot;,
@@ -5795,6 +6396,13 @@
           },
           &quot;type&quot;: &quot;array&quot;
         },
+        &quot;mode&quot;: {
+          &quot;enum&quot;: [
+            &quot;play&quot;,
+            &quot;spectator&quot;
+          ],
+          &quot;type&quot;: &quot;string&quot;
+        },
         &quot;overrides&quot;: {
           &quot;additionalProperties&quot;: {},
           &quot;propertyNames&quot;: {
@@ -5860,6 +6468,290 @@
             &quot;resync&quot;
           ],
           &quot;type&quot;: &quot;string&quot;
+        },
+        &quot;recentDecisions&quot;: {
+          &quot;items&quot;: {
+            &quot;additionalProperties&quot;: false,
+            &quot;properties&quot;: {
+              &quot;actorId&quot;: {
+                &quot;anyOf&quot;: [
+                  {
+                    &quot;maxLength&quot;: 120,
+                    &quot;minLength&quot;: 1,
+                    &quot;type&quot;: &quot;string&quot;
+                  },
+                  {
+                    &quot;type&quot;: &quot;null&quot;
+                  }
+                ]
+              },
+              &quot;actorSource&quot;: {
+                &quot;maxLength&quot;: 64,
+                &quot;minLength&quot;: 1,
+                &quot;type&quot;: &quot;string&quot;
+              },
+              &quot;atTick&quot;: {
+                &quot;maximum&quot;: 9007199254740991,
+                &quot;minimum&quot;: 0,
+                &quot;type&quot;: &quot;integer&quot;
+              },
+              &quot;colonyId&quot;: {
+                &quot;anyOf&quot;: [
+                  {
+                    &quot;maxLength&quot;: 120,
+                    &quot;minLength&quot;: 1,
+                    &quot;type&quot;: &quot;string&quot;
+                  },
+                  {
+                    &quot;type&quot;: &quot;null&quot;
+                  }
+                ]
+              },
+              &quot;colonyIndex&quot;: {
+                &quot;anyOf&quot;: [
+                  {
+                    &quot;maximum&quot;: 255,
+                    &quot;minimum&quot;: 0,
+                    &quot;type&quot;: &quot;integer&quot;
+                  },
+                  {
+                    &quot;type&quot;: &quot;null&quot;
+                  }
+                ]
+              },
+              &quot;commandId&quot;: {
+                &quot;anyOf&quot;: [
+                  {
+                    &quot;maxLength&quot;: 120,
+                    &quot;type&quot;: &quot;string&quot;
+                  },
+                  {
+                    &quot;type&quot;: &quot;null&quot;
+                  }
+                ]
+              },
+              &quot;commandKind&quot;: {
+                &quot;anyOf&quot;: [
+                  {
+                    &quot;maxLength&quot;: 80,
+                    &quot;type&quot;: &quot;string&quot;
+                  },
+                  {
+                    &quot;type&quot;: &quot;null&quot;
+                  }
+                ]
+              },
+              &quot;createdAtMs&quot;: {
+                &quot;maximum&quot;: 9007199254740991,
+                &quot;minimum&quot;: 0,
+                &quot;type&quot;: &quot;integer&quot;
+              },
+              &quot;decisionKind&quot;: {
+                &quot;maxLength&quot;: 64,
+                &quot;minLength&quot;: 1,
+                &quot;type&quot;: &quot;string&quot;
+              },
+              &quot;id&quot;: {
+                &quot;maxLength&quot;: 120,
+                &quot;minLength&quot;: 1,
+                &quot;type&quot;: &quot;string&quot;
+              },
+              &quot;isBot&quot;: {
+                &quot;default&quot;: false,
+                &quot;type&quot;: &quot;boolean&quot;
+              },
+              &quot;outcome&quot;: {
+                &quot;default&quot;: &quot;emitted&quot;,
+                &quot;enum&quot;: [
+                  &quot;emitted&quot;,
+                  &quot;applied&quot;,
+                  &quot;rejected&quot;,
+                  &quot;skipped&quot;
+                ],
+                &quot;type&quot;: &quot;string&quot;
+              },
+              &quot;payload&quot;: {},
+              &quot;planetId&quot;: {
+                &quot;maxLength&quot;: 80,
+                &quot;minLength&quot;: 1,
+                &quot;type&quot;: &quot;string&quot;
+              },
+              &quot;rationale&quot;: {
+                &quot;anyOf&quot;: [
+                  {
+                    &quot;maxLength&quot;: 1000,
+                    &quot;type&quot;: &quot;string&quot;
+                  },
+                  {
+                    &quot;type&quot;: &quot;null&quot;
+                  }
+                ]
+              },
+              &quot;sectorId&quot;: {
+                &quot;default&quot;: &quot;sec_0_0&quot;,
+                &quot;maxLength&quot;: 64,
+                &quot;minLength&quot;: 1,
+                &quot;type&quot;: &quot;string&quot;
+              },
+              &quot;summary&quot;: {
+                &quot;maxLength&quot;: 400,
+                &quot;minLength&quot;: 1,
+                &quot;type&quot;: &quot;string&quot;
+              }
+            },
+            &quot;required&quot;: [
+              &quot;planetId&quot;,
+              &quot;colonyIndex&quot;,
+              &quot;actorSource&quot;,
+              &quot;decisionKind&quot;,
+              &quot;summary&quot;,
+              &quot;atTick&quot;,
+              &quot;createdAtMs&quot;
+            ],
+            &quot;type&quot;: &quot;object&quot;
+          },
+          &quot;type&quot;: &quot;array&quot;
+        },
+        &quot;recentInputs&quot;: {
+          &quot;items&quot;: {
+            &quot;additionalProperties&quot;: false,
+            &quot;properties&quot;: {
+              &quot;actorId&quot;: {
+                &quot;anyOf&quot;: [
+                  {
+                    &quot;maxLength&quot;: 120,
+                    &quot;minLength&quot;: 1,
+                    &quot;type&quot;: &quot;string&quot;
+                  },
+                  {
+                    &quot;type&quot;: &quot;null&quot;
+                  }
+                ]
+              },
+              &quot;args&quot;: {},
+              &quot;atTick&quot;: {
+                &quot;maximum&quot;: 9007199254740991,
+                &quot;minimum&quot;: 0,
+                &quot;type&quot;: &quot;integer&quot;
+              },
+              &quot;colonyId&quot;: {
+                &quot;anyOf&quot;: [
+                  {
+                    &quot;maxLength&quot;: 120,
+                    &quot;minLength&quot;: 1,
+                    &quot;type&quot;: &quot;string&quot;
+                  },
+                  {
+                    &quot;type&quot;: &quot;null&quot;
+                  }
+                ]
+              },
+              &quot;colonyIndex&quot;: {
+                &quot;anyOf&quot;: [
+                  {
+                    &quot;maximum&quot;: 255,
+                    &quot;minimum&quot;: 0,
+                    &quot;type&quot;: &quot;integer&quot;
+                  },
+                  {
+                    &quot;type&quot;: &quot;null&quot;
+                  }
+                ]
+              },
+              &quot;commandId&quot;: {
+                &quot;maxLength&quot;: 120,
+                &quot;minLength&quot;: 1,
+                &quot;type&quot;: &quot;string&quot;
+              },
+              &quot;createdAtMs&quot;: {
+                &quot;maximum&quot;: 9007199254740991,
+                &quot;minimum&quot;: 0,
+                &quot;type&quot;: &quot;integer&quot;
+              },
+              &quot;id&quot;: {
+                &quot;maxLength&quot;: 120,
+                &quot;minLength&quot;: 1,
+                &quot;type&quot;: &quot;string&quot;
+              },
+              &quot;isBot&quot;: {
+                &quot;default&quot;: false,
+                &quot;type&quot;: &quot;boolean&quot;
+              },
+              &quot;kind&quot;: {
+                &quot;maxLength&quot;: 80,
+                &quot;minLength&quot;: 1,
+                &quot;type&quot;: &quot;string&quot;
+              },
+              &quot;planetId&quot;: {
+                &quot;maxLength&quot;: 80,
+                &quot;minLength&quot;: 1,
+                &quot;type&quot;: &quot;string&quot;
+              },
+              &quot;rejectCode&quot;: {
+                &quot;anyOf&quot;: [
+                  {
+                    &quot;maxLength&quot;: 80,
+                    &quot;type&quot;: &quot;string&quot;
+                  },
+                  {
+                    &quot;type&quot;: &quot;null&quot;
+                  }
+                ]
+              },
+              &quot;rejectDetail&quot;: {
+                &quot;anyOf&quot;: [
+                  {
+                    &quot;maxLength&quot;: 400,
+                    &quot;type&quot;: &quot;string&quot;
+                  },
+                  {
+                    &quot;type&quot;: &quot;null&quot;
+                  }
+                ]
+              },
+              &quot;sectorId&quot;: {
+                &quot;default&quot;: &quot;sec_0_0&quot;,
+                &quot;maxLength&quot;: 64,
+                &quot;minLength&quot;: 1,
+                &quot;type&quot;: &quot;string&quot;
+              },
+              &quot;source&quot;: {
+                &quot;enum&quot;: [
+                  &quot;player&quot;,
+                  &quot;bot&quot;,
+                  &quot;ai&quot;,
+                  &quot;director&quot;,
+                  &quot;near&quot;,
+                  &quot;admin&quot;,
+                  &quot;system&quot;,
+                  &quot;dev&quot;,
+                  &quot;module&quot;
+                ],
+                &quot;type&quot;: &quot;string&quot;
+              },
+              &quot;status&quot;: {
+                &quot;default&quot;: &quot;applied&quot;,
+                &quot;enum&quot;: [
+                  &quot;queued&quot;,
+                  &quot;applied&quot;,
+                  &quot;rejected&quot;
+                ],
+                &quot;type&quot;: &quot;string&quot;
+              }
+            },
+            &quot;required&quot;: [
+              &quot;planetId&quot;,
+              &quot;colonyIndex&quot;,
+              &quot;source&quot;,
+              &quot;commandId&quot;,
+              &quot;kind&quot;,
+              &quot;args&quot;,
+              &quot;atTick&quot;,
+              &quot;createdAtMs&quot;
+            ],
+            &quot;type&quot;: &quot;object&quot;
+          },
+          &quot;type&quot;: &quot;array&quot;
         },
         &quot;serverTimeMs&quot;: {
           &quot;maximum&quot;: 9007199254740991,
@@ -8337,7 +9229,7 @@
   &quot;wave&quot;: &quot;W18&quot;,
   &quot;origin&quot;: &quot;client&quot;
 }</pre></div></details>
-<details class="card" data-k="cmd enqueuetask enqueues a terraform order (w01), a building construction order (w02), a unit production order (w02), a repair / hq-goal order (w03), a prestige project order (w13), or a pvp raid order (w18) in the colony queue. frontend/game/features/construction-menu/placementghost.ts frontend/game/features/construction-menu/siteplacement.ts frontend/game/features/projects/index.ts frontend/game/features/shared/rejecttext.ts frontend/game/features/terraform-basic/brushcontroller.ts frontend/game/features/terraform-basic/primaryops.ts frontend/game/features/units-menu/unitsmenu.ts"><summary><span class="verb act">cmd</span><span class="path">enqueueTask</span></summary><div class="body"><p class="meta">Enqueues a terraform order (W01), a building construction order (W02), a unit production order (W02), a repair / HQ-goal order (W03), a prestige project order (W13), or a PvP raid order (W18) in the colony queue.</p><p class="from"><span class="lbl">called from</span> <code>frontend/game/features/construction-menu/PlacementGhost.ts</code> <code>frontend/game/features/construction-menu/sitePlacement.ts</code> <code>frontend/game/features/projects/index.ts</code> <code>frontend/game/features/shared/rejectText.ts</code> <code>frontend/game/features/terraform-basic/BrushController.ts</code> <code>frontend/game/features/terraform-basic/primaryOps.ts</code> <code>frontend/game/features/units-menu/UnitsMenu.ts</code></p><h3>Request</h3><pre>{
+<details class="card" data-k="cmd enqueuetask enqueues a terraform order (w01), a building construction order (w02), a unit production order (w02), a repair / hq-goal order (w03), a prestige project order (w13), or a pvp raid order (w18) in the colony queue. frontend/game/features/construction-menu/placementghost.ts frontend/game/features/construction-menu/siteplacement.ts frontend/game/features/projects/index.ts frontend/game/features/shared/rejecttext.ts frontend/game/features/terraform-basic/brushcontroller.ts frontend/game/features/terraform-basic/primaryops.ts frontend/game/features/units-menu/unitsmenu.ts frontend/game/store/local/parts/localbotfeed.ts"><summary><span class="verb act">cmd</span><span class="path">enqueueTask</span></summary><div class="body"><p class="meta">Enqueues a terraform order (W01), a building construction order (W02), a unit production order (W02), a repair / HQ-goal order (W03), a prestige project order (W13), or a PvP raid order (W18) in the colony queue.</p><p class="from"><span class="lbl">called from</span> <code>frontend/game/features/construction-menu/PlacementGhost.ts</code> <code>frontend/game/features/construction-menu/sitePlacement.ts</code> <code>frontend/game/features/projects/index.ts</code> <code>frontend/game/features/shared/rejectText.ts</code> <code>frontend/game/features/terraform-basic/BrushController.ts</code> <code>frontend/game/features/terraform-basic/primaryOps.ts</code> <code>frontend/game/features/units-menu/UnitsMenu.ts</code> <code>frontend/game/store/local/parts/localBotFeed.ts</code></p><h3>Request</h3><pre>{
   &quot;$schema&quot;: &quot;https://json-schema.org/draft/2020-12/schema&quot;,
   &quot;anyOf&quot;: [
     {
@@ -9219,6 +10111,7 @@
         &quot;planet_ended&quot;,
         &quot;wave_disabled&quot;,
         &quot;host_unavailable&quot;,
+        &quot;spectator_read_only&quot;,
         &quot;internal&quot;,
         &quot;rate_limited&quot;,
         &quot;already_landed&quot;,
@@ -13459,6 +14352,7 @@
         &quot;planet_ended&quot;,
         &quot;wave_disabled&quot;,
         &quot;host_unavailable&quot;,
+        &quot;spectator_read_only&quot;,
         &quot;internal&quot;,
         &quot;rate_limited&quot;,
         &quot;already_landed&quot;,
@@ -16931,7 +17825,7 @@
 }</pre></div></details></section>
 <section class="group" id="gaps"><h2>Scan gaps</h2>
 <p class="meta">Comment-only paths are ignored. <code>t:</code> values that are not in clientMessages or serverMessages (worker protocol, local host) are listed here and are not routes.</p>
-<ul><li><code>unmatched /deed (frontend/design/js/subdomainLinks.ts, frontend/vite.config.ts)</code></li><li><code>unmatched /deed/${encoded}/image.png (frontend/game/features/deed/parts/deedPanelParts.ts)</code></li><li><code>unmatched /deed/${encodeURIComponent(clean)}/image.png (frontend/game/features/deed/deedShare.ts)</code></li><li><code>unmatched /deed/deed:col-aegis/image.png (frontend/game/features/deed/deedCardArt.ts)</code></li><li><code>unmatched /deed/deed:col-cinder/image.png (frontend/game/features/deed/deedCardArt.ts)</code></li><li><code>unmatched /deed/deed:col-helios/image.png (frontend/game/features/deed/deedCardArt.ts)</code></li><li><code>unmatched /deed/parts/realNearWalletDriver (frontend/game/pages/me/sections/staking/dashboard/parts/patronCard.ts)</code></li><li><code>unmatched /deed/parts/stakingPanelParts (frontend/game/pages/me/sections/staking/dashboard/StakingDashboard.ts, frontend/game/pages/me/sections/staking/dashboard/dashboardActions.ts)</code></li><li><code>unmatched /deed/parts/stakingWalletTx (frontend/game/pages/me/sections/staking/dashboard/StakingDashboard.ts, frontend/game/pages/me/sections/staking/dashboard/dashboardActions.ts, frontend/game/pages/me/sections/staking/dashboard/parts/patronCard.ts)</code></li><li><code>unmatched /v1 (frontend/design/js/subdomainLinks.ts)</code></li><li><code>unmatched /v1/auth (frontend/game/features/identity/PilotChip.ts)</code></li><li><code>unmatched /v1/dev/command (frontend/game/features/cargo-dev/index.ts)</code></li><li><code>unmatched /v1/lobby/ws (frontend/game/ui/lobby/lobbyPlanetFeed.ts)</code></li><li><code>unmatched /v1/signature (frontend/design/js/subdomainLinks.ts)</code></li><li><code>unmatched /v1/signature/{chat_id} (frontend/whitepaper/sections/schemas.ts)</code></li><li><code>unmatched /v1/signature/cht_8f3a91 (frontend/whitepaper/sections/schemas.ts)</code></li><li><code>t:'ack' is not a wire message (frontend/game/store/WorldStore.ts, frontend/game/store/worker/protocol.ts)</code></li><li><code>t:'client' is not a wire message (frontend/game/dev/parity/runLocal.ts, frontend/game/net/LocalTransport.ts)</code></li><li><code>t:'clock' is not a wire message (frontend/game/store/WorldStore.ts, frontend/game/store/worker/protocol.ts)</code></li><li><code>t:'cmdRejected' is not a wire message (frontend/game/store/worker/SimWorkerController.ts, frontend/game/store/worker/protocol.ts)</code></li><li><code>t:'cmdSent' is not a wire message (frontend/game/store/WorldStore.ts, frontend/game/store/worker/protocol.ts)</code></li><li><code>t:'dev' is not a wire message (frontend/game/net/LocalTransport.ts, frontend/game/store/local/protocol.ts)</code></li><li><code>t:'devResult' is not a wire message (frontend/game/store/local/LocalHostController.ts, frontend/game/store/local/protocol.ts)</code></li><li><code>t:'error' is not a wire message (frontend/game/store/local/LocalHostController.ts, frontend/game/store/local/LocalHostCore.ts)</code></li><li><code>t:'init' is not a wire message (frontend/game/net/LocalTransport.ts, frontend/game/store/WorldStore.ts)</code></li><li><code>t:'reject' is not a wire message (frontend/game/store/WorldStore.ts, frontend/game/store/worker/SimWorkerController.ts)</code></li><li><code>t:'renderEvents' is not a wire message (frontend/game/store/worker/SimWorkerController.ts, frontend/game/store/worker/protocol.ts)</code></li><li><code>t:'resync' is not a wire message (frontend/game/store/worker/SimWorkerController.ts, frontend/game/store/worker/protocol.ts)</code></li><li><code>t:'save' is not a wire message (frontend/game/net/LocalTransport.ts, frontend/game/store/local/protocol.ts)</code></li><li><code>t:'server' is not a wire message (frontend/game/store/local/LocalHostCore.ts, frontend/game/store/local/protocol.ts)</code></li><li><code>t:'status' is not a wire message (frontend/game/store/worker/SimWorkerController.ts, frontend/game/store/worker/protocol.ts)</code></li><li><code>t:'stop' is not a wire message (frontend/game/net/LocalTransport.ts, frontend/game/store/WorldStore.ts)</code></li><li><code>t:'stopped' is not a wire message (frontend/game/store/local/LocalHostController.ts, frontend/game/store/local/protocol.ts)</code></li><li><code>t:'terraform' is not a wire message (frontend/game/core/hud/CommandDock.ts)</code></li><li><code>t:'tune' is not a wire message (frontend/game/store/WorldStore.ts, frontend/game/store/worker/protocol.ts)</code></li><li><code>t:'turntable' is not a wire message (frontend/playground/keyboard.ts)</code></li><li><code>t:'view' is not a wire message (frontend/game/store/worker/SimWorkerController.ts, frontend/game/store/worker/protocol.ts)</code></li></ul>
+<ul><li><code>unmatched /deed (frontend/design/js/subdomainLinks.ts, frontend/vite.config.ts)</code></li><li><code>unmatched /deed/${encoded}/image.png (frontend/game/features/deed/parts/deedPanelParts.ts)</code></li><li><code>unmatched /deed/${encodeURIComponent(clean)}/image.png (frontend/game/features/deed/deedShare.ts)</code></li><li><code>unmatched /deed/deed:col-aegis/image.png (frontend/game/features/deed/deedCardArt.ts)</code></li><li><code>unmatched /deed/deed:col-cinder/image.png (frontend/game/features/deed/deedCardArt.ts)</code></li><li><code>unmatched /deed/deed:col-helios/image.png (frontend/game/features/deed/deedCardArt.ts)</code></li><li><code>unmatched /deed/parts/realNearWalletDriver (frontend/game/pages/me/sections/staking/dashboard/parts/patronCard.ts)</code></li><li><code>unmatched /deed/parts/stakingPanelParts (frontend/game/pages/me/sections/staking/dashboard/StakingDashboard.ts, frontend/game/pages/me/sections/staking/dashboard/dashboardActions.ts)</code></li><li><code>unmatched /deed/parts/stakingWalletTx (frontend/game/pages/me/sections/staking/dashboard/StakingDashboard.ts, frontend/game/pages/me/sections/staking/dashboard/dashboardActions.ts, frontend/game/pages/me/sections/staking/dashboard/parts/patronCard.ts)</code></li><li><code>unmatched /v1 (frontend/design/js/subdomainLinks.ts)</code></li><li><code>unmatched /v1/auth (frontend/game/features/identity/PilotChip.ts)</code></li><li><code>unmatched /v1/dev/command (frontend/game/features/cargo-dev/index.ts)</code></li><li><code>unmatched /v1/lobby/ws (frontend/game/ui/lobby/lobbyPlanetFeed.ts)</code></li><li><code>unmatched /v1/me (frontend/game/pages/me/localModeSim.ts)</code></li><li><code>unmatched /v1/signature (frontend/design/js/subdomainLinks.ts)</code></li><li><code>unmatched /v1/signature/{chat_id} (frontend/whitepaper/sections/schemas.ts)</code></li><li><code>unmatched /v1/signature/cht_8f3a91 (frontend/whitepaper/sections/schemas.ts)</code></li><li><code>t:'ack' is not a wire message (frontend/game/store/WorldStore.ts, frontend/game/store/worker/protocol.ts)</code></li><li><code>t:'client' is not a wire message (frontend/game/dev/parity/runLocal.ts, frontend/game/net/LocalTransport.ts)</code></li><li><code>t:'clock' is not a wire message (frontend/game/store/WorldStore.ts, frontend/game/store/worker/protocol.ts)</code></li><li><code>t:'cmdRejected' is not a wire message (frontend/game/store/worker/SimWorkerController.ts, frontend/game/store/worker/protocol.ts)</code></li><li><code>t:'cmdSent' is not a wire message (frontend/game/store/WorldStore.ts, frontend/game/store/worker/protocol.ts)</code></li><li><code>t:'dev' is not a wire message (frontend/game/net/LocalTransport.ts, frontend/game/store/local/protocol.ts)</code></li><li><code>t:'devResult' is not a wire message (frontend/game/store/local/LocalHostController.ts, frontend/game/store/local/protocol.ts)</code></li><li><code>t:'error' is not a wire message (frontend/game/store/local/LocalHostController.ts, frontend/game/store/local/LocalHostCore.ts)</code></li><li><code>t:'generate' is not a wire message (frontend/render/orchestrators/worker/BiomeWorkerClient.ts, frontend/render/orchestrators/worker/protocol.ts)</code></li><li><code>t:'generated' is not a wire message (frontend/render/orchestrators/worker/BiomeWorkerController.ts, frontend/render/orchestrators/worker/protocol.ts)</code></li><li><code>t:'init' is not a wire message (frontend/game/net/LocalTransport.ts, frontend/game/store/WorldStore.ts)</code></li><li><code>t:'reject' is not a wire message (frontend/game/store/WorldStore.ts, frontend/game/store/worker/SimWorkerController.ts)</code></li><li><code>t:'renderEvents' is not a wire message (frontend/game/store/worker/SimWorkerController.ts, frontend/game/store/worker/protocol.ts)</code></li><li><code>t:'resync' is not a wire message (frontend/game/store/worker/SimWorkerController.ts, frontend/game/store/worker/protocol.ts)</code></li><li><code>t:'save' is not a wire message (frontend/game/net/LocalTransport.ts, frontend/game/store/local/protocol.ts)</code></li><li><code>t:'server' is not a wire message (frontend/game/store/local/LocalHostCore.ts, frontend/game/store/local/protocol.ts)</code></li><li><code>t:'status' is not a wire message (frontend/game/store/worker/SimWorkerController.ts, frontend/game/store/worker/protocol.ts)</code></li><li><code>t:'stop' is not a wire message (frontend/game/net/LocalTransport.ts, frontend/game/store/WorldStore.ts)</code></li><li><code>t:'stopped' is not a wire message (frontend/game/store/local/LocalHostController.ts, frontend/game/store/local/protocol.ts)</code></li><li><code>t:'terraform' is not a wire message (frontend/game/core/hud/CommandDock.ts)</code></li><li><code>t:'tune' is not a wire message (frontend/game/store/WorldStore.ts, frontend/game/store/worker/protocol.ts)</code></li><li><code>t:'turntable' is not a wire message (frontend/playground/keyboard.ts)</code></li><li><code>t:'view' is not a wire message (frontend/game/store/worker/SimWorkerController.ts, frontend/game/store/worker/protocol.ts)</code></li></ul>
 </section>
 </main>
 <script>

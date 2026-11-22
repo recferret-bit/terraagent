@@ -145,3 +145,57 @@ describe('W12-09 MeProfileController and wave gating', () => {
     expect(UpdatePlayerAiSettingsSchema.safeParse({ model: 'bad model\nid' }).success).toBe(false);
   });
 });
+
+describe('W12/W28 pilot handle rename endpoint', () => {
+  it('renames pilot handle via PUT /v1/me/profile/handle, validates input, and guards collisions', async () => {
+    const stack = createProfileStack('all');
+    const req = { url: '/v1/me/profile/handle?as=w12', headers: {} } as never;
+
+    const updated = await stack.controller.putHandle(req, { handle: '  Admiral Vega  ' });
+    expect(updated).toEqual({ handle: 'Admiral Vega' });
+    const prof = await stack.controller.profile({ url: '/v1/me/profile?as=w12', headers: {} } as never);
+    expect(prof.identity.handle).toBe('Admiral Vega');
+
+    await expect(stack.controller.putHandle(req, { handle: 'x' })).rejects.toMatchObject({
+      errorCode: 'invalid_pilot_handle',
+      status: 400,
+    });
+    await expect(stack.controller.putHandle(req, { handle: 'two  spaces' })).rejects.toMatchObject({
+      errorCode: 'invalid_pilot_handle',
+      status: 400,
+    });
+
+    const stackOff = createProfileStack('..11');
+    await expect(stackOff.controller.putHandle(req, { handle: 'Commander Nova' })).rejects.toMatchObject({
+      errorCode: 'wave_disabled',
+      status: 403,
+    });
+
+    // DB handle collision returns 409 handle_taken
+    const dbStub = {
+      player: {
+        findUnique: async ({ where }: { where: { handle?: string } }) =>
+          where.handle === 'Taken Pilot' ? { id: 'pr_other_99' } : null,
+        upsert: async () => ({}),
+      },
+    };
+    const dbProfile = new MeProfileService(
+      stack.facts,
+      stack.xp,
+      stack.achievements,
+      stack.colonies,
+      stack.flags,
+      stack.seed,
+      { enabled: true, catchUp: async () => undefined } as never,
+      dbStub as never,
+    );
+    await expect(
+      dbProfile.updateHandle({ id: 'pr_dev_w12', handle: 'w12', isGuest: false }, { handle: 'Taken Pilot' }),
+    ).rejects.toMatchObject({ errorCode: 'handle_taken', status: 409 });
+
+    // In-memory collision check rejects another player claiming the same handle
+    await expect(
+      stack.profile.updateHandle({ id: 'pr_other_mem', handle: 'other', isGuest: false }, { handle: 'Admiral Vega' }),
+    ).rejects.toMatchObject({ errorCode: 'handle_taken', status: 409 });
+  });
+});

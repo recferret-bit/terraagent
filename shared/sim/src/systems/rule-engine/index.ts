@@ -3,6 +3,7 @@ import { defineSystem } from '../../kernel/system';
 import { parseArgs } from '../command';
 import { defineSimModule } from '../define';
 import { isColonyAiEnabled } from '../goals/ai';
+import { isRivalAiColony } from '../rival-ai/store';
 import {
   applyAutopilotStep,
   resolveColonyStage,
@@ -32,6 +33,7 @@ export const ruleEngineSystem = defineSystem({
   slot: 14,
   wave: 'W08',
   run(state, ctx) {
+    if (ctx.hostRole === 'replica') return;
     const prevTick = state.meta.tick;
     const nextTick = ctx.tick;
     const isPeriodicTick =
@@ -43,6 +45,7 @@ export const ruleEngineSystem = defineSystem({
 
     for (const col of state.colonies) {
       if (!col || col.status === 'eliminated' || col.status === 'settled') continue;
+      if (ctx.hostRole === 'authority_external_bots' && (col.isBot === true || isRivalAiColony(state, col.index))) continue;
       if (!isColonyAiEnabled(state, col.index)) continue;
       if (col.lastAutopilotEvalTick === nextTick && nextTick > 0 && prevTick !== nextTick) continue;
       const stage = resolveColonyStage(state, col.index);

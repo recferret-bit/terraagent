@@ -1,5 +1,7 @@
 import { earlyExitFeeBp, type StakingActionResponse } from '@terra/contracts';
 import { StakingPort, type StakingPositionView } from '../../application/ports/staking.port.js';
+import { resolveStakingTimings } from '../local-staking-timings.js';
+import { isW28Enabled } from '../perks/legacy-ladder.js';
 import { yoctoToNear } from '../yocto.js';
 import { stakingNowMs } from './port-hooks.js';
 import type { StakingTxEntry, StakingTxKind, StakingTxWriter } from './staking-tx.writer.js';
@@ -23,6 +25,7 @@ export class ActionEffects {
   constructor(
     private readonly staking: StakingPort,
     private readonly txs: StakingTxWriter,
+    private readonly env: () => Record<string, string | undefined> = () => process.env as Record<string, string | undefined>,
   ) {}
 
   record(kind: StakingTxKind, ref: EffectRef, asset: string, amountYocto: bigint): Promise<void> {
@@ -40,11 +43,13 @@ export class ActionEffects {
   }
 
   /**
-   * Records an unstake and, inside 7 days of the last deposit, the `early_exit_fee` the adapter kept for the protocol
-   * (`earlyExitFeeBp` of the principal, from the clocks read BEFORE the call so a replayed op id shows the same fee).
+   * Records an unstake and, inside the early-exit window (`7d`, or `1m` in local mode) of the last deposit, the
+   * `early_exit_fee` the adapter kept for the protocol (`earlyExitFeeBp` of the principal, read BEFORE the call).
    */
   async unstaked(ref: EffectRef, amountYocto: bigint, before: StakingPositionView, requestedAsset?: string): Promise<UnstakeExtras> {
-    const feeBp = earlyExitFeeBp(before.lastStakedAtMs ?? null, stakingNowMs(this.staking));
+    const envBag = this.env();
+    const windowMs = resolveStakingTimings(envBag).earlyExitWindowMs;
+    const feeBp = isW28Enabled(envBag) ? earlyExitFeeBp(before.lastStakedAtMs ?? null, stakingNowMs(this.staking), windowMs) : 0;
     const fee = (amountYocto * BigInt(feeBp)) / 10_000n;
     const asset = requestedAsset ?? before.asset ?? 'near';
     await this.record('unstake', ref, asset, amountYocto);

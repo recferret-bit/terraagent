@@ -2,7 +2,7 @@ import { formatAtomic, mockLabel, type GuildOffer } from '@terra/contracts';
 import type { FeatureContext, TradeHubTabInstance } from '../../core/registry/types';
 import { formatRejectToast } from '../shared/rejectText';
 import { makeBtn, makeDiv, makeSpan } from '../shared/dom';
-import { ownColonyIndex, viewColony } from '../shared/colony';
+import { isReadOnlySpectator, ownColonyIndex, viewColony } from '../shared/colony';
 import { GuildAnalytics } from '../shared/guildAnalytics';
 import { resourceLabel } from '../shared/resources';
 import { formatDepartCountdown } from './countdown';
@@ -89,9 +89,10 @@ export class GuildOffers implements TradeHubTabInstance {
     this.countdownEl.hidden = !visit;
     this.countdownEl.dataset.departed = String(gone);
     this.countdownEl.textContent = visit ? `${visit.name} · ${this.clock(visit)}` : '';
+    const ro = isReadOnlySpectator(this.ctx.services);
     const offers = visit?.offers ?? [];
     this.listEl.replaceChildren(...(offers.length
-      ? offers.map((o) => offerRow(o, gone || this.model.sent.has(o.offerId), (id) => this.accept(id)))
+      ? offers.map((o) => offerRow(o, ro || gone || this.model.sent.has(o.offerId), (id) => this.accept(id)))
       : [makeDiv('ta-guild__empty', 'guild-empty', 'No offers')]));
     this.rejectEl.hidden = this.model.rejectText === '';
     this.rejectEl.textContent = this.model.rejectText;
@@ -106,11 +107,12 @@ export class GuildOffers implements TradeHubTabInstance {
   }
 
   private accept(offerId: string): void {
-    if (this.departed(this.model.visit) || !this.model.markSent(offerId)) return;
+    if (isReadOnlySpectator(this.ctx.services) || this.departed(this.model.visit) || !this.model.markSent(offerId)) return;
     void this.send(offerId, this.model.generation);
   }
 
   private async send(offerId: string, generation: number): Promise<void> {
+    if (isReadOnlySpectator(this.ctx.services)) return;
     const send = this.ctx.services.sendCommand;
     if (!send) return;
     this.analytics.offerAccepted(offerId);

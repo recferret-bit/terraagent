@@ -3,8 +3,10 @@ import {
   ClientMessage,
   decodeWire,
   PlanetType,
+  type AgentDecisionFeedItemV1,
   type AwayDigestV1,
   type HomeResponse,
+  type SimInputFeedItemV1,
 } from '@terra/contracts';
 import type { RawData } from 'ws';
 import { buildingCatalog, compileData } from '@terra/sim';
@@ -90,6 +92,7 @@ export async function verifyConnectionJoin(opts: {
   readonly requestedColonyId?: string;
   readonly dev: boolean;
   readonly isScenarioPlanet: boolean;
+  readonly mode?: 'play' | 'spectator';
 }): Promise<
   | {
       readonly ok: true;
@@ -103,11 +106,14 @@ export async function verifyConnectionJoin(opts: {
       readonly reason: string;
     }
 > {
-  const { homeProvider, antiCheat, log, playerId, planetId, requestedSectorId, requestedColonyId, dev, isScenarioPlanet } = opts;
+  const { homeProvider, antiCheat, log, playerId, planetId, requestedSectorId, requestedColonyId, dev, isScenarioPlanet, mode } = opts;
   const trimmedSector = requestedSectorId?.trim() || undefined;
   if (trimmedSector && !isValidSectorIdFormat(trimmedSector)) {
     antiCheat?.recordRejection('ws', 'join', 'invalid_sector');
     return { ok: false, reason: 'invalid_sector' };
+  }
+  if (mode === 'spectator') {
+    return { ok: true, colonyId: null, sectorId: trimmedSector };
   }
 
   const fastActive = playerId ? antiCheat?.index.getActiveBaseByPlayer(playerId) : undefined;
@@ -215,10 +221,11 @@ export function verifyPostSnapshotConnectionJoin(opts: {
   readonly currentBindingHash?: string;
   readonly dev: boolean;
   readonly isScenarioPlanet: boolean;
+  readonly mode?: 'play' | 'spectator';
 }):
   | { readonly ok: true; readonly sectorId?: string; readonly bindingHash?: string }
   | { readonly ok: false; readonly reason: string } {
-  const { antiCheat, planetId, colonyId, colonyIndex, requestedSectorId, dev, isScenarioPlanet } = opts;
+  const { antiCheat, planetId, colonyId, colonyIndex, requestedSectorId, dev, isScenarioPlanet, mode } = opts;
   if (!antiCheat) return { ok: true, sectorId: opts.currentSectorId, bindingHash: opts.currentBindingHash };
 
   const planetSpatial = antiCheat.index.getPlanet(planetId);
@@ -249,7 +256,7 @@ export function verifyPostSnapshotConnectionJoin(opts: {
     };
   }
 
-  if (trimmedSector) {
+  if (trimmedSector && mode !== 'spectator') {
     const liveSec = antiCheat.index.getSectorSpace(planetId, trimmedSector);
     if (liveSec) {
       if (liveSec.kind === 'ocean') {
@@ -304,8 +311,11 @@ export function buildWelcomeMessage(opts: {
   readonly deltaHz: number;
   readonly flags: readonly string[];
   readonly away: AwayDigestV1 | null;
+  readonly mode?: 'play' | 'spectator';
+  readonly recentInputs?: readonly SimInputFeedItemV1[];
+  readonly recentDecisions?: readonly AgentDecisionFeedItemV1[];
 }): object {
-  const { reason, colonyId, planetId, snap, deltaHz, flags, away } = opts;
+  const { reason, colonyId, planetId, snap, deltaHz, flags, away, mode, recentInputs, recentDecisions } = opts;
   const type = PlanetType.safeParse(snap.planetType);
   return {
     v: 1,
@@ -326,6 +336,9 @@ export function buildWelcomeMessage(opts: {
       flags,
       buildings: buildingCatalog(compileData(new Set(flags), snap.overrides)),
       ...(snap.warp > 1 ? { warp: snap.warp } : {}),
+      ...(mode ? { mode } : {}),
+      ...(recentInputs?.length ? { recentInputs } : {}),
+      ...(recentDecisions?.length ? { recentDecisions } : {}),
       ...welcomeFields(reason, away),
     },
   };

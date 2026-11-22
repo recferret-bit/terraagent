@@ -1,5 +1,6 @@
 import type { HomeLandingHost } from '../core/home/home.service';
 import type { ColonyRecord, PlanetRecord } from '../core/home/home.repository';
+import type { SimClusterService } from './cluster/sim-cluster.service';
 import type { GamePlanets, LoadOptions } from './game-planets.service';
 import type { SnapshotService } from './persistence/snapshot.service';
 import { beforeTimeout, SEAT_LANDING_TIMEOUT_MS, type SeatHost, seatColonyOnPlanet, TIMED_OUT } from './seat-colony';
@@ -24,15 +25,24 @@ async function reland(seat: SeatHost, planet: PlanetRecord, colony: ColonyRecord
  * generated fresh and its live colony rows are landed again at their recorded sites.
  */
 export function gameLandingHost(
-  snapshots: Pick<SnapshotService, 'loadNew' | 'loadHome'>, planets: Pick<GamePlanets, 'landingSite'>, seat: SeatHost, timeoutMs = SEAT_LANDING_TIMEOUT_MS,
+  snapshots: Pick<SnapshotService, 'loadNew' | 'loadHome'>,
+  planets: Pick<GamePlanets, 'landingSite'>,
+  seat: SeatHost,
+  timeoutMs = SEAT_LANDING_TIMEOUT_MS,
+  cluster?: Pick<SimClusterService, 'forwardLandingSite' | 'forwardLoadHome'> & { readonly remoteOnly?: boolean },
 ): HomeLandingHost {
   return {
     async landingSite(planet, colonyIndex) {
+      if (cluster?.remoteOnly) {
+        return within(cluster.forwardLandingSite(planet.id, paramsOf(planet), colonyIndex, timeoutMs), timeoutMs, `loading ${planet.id}`);
+      }
       await within(snapshots.loadNew(planet.id, paramsOf(planet)), timeoutMs, `loading ${planet.id}`);
       return planets.landingSite(planet.id, colonyIndex, timeoutMs);
     },
     async ensureHomeLoaded(planet, colonies) {
-      const outcome = await within(snapshots.loadHome(planet.id, paramsOf(planet)), timeoutMs, `loading ${planet.id}`);
+      const outcome = cluster?.remoteOnly
+        ? await within(cluster.forwardLoadHome(planet.id, paramsOf(planet)), timeoutMs, `loading ${planet.id}`)
+        : await within(snapshots.loadHome(planet.id, paramsOf(planet)), timeoutMs, `loading ${planet.id}`);
       if (outcome !== 'generated') return;
       for (const c of await colonies()) if (c.status === 'ACTIVE') await reland(seat, planet, c, timeoutMs);
     },

@@ -12,6 +12,7 @@
   "scripts": {
     "api:atlas": "node .agents/skills/api-atlas/scripts/build-atlas.mjs",
     "dev": "node scripts/dev/dev.mjs",
+    "dev:cluster": "node scripts/dev/dev-cluster.mjs",
     "dev:restart": "node scripts/dev/dev-restart.mjs",
     "dev:client": "vite --config frontend/vite.config.ts --host 127.0.0.1 --port 5173",
     "ci:fast": "npm run check && npm test && npm run build",

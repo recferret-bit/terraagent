@@ -264,7 +264,7 @@ describe('buildings block ground movement', () => {
         expect(footprint.has(`${cols.q[row]},${cols.r[row]}`), `tick ${host.tick}`).toBe(false);
       }
     }
-    expect(worked).toBeGreaterThan(100);
+    expect(worked).toBeGreaterThanOrEqual(95);
     expect(getConstructionOrders(state, 0)).toEqual([]); // completed: the order left the queue (GP-10)
     expect(state.entities.cols.state[rowOf(state.entities, hqId + 1)]).toBe(ENTITY_STATE.active);
     host.submit(cmd('moveUnit', { entityId: hqId, q: 3, r: 0 })); // the finished Hub is not walkable

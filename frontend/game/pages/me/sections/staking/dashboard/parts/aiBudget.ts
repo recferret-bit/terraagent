@@ -1,5 +1,6 @@
 import type { AiBudgetView } from '@terra/contracts';
 import { el } from '../../../../dom';
+import { buildBlockHeaderWithTip } from '../../../../parts/helpTip';
 import { formatUsdSmall } from '../../stakingMath';
 
 const pct = (used: number, cap: number): number => (cap > 0 ? Math.min(100, Math.max(0, Math.round((used / cap) * 100))) : 0);
@@ -35,10 +36,20 @@ export function renderAiBudget(b: AiBudgetView, tier: number): HTMLElement {
   }
   lines.push(el('span', { className: 'ta-stk-badge', dataset: { testid: 'staking-trade-bonus' } }, `Trade bonus +${b.tradeBonusCalls} calls`));
   lines.push(el('span', { className: 'ta-stk-sub', dataset: { testid: 'staking-ai-mode' } }, `Mode ${b.mode.toUpperCase()} · ${b.model}`));
+  const header = buildBlockHeaderWithTip(
+    {
+      id: 'staking-ai-budget',
+      title: 'AI COMPUTE BUDGET',
+      description:
+        'Protocol-sponsored NEAR.AI TEE compute scales automatically with your staked NEAR and daily trade-fee contribution (35% revenue share). Verified T0 pilots get 5 free TEE trial turns; staking ≥10 NEAR unlocks daily recurring slots.',
+    },
+    el('h3', { className: 'label ta-stk-h' }, '⚡ AI COMPUTE BUDGET'),
+  );
   return el(
     'div',
     { className: 'ta-stk-block plate-sm ta-stk-pad', dataset: { testid: 'staking-ai-budget', mode: b.mode } },
-    el('h3', { className: 'label ta-stk-h' }, '⚡ AI COMPUTE BUDGET'),
+    header.head,
+    header.panel,
     meter('Daily budget', b.dailyBudgetUsedUsd, b.dailyBudgetUsd, `${formatUsdSmall(b.dailyBudgetUsedUsd)} / ${formatUsdSmall(b.dailyBudgetUsd)}`, 'staking-ai-budget-usd'),
     meter('Daily calls', b.dailyCallsUsed, b.dailyCallLimit, `${b.dailyCallsUsed} / ${b.dailyCallLimit}`, 'staking-ai-budget-calls'),
     el('div', { className: 'ta-stk-chips' }, ...lines),

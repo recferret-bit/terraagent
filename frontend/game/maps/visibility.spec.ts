@@ -4,6 +4,7 @@ import { hexIndex } from '@terra/sim/grid/hex';
 import { packEntities, type ClientTiles } from '../store/replica/viewCodec';
 import { drawThreatsLayer } from '../features/combat/threatsLayer';
 import { collectEntityDots } from './entityDots';
+import { classifyTileState } from './tileColors';
 import { createMapVisibility, isMapTileExplored } from './visibility';
 import type { MapLayerDrawView } from './types';
 
@@ -75,5 +76,25 @@ describe('map fog visibility', () => {
     expect(createMapVisibility(view)(30, 0)).toBe(false);
     expect(createMapVisibility({ ...view, ownColonySlot: 1 })(30, 0)).toBe(true);
     expect(isMapTileExplored({ ...view, ownColonySlot: 1 }, target)).toBe(true);
+  });
+
+  it('unions all colonies exploration and tile classification when spectatorAllVision is enabled', () => {
+    const view = fixture();
+    const targetA = hexIndex(view.radius).indexOf(10, 0);
+    const targetB = hexIndex(view.radius).indexOf(30, 0);
+    view.tiles!.explored![targetB] = 1 << 2; // Colony 2 only in legacy layer
+    view.tiles!.exploredByColony = {
+      1: new Uint8Array(Math.ceil(view.tiles!.count / 8)),
+      6: new Uint8Array(Math.ceil(view.tiles!.count / 8)),
+    };
+    view.tiles!.exploredByColony[6]![targetA >> 3]! |= 1 << (targetA & 7);
+
+    expect(isMapTileExplored({ ...view, ownColonySlot: 1, spectatorAllVision: false }, targetA)).toBe(false);
+    expect(isMapTileExplored({ ...view, ownColonySlot: 1, spectatorAllVision: false }, targetB)).toBe(false);
+    expect(isMapTileExplored({ ...view, ownColonySlot: 1, spectatorAllVision: true }, targetA)).toBe(true);
+    expect(isMapTileExplored({ ...view, ownColonySlot: 1, spectatorAllVision: true }, targetB)).toBe(true);
+    expect(classifyTileState(view.tiles!, targetA, 1)).toBe('unexplored');
+    expect(classifyTileState(view.tiles!, targetA, -1)).toBe('flat');
+    expect(classifyTileState(view.tiles!, targetB, -1)).toBe('flat');
   });
 });

@@ -10,6 +10,7 @@ import { MarketBookPayload, MarketTradePayload } from '../market/views';
 import { CargoStatusPayload } from '../rest/near-cargo';
 import { DeedUpdatedPayload } from '../deed';
 import { TreasuryProposalPush } from '../treasury';
+import { AgentDecisionFeedItemV1Schema, SimInputFeedItemV1Schema } from './feed';
 import { PlanetType, SimDiffFrame, SimEventWire, SimSnapshotFrame } from './sim';
 
 /** App → client messages (PROTOCOL §4.3). Parsed permissively by clients (PR-01). */
@@ -66,6 +67,9 @@ export const Welcome = ServerEnvelope('welcome', z.object({
   buildings: z.array(BuildingCatalogEntry).optional(), // sim building balance; omitted by older hosts
   warp: z.number().int().min(1).max(100).optional(), // dev time warp in effect
   away: AwayDigestV1Schema.optional(), // CT-32: latest closed digest; omitted when there is none
+  mode: z.enum(['play', 'spectator']).optional(),
+  recentInputs: z.array(SimInputFeedItemV1Schema).optional(),
+  recentDecisions: z.array(AgentDecisionFeedItemV1Schema).optional(),
 }));
 
 export const Delta = ServerEnvelope('delta', z.object({
@@ -99,10 +103,12 @@ export const GuildDeparted = ServerEnvelope('guild.departed', GuildDepartedPaylo
 export const DirectorStatus = ServerEnvelope('director.status', DirectorKeyStatusPayload);
 /** W22 planet council live push (PROTOCOL F7): one message when a proposal is opened, voted, or finalized. */
 export const TreasuryProposal = ServerEnvelope('treasury.proposal', TreasuryProposalPush);
+export const SimInputPush = ServerEnvelope('sim.input', z.object({ items: z.array(SimInputFeedItemV1Schema) }));
+export const SimDecisionPush = ServerEnvelope('sim.decision', z.object({ items: z.array(AgentDecisionFeedItemV1Schema) }));
 
 export const ServerMessage = z.discriminatedUnion('t', [
   Ready, Welcome, Delta, Event, CmdAck, CmdReject, Pong, Bye, CargoStatus, MarketBook, MarketTrade, DeedUpdated,
-  GuildArrived, GuildDeparted, DirectorStatus, TreasuryProposal,
+  GuildArrived, GuildDeparted, DirectorStatus, TreasuryProposal, SimInputPush, SimDecisionPush,
 ]);
 export type ServerMessage = z.infer<typeof ServerMessage>;
 export type ServerMessageOf<T extends ServerMessage['t']> = Extract<ServerMessage, { t: T }>;

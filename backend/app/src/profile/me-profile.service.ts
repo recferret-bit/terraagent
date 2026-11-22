@@ -10,14 +10,19 @@ import {
   type CurrentColonySummary,
   type MeProfileResponse,
   type PastColonySummary,
+  type PilotHandleResponse,
   type PlayerAiSettings,
+  type ProfileIdentity,
   type ProfileStats,
+  type UpdatePilotHandle,
   type UpdatePlayerAiSettings,
 } from '@terra/contracts';
 import { CoreException } from '../core/errors/index.js';
+import { databaseEnabled } from '../core/persistence.js';
 import { APP_ENV, type AppEnv } from '../core/tokens.js';
 import { FlagsService } from '../flags/flags.service.js';
 import { DEFAULT_NEAR_AI_MODEL } from '../ai/nearai-models.js';
+import { isLocalStakingFastTimings } from '../near/staking/local-staking-timings.js';
 import { resolveDbStakerPerks } from '../near/staking/staker-perks.js';
 import { isTeeAttestationRejected, LlmProviderPort, type LlmAttestation } from '../ports/llm-provider.port.js';
 import { FactsStore } from '../progression/facts.store.js';
@@ -31,6 +36,7 @@ import {
 import { MeAchievementsService } from './me-achievements.service.js';
 import type { ResolvedMePlayer } from './me-auth.js';
 import { PlayerAiSettingsStore } from './player-ai-settings.store.js';
+import { devPlayerId } from '../ws/session-verifier.js';
 
 function unlockedTitlesForLevel(level: number): string[] {
   const out = ['Cadet'];
@@ -94,9 +100,26 @@ function buildProfileStats(
   };
 }
 
+function formatActivity(
+  notices: ReadonlyArray<{ readonly id: string; readonly payload: unknown; readonly createdAt: Date }> | undefined,
+): MeProfileResponse['activity'] {
+  return (notices ?? []).map((n) => {
+    const payload = n.payload as { kind?: string; title?: string; familyName?: string; tierName?: string; xp?: number };
+    if (payload.kind === 'history.trade' && payload.title) {
+      return { id: n.id, title: payload.title, createdAt: n.createdAt.toISOString() };
+    }
+    return {
+      id: n.id,
+      title: `${payload.familyName ?? 'Achievement'} · ${payload.tierName ?? ''} (+${payload.xp ?? 0} XP)`,
+      createdAt: n.createdAt.toISOString(),
+    };
+  });
+}
+
 @Injectable()
 export class MeProfileService {
   private readonly aiSettings: PlayerAiSettingsStore;
+  private readonly customHandles = new Map<string, string>();
 
   constructor(
     @Inject(FactsStore) private readonly facts: FactsStore,
@@ -114,6 +137,7 @@ export class MeProfileService {
     this.aiSettings = aiSettings ?? new PlayerAiSettingsStore();
     if (this.seed) {
       this.seed.onReset(async (pid) => {
+        this.customHandles.delete(pid);
         await this.colonies.reset(pid);
       });
     }
@@ -175,12 +199,23 @@ export class MeProfileService {
     };
   }
 
+  private activeDb(): PrismaClient | undefined {
+    return this.db && (this.engine?.enabled || databaseEnabled(this.env)) ? this.db : undefined;
+  }
+
   private async resolvePlayerStakerSummary(
     playerId: string,
   ): Promise<{ readonly stakerAutopilotActive: boolean; readonly stakedNear: string }> {
-    const liveDb = this.engine?.enabled ? this.db : undefined;
-    if (!liveDb) return { stakerAutopilotActive: false, stakedNear: '0' };
+    const liveDb = this.activeDb();
+    if (!liveDb || typeof liveDb.socialIdentity?.findFirst !== 'function') {
+      return { stakerAutopilotActive: false, stakedNear: '0' };
+    }
     const envMap = (this.env ?? process.env) as Record<string, string | undefined>;
+    const fastLocal = isLocalStakingFastTimings(envMap);
+    const devMockAcct =
+      playerId === 'pr_dev_w12' || (fastLocal && playerId.startsWith('pr_dev_'))
+        ? `${sanitizeHandle(playerId)}.terraagent.mock`
+        : null;
     const [linked, cols] = await Promise.all([
       liveDb.socialIdentity.findFirst({ where: { playerId }, orderBy: { createdAt: 'asc' }, select: { accountId: true } }),
       liveDb.colony.findMany({ where: { playerId }, take: 5, select: { id: true } }),
@@ -191,6 +226,7 @@ export class MeProfileService {
     for (const candidate of [
       ...cols.map((c) => ({ colonyId: c.id })),
       ...(linked?.accountId ? [{ accountId: linked.accountId }] : []),
+      ...(devMockAcct && devMockAcct !== linked?.accountId ? [{ accountId: devMockAcct }] : []),
     ]) {
       const perks = await resolveDbStakerPerks(liveDb, { ...candidate, env: envMap }).catch(() => null);
       if (perks && perks.totalStakedYocto >= bestYocto) {
@@ -213,10 +249,109 @@ export class MeProfileService {
         details: { code: 'wave_disabled' },
       });
     }
-    return this.aiSettings.updateSettings(
-      { id: player.id, handle: player.handle },
-      input,
-    );
+    const [saved, staker] = await Promise.all([
+      this.aiSettings.updateSettings(
+        { id: player.id, handle: player.handle },
+        input,
+      ),
+      this.resolvePlayerStakerSummary(player.id),
+    ]);
+    return { ...saved, ...staker };
+  }
+
+  async updateHandle(
+    player: ResolvedMePlayer,
+    input: UpdatePilotHandle,
+  ): Promise<PilotHandleResponse> {
+    if (!this.flags.has('W12')) {
+      throw new CoreException('wave_disabled', {
+        status: 403,
+        message: 'Player page is off',
+        details: { code: 'wave_disabled' },
+      });
+    }
+    const nextHandle = input.handle.trim();
+    const liveDb = this.activeDb();
+    const pairedDevId = player.id.startsWith('pr_dev_') ? devPlayerId(player.id.slice('pr_dev_'.length)) : null;
+    if (liveDb && typeof liveDb.player?.findUnique === 'function') {
+      const clash = await liveDb.player.findUnique({ where: { handle: nextHandle }, select: { id: true } });
+      if (clash && clash.id !== player.id) {
+        if (pairedDevId && clash.id === pairedDevId && typeof liveDb.player.update === 'function') {
+          await liveDb.player.update({
+            where: { id: pairedDevId },
+            data: { handle: `dev_${player.id.slice('pr_dev_'.length)}_${pairedDevId.slice(-4)}` },
+          }).catch(() => undefined);
+        } else {
+          throw new CoreException('handle_taken', {
+            status: 409,
+            message: 'That pilot name is already taken.',
+          });
+        }
+      }
+      try {
+        await liveDb.player.upsert({
+          where: { id: player.id },
+          create: { id: player.id, handle: nextHandle },
+          update: { handle: nextHandle },
+        });
+      } catch (err) {
+        if (typeof err === 'object' && err !== null && (err as { code?: unknown }).code === 'P2002') {
+          throw new CoreException('handle_taken', {
+            status: 409,
+            message: 'That pilot name is already taken.',
+          });
+        }
+        throw err;
+      }
+    } else {
+      for (const [otherId, existing] of this.customHandles) {
+        if (otherId !== player.id && existing === nextHandle) {
+          throw new CoreException('handle_taken', {
+            status: 409,
+            message: 'That pilot name is already taken.',
+          });
+        }
+      }
+    }
+    this.customHandles.set(player.id, nextHandle);
+    return { handle: nextHandle };
+  }
+
+  private async resolveIdentity(
+    resolved: ResolvedMePlayer,
+    frame: string,
+  ): Promise<ProfileIdentity> {
+    const playerId = resolved.id;
+    const handleSlug = sanitizeHandle(resolved.handle);
+    const liveDb = this.activeDb();
+    const [player, linked] = await Promise.all([
+      typeof liveDb?.player?.findUnique === 'function' ? liveDb.player.findUnique({ where: { id: playerId } }) : null,
+      typeof liveDb?.socialIdentity?.findFirst === 'function'
+        ? liveDb.socialIdentity.findFirst({ where: { playerId }, orderBy: { createdAt: 'asc' } })
+        : null,
+    ]);
+    if (liveDb && linked && typeof liveDb.progressionEffect?.updateMany === 'function') {
+      await this.expeditePendingBadgeEffects(liveDb, playerId);
+    }
+    const fastLocal = isLocalStakingFastTimings((this.env ?? process.env) as Record<string, string | undefined>);
+    const accountId =
+      linked?.accountId ??
+      (playerId === 'pr_dev_w12' || (fastLocal && playerId.startsWith('pr_dev_'))
+        ? `${handleSlug}.terraagent.mock`
+        : null);
+    const isGuest =
+      liveDb && typeof liveDb.socialIdentity?.findFirst === 'function'
+        ? !linked && !playerId.startsWith('pr_dev_')
+        : resolved.isGuest;
+    return {
+      playerId,
+      handle: player?.handle || this.customHandles.get(playerId) || resolved.handle,
+      accountId,
+      isGuest,
+      pilotSince: player?.createdAt.toISOString() ?? (playerId === 'pr_dev_w12' ? '2026-10-01T00:00:00.000Z' : 'Unknown'),
+      avatarSeed: playerId,
+      frame,
+    };
   }
 
   async getForPlayer(playerInput: string | ResolvedMePlayer): Promise<MeProfileResponse> {
@@ -269,30 +404,17 @@ export class MeProfileService {
     const nextStageCondition =
       unlockStage >= 10 ? null : (STAGE_UNLOCK_CONDITIONS[unlockStage + 1] ?? null);
 
-    const handleSlug = sanitizeHandle(resolved.handle);
-    const liveDb = this.engine?.enabled ? this.db : undefined;
-    const [player, linked, notices] = await Promise.all([
-      liveDb?.player.findUnique({ where: { id: playerId } }),
-      liveDb?.socialIdentity.findFirst({ where: { playerId }, orderBy: { createdAt: 'asc' } }),
-      liveDb?.playerNotification.findMany({ where: { playerId }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: 50 }),
+    const liveDb = this.activeDb();
+    const [identity, notices] = await Promise.all([
+      this.resolveIdentity(resolved, xpState.frame || (levelProg.level >= 4 ? 'surveyor' : 'default')),
+      typeof liveDb?.playerNotification?.findMany === 'function'
+        ? liveDb.playerNotification.findMany({ where: { playerId }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: 50 })
+        : undefined,
     ]);
-    if (liveDb && linked) await this.expeditePendingBadgeEffects(liveDb, playerId);
-    const accountId = linked?.accountId ?? (playerId === 'pr_dev_w12' ? `${handleSlug}.terraagent.mock` : null);
-    const isGuest = liveDb ? !linked && !playerId.startsWith('pr_dev_') : resolved.isGuest;
     const stats = buildProfileStats(facts, unlockStage, currentColonies, allPastColonies);
-    const next3 = this.achievements.nextAchievements(achRes.achievements, 3);
-    const aiSettings = await this.getAiSettings(playerId);
 
     return {
-      identity: {
-        playerId,
-        handle: player?.handle || resolved.handle,
-        accountId,
-        isGuest,
-        pilotSince: player?.createdAt.toISOString() ?? (playerId === 'pr_dev_w12' ? '2026-10-01T00:00:00.000Z' : 'Unknown'),
-        avatarSeed: playerId,
-        frame: xpState.frame || (levelProg.level >= 4 ? 'surveyor' : 'default'),
-      },
+      identity,
       progression: {
         level: levelProg.level,
         xp: levelProg.xp,
@@ -307,15 +429,11 @@ export class MeProfileService {
       stats,
       currentColonies,
       pastColonies: visiblePastColonies,
-      activity: (notices ?? []).map(n => {
-        const payload = n.payload as { kind?: string; title?: string; familyName?: string; tierName?: string; xp?: number };
-        if (payload.kind === 'history.trade' && payload.title) return { id: n.id, title: payload.title, createdAt: n.createdAt.toISOString() };
-        return { id: n.id, title: `${payload.familyName ?? 'Achievement'} · ${payload.tierName ?? ''} (+${payload.xp ?? 0} XP)`, createdAt: n.createdAt.toISOString() };
-      }),
-      nextAchievements: next3,
+      activity: formatActivity(notices),
+      nextAchievements: this.achievements.nextAchievements(achRes.achievements, 3),
       earnedAchievementsCount: achRes.earnedCount,
       totalAchievementsCount: ACHIEVEMENTS.length,
-      aiSettings,
+      aiSettings: await this.getAiSettings(playerId),
     };
   }
 

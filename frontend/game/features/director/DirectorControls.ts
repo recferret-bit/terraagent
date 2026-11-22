@@ -13,6 +13,7 @@ export class DirectorControls {
   private readonly presetEl: HTMLSelectElement;
   private readonly noteEl: HTMLTextAreaElement;
   private readonly pauseEl: HTMLInputElement;
+  private disabled = false;
 
   constructor(
     private readonly host: HTMLElement,
@@ -31,7 +32,10 @@ export class DirectorControls {
     this.pauseEl.type = 'checkbox';
     this.pauseEl.name = 'pause';
 
-    const emit = () => this.onChange?.(this.read());
+    const emit = () => {
+      if (this.disabled) return;
+      this.onChange?.(this.read());
+    };
     this.riskEl.addEventListener('change', emit);
     this.presetEl.addEventListener('change', emit);
     this.pauseEl.addEventListener('change', emit);
@@ -56,6 +60,24 @@ export class DirectorControls {
     if (typeof document === 'undefined' || document.activeElement !== this.noteEl) {
       this.noteEl.value = policy.note ?? '';
     }
+  }
+
+  /** Resets controls back to baseline defaults when inspecting a colony without a director record. */
+  reset(): void {
+    this.riskEl.value = DIRECTOR_RISKS[0] ?? 'conservative';
+    this.presetEl.value = DIRECTOR_PRESETS[0] ?? 'resources';
+    this.pauseEl.checked = false;
+    if (typeof document === 'undefined' || document.activeElement !== this.noteEl) {
+      this.noteEl.value = '';
+    }
+  }
+
+  setDisabled(disabled: boolean): void {
+    this.disabled = disabled;
+    this.riskEl.disabled = disabled;
+    this.presetEl.disabled = disabled;
+    this.noteEl.disabled = disabled;
+    this.pauseEl.disabled = disabled;
   }
 
   /** Args for `setDirectorPolicy`. Unknown controls are ignored. */

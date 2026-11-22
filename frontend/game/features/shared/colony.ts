@@ -20,3 +20,23 @@ export function viewColony(view: unknown, index: number): ViewColony | undefined
   if (!Array.isArray(colonies)) return undefined;
   return colonies.find((c) => c.index === index) ?? colonies[index];
 }
+
+/** Minimal surface needed to detect read-only spectator mode from services, context, or store. */
+export interface SpectatorFlagSource {
+  isSpectator?(): boolean;
+  store?: { isSpectator?(): boolean } | null;
+  services?: {
+    isSpectator?(): boolean;
+    store?: { isSpectator?(): boolean } | null;
+  } | null;
+}
+
+/** True when the session / world store is in zero-player read-only spectator mode. */
+export function isReadOnlySpectator(source: SpectatorFlagSource | null | undefined): boolean {
+  return Boolean(
+    source?.isSpectator?.() ||
+      source?.store?.isSpectator?.() ||
+      source?.services?.isSpectator?.() ||
+      source?.services?.store?.isSpectator?.(),
+  );
+}

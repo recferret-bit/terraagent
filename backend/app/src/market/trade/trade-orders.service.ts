@@ -83,8 +83,9 @@ export class TradeOrdersService {
     }
     const colony = await p.colonyFor(planetId);
     if (!colony) throw new TradeError('no_colony', `No colony on ${planetId}.`, { planetId });
+    const isScenarioSeatId = /^col_\d+$/.test(colony.colonyId);
     const indexed =
-      this.antiCheat?.index.getColonyById(colony.colonyId) ??
+      (isScenarioSeatId ? undefined : this.antiCheat?.index.getColonyById(colony.colonyId)) ??
       this.antiCheat?.index.getColonyByPlanetIndex(planetId, colony.colonyIndex);
     if (indexed) {
       if (indexed.planetId !== planetId) {

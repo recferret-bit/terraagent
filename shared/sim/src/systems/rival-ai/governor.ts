@@ -275,12 +275,17 @@ function tryStage4WarTerraformOrExpand(
   return null;
 }
 
-export function runPlanetGovernorTick(state: PlanetState, ctx: StepContext): void {
+export function runPlanetGovernorTick(
+  state: PlanetState,
+  ctx: StepContext,
+  opts?: { readonly skipBotColonies?: boolean },
+): void {
   if (!isPlanetGovernorEnabled(state) && !state.colonies.some((c) => c && colonyIsAway(state, c.index))) return;
   const blob = readRivalAiBlob(state);
   let changed = false;
   for (const col of state.colonies) {
     if (!col || col.status === 'eliminated') continue;
+    if (opts?.skipBotColonies && (isRivalAiColony(state, col.index) || col.isBot)) continue;
     const last = blob.lastGovernorTickByColony[col.index] ?? -GOVERNOR_INTERVAL_TICKS;
     if (ctx.tick - last < GOVERNOR_INTERVAL_TICKS) continue;
     if (!shouldAiGovernColony(state, col.index)) continue;

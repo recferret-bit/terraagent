@@ -1,7 +1,6 @@
 import * as THREE from 'three';
 import type { ColonyViewport } from '@terra/render/core/createColonyViewport';
 import { createFramePacer } from '@terra/render/core/framePacer';
-import { updateViewFocus } from '@terra/render/core/viewFocus';
 import type { PlanetKind } from '@terra/render/planets/PlanetSpec';
 import { tileXZ, type HexPick, type HexTerrain } from '@terra/render/planets/hex';
 import type { ServerMessage } from '@terra/contracts';
@@ -23,20 +22,20 @@ import type { BootAuthResult, FetchLike, StorageLike } from './bootOnline';
 import type { EntityMeshes, MeshFactory } from './EntityMeshes';
 import type { FeatureHud } from './featureHud';
 import type { GuestBootTarget } from './guestBoot';
-import type { OnlineMode } from './onlineMode';
+import { isSpectatorSearch, type OnlineMode } from './onlineMode';
 import {
   applySessionBootResult, attachSessionLocalHost, bindSessionKeys, createSessionBootRig,
   resolveInitialLoadMode, resolveSocketFallback, runGuestBootSequence,
 } from './parts/sessionBoot';
 import { bindSessionTerrainLoader } from './parts/sessionTerrainLoader';
 import { applySessionOrbitalReveal, applySessionSpacePhase, resolveSeatIndexFromSearch, settleArrivalHud, syncSessionBootOverlayOnView, syncSessionFrameHud } from './parts/sessionViewSync';
+import { applySpectatorViewSetup, computeNextSessionLoopDelayMs, findColonyFocusTile, stepOnlineSessionFrame } from './parts/sessionSpectator';
 import { retireReplacedSessionTerrain, SessionTerrainPreloader, type TerrainPreloadState } from './parts/terrainPreload';
-import { PauseOverlay } from './PauseOverlay';
-import { createUnitControl } from './unitControl';
+import { PauseOverlay } from './PauseOverlay'; import { createUnitControl } from './unitControl';
+import { prewarmSimWorker } from '../../store/worker/simWorkerPrewarm';
 import type { ColonyLoadMode, PodLandingStateName } from './PodTouchdownFx';
 import { extractPodDescentStatus, isUnplayedFreshColonyLanding } from './podStatus';
-import type { PilotBridge } from './pilotBridge';
-import { createSessionHud } from './sessionHud';
+import type { PilotBridge } from './pilotBridge'; import { createSessionHud } from './sessionHud';
 import { scenarioParam } from './sessionTarget';
 import { normalizeSectorIntent, type SectorIntentInput, type SectorIntentV1 } from '../../ui/lobby/orbitalPickerModel';
 import { bindStoreCombatEvents, ingestHostMessageCombatEvents } from './combatSync';
@@ -81,7 +80,7 @@ export class OnlineSession {
   readonly sectorIntent: SectorIntentV1;
 
   private biomeKey = 'forestRock'; private terrainBiomeKey = ''; private lastHudMs = 0;
-  private readonly ownsViewport: boolean; private readonly search: string;
+  private readonly ownsViewport: boolean; private readonly externalFrameLoop: boolean; private readonly search: string;
   private skipDescent: boolean; private readonly fromSpaceDescent: boolean; private readonly fastStartLand: boolean;
   private readonly onReturnToOrbit?: (kind: PlanetKind) => void; private readonly allowLocalFallback: boolean;
   private banner: ConnectionBanner | null; private readonly hud: FeatureHud;
@@ -89,6 +88,7 @@ export class OnlineSession {
   private readonly bootTarget: SessionTarget; private readonly guest: GuestBootTarget | null;
   private disposed = false; private localHost: LocalHost | null = null;
   private showSpaceTerrain = false; private cameraCentered = false; private landSent = false; private hqDeployedSynced = false;
+  spectator: boolean; private spectatorVisionAll = true; private spectatorAutoFocused = false;
   private freshDeployment: boolean; private orbitalCameraDrop: boolean; private deferReveal: boolean;
   loadMode: ColonyLoadMode; private readonly explicitLoadMode: boolean;
   private sawPodDescending = false; private firstObservedTick: number | null = null;
@@ -102,22 +102,24 @@ export class OnlineSession {
     getDeferReveal: () => this.deferReveal, getCameraTargetTile: () => this.cameraTargetTile,
     onTerrainMounted: (v) => { this.colonyFramed = false; this.onView({ ...(this.store.latest ?? v), tiles: undefined }); },
   });
-  private readonly preloader = new SessionTerrainPreloader(() => {}, () => ({
+  private readonly preloader = new SessionTerrainPreloader((res) => this.applyTerrainState(res, true), () => ({
     inSpace: this.entities.podTouchdown.isSpacePhaseActive(), showSpaceTerrain: this.showSpaceTerrain, deferLook: this.deferReveal, cameraTargetTile: this.cameraTargetTile,
   }));
   private last = typeof performance !== 'undefined' ? performance.now() : Date.now(); private cleanups: Array<() => void> = [];
 
   constructor(root: HTMLElement, readonly mode: OnlineMode = 'boot', opts: OnlineSessionOptions = {}) {
+    this.externalFrameLoop = Boolean(opts.externalFrameLoop);
     this.search = opts.search ?? (typeof location !== 'undefined' ? location.search : '');
     const q = new URLSearchParams(this.search);
+    this.spectator = isSpectatorSearch(this.search);
     const lm = resolveInitialLoadMode(opts, this.search, mode);
     this.loadMode = lm.loadMode; this.explicitLoadMode = lm.explicit;
-    this.skipDescent = Boolean(opts.skipDescent || q.get('skip') === '1' || this.loadMode === 'instant');
-    this.fromSpaceDescent = Boolean(opts.fromSpaceDescent && this.loadMode === 'pod');
-    this.freshDeployment = Boolean(opts.freshDeployment && this.loadMode === 'pod');
-    this.orbitalCameraDrop = opts.orbitalCameraDrop ?? (this.loadMode !== 'instant' && !this.fromSpaceDescent && mode === 'boot');
-    this.deferReveal = Boolean(opts.deferReveal);
-    this.fastStartLand = Boolean(this.skipDescent || this.loadMode === 'direct' || (!opts.wsDeps && !opts.localHost && !scenarioParam(this.search)));
+    this.skipDescent = Boolean(opts.skipDescent || q.get('skip') === '1' || this.loadMode === 'instant' || this.spectator);
+    this.fromSpaceDescent = Boolean(!this.spectator && opts.fromSpaceDescent && this.loadMode === 'pod');
+    this.freshDeployment = Boolean(!this.spectator && opts.freshDeployment && this.loadMode === 'pod');
+    this.orbitalCameraDrop = opts.orbitalCameraDrop ?? (!this.spectator && this.loadMode !== 'instant' && !this.fromSpaceDescent && mode === 'boot' && !scenarioParam(this.search));
+    this.deferReveal = Boolean(!this.spectator && opts.deferReveal);
+    this.fastStartLand = Boolean(!this.spectator && (this.skipDescent || this.loadMode === 'direct' || (!opts.wsDeps && !opts.localHost && !scenarioParam(this.search))));
     this.onReturnToOrbit = opts.onReturnToOrbit;
     this.allowLocalFallback = opts.allowLocalFallback ?? import.meta.env.DEV;
     this.planetKind = resolveSessionPlanetKind(q, opts.planetKind);
@@ -125,6 +127,7 @@ export class OnlineSession {
 
     this.flags = createClientFlagsStore(this.search);
     const uiParent = opts.uiParent ?? (typeof document !== 'undefined' ? document.body : root);
+    if (!opts.store) prewarmSimWorker();
     const acquired = acquireSessionViewport(root, opts.viewport, this.cleanups);
     this.viewport = acquired.viewport; this.ownsViewport = acquired.ownsViewport;
 
@@ -137,45 +140,37 @@ export class OnlineSession {
     this.guest = rig.guest; this.bootTarget = rig.bootTarget; this.pilot = rig.pilot;
     this.transport = rig.transport; this.banner = rig.banner; this.store = rig.store;
     this.cleanups.push(bindVersionMismatchNotice(uiParent, this.store, () => this.store.currentPlanetId() || this.planetId || null));
-    this.commandBus = rig.commandBus; this.commands = this.commandBus;
-    this.entities = rig.entities; this.bootOverlay = rig.bootOverlay;
-
+    this.commandBus = rig.commandBus; this.commands = this.commandBus; this.entities = rig.entities; this.bootOverlay = rig.bootOverlay;
     const control = createUnitControl({
       store: this.store, commandBus: this.commandBus, canvas: this.viewport.renderer.domElement, entities: this.entities,
       pickAt: (cx, cy) => this.pickAt(cx, cy), terrain: () => this.terrain, toast: (m) => this.hud?.toast(m), netStats: this.netStats,
+      spectator: () => this.spectator, onColonyInspected: (idx) => this.inspectColony(idx, false),
     });
-    this.landfall = control.landfall;
-    this.landfall.deselect();
-    this.cleanups.push(control.dispose);
+    this.landfall = control.landfall; this.landfall.deselect(); this.cleanups.push(control.dispose);
     this.hud = createSessionHud({
       uiParent, flags: this.flags, local: rig.local, scene: this.viewport.scene, canvas: this.viewport.renderer.domElement,
       store: this.store, commandBus: this.commandBus, netStats: this.netStats, transport: this.transport, landfall: this.landfall,
       terrain: () => this.terrain, biomeKey: () => this.biomeKey, localHost: () => this.localHost, colonyIndex: () => this.colonyIndex,
-      homeColonyId: () => this.colonyId,
-      planetId: () => this.store.currentPlanetId() || this.planetId || null, pickAt: (cx, cy) => this.pickAt(cx, cy),
+      homeColonyId: () => this.colonyId, planetId: () => this.store.currentPlanetId() || this.planetId || null, pickAt: (cx, cy) => this.pickAt(cx, cy),
       camera: () => this.viewport.camera, rtsCamera: () => this.cam, focusTile: (q, r, s) => this.focusTile(q, r, s),
       pilot: this.pilot, token: () => this.bootTarget.accessToken,
       renderedEntityPosition: (id) => this.entities.getRecord(id)?.mesh.position ?? null,
       deferInitialMount: Boolean(opts.externalFrameLoop && ((this.fromSpaceDescent && !this.skipDescent) || this.deferReveal)),
+      isSpectator: () => this.spectator, isSpectatorVisionAll: () => this.spectatorVisionAll,
+      setSpectatorVisionAll: (on) => this.setSpectatorVisionAll(on), inspectColony: (idx, focus) => this.inspectColony(idx, focus),
+      onReadOnlyReject: () => this.hud.toast('Spectator mode is read-only'),
     });
     this.pauseOverlay = new PauseOverlay(uiParent, { onResume: () => this.setPaused(false), onReturnToOrbit: () => this.returnToOrbit() });
     if (rig.local) this.cleanups.push(bindLocalSaveListeners(rig.local));
-    this.bindTransportListeners();
-    this.bindKeys();
-
+    this.bindTransportListeners(); this.bindKeys();
     const predict = q.get('predict') !== '0';
     const hideInitialHud = (this.fromSpaceDescent && !this.skipDescent) || this.deferReveal || Boolean(this.bootOverlay && this.bootOverlay.phase !== 'colony');
-    this.hud.setVisible(!hideInitialHud);
-    this.hud.collapseCommandDock();
-
-    if (this.guest) {
-      this.whenBooted = this.startBootSequence(this.guest, opts, predict);
-    } else {
-      this.whenBooted = Promise.resolve(null);
-      this.cleanups.push(this.store.onView((v) => this.onView(v)));
+    this.hud.setVisible(!hideInitialHud); this.hud.collapseCommandDock();
+    if (this.guest) { this.whenBooted = this.startBootSequence(this.guest, opts, predict); }
+    else {
+      this.whenBooted = Promise.resolve(null); this.cleanups.push(this.store.onView((v) => this.onView(v)));
       this.store.start([...this.flags.set], { predict });
-      if (opts.localHost) this.attachLocalHost(opts.localHost, false, false);
-      else this.transport.start();
+      if (opts.localHost) this.attachLocalHost(opts.localHost, false, false); else this.transport.start();
     }
     if (!opts.externalFrameLoop) this.loop();
   }
@@ -184,19 +179,19 @@ export class OnlineSession {
     this.cleanups.push(this.transport.onMessage((m) => this.onHostMessage(m)), bindStoreCombatEvents(this.store, this.entities.combatSync, () => this.terrain));
     this.dayNightSync = bindOnlineDayNightSync({
       store: this.store, commandBus: this.commandBus, warp: () => this.warp,
-      hasColony: () => Boolean(this.colonyId && this.store.latest?.colonies[this.colonyIndex]?.status !== 'eliminated'),
+      hasColony: () => Boolean(!this.spectator && this.colonyId && this.store.latest?.colonies[this.colonyIndex]?.status !== 'eliminated'),
     });
     this.cleanups.push(() => this.dayNightSync?.dispose());
   }
 
-  /** Warp and welcome bookkeeping, for the transport and for an attached in-process host alike. */
   private onHostMessage(m: ServerMessage): void {
     const k = warpOfMessage(m);
     if (k !== undefined) this.setWarp(k);
     ingestHostMessageCombatEvents(m, this.entities.combatSync, this.terrain);
     if (m.t === 'welcome') {
       this.planetId = m.d.planet.id;
-      if (m.d.colonyId && !this.colonyId) this.colonyId = m.d.colonyId;
+      if (m.d.mode === 'spectator') this.spectator = true;
+      if (!this.spectator && m.d.colonyId && !this.colonyId) this.colonyId = m.d.colonyId;
       this.flags.update(resolveClientFlags({ welcomeFlags: m.d.flags, search: this.search, dev: import.meta.env.DEV }));
       this.hud.showWelcome(m.d);
     }
@@ -271,9 +266,26 @@ export class OnlineSession {
 
   /** Fast start (FA-08), once per session: `landPod` opens the own pod once it has descended `podLandMinS`. */
   private sendLandOnce(): void {
-    if (this.landSent) return;
+    if (this.spectator || this.landSent) return;
     this.landSent = true;
     void this.commandBus.send('landPod', {}, { predict: false });
+  }
+
+  setSpectatorVisionAll(on: boolean): void {
+    this.spectatorVisionAll = on;
+    this.entities.setSpectatorAllVision(on);
+    if (this.store.latest) this.hud.update({ ...this.store.latest, tick: this.store.latest.tick, warp: this.warp, net: this.netStats.view(this.store.predictionInfo) });
+  }
+
+  inspectColony(colonyIndex: number, focusCamera = false): void {
+    this.colonyIndex = colonyIndex;
+    this.entities.setOwnerColonyIndex(colonyIndex);
+    this.landfall.setOwnerColonyIndex(colonyIndex);
+    if (focusCamera) {
+      const tile = findColonyFocusTile(this.store.latest, colonyIndex);
+      if (tile) { this.cameraTargetTile = tile; this.focusTile(tile.q, tile.r, true); }
+    }
+    if (this.store.latest) this.hud.update({ ...this.store.latest, tick: this.store.latest.tick, warp: this.warp, net: this.netStats.view(this.store.predictionInfo) });
   }
 
   selectHq(): number | null { return this.landfall.selectHq(); }
@@ -301,35 +313,27 @@ export class OnlineSession {
       guest, opts, predict, flags: [...this.flags.set], store: this.store, transport: this.transport,
       entities: this.entities, getBanner: () => this.banner, isDisposed: () => this.disposed,
       onCleanup: (fn) => this.cleanups.push(fn), onView: (v) => this.onView(v),
-      attachLocalHost: (lh, auto, off) => this.attachLocalHost(lh, auto, off),
-      onSocketState: (s, b) => this.onSocketState(s, b),
+      attachLocalHost: (lh, auto, off) => this.attachLocalHost(lh, auto, off), onSocketState: (s, b) => this.onSocketState(s, b),
     });
   }
-
-  /** Dev builds: the socket gave up before the first view → a browser-local planet as colony 0 (FA-05); not on `not_your_planet`. */
   private onSocketState(s: ConnectionState, boot: BootAuthResult): void {
     const fb = resolveSocketFallback({
       state: s, boot, disposed: this.disposed, hasLatestView: Boolean(this.store.latest),
-      hasLocalHost: Boolean(this.localHost), allowLocalFallback: this.allowLocalFallback,
-      spawn: this.spawn, planetKind: this.planetKind,
+      hasLocalHost: Boolean(this.localHost), allowLocalFallback: this.allowLocalFallback, spawn: this.spawn, planetKind: this.planetKind,
     });
     if (!fb) return;
     this.applyBootResult(fb);
     if (fb.localHost) this.attachLocalHost(fb.localHost, typeof window !== 'undefined', true);
   }
-
   private applyBootResult(boot: BootAuthResult): void {
     if (this.disposed) return;
     this.bootResult = boot;
     const s = applySessionBootResult({
       boot, pilot: this.pilot, entities: this.entities, landfall: this.landfall, bootOverlay: this.bootOverlay,
-      skipDescent: this.skipDescent, fromSpaceDescent: this.fromSpaceDescent,
-      freshDeployment: this.freshDeployment, loadMode: this.loadMode,
+      skipDescent: this.skipDescent, fromSpaceDescent: this.fromSpaceDescent, freshDeployment: this.freshDeployment, loadMode: this.loadMode,
     });
-    this.planetId = s.planetId; this.colonyId = s.colonyId; this.colonyIndex = s.colonyIndex;
-    this.foundingSectorId = s.foundingSectorId; this.spawn = s.spawn;
-    this.cameraTargetTile = { q: s.spawn.q, r: s.spawn.r };
-    this.freshDeployment = s.freshDeployment; this.loadMode = s.loadMode;
+    this.planetId = s.planetId; this.colonyId = s.colonyId; this.colonyIndex = s.colonyIndex; this.foundingSectorId = s.foundingSectorId;
+    this.spawn = s.spawn; this.cameraTargetTile = { q: s.spawn.q, r: s.spawn.r }; this.freshDeployment = s.freshDeployment; this.loadMode = s.loadMode;
   }
 
   /** In-process host (`?host=local` or offline fallback): routes commands, binds store, and hides banner when offline. */
@@ -359,12 +363,17 @@ export class OnlineSession {
   }
 
   private onView(v: ClientView): void {
-    if (!this.guest && this.colonyIndex === 0) {
+    if (this.spectator || this.store.isSpectator()) {
+      this.spectator = true;
+      this.spectatorAutoFocused = applySpectatorViewSetup({
+        view: v, entities: this.entities, landfall: this.landfall,
+        spectatorVisionAll: this.spectatorVisionAll, colonyIndex: this.colonyIndex,
+        autoFocused: this.spectatorAutoFocused, inspectColony: (idx, focus) => this.inspectColony(idx, focus),
+      });
+    } else if (!this.guest && this.colonyIndex === 0) {
       const asIdx = resolveSeatIndexFromSearch(this.search, v);
       if (asIdx !== null) {
-        this.colonyIndex = asIdx;
-        this.entities.setOwnerColonyIndex(asIdx);
-        this.landfall.setOwnerColonyIndex(asIdx);
+        this.colonyIndex = asIdx; this.entities.setOwnerColonyIndex(asIdx); this.landfall.setOwnerColonyIndex(asIdx);
       }
     }
     this.dayNightSync?.syncFrame();
@@ -418,57 +427,53 @@ export class OnlineSession {
     });
     this.terrain = res.terrain; this.cam = res.cam; this.terrainBiomeKey = res.biomeKey; this.biomeKey = res.biomeKey; this.tiles = res.tiles;
     if (res.rebuilt) this.colonyFramed = false;
-    if (syncEntities && this.store.latest) {
-      this.entities.syncView(this.store.latest, this.terrain, this.biomeKey, this.store.confirmedTick, this.store.simData() ?? undefined);
-    }
+    if (syncEntities && this.store.latest) this.entities.syncView(this.store.latest, this.terrain, this.biomeKey, this.store.confirmedTick, this.store.simData() ?? undefined);
   }
-
   private flushTerrainPreload(): void {
     this.applyTerrainState(this.preloader.flushForSurface({
       viewport: this.viewport, terrain: this.terrain, tiles: this.tiles, cam: this.cam,
       biomeKey: this.terrainBiomeKey, planetKind: this.planetKind, cameraTargetTile: this.cameraTargetTile, entities: this.entities,
     }));
   }
-
   private onTiles(v: ClientView, tiles: ClientTiles): void {
-    this.terrainLoader.onTiles(v, tiles);
+    if (!this.externalFrameLoop) return this.terrainLoader.onTiles(v, tiles);
+    this.applyTerrainState(this.preloader.syncTiles({
+      viewport: this.viewport, prevTerrain: this.terrain, prevTiles: this.tiles, prevCam: this.cam, prevBiomeKey: this.terrainBiomeKey,
+      view: v, tiles, planetKind: this.planetKind, inSpace: this.entities.podTouchdown.isSpacePhaseActive(),
+      showSpaceTerrain: this.showSpaceTerrain, deferLook: this.deferReveal, cameraTargetTile: this.cameraTargetTile,
+    }));
   }
 
   /** Advances one frame of session interpolation, terrain/entity prewarm, HUD, and camera (driven by `Game` or `this.loop`). */
   stepFrame(dt: number, nowMs?: number): void {
     const now = nowMs ?? (this.last + dt * 1000);
     const rawDt = nowMs !== undefined ? Math.max(0, (now - this.last) / 1000) : Math.max(0, dt);
-    const animDt = Math.min(rawDt, 0.4) * Math.max(1, this.warp); this.last = now;
-    const ensureHud = () => { if (this.flags.current.source === 'welcome' || (!this.guest && !this.localHost)) this.hud.ensureMounted(); };
-    if (this.entities.podTouchdown.isSpacePhaseActive()) {
-      this.dayNightSync?.syncFrame(now);
-      this.preloader.stepAirborneFrame(this.viewport, this.terrain, this.entities, ensureHud);
-    } else {
-      const podOrDirectWarm = !this.skipDescent && ((this.loadMode === 'pod' && !this.hqDeployedSynced) || (this.loadMode === 'direct' && Boolean(this.cam?.isOrbitalDropping())));
-      if (this.deferReveal || podOrDirectWarm || !this.preloader.isGpuReadyForGround(this.viewport)) {
-        this.preloader.stepAirborneFrame(this.viewport, this.terrain, this.entities, ensureHud);
-      }
-      if (!this.deferReveal && this.cam) {
-        this.cam.setShake(this.loadMode === 'pod' ? this.entities.getCameraShake() : 0);
-        this.cam.update(dt);
-        updateViewFocus(this.viewport.camera);
-      }
-      this.entities.update(animDt, this.terrain, Math.min(rawDt, 0.4));
-      this.terrain?.tick(animDt);
-      if (!this.deferReveal) {
-        this.frameHud(now, dt);
-        if (this.cam) { this.viewport.followShadow(this.cam.target); settleArrivalHud(this.arrival, this.cam, this.landfall, this.hud); }
-      }
-    }
-    if (this.ownsViewport && !this.store.isAwaitingPrediction(now)) this.viewport.render();
+    const animDt = Math.min(rawDt, 0.4) * Math.max(1, this.warp);
+    this.last = now;
+    stepOnlineSessionFrame({
+      dt, now, rawDt, animDt, skipDescent: this.skipDescent, loadMode: this.loadMode,
+      hqDeployedSynced: this.hqDeployedSynced, deferReveal: this.deferReveal, externalFrameLoop: this.externalFrameLoop, ownsViewport: this.ownsViewport,
+      viewport: this.viewport, terrain: this.terrain, cam: this.cam, entities: this.entities,
+      preloader: this.preloader, store: this.store, arrival: this.arrival, landfall: this.landfall, hud: this.hud,
+      ensureHud: () => { if (this.flags.current.source === 'welcome' || (!this.guest && !this.localHost)) this.hud.ensureMounted(); },
+      syncDayNight: (t) => this.dayNightSync?.syncFrame(t),
+      frameHud: (t, stepDt) => this.frameHud(t, stepDt),
+      settleArrival: settleArrivalHud,
+    });
   }
 
   private loop = (now = typeof performance !== 'undefined' ? performance.now() : Date.now()) => {
+    const t0 = typeof performance !== 'undefined' ? performance.now() : Date.now();
     const dt = this.pacer.next(now);
     if (dt !== null) { try { this.stepFrame(dt, now); } catch (e) { console.error('frame error', e); } }
-    if (typeof requestAnimationFrame === 'function') {
+    const delayMs = computeNextSessionLoopDelayMs(this.viewport, this.search, (typeof performance !== 'undefined' ? performance.now() : Date.now()) - t0);
+    if (typeof requestAnimationFrame === 'function' && !this.disposed) {
       if (this.raf && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(this.raf);
-      this.raf = requestAnimationFrame(this.loop);
+      if (delayMs > 0 && typeof setTimeout === 'function') {
+        setTimeout(() => { if (!this.disposed) this.raf = requestAnimationFrame(this.loop); }, delayMs);
+      } else {
+        this.raf = requestAnimationFrame(this.loop);
+      }
     }
   };
 
@@ -483,8 +488,7 @@ export class OnlineSession {
     this.pauseOverlay.dispose(); this.bootOverlay?.dispose(); this.landfall.dispose(); this.entities.dispose();
     this.commandBus.dispose(); this.cam?.dispose(); this.store.dispose();
     if (this.transport.dispose) this.transport.dispose(); else this.transport.stop();
-    this.hud.dispose();
-    this.banner?.dispose();
+    this.hud.dispose(); this.banner?.dispose();
     if (this.terrain) { this.viewport.scene.remove(this.terrain.group); this.terrain.dispose(); this.terrain = null; }
     if (this.ownsViewport) this.viewport.dispose();
   }

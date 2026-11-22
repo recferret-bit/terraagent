@@ -20,6 +20,7 @@ import {
 import { NearException } from '../../../domain/errors.js';
 import type { ChainReceipt } from '../../../domain/types.js';
 import { isW28Enabled } from '../../../staking/perks/legacy-ladder.js';
+import { resolveStakingTimings } from '../../../staking/local-staking-timings.js';
 import { parseStakingPoolsConfig } from '../../../staking/staking-pools.config.js';
 import { debitVerifier } from './intents-ledger.js';
 import {
@@ -135,13 +136,17 @@ export class MockStakingAdapter extends MockChainBase implements StakingPort {
     return this.resolvePools();
   }
 
+  private timings() {
+    return resolveStakingTimings((this.env ?? process.env) as Record<string, string | undefined>);
+  }
+
   private yieldShareBp(): number {
     const envBag = (this.env ?? process.env) as Record<string, string | undefined>;
     return resolveProtocolFeeSchedule(envBag).protocolStakingYieldShareBp;
   }
 
   private load(tx: DbClient, accountId: string, pool: StakingPoolView, now: number): Promise<SettledStakingRow> {
-    return loadStakingRow(tx, accountId, pool.poolId, pool.apyBp, now, this.yieldShareBp());
+    return loadStakingRow(tx, accountId, pool.poolId, pool.apyBp, now, this.yieldShareBp(), this.timings().rewardMultiplier);
   }
 
   private async creditProtocolYield(tx: DbClient, snap: SettledStakingRow): Promise<void> {
@@ -150,9 +155,10 @@ export class MockStakingAdapter extends MockChainBase implements StakingPort {
     }
   }
 
-  /** The `< 7 day` early-exit fee in bp. Only with `W28` on: the W20 ladder has no exit fee. */
+  /** The `< 7 day` (or `< 1 min` in local mode) early-exit fee in bp. Only with `W28` on: the W20 ladder has no exit fee. */
   private earlyExitBp(snap: SettledStakingRow, now: number): number {
-    return isW28Enabled((this.env ?? process.env) as Record<string, string | undefined>) ? earlyExitFeeBp(snap.lastStakedAtMs, now) : 0;
+    const envBag = (this.env ?? process.env) as Record<string, string | undefined>;
+    return isW28Enabled(envBag) ? earlyExitFeeBp(snap.lastStakedAtMs, now, this.timings().earlyExitWindowMs) : 0;
   }
 
   async stake(raw: StakeInput): Promise<ChainReceipt> {
@@ -205,7 +211,7 @@ export class MockStakingAdapter extends MockChainBase implements StakingPort {
       const feeBp = this.earlyExitBp(snap, now);
       const fee = (amountBig * BigInt(feeBp)) / 10_000n;
       if (fee > 0n) await this.credit(tx, this.resolveProtocolAccount(), NEAR_TOKEN_ID, fee.toString());
-      const readyAtMs = now + UNBONDING_DURATION_MS;
+      const readyAtMs = now + this.timings().unbondingMs;
       const next = clearClocksWhenEmpty({
         ...snap,
         staked: snap.staked - amountBig,
@@ -325,7 +331,8 @@ export class MockStakingAdapter extends MockChainBase implements StakingPort {
     const row = await this.prisma.mockChainStaking.findUnique({
       where: { accountId_poolId: { accountId: input.accountId, poolId: pool.poolId } },
     });
-    return viewOf(input.accountId, pool.poolId, row ? projectStakingRow(row, pool.apyBp, this.nowMs(), this.yieldShareBp()) : null);
+    const mult = this.timings().rewardMultiplier;
+    return viewOf(input.accountId, pool.poolId, row ? projectStakingRow(row, pool.apyBp, this.nowMs(), this.yieldShareBp(), mult) : null);
   }
 
   /** W28 `get_account_positions`: every whitelisted pool position of the wallet, independent of Colony Deeds. */
@@ -333,10 +340,11 @@ export class MockStakingAdapter extends MockChainBase implements StakingPort {
     const pools = this.resolvePools();
     const rows = await this.prisma.mockChainStaking.findMany({ where: { accountId }, orderBy: { poolId: 'asc' } });
     const now = this.nowMs();
+    const mult = this.timings().rewardMultiplier;
     const out: StakingPositionView[] = [];
     for (const row of rows) {
       const pool = pools.find((p) => p.poolId === row.poolId);
-      if (pool) out.push(viewOf(accountId, pool.poolId, projectStakingRow(row, pool.apyBp, now, this.yieldShareBp())));
+      if (pool) out.push(viewOf(accountId, pool.poolId, projectStakingRow(row, pool.apyBp, now, this.yieldShareBp(), mult)));
     }
     return out;
   }

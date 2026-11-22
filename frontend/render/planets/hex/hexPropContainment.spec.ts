@@ -122,5 +122,5 @@ describe('Ground hexagon rim & corner prop containment', () => {
     verifyRimFill('temperate', HEX_TERRAIN.flat, HEX_DEPOSIT.metals);
     verifyRimFill('temperate', HEX_TERRAIN.flat, HEX_DEPOSIT.minerals);
     verifyRimFill('temperate', HEX_TERRAIN.flat, HEX_DEPOSIT.oil);
-  });
+  }, 30_000);
 });

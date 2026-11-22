@@ -121,8 +121,9 @@ export function verifyCallerBinding(
     return makeReject('ownership', 'not_own_colony', 'colony belongs to a different planet', 403, 'WRONG_PLANET');
   }
 
+  const isScenarioSeatId = /^col_\d+$/.test(ctx.colony.id);
   const indexedColony =
-    index.getColonyById(ctx.colony.id) ??
+    (isScenarioSeatId ? undefined : index.getColonyById(ctx.colony.id)) ??
     index.getColonyByPlanetIndex(ctx.planetId, ctx.colony.colonyIndex);
   const ownerErr = checkIndexedColonyOwnership(index, ctx, indexedColony);
   if (ownerErr) return ownerErr;

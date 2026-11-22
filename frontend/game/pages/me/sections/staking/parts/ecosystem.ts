@@ -1,5 +1,6 @@
 import type { StakingOverviewResponse } from '@terra/contracts';
 import { el } from '../../../dom';
+import { buildBlockHeaderWithTip } from '../../../parts/helpTip';
 import { formatTvl } from '../stakingMath';
 
 type Ecosystem = StakingOverviewResponse['ecosystem'];
@@ -23,10 +24,20 @@ export function renderEcosystem(eco: Ecosystem): HTMLElement {
     );
   });
   const total = eco.entries.length > 0 ? `${formatTvl(eco.totalNear)} NEAR` : '—';
+  const header = buildBlockHeaderWithTip(
+    {
+      id: 'staking-ecosystem',
+      title: 'NEAR ECOSYSTEM TVL',
+      description:
+        'Live breakdown of total TerraAgent stake routed across Meta Pool (stNEAR), LiNEAR liquid staking, and whitelisted native NEAR validator pools.',
+    },
+    el('h3', { className: 'label ta-stk-h' }, `NEAR ECOSYSTEM TVL · `, el('span', { dataset: { testid: 'staking-ecosystem-total' } }, total)),
+  );
   return el(
     'div',
-    { className: 'ta-stk-block', dataset: { testid: 'staking-ecosystem' } },
-    el('h3', { className: 'label ta-stk-h' }, `NEAR ECOSYSTEM TVL · `, el('span', { dataset: { testid: 'staking-ecosystem-total' } }, total)),
+    { className: 'ta-stk-block plate-sm ta-stk-pad', dataset: { testid: 'staking-ecosystem' } },
+    header.head,
+    header.panel,
     el('div', { className: 'ta-stk-tiles' }, ...tiles),
   );
 }

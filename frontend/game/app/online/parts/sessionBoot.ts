@@ -15,7 +15,7 @@ import { createLocalBootFallback, devPlanetTypeOfKind, type BootAuthResult } fro
 import { EntityMeshes } from '../EntityMeshes';
 import { GuestBootTarget } from '../guestBoot';
 import { localHostOptions } from '../localHost';
-import type { OnlineMode } from '../onlineMode';
+import { isSpectatorSearch, type OnlineMode } from '../onlineMode';
 import type { OnlineSessionOptions } from '../OnlineSession';
 import { PilotBridge } from '../pilotBridge';
 import { createSessionTarget, joinParam, scenarioParam } from '../sessionTarget';
@@ -198,7 +198,7 @@ export function resolveInitialLoadMode(
   mode: OnlineMode,
 ): { readonly loadMode: ColonyLoadMode; readonly explicit: boolean } {
   const q = new URLSearchParams(search);
-  const skip = Boolean(opts.skipDescent || q.get('skip') === '1');
+  const skip = Boolean(opts.skipDescent || q.get('skip') === '1' || isSpectatorSearch(search));
   if (opts.loadMode) return { loadMode: opts.loadMode, explicit: true };
   if (skip) return { loadMode: 'instant', explicit: true };
   if (opts.fromSpaceDescent || opts.freshDeployment) return { loadMode: 'pod', explicit: true };
@@ -276,6 +276,7 @@ export function createSessionBootRig(params: {
     ? new ConnectionBanner(uiParent, transport, () => transport.start())
     : null;
   const store = opts.store ?? new WorldStore(transport);
+  if (isSpectatorSearch(search)) store.setSpectator(true);
   // `?lag=` adds its round trip to the confirm timeout, so a slow test link does not roll predictions back
   const lagMs = transport instanceof LagTransport ? 2 * transport.ms : 0;
   const commandBus = new CommandBus(

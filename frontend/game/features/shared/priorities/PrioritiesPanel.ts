@@ -4,6 +4,14 @@ import { ownColonyIndex, viewColony } from '../colony';
 import { PrioritySliders } from './PrioritySliders';
 import { loadPriorities, savePriorities } from './storage';
 
+const DEFAULT_PRIORITIES: Record<PriorityKey, number> = {
+  economy: 50,
+  expansion: 50,
+  defense: 50,
+  power: 50,
+  terraform: 50,
+};
+
 export class PrioritiesPanel {
   readonly root: HTMLElement;
   private readonly ctx: FeatureContext;
@@ -26,12 +34,14 @@ export class PrioritiesPanel {
     this.root.setAttribute('data-testid', 'priorities-panel');
     this.root.dataset.collapsed = 'false';
 
-    const stored = loadPriorities<PriorityKey>(this.planetId, this.colonyIndex);
+    const readOnly = Boolean(ctx.services.isSpectator?.() || ctx.services.store?.isSpectator?.());
+    const stored = readOnly ? null : loadPriorities<PriorityKey>(this.planetId, this.colonyIndex);
 
     this.sliders = new PrioritySliders<PriorityKey>({
       initialValues: stored ?? undefined,
       onChange: (values) => this.onSlidersChange(values),
     });
+    this.sliders.setDisabled(readOnly);
 
     const header = document.createElement('div');
     header.className = 'ta-priorities-panel__header';
@@ -68,13 +78,19 @@ export class PrioritiesPanel {
     }
   }
 
+  private isReadOnly(): boolean {
+    return Boolean(this.ctx.services.isSpectator?.() || this.ctx.services.store?.isSpectator?.());
+  }
+
   private onSlidersChange(values: Record<PriorityKey, number>): void {
+    if (this.isReadOnly()) return;
     this.sumBadge.textContent = String(this.sliders.getSum());
     savePriorities(values, this.planetId, this.colonyIndex);
     this.dispatchPriorities(values);
   }
 
   private dispatchPriorities(values: Record<PriorityKey, number>): void {
+    if (this.isReadOnly()) return;
     const send = this.ctx.services.sendCommand ?? this.ctx.services.store?.sendCommand;
     if (send) {
       void send('setPriorities', { ...values });
@@ -83,18 +99,28 @@ export class PrioritiesPanel {
 
   update(view?: unknown): void {
     if (!view) return;
-    this.colonyIndex = ownColonyIndex(this.ctx.services);
+    const readOnly = this.isReadOnly();
+    this.sliders.setDisabled(readOnly);
+    const nextColony = ownColonyIndex(this.ctx.services);
+    const colonyChanged = nextColony !== this.colonyIndex;
+    this.colonyIndex = nextColony;
     this.planetId = this.ctx.services.session?.planetId() ?? this.ctx.services.store?.currentPlanetId?.() ?? null;
 
     const col = viewColony(view, this.colonyIndex) as { priorities?: Record<PriorityKey, number> } | undefined;
     if (col?.priorities && typeof col.priorities === 'object') {
-      const nextKey = `${col.priorities.economy ?? ''}:${col.priorities.expansion ?? ''}:${col.priorities.defense ?? ''}:${col.priorities.power ?? ''}:${col.priorities.terraform ?? ''}`;
+      const nextKey = `${this.colonyIndex}:${col.priorities.economy ?? ''}:${col.priorities.expansion ?? ''}:${col.priorities.defense ?? ''}:${col.priorities.power ?? ''}:${col.priorities.terraform ?? ''}`;
       if (nextKey !== this.lastPrioritiesKey) {
         this.lastPrioritiesKey = nextKey;
         this.sliders.setValues(col.priorities, false);
         this.sumBadge.textContent = String(this.sliders.getSum());
-        savePriorities(this.sliders.getValues(), this.planetId, this.colonyIndex);
+        if (!readOnly) {
+          savePriorities(this.sliders.getValues(), this.planetId, this.colonyIndex);
+        }
       }
+    } else if (colonyChanged) {
+      this.lastPrioritiesKey = `${this.colonyIndex}:default`;
+      this.sliders.setValues(DEFAULT_PRIORITIES, false);
+      this.sumBadge.textContent = String(this.sliders.getSum());
     }
   }
 

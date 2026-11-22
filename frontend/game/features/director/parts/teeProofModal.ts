@@ -147,13 +147,17 @@ export function openTeeProofModal(colonyId: string, containerOrOpts?: HTMLElemen
     'max-width:560px;width:100%;padding:16px;background:var(--ta-plate);color:var(--ta-text);border:1px solid var(--ta-orange);';
 
   const close = (): void => {
-    window.removeEventListener('keydown', onKey);
+    window.removeEventListener('keydown', onKey, true);
     backdrop.remove();
   };
   const onKey = (ev: KeyboardEvent): void => {
-    if (ev.key === 'Escape') close();
+    if (ev.key === 'Escape') {
+      ev.preventDefault();
+      ev.stopImmediatePropagation();
+      close();
+    }
   };
-  window.addEventListener('keydown', onKey);
+  window.addEventListener('keydown', onKey, true);
   backdrop.addEventListener('click', (ev) => {
     if (ev.target === backdrop) close();
   });

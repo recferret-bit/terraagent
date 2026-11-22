@@ -29,6 +29,7 @@ export interface HubPlacementCommandSink extends CommandSink {
   onReject?: (code: string, detail?: string) => void;
   getColonyId?: () => number;
   requireHq?: boolean;
+  readOnly?: () => boolean;
   onChange?: () => void;
 }
 
@@ -74,7 +75,7 @@ export class HubPlacementMenu {
         // Capture phase + stop: Esc that closes the ghost never also pauses the game (FF-11).
         e.stopImmediatePropagation();
         this.cancelPlacement();
-      } else if (key === 'h' && !this.el.hidden) this.startPlacement();
+      } else if (key === 'h' && !this.el.hidden && !this.sink.readOnly?.()) this.startPlacement();
     };
     window.addEventListener('keydown', onKey, { capture: true });
     this.cleanups.push(() => window.removeEventListener('keydown', onKey, { capture: true }));
@@ -125,6 +126,7 @@ export class HubPlacementMenu {
   }
 
   startPlacement(q?: number, r?: number): HubGhostState {
+    if (this.sink.readOnly?.()) return this.ghostState;
     this.active = true;
     if (typeof q === 'number' && typeof r === 'number') {
       this.hoveredQ = Math.trunc(q);
@@ -154,6 +156,7 @@ export class HubPlacementMenu {
   }
 
   confirmPlacement(q?: number, r?: number): boolean {
+    if (this.sink.readOnly?.()) return false;
     if (typeof q === 'number' && typeof r === 'number') {
       this.hoveredQ = Math.trunc(q);
       this.hoveredR = Math.trunc(r);
@@ -205,6 +208,7 @@ export class HubPlacementMenu {
 
   /** Cancels the host order `orderId` (default: the open Hub order in the view); never sends a wildcard. */
   cancelOrder(orderId?: string): boolean {
+    if (this.sink.readOnly?.()) return false;
     const id = orderId ?? this.openOrder()?.orderId;
     if (!id) return false;
     dispatchCommand(this.sink, 'cancelTask', { taskId: id }, this.resolveColonyId());
@@ -228,7 +232,7 @@ export class HubPlacementMenu {
    * consumed (HQ selection and orders never see them, FF-10). Hover comes from the 3D renderer's per-frame pick.
    */
   bindSurface(surface: HTMLElement, pickTile?: TilePickerFn): () => void {
-    const cleanup = bindExclusivePointer(surface, () => this.active, {
+    const cleanup = bindExclusivePointer(surface, () => this.active && !this.sink.readOnly?.(), {
       up: (e) => {
         if (e.button === 2) {
           if (this.active) this.cancelPlacement();
@@ -253,6 +257,7 @@ export class HubPlacementMenu {
       costText: formatCost(resolveHubCost(data)),
       hqWorkRate: Number(resolveHqT1Row(data).workRate),
       order: this.openOrder(),
+      readOnly: Boolean(this.sink.readOnly?.()),
     });
   }
 

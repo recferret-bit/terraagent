@@ -65,11 +65,13 @@ export function evaluatePerks(input: PerksEvalInput): EvaluatedPerks {
   const { ladder, nowMs, usage } = input;
   const tier = tierForLadder(ladder, input.activeStakedYocto);
   const staked = input.activeStakedYocto > 0n;
-  const fee = effectiveTakerFee({ tier, stakedSinceMs: staked ? input.stakedSinceMs : null, nowMs });
+  const warmupMs = ladder.feeWarmupMs ?? STAKING_RULES.feeWarmupMs;
+  const exitWindowMs = ladder.earlyExitWindowMs ?? STAKING_RULES.earlyExitWindowMs;
+  const fee = effectiveTakerFee({ tier, stakedSinceMs: staked ? input.stakedSinceMs : null, nowMs, feeWarmupMs: warmupMs });
   const platformFeeBp = tier.id === 0 ? ladder.standardPlatformFeeBp : Math.min(fee.takerFeeBp, ladder.standardPlatformFeeBp);
   const slots = tier.aiColonySlots;
   const { budgetUsd, callLimit } = aiAllowance(input, slots);
-  const exitFee = staked ? earlyExitFeeBp(input.lastStakedAtMs, nowMs) : 0;
+  const exitFee = staked ? earlyExitFeeBp(input.lastStakedAtMs, nowMs, exitWindowMs) : 0;
   const next = nextStakingTier(tier);
   const active = tier.id >= 1;
   return {
@@ -102,7 +104,7 @@ export function evaluatePerks(input: PerksEvalInput): EvaluatedPerks {
     freeTrialTurnsRemaining: usage.freeTrialTurnsRemaining,
     feeWarmupReadyAtMs: staked ? fee.warmupReadyAtMs : null,
     earlyExitFeeBp: exitFee,
-    earlyExitFreeAtMs: exitFee > 0 && input.lastStakedAtMs !== null ? input.lastStakedAtMs + STAKING_RULES.earlyExitWindowMs : null,
+    earlyExitFreeAtMs: exitFee > 0 && input.lastStakedAtMs !== null ? input.lastStakedAtMs + exitWindowMs : null,
     stakedSinceMs: staked ? input.stakedSinceMs : null,
     gasMultiplier: tier.gasMultiplier,
     sweepSeconds: tier.sweepSeconds,

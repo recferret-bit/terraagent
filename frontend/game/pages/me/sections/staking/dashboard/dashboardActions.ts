@@ -128,3 +128,13 @@ export async function runStakeProfitsAction(c: ActionContext, amountUsdc: string
   const quote = `${q.amountInUsdc} USDC → ${q.amountOutNear} stNEAR @ $${q.nearUsd.toFixed(2)} (${q.source}${q.dry ? ', dry quote' : ''})`;
   return { ok: !q.dry, message: q.dry ? 'Dry quote only: nothing was staked.' : 'Trade profits staked as stNEAR.', quote };
 }
+
+/** Local-mode dev faucet (`POST /v1/dev/chain/faucet`): mints +500 NEAR and +100 USDC on mock chain. */
+export async function runLocalFaucetAction(c: ActionContext): Promise<ActionResult> {
+  if (c.network !== 'mock') return { ok: false, message: 'Local faucet is only available in local/mock mode.' };
+  const res = await postJson(c.doFetch, c.auth, '/v1/dev/chain/faucet', { accountId: c.accountId });
+  if (res.status === 404) return unavailable('Local faucet');
+  if (!res.ok) return { ok: false, message: apiErrorMessage(res.body, `Local faucet failed (${res.status || 'network'}).`) };
+  const b = (res.body ?? {}) as { addedNear?: string; addedUsdc?: string };
+  return { ok: true, message: `Minted +${b.addedNear ?? '500'} NEAR and +${b.addedUsdc ?? '100.00'} USDC for local testing.` };
+}

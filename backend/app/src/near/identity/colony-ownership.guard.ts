@@ -16,8 +16,9 @@ export function resolveOptionalBearerPlayerId(
   req: IncomingMessage | undefined,
   tokens?: AuthTokenService,
   env?: AppEnv,
+  authHeader?: string,
 ): string | undefined {
-  const raw = req?.headers?.authorization;
+  const raw = authHeader ?? req?.headers?.authorization;
   const header = Array.isArray(raw) ? raw[0] : raw;
   if (typeof header !== 'string' || !header.trim()) return undefined;
   const token = BEARER_RE.exec(header.trim())?.[1];

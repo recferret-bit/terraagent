@@ -1,7 +1,7 @@
 import type { PostingInput } from '@terra/ledger';
 import type { SimEvent, EmitInput } from './events';
 import type { RngStream } from './rng';
-import type { CompiledDataLike } from './config';
+import type { CompiledDataLike, SimHostRole } from './config';
 
 /**
  * One balanced ledger entry produced by a step (a colony resource change, see `economy/`). Postings leave the sim in
@@ -20,6 +20,8 @@ export interface StepContext {
   readonly flags: ReadonlySet<string>;
   /** Compiled data tables (design units already converted to ticks). */
   readonly data: CompiledDataLike;
+  /** Host execution role (`standalone` default, `authority_external_bots` for backend/worker, `replica` for client). */
+  readonly hostRole?: SimHostRole;
   /** The PRNG state of a stream (pass to `nextU32` / `nextFloat` / `nextInt`). */
   rng(stream: RngStream): Uint32Array;
   /** Allocates the next monotonic entity id. */

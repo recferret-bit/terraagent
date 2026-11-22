@@ -42,6 +42,32 @@ export const LST_CONTRACTS: Record<RealNearNetwork, Record<'stNEAR' | 'LiNEAR', 
 /** Early-prototype default APY the wallet tx names for the contract (`<= 1000 bp` is accepted from owners). */
 export const WALLET_TX_APY_BP = STAKING_RULES.simGrossApyBp;
 
+type NearActionCreators = typeof import('@near-wallet-selector/core')['actionCreators'];
+let resolvedActionCreators: NearActionCreators | null = null;
+let actionCreatorsPromise: Promise<NearActionCreators> | null = null;
+
+/** Returns the already-resolved `@near-wallet-selector/core` `actionCreators` without extra microtask hops when warm. */
+export function getCachedNearActionCreators(): NearActionCreators | null {
+  return resolvedActionCreators;
+}
+
+/** Pre-loads and caches `@near-wallet-selector/core` `actionCreators` off the user-click critical path. */
+export function loadNearActionCreators(): Promise<NearActionCreators> {
+  if (resolvedActionCreators) return Promise.resolve(resolvedActionCreators);
+  if (!actionCreatorsPromise) {
+    actionCreatorsPromise = import('@near-wallet-selector/core')
+      .then((m) => {
+        resolvedActionCreators = m.actionCreators;
+        return m.actionCreators;
+      })
+      .catch((err) => {
+        actionCreatorsPromise = null;
+        throw err;
+      });
+  }
+  return actionCreatorsPromise;
+}
+
 export interface SendStakingWalletTxOptions {
   readonly fetchFn: typeof fetch;
   readonly network: RealNearNetwork;
@@ -79,10 +105,13 @@ export async function sendStakingWalletTx(opts: SendStakingWalletTxOptions): Pro
         })
       : false;
     if (!sentViaInjected) {
-      const [{ actionCreators }, selector] = await Promise.all([
-        import('@near-wallet-selector/core'),
-        (opts.selectorFactory ?? createRealSignerWalletSelector)(opts.network),
-      ]);
+      const cachedCreators = getCachedNearActionCreators();
+      const [actionCreators, selector] = cachedCreators
+        ? [cachedCreators, await (opts.selectorFactory ?? createRealSignerWalletSelector)(opts.network)]
+        : await Promise.all([
+            loadNearActionCreators(),
+            (opts.selectorFactory ?? createRealSignerWalletSelector)(opts.network),
+          ]);
       const wallet = await selector.wallet();
       await wallet.signAndSendTransaction({
         receiverId: tx.contractId,

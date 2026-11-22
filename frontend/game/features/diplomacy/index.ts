@@ -1,5 +1,5 @@
 import { defineFeature, type FeatureContext, type HudPanelInstance } from '../../core/registry/types';
-import { ownColonyIndex } from '../shared/colony';
+import { isReadOnlySpectator, ownColonyIndex } from '../shared/colony';
 import { DiplomacyPanel, createDiplomacyPanel, type DiplomacyPanelInstance } from './DiplomacyPanel';
 import {
   type DiplomacyPanelActions,
@@ -20,6 +20,7 @@ declare module '../../core/registry/types' {
 let activeDiplomacyPanel: DiplomacyPanelInstance | null = null;
 
 function sendCommandToHost(ctx: FeatureContext, kind: string, args: unknown): void {
+  if (isReadOnlySpectator(ctx.services)) return;
   const send = ctx.services.sendCommand ?? ctx.services.store?.sendCommand;
   if (send) void send(kind as any, args as any);
 }
@@ -68,6 +69,8 @@ export function mountDiplomacyHud(
     warsEnabled,
     ownColonyIndex: ownColonyIndex(ctx.services),
     getOwnColonyIndex: () => ownColonyIndex(ctx.services),
+    readOnly: isReadOnlySpectator(ctx.services),
+    getReadOnly: () => isReadOnlySpectator(ctx.services),
   });
 
   activeDiplomacyPanel = panel;

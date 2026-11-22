@@ -82,7 +82,7 @@ export class StakingService implements OnModuleInit, OnModuleDestroy {
     const nonce = new OpNonce();
     const finisher = new ActionFinisher(staking, positionSync);
     const perks = new PerksView(staking, envBag, db);
-    const effects = new ActionEffects(staking, new StakingTxWriter(db));
+    const effects = new ActionEffects(staking, new StakingTxWriter(db), envBag);
     this.balances = new WalletBalances(staking, db);
     const common = { staking, balances: this.balances, finisher, nonce, env: envBag, db, keyVerifier };
     this.colony = new ColonyStakeFlow({

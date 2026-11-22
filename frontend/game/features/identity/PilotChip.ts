@@ -1,4 +1,6 @@
+import type { SocialAuthResponse } from '@terra/contracts';
 import { isFastAuthPopupCancelled } from '../../../design/pilot/fastAuthSpa';
+import { buildLocalMockPilotBox, isLocalMockAuthEnabled } from '../../../design/pilot/localMockPilot';
 import type { FeatureContext, HudPanelInstance } from '../../core/registry/types';
 import { makeBtn, makeDiv, makeSpan } from '../shared/dom';
 import { copyText, type TextClipboard } from './copyText';
@@ -61,6 +63,9 @@ interface GuestActions {
   x(): void;
   fastAuth(): void;
   email(addr: string): void;
+  upgradeBearer(): string;
+  isBusy(): boolean;
+  localMockSuccess(session: SocialAuthResponse): void;
 }
 
 function buildTestnetPlate(plate: HTMLElement, act: GuestActions): void {
@@ -127,6 +132,16 @@ function guestNodes(open: boolean, fault: string, act: GuestActions): HTMLElemen
     );
   } else {
     buildTestnetPlate(plate, act);
+  }
+  if (act.mode !== 'mainnet' && isLocalMockAuthEnabled()) {
+    const localMock = buildLocalMockPilotBox({
+      initialMode: act.authIntent,
+      getMode: () => act.authIntent,
+      getUpgradeBearer: act.upgradeBearer,
+      isBusy: act.isBusy,
+      onAuthenticated: act.localMockSuccess,
+    });
+    plate.append(localMock.el);
   }
   if (fault) {
     const note = document.createElement('p');
@@ -314,6 +329,8 @@ function buildPilotGuestActions(ctx: {
   setPopup: (pop: Window | null) => void;
   render: () => void;
   runLogin: (provider: AuthProviderKind, token: string, options?: { readonly mode?: 'signin' | 'signup' }) => void;
+  getUpgradeBearer: () => string;
+  onLocalMockSuccess: (session: SocialAuthResponse) => void;
 }): GuestActions {
   return {
     mode: ctx.getMode(),
@@ -331,8 +348,10 @@ function buildPilotGuestActions(ctx: {
       openNearWalletSelectorModal({
         initialMode: ctx.getIntent(),
         network: ctx.getMode() === 'mainnet' ? 'mainnet' : 'testnet',
+        getUpgradeBearer: ctx.getUpgradeBearer,
         onPopupOpened: (pop) => { ctx.setPopup(pop); },
         onDirectToken: (hit) => { ctx.runLogin(hit.provider, hit.token); },
+        onLocalMockSession: ctx.onLocalMockSuccess,
       });
     },
     email: (addr) => {
@@ -345,6 +364,9 @@ function buildPilotGuestActions(ctx: {
       }
       ctx.runLogin('email', clean, ctx.getIntent() === 'signup' ? { mode: 'signup' } : undefined);
     },
+    upgradeBearer: ctx.getUpgradeBearer,
+    isBusy: ctx.isBusy,
+    localMockSuccess: ctx.onLocalMockSuccess,
   };
 }
 
@@ -402,6 +424,13 @@ export function mountPilotChip(el: HTMLElement, ctx: FeatureContext): HudPanelIn
       setPopup: (pop) => { popup = pop; },
       render,
       runLogin,
+      getUpgradeBearer: () => pilot?.view().accessToken ?? '',
+      onLocalMockSuccess: (session) => {
+        fault = '';
+        open = false;
+        pilot?.applyLinkedAuth?.(session);
+        if (!disposed) render();
+      },
     })));
   };
 

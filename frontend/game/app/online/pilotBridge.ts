@@ -1,4 +1,4 @@
-import { SocialAuthResponseSchema } from '@terra/contracts';
+import { SocialAuthResponseSchema, type SocialAuthResponse } from '@terra/contracts';
 import { authenticateFastAuthEmailPopup } from '../../../design/pilot/fastAuthSpa';
 import {
   OAUTH_CALLBACK_STORAGE_KEY,
@@ -101,7 +101,11 @@ export class PilotBridge {
     }
     const parsed = SocialAuthResponseSchema.safeParse(await res.json());
     if (!parsed.success) throw new Error('POST /v1/auth/social: unexpected answer');
-    const body = parsed.data;
+    this.applyLinkedAuth(parsed.data);
+  }
+
+  /** Applies an already-verified `SocialAuthResponse` (e.g. from localhost mock login) to the pilot session. */
+  applyLinkedAuth(body: SocialAuthResponse): void {
     const next: PilotState = {
       isGuest: body.player.isGuest,
       handle: body.player.handle,

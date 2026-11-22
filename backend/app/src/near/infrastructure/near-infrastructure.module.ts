@@ -72,6 +72,9 @@ export const nearEnvFor = (adapters: Parameters<typeof guardedEnv>[4]): EnvSecti
     NEAR_MIN_RELAYER_BALANCE: z.string().optional(),
     NEAR_RELAYER_MAX_DEPOSIT_NEAR: z.string().optional(),
     NEAR_ALLOW_MAINNET: z.string().optional(),
+    VITE_APP_ENV: z.string().optional(),
+    TA_ALLOW_LOCAL_MOCK_AUTH: z.string().optional(),
+    TA_LOCAL_STAKING_TIMINGS: z.string().optional(),
     SHADE_AGENT_ALLOWED_MRTDS: z.string().optional(),
   }, 'NEAR_ALLOW_MOCK_IN_PROD',
     nearPorts.map((p) => ({ name: p.name, token: p.token, key: keyOf(p.name), kind: (s) => nearAdapterFor(p.name as NearPortName, s) })), adapters);

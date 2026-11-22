@@ -24,6 +24,7 @@ export { inspectDepositAt, resolveEntityActivityProgress, type SelectedDepositVi
 
 export interface SelectedEntityView {
   entityId: number;
+  owner?: number;
   kind: number;
   kindLabel: string;
   shortCode: string;
@@ -67,6 +68,8 @@ export interface LandfallControllerOptions {
   canvas?: HTMLElement | null;
   ownerColonyIndex?: number;
   autoSelect?: boolean;
+  spectator?: boolean;
+  onColonyInspected?: (colonyIndex: number) => void;
   isHqDeployed?: () => boolean;
   onTargetMove?: (q: number, r: number) => void;
   /** A player order of the HQ failed in the sim (e.g. no path to the target); called once per failure. */
@@ -95,6 +98,7 @@ export class LandfallController {
   private selectedEntityId: number | null = null;
   public selectedDeposit: SelectedDepositView | null = null;
   private autoSelect: boolean;
+  private spectator: boolean;
   private ownerColonyIndex?: number;
   private latestHq: HqStatusView | null = null;
   private latestView: unknown = null;
@@ -106,6 +110,7 @@ export class LandfallController {
 
   constructor(private readonly opts: LandfallControllerOptions = {}) {
     this.autoSelect = opts.autoSelect !== false;
+    this.spectator = Boolean(opts.spectator);
     this.ownerColonyIndex = opts.ownerColonyIndex;
     this.pickTile = opts.pickTile;
     if (opts.store?.latest) {
@@ -141,10 +146,37 @@ export class LandfallController {
   }
 
   getOwnerColonyIndex(): number | undefined { return this.ownerColonyIndex; }
+  isSpectator(): boolean { return this.spectator; }
+
+  setSpectator(on: boolean): void {
+    if (this.spectator === on) return;
+    this.spectator = on;
+    if (this.opts.store?.latest) this.onView(this.opts.store.latest);
+  }
 
   setOwnerColonyIndex(colonyIndex: number | undefined): void {
+    const changed = this.ownerColonyIndex !== colonyIndex;
     this.ownerColonyIndex = colonyIndex;
+    if (this.spectator && changed) {
+      const current = this.selectedEntityId !== null ? this.entitiesById.get(this.selectedEntityId) : null;
+      const belongsToTarget = Boolean(
+        current && typeof colonyIndex === 'number' && current.owner === colonyIndex,
+      );
+      if (!belongsToTarget || this.selectedDeposit) {
+        this.selectedEntityId = null;
+        this.selectedDeposit = null;
+        this.autoSelect = true;
+      }
+    }
     if (this.opts.store?.latest) this.onView(this.opts.store.latest);
+  }
+
+  private findFallbackEntityId(owner: number | undefined): number | null {
+    if (typeof owner !== 'number') return null;
+    for (const e of this.entitiesById.values()) {
+      if (e.owner === owner) return e.entityId;
+    }
+    return null;
   }
 
   onView(view: unknown): void {
@@ -162,7 +194,7 @@ export class LandfallController {
       return;
     }
     this.latestHq = hq;
-    this.entitiesById = extractSelectableEntities(view, this.ownerColonyIndex, hq);
+    this.entitiesById = extractSelectableEntities(view, this.ownerColonyIndex, hq, this.spectator);
 
     if (this.selectedDeposit) {
       const updated = inspectDepositAt(
@@ -175,10 +207,18 @@ export class LandfallController {
       if (updated) this.selectedDeposit = updated;
     }
 
+    const fallbackId = hq?.entityId ?? (this.spectator ? this.findFallbackEntityId(this.ownerColonyIndex) : null);
+    if (this.spectator && this.selectedEntityId !== null && typeof this.ownerColonyIndex === 'number') {
+      const sel = this.entitiesById.get(this.selectedEntityId);
+      if (sel && typeof sel.owner === 'number' && sel.owner >= 0 && sel.owner !== this.ownerColonyIndex) {
+        this.selectedEntityId = null;
+        this.autoSelect = true;
+      }
+    }
     if (this.selectedEntityId !== null && !this.entitiesById.has(this.selectedEntityId)) {
-      this.selectedEntityId = this.autoSelect && !this.selectedDeposit && hq ? hq.entityId : null;
-    } else if (this.selectedEntityId === null && !this.selectedDeposit && this.autoSelect && hq) {
-      this.selectedEntityId = hq.entityId;
+      this.selectedEntityId = this.autoSelect && !this.selectedDeposit && fallbackId !== null ? fallbackId : null;
+    } else if (this.selectedEntityId === null && !this.selectedDeposit && this.autoSelect && fallbackId !== null) {
+      this.selectedEntityId = fallbackId;
     }
     this.reportFailure(view, hq);
     this.emit();
@@ -200,13 +240,30 @@ export class LandfallController {
       this.deselect();
       return null;
     }
-    if (this.latestHq && entityId === this.latestHq.entityId) {
+    const target = this.entitiesById.get(entityId);
+    if (
+      this.latestHq &&
+      entityId === this.latestHq.entityId &&
+      (!this.spectator || target?.owner === this.ownerColonyIndex)
+    ) {
       return this.selectHq();
     }
-    if (!this.entitiesById.has(entityId)) return this.selectedEntityId;
+    if (!target) return this.selectedEntityId;
     this.autoSelect = false;
     this.selectedDeposit = null;
     this.selectedEntityId = entityId;
+    if (
+      this.spectator &&
+      typeof target.owner === 'number' &&
+      target.owner >= 0 &&
+      target.owner !== this.ownerColonyIndex
+    ) {
+      this.ownerColonyIndex = target.owner;
+      if (this.opts.store?.latest) {
+        this.latestHq = extractHqFromView(this.opts.store.latest, this.ownerColonyIndex, this.opts.store?.simData?.() ?? undefined);
+      }
+      this.opts.onColonyInspected?.(target.owner);
+    }
     this.emit();
     return this.selectedEntityId;
   }
@@ -275,6 +332,7 @@ export class LandfallController {
   }
 
   orderMove(q: number, r: number): boolean {
+    if (this.spectator) return false;
     if (!Number.isInteger(q) || !Number.isInteger(r)) return false;
     const sel = this.getSelectedEntity();
     if (!sel || !sel.isMovable) return false;
@@ -290,6 +348,7 @@ export class LandfallController {
   }
 
   stopSelected(): boolean {
+    if (this.spectator) return false;
     const sel = this.getSelectedEntity();
     if (!sel || !sel.isMovable) return false;
     if (this.opts.store?.sendCommand) this.opts.store.sendCommand({ type: 'stopUnit', entityId: sel.entityId });
@@ -299,6 +358,7 @@ export class LandfallController {
   }
 
   cancelSelected(): boolean {
+    if (this.spectator) return false;
     const sel = this.getSelectedEntity();
     if (!sel) return false;
     const isConstructingBuilding = !sel.isUnit && (sel.currentJob === 'constructing' || sel.state === ENTITY_STATE.constructing);
@@ -348,7 +408,7 @@ export class LandfallController {
 
   handleLeftClick(q: number, r: number, shiftKey = false): boolean {
     const sel = this.getSelectedEntity();
-    if (shiftKey && sel?.isMovable) {
+    if (shiftKey && sel?.isMovable && !this.spectator) {
       return this.orderMove(q, r);
     }
     const hit = this.pickEntityAt(q, r);
@@ -373,6 +433,7 @@ export class LandfallController {
   }
 
   handleRightClick(q: number, r: number): boolean {
+    if (this.spectator) return false;
     return this.orderMove(q, r);
   }
 

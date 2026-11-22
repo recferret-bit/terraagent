@@ -86,6 +86,12 @@ export const STAKING_RULES = Object.freeze({
   defaultPreviewNear: 50,
   /** Landing calculator slider max (`0–500+`). */
   calculatorMaxNear: 500,
+  /** Local dev mode (`NEAR_MODE=local` / `TA_LOCAL_STAKING_TIMINGS=1`): ~1-minute cycle to observe real changes live. */
+  localFeeWarmupMs: 60_000,
+  localUnbondingMs: 60_000,
+  localEarlyExitWindowMs: 60_000,
+  /** Local dev mode reward time multiplier (`10,080` = 1 real minute accrues 1 simulated week of staking yield). */
+  localRewardMultiplier: 10_080,
 });
 
 export const stakingTierRow = (id: StakingTierId): StakingTierRow => STAKING_TIERS[id]!;
@@ -112,6 +118,8 @@ export interface EffectiveFeeInput {
   /** When the current continuous stake began (ms); `null` = not staked. */
   readonly stakedSinceMs: number | null;
   readonly nowMs: number;
+  /** Override warmup duration (used by local 1-minute dev mode); defaults to `STAKING_RULES.feeWarmupMs`. */
+  readonly feeWarmupMs?: number;
 }
 
 export interface EffectiveFee {
@@ -122,19 +130,23 @@ export interface EffectiveFee {
   readonly warmupReadyAtMs: number | null;
 }
 
-/** Anti-snipe fee rule: Tier 1's `65 bp` applies at `t=0`; Tier 2–4 cuts need `24h` of continuous stake. */
-export function effectiveTakerFee({ tier, stakedSinceMs, nowMs }: EffectiveFeeInput): EffectiveFee {
+/** Anti-snipe fee rule: Tier 1's `65 bp` applies at `t=0`; Tier 2–4 cuts need `24h` (or local `1m`) of continuous stake. */
+export function effectiveTakerFee({ tier, stakedSinceMs, nowMs, feeWarmupMs = STAKING_RULES.feeWarmupMs }: EffectiveFeeInput): EffectiveFee {
   if (!tier.warmupRequired) return { feeTier: tier, takerFeeBp: tier.takerFeeBp, warmupReadyAtMs: null };
-  const readyAt = (stakedSinceMs ?? nowMs) + STAKING_RULES.feeWarmupMs;
+  const readyAt = (stakedSinceMs ?? nowMs) + feeWarmupMs;
   if (stakedSinceMs !== null && nowMs >= readyAt) return { feeTier: tier, takerFeeBp: tier.takerFeeBp, warmupReadyAtMs: null };
   const t1 = STAKING_TIERS[1]!;
   return { feeTier: t1, takerFeeBp: t1.takerFeeBp, warmupReadyAtMs: readyAt };
 }
 
-/** `<7d` early-unstake fee in bp (`25`), `0` once the stake matured or when nothing was staked. */
-export function earlyExitFeeBp(lastStakedAtMs: number | null, nowMs: number): number {
+/** `<7d` (or local `<1m`) early-unstake fee in bp (`25`), `0` once the stake matured or when nothing was staked. */
+export function earlyExitFeeBp(
+  lastStakedAtMs: number | null,
+  nowMs: number,
+  earlyExitWindowMs: number = STAKING_RULES.earlyExitWindowMs,
+): number {
   if (lastStakedAtMs === null) return 0;
-  return nowMs - lastStakedAtMs < STAKING_RULES.earlyExitWindowMs ? STAKING_RULES.earlyExitFeeBp : 0;
+  return nowMs - lastStakedAtMs < earlyExitWindowMs ? STAKING_RULES.earlyExitFeeBp : 0;
 }
 
 export interface AiBudgetInput {

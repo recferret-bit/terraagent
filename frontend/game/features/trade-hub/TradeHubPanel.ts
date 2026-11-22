@@ -77,6 +77,7 @@ export class TradeHubPanel implements Disposable {
   private cargoStatus: CargoStatusPayload | null = null;
   private selectedHubId: number | null = null;
   private closedForEntityId: number | null = null;
+  private lastColonyIndex: number | null = null;
   private offSelection: (() => void) | null = null;
   private offStoreReject: (() => void) | null = null;
   private offStoreEvents: (() => void) | null = null;
@@ -315,7 +316,13 @@ export class TradeHubPanel implements Disposable {
       selectedEntity?: { entityId?: number; id?: number; kind?: number | string; state?: number | string } | null;
     };
     const colonyIdx = ownColonyIndex(this.ctx?.services);
+    const switchedColony = this.lastColonyIndex !== null && this.lastColonyIndex !== colonyIdx;
+    this.lastColonyIndex = colonyIdx;
     const hubs = scanColonyTradeHubs(view as Record<string, unknown>, viewColony(view, colonyIdx), colonyIdx);
+    if (switchedColony && this.selectedHubId !== null && !hubs.some((h) => h.id === this.selectedHubId)) {
+      this.selectedHubId = null;
+      this.closedForEntityId = null;
+    }
 
     const rawCol = viewColony(view as Record<string, unknown>, colonyIdx) as Record<string, unknown> | undefined;
     const colCargo = (rawCol?.cargo ?? (view as Record<string, unknown> | undefined)?.cargo) as Record<string, unknown> | undefined;

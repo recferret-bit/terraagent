@@ -21,7 +21,7 @@ interface ReplyLike extends Partial<ServerResponse> {
   header?: (name: string, value: string) => unknown;
 }
 
-function setSetCookie(res: ReplyLike, cookie: string): void {
+export function setSetCookie(res: ReplyLike, cookie: string): void {
   if (typeof res.setHeader === 'function') {
     res.setHeader('set-cookie', cookie);
   } else if (typeof res.header === 'function') {
@@ -32,7 +32,7 @@ function setSetCookie(res: ReplyLike, cookie: string): void {
 const BEARER_RE = /^Bearer\s+(\S+)$/i;
 
 /** No header (or an expired/invalid guest JWT) → a new player or existing social identity lookup. */
-function optionalBearer(
+export function optionalBearer(
   req: IncomingMessage,
   tokens: AuthTokenService,
   allowDev: boolean,

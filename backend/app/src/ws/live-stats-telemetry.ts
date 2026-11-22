@@ -216,7 +216,7 @@ export class LiveStatsTelemetry implements PlanetLiveTelemetryProvider {
       prisma.planet.findMany({ select: { id: true, type: true, state: true, lifecycle: true } }),
       prisma.colony.findMany({
         where: { status: { in: LIVING_COLONY_STATUSES } },
-        select: { id: true, planetId: true, playerId: true, name: true, foundingSectorId: true, colonyIndex: true, createdAt: true },
+        select: { id: true, planetId: true, playerId: true, isBot: true, name: true, foundingSectorId: true, colonyIndex: true, createdAt: true },
       }),
       prisma.sectorReservation.findMany({
         where: { state: 'COMMITTED' },
@@ -254,14 +254,14 @@ interface DbIngestCtx {
 
 function ingestDbColonies(
   ctx: DbIngestCtx,
-  colonies: ReadonlyArray<{ id: string; planetId: string; playerId: string; name?: string; foundingSectorId?: string; colonyIndex?: number; createdAt?: Date }>,
+  colonies: ReadonlyArray<{ id: string; planetId: string; playerId: string; isBot?: boolean; name?: string; foundingSectorId?: string; colonyIndex?: number; createdAt?: Date }>,
 ): void {
   for (const c of colonies) {
     if (ctx.archivedIds.has(c.planetId)) continue;
     const t = inferPlanetTypeFromIdOrDb(c.planetId, ctx.planetTypes.get(c.planetId));
     const key = `${c.planetId}:${c.id}`;
     ctx.seenByType[t].add(key);
-    const isBot = (c.playerId ?? '').startsWith('ai:');
+    const isBot = c.isBot === true || (c.playerId ?? '').startsWith('ai:') || (c.playerId ?? '').startsWith('bot:');
     if (isBot) ctx.botByType[t].add(key);
     else ctx.humanByType[t].add(key);
     if (typeof c.name === 'string' && typeof c.foundingSectorId === 'string') {

@@ -42,10 +42,17 @@ export interface FeatureServices {
   closeHudMenus?: () => void;
   /** Clears the active spine highlight of a dialog-only Colony tab when its modal closes. */
   clearHudDialogTab?: (tab: string) => void;
+  /** True while the session is in read-only Spectator mode (no player spawn). */
+  isSpectator?: () => boolean;
+  /** True when Spectator mode renders union FoV/visibility across all bots. */
+  isSpectatorVisionAll?: () => boolean;
+  setSpectatorVisionAll?: (on: boolean) => void;
+  /** Switches the HUD & camera inspection target to a specific bot colony. */
+  inspectColony?: (colonyIndex: number, focusCamera?: boolean) => void;
 }
 
 /** The part of `WorldStore` features use; optional members, so a spec can pass a stand-in with only what it needs. */
-export type FeatureStore = Partial<Pick<WorldStore, 'latest' | 'latestTiles' | 'onView' | 'onCommandRejected' | 'sendCommand' | 'simData' | 'buildingCatalog' | 'currentPlanetId' | 'onServerEvents' | 'onRenderEvents' | 'onMarketBook' | 'onMarketTrade' | 'onAwayDigest' | 'latestAway' | 'onDeedUpdated' | 'onDirectorStatus' | 'onGuildArrived' | 'onGuildDeparted' | 'onTreasuryProposal'>>;
+export type FeatureStore = Partial<Pick<WorldStore, 'latest' | 'latestTiles' | 'onView' | 'onCommandRejected' | 'sendCommand' | 'simData' | 'buildingCatalog' | 'currentPlanetId' | 'onServerEvents' | 'onRenderEvents' | 'onMarketBook' | 'onMarketTrade' | 'onAwayDigest' | 'latestAway' | 'onDeedUpdated' | 'onDirectorStatus' | 'onGuildArrived' | 'onGuildDeparted' | 'onTreasuryProposal' | 'isSpectator' | 'recentInputs' | 'recentDecisions' | 'onFeed'>>;
 
 export interface FeatureContext {
   readonly flags: ReadonlySet<string>;

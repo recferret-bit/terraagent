@@ -40,6 +40,17 @@ export class AutoTradeSection {
     this.dom = buildAutoTradeDom(parent, autoTradePartners(this.w18));
     this.bind();
     this.paint();
+    if (opts.readOnly?.()) {
+      this.dom.resource.disabled = true;
+      this.dom.sell.disabled = true;
+      this.dom.maxTrade.disabled = true;
+      this.dom.maxSession.disabled = true;
+      this.dom.minStock.disabled = true;
+      this.dom.partners.disabled = true;
+      this.dom.save.disabled = true;
+      this.dom.toggle.disabled = true;
+      this.dom.revoke.disabled = true;
+    }
     const off = opts.subscribeDirector?.((payload) => this.onPush(payload));
     this.offDirector = typeof off === 'function' ? off : null;
   }
@@ -94,7 +105,7 @@ export class AutoTradeSection {
   }
 
   private async save(): Promise<void> {
-    if (this.busy) return;
+    if (this.busy || this.opts.readOnly?.()) return;
     const built = this.validated();
     if (!built) return;
     if (!this.opts.sendCommand && !this.opts.store?.sendCommand) {
@@ -138,7 +149,7 @@ export class AutoTradeSection {
   }
 
   private async enable(): Promise<void> {
-    if (this.busy || this.dom.toggle.getAttribute('aria-checked') === 'true') return;
+    if (this.busy || this.opts.readOnly?.() || this.dom.toggle.getAttribute('aria-checked') === 'true') return;
     const built = this.validated();
     if (!built) return;
     const colonyId = this.opts.colonyId?.() ?? null;
@@ -161,7 +172,7 @@ export class AutoTradeSection {
   }
 
   private async revoke(): Promise<void> {
-    if (this.busy || this.dom.revoke.hidden) return;
+    if (this.busy || this.opts.readOnly?.() || this.dom.revoke.hidden) return;
     const colonyId = this.opts.colonyId?.() ?? null;
     if (!colonyId) {
       this.setKeyStatus('rejected: no colony', 'rejected');

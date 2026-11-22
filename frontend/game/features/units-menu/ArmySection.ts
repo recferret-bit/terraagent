@@ -1,6 +1,6 @@
 import type { FeatureContext, GameView } from '../../core/registry/types';
 import { ARMY_SECTION_TEXT } from '../shared/menuSections';
-import { viewColony } from '../shared/colony';
+import { isReadOnlySpectator, viewColony } from '../shared/colony';
 import { bindExclusivePointer, resolvePointerTile } from '../shared/pointer';
 
 export interface QueueItemLike {
@@ -239,17 +239,23 @@ export class ArmySectionController {
     this.unbindSurface = this.bindCanvasSurface();
   }
 
+  private isReadOnly(): boolean {
+    return isReadOnlySpectator(this.ctx.services);
+  }
+
   isRallyMode(): boolean {
     return this.rallyMode;
   }
 
   setRallyMode(active: boolean): void {
+    if (active && this.isReadOnly()) return;
     this.rallyMode = active;
     this.rallyBtn.setAttribute('data-active', String(active));
     this.root.setAttribute('data-rally-mode', String(active));
   }
 
   setRally(q: number, r: number, producerId?: number): void {
+    if (this.isReadOnly()) return;
     this.localRally = { q, r };
     this.setRallyMode(false);
     this.syncRallyReadout(this.localRally);
@@ -272,6 +278,9 @@ export class ArmySectionController {
   }
 
   render(entries: readonly QueueItemLike[], view: GameView | undefined, own: number): void {
+    const ro = this.isReadOnly();
+    this.rallyBtn.disabled = ro;
+    if (ro && this.rallyMode) this.setRallyMode(false);
     const rally = resolveRallyPoint(view, own) ?? this.localRally;
     this.syncRallyReadout(rally);
 
@@ -317,7 +326,7 @@ export class ArmySectionController {
   private bindCanvasSurface(): (() => void) | undefined {
     const surface = (this.ctx.services.surface ?? this.ctx.services.canvas) as HTMLElement | undefined;
     if (!surface || typeof surface.addEventListener !== 'function') return undefined;
-    return bindExclusivePointer(surface, () => this.rallyMode, {
+    return bindExclusivePointer(surface, () => this.rallyMode && !this.isReadOnly(), {
       up: (e) => {
         if (e.button === 2) {
           this.setRallyMode(false);

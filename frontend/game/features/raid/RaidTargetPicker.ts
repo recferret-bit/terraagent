@@ -16,6 +16,8 @@ export interface RaidTargetPickerOptions {
   getOwnColonyIndex?: () => number;
   initialView?: unknown;
   initiallyOpen?: boolean;
+  readOnly?: boolean;
+  getReadOnly?: () => boolean;
 }
 
 export type RaidPickerMode = 'direct' | 'goal';
@@ -128,7 +130,12 @@ export class RaidTargetPicker {
     this.root.remove();
   }
 
+  private isReadOnly(): boolean {
+    return Boolean(this.opts.getReadOnly ? this.opts.getReadOnly() : this.opts.readOnly);
+  }
+
   private send(kind: string, args: unknown): void {
+    if (this.isReadOnly()) return;
     const sendFn = this.opts.actions?.sendCommand ?? this.opts.sendCommand;
     if (sendFn) void sendFn(kind, args);
   }
@@ -143,7 +150,7 @@ export class RaidTargetPicker {
   }
 
   private dispatchTarget(target: RaidTargetOption, forceGoal = false): void {
-    if (target.disabled) return;
+    if (this.isReadOnly() || target.disabled) return;
     this.selectedTarget = target;
     this.updatePathIndicator(target);
 
@@ -165,12 +172,13 @@ export class RaidTargetPicker {
   }
 
   private renderTargets(targets: RaidTargetOption[]): void {
-    const structSig = targets
+    const ro = this.isReadOnly();
+    const structSig = `${ro}|${targets
       .map(
         (t) =>
           `${t.colonyIndex}:${t.colonyId}:${t.name}:${t.q}:${t.r}:${t.disabled}:${t.shieldActive}:${t.truceActive}:${t.crossSectorDisabled}`,
       )
-      .join('|');
+      .join('|')}`;
     if (this.lastTargetsSig === structSig) {
       for (const target of targets) {
         const row = this.listEl.querySelector<HTMLElement>(`[data-colony-id="${target.colonyId}"]`);
@@ -204,6 +212,7 @@ export class RaidTargetPicker {
           target,
           (t, forceGoal) => this.dispatchTarget(t, forceGoal),
           (t) => this.dispatchTarget(t, this.mode === 'goal'),
+          ro,
         ),
       );
     }

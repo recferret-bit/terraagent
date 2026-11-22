@@ -3,7 +3,7 @@ import { isGameInputBlocked } from '../../core/input/gameInputBlock';
 import { releaseArchetypeThumbs, retainArchetypeThumbs } from '../shared/archetypeThumb';
 import { type MenuTier, presentTiers, rememberTier, renderTierBar, setTierVisible } from '../shared/menuCards';
 import { layoutMenuGroups, UNIT_GROUPS } from '../shared/menuSections';
-import { ownColonyIndex } from '../shared/colony';
+import { isReadOnlySpectator, ownColonyIndex } from '../shared/colony';
 import { supplyBlockReason, supplyLevel } from '../shared/supply';
 import {
   ArmySectionController,
@@ -24,6 +24,8 @@ export class UnitsMenu implements Disposable {
   private readonly tierBar: HTMLElement;
   private readonly cardsContainer: HTMLElement;
   private readonly bufferContainer: HTMLElement;
+  private readonly decBtn: HTMLButtonElement;
+  private readonly incBtn: HTMLButtonElement;
   private readonly countSpan: HTMLElement;
   private readonly repeatBtn: HTMLButtonElement;
   private readonly army: ArmySectionController | null = null;
@@ -58,6 +60,8 @@ export class UnitsMenu implements Disposable {
     body.setAttribute('data-body', '');
     this.tierBar = document.createElement('div');
     const batch = this.buildBatch();
+    this.decBtn = batch.decBtn;
+    this.incBtn = batch.incBtn;
     this.countSpan = batch.countSpan;
     this.repeatBtn = batch.repeatBtn;
     this.cardsContainer = document.createElement('div');
@@ -95,11 +99,16 @@ export class UnitsMenu implements Disposable {
   }
 
   setRally(q: number, r: number, producerId?: number): void {
+    if (this.isReadOnly()) return;
     if (this.army) {
       this.army.setRally(q, r, producerId);
     } else {
       this.ctx.services.sendCommand?.('setRally', producerId !== undefined ? { q, r, producerId } : { q, r });
     }
+  }
+
+  private isReadOnly(): boolean {
+    return isReadOnlySpectator(this.ctx.services);
   }
 
   update(view: GameView): void {
@@ -129,7 +138,7 @@ export class UnitsMenu implements Disposable {
     return { row, toggle, supply };
   }
 
-  private buildBatch(): { root: HTMLElement; countSpan: HTMLElement; repeatBtn: HTMLButtonElement } {
+  private buildBatch(): { root: HTMLElement; decBtn: HTMLButtonElement; incBtn: HTMLButtonElement; countSpan: HTMLElement; repeatBtn: HTMLButtonElement } {
     const root = document.createElement('div');
     root.className = 'ta-units__batch';
     const stepper = document.createElement('div');
@@ -139,7 +148,7 @@ export class UnitsMenu implements Disposable {
     decBtn.className = 'ta-units__stepper-btn';
     decBtn.setAttribute('data-count-dec', '');
     decBtn.textContent = '−';
-    decBtn.onclick = () => this.setCount(this.count - 1);
+    decBtn.onclick = () => { if (!this.isReadOnly()) this.setCount(this.count - 1); };
     const countSpan = document.createElement('span');
     countSpan.className = 'ta-units__count';
     countSpan.setAttribute('data-count', '1');
@@ -149,7 +158,7 @@ export class UnitsMenu implements Disposable {
     incBtn.className = 'ta-units__stepper-btn';
     incBtn.setAttribute('data-count-inc', '');
     incBtn.textContent = '+';
-    incBtn.onclick = () => this.setCount(this.count + 1);
+    incBtn.onclick = () => { if (!this.isReadOnly()) this.setCount(this.count + 1); };
     stepper.append(decBtn, countSpan, incBtn);
     const repeatBtn = document.createElement('button');
     repeatBtn.type = 'button';
@@ -157,11 +166,12 @@ export class UnitsMenu implements Disposable {
     repeatBtn.setAttribute('data-repeat', 'false');
     repeatBtn.textContent = 'REPEAT';
     repeatBtn.onclick = () => {
+      if (this.isReadOnly()) return;
       this.repeat = !this.repeat;
       repeatBtn.setAttribute('data-repeat', String(this.repeat));
     };
     root.append(stepper, repeatBtn);
-    return { root, countSpan, repeatBtn };
+    return { root, decBtn, incBtn, countSpan, repeatBtn };
   }
 
   private buildBuffer(): { section: HTMLElement; list: HTMLElement } {
@@ -201,6 +211,10 @@ export class UnitsMenu implements Disposable {
 
   private render(): void {
     const own = ownColonyIndex(this.ctx.services);
+    const ro = this.isReadOnly();
+    this.decBtn.disabled = ro;
+    this.incBtn.disabled = ro;
+    this.repeatBtn.disabled = ro;
     const supply = resolveSupply(this.view, own);
     this.renderSupply(supply);
     this.renderCards(buildUnitsCatalog(this.ctx.flags, this.view, own), supply);
@@ -228,6 +242,10 @@ export class UnitsMenu implements Disposable {
       const handle = this.cardElements.get(card.id) ?? this.mountCard(card);
       syncUnitCard(handle, card);
       this.applySupplyBlock(handle, supplyBlockReason(supply, card.supply));
+      if (this.isReadOnly()) {
+        handle.root.disabled = true;
+        handle.root.setAttribute('data-disabled', 'true');
+      }
       setTierVisible(handle.root, card.section === 'army' ? true : card.tier === tier);
       if (card.section !== 'army') placed.push({ key: card.unit, el: handle.root });
     }
@@ -258,6 +276,7 @@ export class UnitsMenu implements Disposable {
   }
 
   private queueUnit(card: UnitCardModel): void {
+    if (this.isReadOnly()) return;
     if (card.section === 'army' || card.unit === 'recon') {
       const task = { kind: 'buildUnit' as const, unit: card.unit, count: this.count, repeat: this.repeat };
       this.ctx.services.sendCommand?.('enqueueTask', { task });

@@ -14,6 +14,7 @@ import { newId, type ClientMessageOf } from '@terra/contracts';
 import { z } from 'zod';
 import { SectorAntiCheatService } from '../core/anticheat';
 import { CoreException } from '../core/errors';
+import { SimClusterService } from '../game/cluster/sim-cluster.service';
 import { GamePlanets } from '../game/game-planets.service';
 import { COMMAND_INGRESS, type CommandIngress } from './command-ingress';
 import { DEFAULT_HOME, HOME_PROVIDER, type HomeProvider } from './home-provider';
@@ -75,6 +76,7 @@ export class HttpCommandController {
     @Inject(GamePlanets) private readonly planets: GamePlanets,
     @Optional() @Inject(HOME_PROVIDER) private readonly home?: HomeProvider,
     @Optional() @Inject(SectorAntiCheatService) private readonly antiCheat?: SectorAntiCheatService,
+    @Optional() @Inject(SimClusterService) private readonly cluster?: SimClusterService,
   ) {}
 
   @Post(':planetId/commands')
@@ -88,7 +90,8 @@ export class HttpCommandController {
   ): Promise<HttpCommandResponse> {
     const session = await this.authenticate(req);
     const body = HttpCommandBodySchema.parse(rawBody ?? {});
-    if (!this.planets.isLoaded(planetId)) {
+    const available = this.planets.isLoaded(planetId) || Boolean(await this.cluster?.isAvailableAnywhere(planetId));
+    if (!available) {
       throw new CoreException('NOT_YOUR_PLANET', {
         status: 403,
         message: `Planet ${planetId} is not loaded`,
@@ -159,7 +162,10 @@ export class HttpCommandController {
   ): Promise<{ readonly pinnedSectorId: string | undefined; readonly bindingHash: string | undefined }> {
     if (!this.antiCheat) return { pinnedSectorId: requestedSectorId, bindingHash: undefined };
     if (!this.antiCheat.index.getPlanet(planetId)?.syncedFromSim) {
-      const full = await this.planets.fullState(planetId, 2000).catch(() => null);
+      const full = await (this.cluster
+        ? this.cluster.fullStateAnywhere(planetId, 2000)
+        : this.planets.fullState(planetId, 2000)
+      ).catch(() => null);
       if (full) this.antiCheat.syncFromSnapshotBytes(planetId, full.bytes);
     }
     const fastActive = this.antiCheat.index.getActiveBaseByPlayer(session.playerId);

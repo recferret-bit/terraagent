@@ -1,7 +1,7 @@
-import { STAKING_ASSETS, type StakingAsset, type StakingTxRow } from '@terra/contracts';
+import { STAKING_ASSETS, STAKING_RULES, type StakingAsset, type StakingTxRow } from '@terra/contracts';
 import type { DbClient } from '@terra/db';
 import type { WalletRef } from '../perks/stake-clock.reader.js';
-import { yoctoToNear } from '../yocto.js';
+import { computeSplitRewardDelta, PROTOCOL_YIELD_SHARE_BP, yoctoToNear } from '../yocto.js';
 import { readPoolTxAssetNets, splitStakedByAsset } from './asset-split.js';
 
 type Dec = { toFixed(n: number): string } | null | undefined;
@@ -88,6 +88,55 @@ export interface WalletBalanceReadOptions {
   readonly nowMs?: number;
   readonly primaryAccountId?: string;
   readonly readLiveWalletYocto?: (accountId: string) => Promise<bigint>;
+  readonly rewardMultiplier?: number;
+  readonly grossApyBp?: number;
+  readonly protocolYieldShareBp?: number;
+}
+
+interface MockStakingRecord {
+  readonly accountId: string;
+  readonly poolId: string;
+  readonly staked: Dec;
+  readonly unbonding: Dec;
+  readonly unbondingReadyAt: Date | null;
+  readonly withdrawable: Dec;
+  readonly rewardsAccrued: Dec;
+  readonly lastAccruedAt: Date;
+}
+
+async function overlayLiveMockRewards(db: DbClient, rows: PosRow[], wallet: WalletRef, cfg: WalletBalanceReadOptions): Promise<PosRow[]> {
+  if (!cfg.readMockWallet || cfg.nowMs === undefined || !wallet.accountIds.length || typeof db.mockChainStaking?.findMany !== 'function') {
+    return rows;
+  }
+  const mocks = (await db.mockChainStaking.findMany({
+    where: { accountId: { in: [...wallet.accountIds] } },
+  })) as MockStakingRecord[];
+  if (mocks.length === 0) return rows;
+  const apyBp = cfg.grossApyBp ?? STAKING_RULES.simGrossApyBp;
+  const shareBp = cfg.protocolYieldShareBp ?? PROTOCOL_YIELD_SHARE_BP;
+  const mult = Math.max(1, cfg.rewardMultiplier ?? 1);
+  const nowMs = cfg.nowMs;
+  const byKey = new Map(mocks.map((m) => {
+    const staked = y(m.staked);
+    const unbondingRaw = y(m.unbonding);
+    const readyMs = m.unbondingReadyAt ? m.unbondingReadyAt.getTime() : null;
+    const matured = unbondingRaw > 0n && readyMs !== null && nowMs >= readyMs;
+    const elapsedMs = Math.max(0, nowMs - m.lastAccruedAt.getTime()) * mult;
+    const split = computeSplitRewardDelta(staked, apyBp, elapsedMs, shareBp);
+    return [
+      `${m.accountId}::${m.poolId}`,
+      {
+        rewards: y(m.rewardsAccrued) + split.userReward,
+        unbonding: matured ? 0n : unbondingRaw,
+        withdrawable: matured ? y(m.withdrawable) + unbondingRaw : y(m.withdrawable),
+        readyAt: matured ? null : m.unbondingReadyAt,
+      },
+    ] as const;
+  }));
+  return rows.map((r) => {
+    const live = byKey.get(`${r.accountId}::${r.poolId}`);
+    return live ? { ...r, ...live } : r;
+  });
 }
 
 /** Wallet NEAR (mock ledger or live StakingPort RPC), active / unbonding / withdrawable / accrued, LSTs. */
@@ -97,7 +146,7 @@ export async function readWalletBalances(
   opts: boolean | WalletBalanceReadOptions,
 ): Promise<WalletBalances> {
   const cfg: WalletBalanceReadOptions = typeof opts === 'boolean' ? { readMockWallet: opts } : opts;
-  const rows = await readPositions(db, wallet);
+  const rows = await overlayLiveMockRewards(db, await readPositions(db, wallet), wallet, cfg);
   const txNets = rows.length > 0 ? await readPoolTxAssetNets(db, [...new Set(rows.map((r) => r.accountId))]) : new Map();
   let active = 0n, unbonding = 0n, withdrawable = 0n, accrued = 0n;
   let ready: number | null = null;

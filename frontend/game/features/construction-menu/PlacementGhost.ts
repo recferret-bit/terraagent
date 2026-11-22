@@ -279,7 +279,12 @@ export class PlacementGhostController implements Disposable {
     return { base, ctx: buildGhostContext(base.flags, view, this.opts.ctx.services.store) };
   }
 
+  private isReadOnly(): boolean {
+    return Boolean(this.opts.ctx.services.isSpectator?.() || this.opts.ctx.services.store?.isSpectator?.());
+  }
+
   start(building: string): void {
+    if (this.isReadOnly()) return;
     this.activeBuilding = building;
     this.rotation = 0;
     if (this.opts.container && !this.element.parentElement) this.opts.container.appendChild(this.element);
@@ -338,7 +343,7 @@ export class PlacementGhostController implements Disposable {
   }
 
   confirm(): boolean {
-    if (!this.activeBuilding || !this.state) return false;
+    if (this.isReadOnly() || !this.activeBuilding || !this.state) return false;
     if (!this.state.valid) {
       this.opts.ctx.services.hudMin?.showToast(`Cannot build here: ${this.state.reason}`, 'warning', 5000, 'placement-invalid');
       return false;

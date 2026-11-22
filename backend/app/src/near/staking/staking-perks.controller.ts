@@ -1,4 +1,4 @@
-import { Controller, Get, Inject, Optional, Query, Req } from '@nestjs/common';
+import { Controller, Get, Headers, Inject, Optional, Query, Req } from '@nestjs/common';
 import type { StakerPerksResponse, StakingPrestigeResponse } from '@terra/contracts';
 import type { IncomingMessage } from 'node:http';
 import { AuthTokenService } from '../../core/auth/index.js';
@@ -24,9 +24,10 @@ export class StakingPerksController {
   getPerks(
     @Query('colonyId') colonyId?: string,
     @Query('accountId') accountId?: string,
+    @Headers('authorization') authHeader?: string,
     @Req() req?: IncomingMessage,
   ): Promise<StakerPerksResponse> {
-    const playerId = accountId?.trim() ? null : (resolveOptionalBearerPlayerId(req, this.tokens, this.env) ?? null);
+    const playerId = accountId?.trim() ? null : (resolveOptionalBearerPlayerId(req, this.tokens, this.env, authHeader) ?? null);
     return this.perks.perksFor({ colonyId, accountId, playerId });
   }
 

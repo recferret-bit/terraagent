@@ -53,12 +53,18 @@ export const emptyStakingRow = (nowMs: number): SettledStakingRow => ({
 });
 
 /** Projects a stored row to `nowMs`: accrues the user's share of validator yield and matures finished unbonding. */
-export function projectStakingRow(row: StakingDbRow, apyBp: number, nowMs: number, yieldShareBp: number): SettledStakingRow {
+export function projectStakingRow(
+  row: StakingDbRow,
+  apyBp: number,
+  nowMs: number,
+  yieldShareBp: number,
+  rewardMultiplier = 1,
+): SettledStakingRow {
   const staked = BigInt(row.staked.toFixed());
   let unbonding = BigInt(row.unbonding.toFixed());
   let unbondingReadyAtMs = row.unbondingReadyAt ? row.unbondingReadyAt.getTime() : null;
   let withdrawable = BigInt(row.withdrawable.toFixed());
-  const elapsedMs = Math.max(0, nowMs - row.lastAccruedAt.getTime());
+  const elapsedMs = Math.max(0, nowMs - row.lastAccruedAt.getTime()) * Math.max(1, rewardMultiplier);
   const split = computeSplitRewardDelta(staked, apyBp, elapsedMs, yieldShareBp);
   if (unbonding > 0n && unbondingReadyAtMs !== null && nowMs >= unbondingReadyAtMs) {
     withdrawable += unbonding;
@@ -87,9 +93,10 @@ export async function loadStakingRow(
   apyBp: number,
   nowMs: number,
   yieldShareBp: number,
+  rewardMultiplier = 1,
 ): Promise<SettledStakingRow> {
   const row = await tx.mockChainStaking.findUnique({ where: { accountId_poolId: { accountId, poolId } } });
-  return row ? projectStakingRow(row, apyBp, nowMs, yieldShareBp) : emptyStakingRow(nowMs);
+  return row ? projectStakingRow(row, apyBp, nowMs, yieldShareBp, rewardMultiplier) : emptyStakingRow(nowMs);
 }
 
 /** Records a deposit: the first deposit of a continuous stake starts the warmup clock, every deposit bumps `lastStakedAt`. */

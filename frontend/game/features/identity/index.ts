@@ -1,3 +1,4 @@
+import type { SocialAuthResponse } from '@terra/contracts';
 import { defineFeature, type FeatureContext, type HudPanelInstance } from '../../core/registry/types';
 import type { TextClipboard } from './copyText';
 import { formatPilotDisplayName, mountPilotChip } from './PilotChip';
@@ -20,6 +21,7 @@ declare module '../../core/registry/types' {
         token: string,
         options?: { readonly mode?: 'signin' | 'signup' },
       ): Promise<void>;
+      applyLinkedAuth?(session: SocialAuthResponse): void;
       logout?(): Promise<void>;
       /** Colony deposit poll. Absent in specs that only cover the guest chip. */
       watchRelay?(): {

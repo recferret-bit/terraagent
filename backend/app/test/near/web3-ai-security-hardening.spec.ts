@@ -362,6 +362,7 @@ describe('Cryptographic NEP-413 Swarm & Contractor proofs + /v1/near/status AI t
     } as unknown as AppEnv);
     const status = await statusCtrl.status();
     expect(status.ai).toEqual({
+      mode: 'testnet',
       provider: 'nearai',
       defaultModel: 'z-ai/glm-5.3-flash',
       attestationEnabled: true,

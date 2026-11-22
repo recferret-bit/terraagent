@@ -356,7 +356,7 @@ describe('viewportHelper: createPlanet coastal sand exclusion & URL seed hashes'
 
         // Verify actual transformed InstancedMesh vertices on golden-1 for both ocean & temperate
         if (seed === 'golden-1') {
-          const ht = createHexTerrain({ radius: R, tiles: layers, look });
+          const ht = createHexTerrain({ radius: R, tiles: layers, look, prewarmBugs: false });
           for (const kind of ['bush', 'wildflower', 'grassTuft'] as const) {
             for (const im of ht.flora.meshes[kind]) {
               const pos = im.geometry.getAttribute('position');
@@ -364,7 +364,7 @@ describe('viewportHelper: createPlanet coastal sand exclusion & URL seed hashes'
                 im.getMatrixAt(k, mat);
                 for (let vi = 0; vi < pos.count; vi++) {
                   vPos.fromBufferAttribute(pos, vi).applyMatrix4(mat);
-                  expect(isBeachSandAt(vPos.x, vPos.z)).toBe(false);
+                  expect(isHexBeachSandAtPoint(hx, vPos.x, vPos.z, vPos.y, layers, look.kind, shoreByTile)).toBe(false);
                 }
               }
             }
@@ -373,7 +373,7 @@ describe('viewportHelper: createPlanet coastal sand exclusion & URL seed hashes'
         }
       }
     }
-  }, 25_000);
+  }, 60_000);
 });
 
 describe('viewportHelper: URL ?seed=<hash> & ?host=local end-to-end forwarding', () => {

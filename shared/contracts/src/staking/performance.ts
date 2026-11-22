@@ -64,6 +64,8 @@ export const StakingOverviewResponse = z.strictObject({
     earlyExitFeeBp: z.number().int().nonnegative(),
     freeTrialTurns: z.number().int().nonnegative(),
     standardTakerFeeBp: z.number().int().nonnegative(),
+    unbondingMs: Ms.optional(),
+    rewardRateMultiplier: z.number().positive().optional(),
   }),
   projection: IncomeProjection,
   ecosystem: EcosystemTvlView,

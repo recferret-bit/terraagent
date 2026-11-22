@@ -17,6 +17,8 @@ export interface UnitControlDeps {
   toast(message: string): void;
   /** Dev net stats: rolled-back commands and the pose corrections the renderer applied. */
   netStats: Pick<NetStatsBoard, 'recordRollback' | 'recordCorrection'>;
+  spectator?: () => boolean;
+  onColonyInspected?: (colonyIndex: number) => void;
 }
 
 /** Stop key for the selected unit, by physical key so it works on any layout (S is camera pan, see `RTSCamera`). */
@@ -31,7 +33,9 @@ export function createUnitControl(d: UnitControlDeps): { landfall: LandfallContr
   const landfall = new LandfallController({
     store: d.store, sendCommand: d.commandBus.send,
     pickTile: (cx, cy) => d.pickAt(cx, cy), canvas: d.canvas,
-    isHqDeployed: () => d.entities.isHqDeployed(),
+    spectator: Boolean(d.spectator?.()),
+    onColonyInspected: d.onColonyInspected,
+    isHqDeployed: () => Boolean(d.spectator?.() || d.entities.isHqDeployed()),
     onTargetMove: (q, r) => d.entities.flashTarget(q, r, d.terrain()),
     onOrderFailed: () => d.toast('No path: the HQ cannot reach that tile'),
   });

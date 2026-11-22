@@ -1,5 +1,6 @@
 import { sendPlanetRequest } from '../../core/net/planetHttp';
 import type { FeatureContext, GameView } from '../../core/registry/types';
+import { isReadOnlySpectator } from '../shared/colony';
 import { TreasuryTracker } from './analytics/treasuryTracker';
 import { fetchCouncil, postProposal, postVote, readApiErrorCode, type CouncilFetch } from './councilApi';
 import { mountCouncilSheet, type CouncilDom } from './councilDom';
@@ -92,10 +93,18 @@ export class CouncilPanel {
       tick: this.tick,
       errorCode: this.errorCode,
     });
-    const sig = councilSignature(view);
+    const ro = isReadOnlySpectator(this.ctx.services);
+    const sig = `${ro}|${councilSignature(view)}`;
     if (sig === this.painted) return;
     this.painted = sig;
     this.dom.paint(view);
+    if (ro && typeof this.dom.root.querySelectorAll === 'function') {
+      for (const el of this.dom.root.querySelectorAll<HTMLButtonElement | HTMLInputElement | HTMLSelectElement>(
+        '[data-action="council-propose"], [data-action="council-vote"], button[type="submit"], form button, form select',
+      )) {
+        el.disabled = true;
+      }
+    }
   }
 
   private async refresh(): Promise<void> {
@@ -119,11 +128,13 @@ export class CouncilPanel {
   }
 
   private async propose(kind: string): Promise<void> {
+    if (isReadOnlySpectator(this.ctx.services)) return;
     if (!kind || !await this.send((planetId) => postProposal(planetId, kind, this.token(), this.fetchImpl))) return;
     await this.refresh();
   }
 
   private async cast(id: string, vote: 'approve' | 'reject'): Promise<void> {
+    if (isReadOnlySpectator(this.ctx.services)) return;
     if (!await this.send((planetId) => postVote(planetId, id, vote, this.token(), this.fetchImpl))) return;
     await this.refresh();
   }

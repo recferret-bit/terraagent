@@ -1,5 +1,5 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
-import { MANAGED_AI_MODEL, newId, SCRIPT_AI_MODEL, type MarketTokenKey, type TradeAllowance } from '@terra/contracts';
+import { MANAGED_AI_MODEL, newId, SCRIPT_AI_MODEL, type AgentDecisionFeedItemV1, type MarketTokenKey, type TradeAllowance } from '@terra/contracts';
 import type { PrismaClient } from '@terra/db';
 import { restore, shouldAiGovernColony } from '@terra/sim';
 import { databaseEnabled } from '../../core/persistence.js';
@@ -78,6 +78,7 @@ export class ColonyAgentLoopService {
   private timer: ReturnType<typeof setInterval> | null = null;
   private readonly decisionCache = new Map<string, CachedColonyDecision>();
   private managedGate: ManagedAiGate | null = null;
+  private decisionRecorder?: (item: Omit<AgentDecisionFeedItemV1, 'id'>) => void;
 
   constructor(
     private readonly planets: GamePlanets,
@@ -105,6 +106,10 @@ export class ColonyAgentLoopService {
 
   clearCache(): void {
     this.decisionCache.clear();
+  }
+
+  setDecisionRecorder(fn: (item: Omit<AgentDecisionFeedItemV1, 'id'>) => void): void {
+    this.decisionRecorder = fn;
   }
 
   async sweepLoadedPlanets(): Promise<void> {
@@ -189,7 +194,7 @@ export class ColonyAgentLoopService {
         directive: deterministicDirective(obs),
         model: SCRIPT_AI_MODEL,
       };
-      const evalRes = await this.applyColonyDecision(planetId, col, obs, decision, opts);
+      const evalRes = await this.applyColonyDecision(planetId, col, obs, decision, opts, state.meta.tick);
       resultsByIndex.set(obs.colonyIndex, evalRes);
     }
 
@@ -359,6 +364,7 @@ export class ColonyAgentLoopService {
     obs: ColonyObservation,
     decision: ResolvedDecision,
     opts: TickPlanetAgentsOptions,
+    stateTick = 0,
   ): Promise<ColonyAgentEvalResult> {
     const { directive, model, attestation, usedPlayerKey, cached, aiAccess } = decision;
     const allowance = opts.allowanceByColony?.[col.index] ?? DEFAULT_AGENT_ALLOWANCE;
@@ -381,6 +387,7 @@ export class ColonyAgentLoopService {
     }
 
     if (guardrailRejected) {
+      this.emitRecordedDecision(planetId, col, obs, decision, null, 'rejected', `${directive.action} (blocked: ${guardrailRejected})`, stateTick, opts.nowMs, { guardrailRejected });
       return {
         colonyIndex: col.index,
         colonyId: col.id,
@@ -405,6 +412,8 @@ export class ColonyAgentLoopService {
       const out = await this.planets.submit(planetId, cmd);
       commandOutcome = out.ok ? { ok: true } : { ok: false, code: out.code };
     }
+    const outcome = cached ? 'skipped' : commandOutcome ? (commandOutcome.ok ? 'applied' : 'rejected') : 'emitted';
+    this.emitRecordedDecision(planetId, col, obs, decision, cmd, outcome, `${directive.action}: ${directive.rationale.slice(0, 120)}`, stateTick, opts.nowMs);
     if (obs.away && !cached && this.digests && directive.action !== 'hold') {
       await this.digests.noteHighlight(col.id, new Date(), `AI Governor: ${directive.rationale}`);
     }
@@ -422,6 +431,38 @@ export class ColonyAgentLoopService {
       attestation,
       aiAccess,
     };
+  }
+
+  private emitRecordedDecision(
+    planetId: string,
+    col: { id: string; index: number; playerId?: string },
+    obs: ColonyObservation,
+    decision: ResolvedDecision,
+    cmd: { commandId: string; kind: string } | null,
+    outcome: AgentDecisionFeedItemV1['outcome'],
+    summary: string,
+    atTick: number,
+    nowMs?: number,
+    extra?: Record<string, unknown>,
+  ): void {
+    this.decisionRecorder?.({
+      planetId,
+      sectorId: obs.sectorId ?? 'sec_0_0',
+      colonyId: col.id,
+      colonyIndex: col.index,
+      actorId: obs.isBot ? `bot:${col.id}` : col.playerId ?? null,
+      isBot: obs.isBot,
+      actorSource: 'colony_agent',
+      decisionKind: decision.directive.action,
+      summary,
+      rationale: decision.directive.rationale,
+      commandId: cmd?.commandId ?? null,
+      commandKind: cmd?.kind ?? null,
+      payload: { model: decision.model, directive: decision.directive, usedPlayerKey: decision.usedPlayerKey, ...(extra ?? {}) },
+      outcome,
+      atTick,
+      createdAtMs: nowMs ?? Date.now(),
+    });
   }
 
   private async ensureTradeAccountFunded(

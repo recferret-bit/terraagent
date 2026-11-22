@@ -108,6 +108,11 @@ export class SnapshotStore extends RepositoryBase {
       this.prisma.planetSnapshot.deleteMany({ where: { planetId } }),
       this.prisma.progressionEpoch.deleteMany({ where: { planetId } }),
       this.prisma.ledgerEntry.deleteMany({ where: { planetId } }), // the old planet's resource journal goes with it
+      this.prisma.simInputHistory.deleteMany({ where: { planetId } }),
+      this.prisma.agentDecisionHistory.deleteMany({ where: { planetId } }),
+      this.prisma.sectorParticipantState.deleteMany({ where: { planetId } }),
+      this.prisma.planetSector.deleteMany({ where: { planetId } }),
+      this.prisma.simWorkerLease.deleteMany({ where: { planetId } }),
       this.prisma.colony.deleteMany({ where: { planetId } }),
       this.prisma.planet.deleteMany({ where: { id: planetId } }),
     ]);

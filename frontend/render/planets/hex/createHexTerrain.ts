@@ -222,6 +222,45 @@ function emitTileHabitatDisturbances(
   }
 }
 
+function buildTerrainBiomeOrchestrator(
+  opts: HexTerrainOptions,
+  look: PlanetSpec,
+  planetSeed: number,
+  tiles: HexTiles,
+): BiomeOrchestrator {
+  const jsonOrConfig =
+    opts.biomeConfigJson ??
+    serializeBiomeOrchestratorConfig(buildBiomeOrchestratorConfig(look, opts.radius, { edges: opts.edges }));
+  return new BiomeOrchestrator(jsonOrConfig, { ...tiles, kind: look.kind, seed: planetSeed }, {
+    look,
+    colorBlindMode: opts.colorBlindMode ?? globalColorBlindMode,
+    colonyColors: opts.colonyColors,
+    bugsOrchestrator: opts.bugsOrchestrator,
+    prewarmBugs: opts.prewarmBugs,
+    pregenerated: opts.pregenerated,
+  });
+}
+
+function isWaterTileAt(radius: number, tiles: HexTiles, x: number, z: number): boolean {
+  const t = tileAt(radius, x, z);
+  const code = t ? tiles.terrain[t.i] : undefined;
+  return code === HEX_TERRAIN.shallow || code === HEX_TERRAIN.deep;
+}
+
+function enqueueTerrainDispose(
+  handle: HexTerrain,
+  group: THREE.Group,
+  borderMesh: THREE.Mesh,
+): void {
+  activeTerrains.delete(handle);
+  group.removeFromParent();
+  enqueueDeferredDispose(
+    () => { group.visible = false; },
+    () => { borderMesh.visible = false; },
+    () => handle.dispose(),
+  );
+}
+
 /**
  * Hex terrain powered by `BiomeOrchestrator`: parses the unified biome JSON configuration and coordinates
  * `TerrainOrchestrator`, `TreesOrchestrator`, `GroundObjectsOrchestrator`, `ResourcesOrchestrator`,
@@ -234,30 +273,17 @@ export function createHexTerrain(opts: HexTerrainOptions): HexTerrain {
   const hx = hexIndex(radius);
   let tiles = opts.tiles;
   let elapsedTime = 0;
-  const jsonOrConfig =
-    opts.biomeConfigJson ??
-    serializeBiomeOrchestratorConfig(buildBiomeOrchestratorConfig(look, radius, { edges: opts.edges }));
-  const biomeOrchestrator = new BiomeOrchestrator(jsonOrConfig, { ...tiles, kind: look.kind, seed: planetSeed }, {
-    look,
-    colorBlindMode: opts.colorBlindMode ?? globalColorBlindMode,
-    colonyColors: opts.colonyColors,
-    bugsOrchestrator: opts.bugsOrchestrator,
-    prewarmBugs: opts.prewarmBugs,
-    pregenerated: opts.pregenerated,
-  });
+  const biomeOrchestrator = buildTerrainBiomeOrchestrator(opts, look, planetSeed, tiles);
 
   const tOrch = biomeOrchestrator.terrainOrchestrator;
   const { group, material, uniforms, water, borderMesh, halfSize, heightAt } = tOrch;
   const { props, flora, biosphere } = biomeOrchestrator;
   const prevTerrainSnap = Uint8Array.from({ length: hx.count }, (_, i) => tiles.terrain[i] ?? 0);
   const prevPrepSnap = Uint8Array.from({ length: hx.count }, (_, i) => tiles.prep?.[i] ?? 0);
-  const isWaterAt = (x: number, z: number): boolean => {
-    const t = tileAt(radius, x, z);
-    const code = t ? tiles.terrain[t.i] : undefined;
-    return code === HEX_TERRAIN.shallow || code === HEX_TERRAIN.deep;
-  };
   const ray = new THREE.Raycaster();
   let disposed = false;
+  let deferredStarted = false;
+  let progressiveRemaining = opts.progressive ? 2 : 0;
 
   const handle: HexTerrain = {
     group,
@@ -274,9 +300,13 @@ export function createHexTerrain(opts: HexTerrainOptions): HexTerrain {
     halfSize,
     heightAt,
     get chunks() {
+      progressiveRemaining = 0;
       return tOrch.chunks;
     },
-    pick: (input, camera) => pickHexTile(radius, input, camera, ray, heightAt, isWaterAt, props),
+    pick: (input, camera) => {
+      progressiveRemaining = 0;
+      return pickHexTile(radius, input, camera, ray, heightAt, (x, z) => isWaterTileAt(radius, tiles, x, z), props);
+    },
     updateTiles(nextOrChanged, maybeChanged) {
       const resolved = resolveTilesAndChanged(tiles, nextOrChanged, maybeChanged);
       tiles = resolved.tiles;
@@ -305,15 +335,18 @@ export function createHexTerrain(opts: HexTerrainOptions): HexTerrain {
     getTerritoryBorderStats: () => tOrch.getTerritoryBorderStats(),
     setColorBlindMode: (enabled) => tOrch.setColorBlindMode(enabled, tiles),
     setColonyColors: (colors) => tOrch.setColonyColors(colors, tiles),
-    stepProgressiveBuild: () => true,
-    finishProgressiveBuild() {},
-    isBuildComplete: () => true,
+    stepProgressiveBuild: () => {
+      if (progressiveRemaining > 0) progressiveRemaining--;
+      return progressiveRemaining <= 0;
+    },
+    finishProgressiveBuild() {
+      progressiveRemaining = 0;
+    },
+    isBuildComplete: () => progressiveRemaining <= 0,
     disposeDeferred() {
-      if (disposed) return;
-      disposed = true;
-      activeTerrains.delete(handle);
-      group.removeFromParent();
-      enqueueDeferredDispose(() => biomeOrchestrator.dispose());
+      if (disposed || deferredStarted) return;
+      deferredStarted = true;
+      enqueueTerrainDispose(handle, group, tOrch.borderMesh);
     },
     dispose() {
       if (disposed) return;

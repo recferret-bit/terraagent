@@ -196,3 +196,57 @@ describe('WorldStore building catalog', () => {
     store.dispose();
   });
 });
+
+describe('simWorkerPrewarm and software GL loop pacing', () => {
+  it('reuses a single prewarmed Worker once and disposes unused prewarmed workers cleanly', async () => {
+    const { prewarmSimWorker, takePrewarmedSimWorker, disposePrewarmedSimWorker } = await import('./worker/simWorkerPrewarm');
+    const origWorker = (globalThis as { Worker?: unknown }).Worker;
+    let created = 0;
+    let terminated = 0;
+    (globalThis as { Worker?: unknown }).Worker = class {
+      onmessage = null;
+      constructor() { created += 1; }
+      postMessage(): void {}
+      terminate(): void { terminated += 1; }
+    };
+    try {
+      prewarmSimWorker();
+      prewarmSimWorker();
+      expect(created).toBe(1);
+      expect(takePrewarmedSimWorker()).not.toBeNull();
+      expect(takePrewarmedSimWorker()).toBeNull();
+      prewarmSimWorker();
+      disposePrewarmedSimWorker();
+      expect(terminated).toBe(1);
+      expect(takePrewarmedSimWorker()).toBeNull();
+    } finally {
+      (globalThis as { Worker?: unknown }).Worker = origWorker;
+    }
+  });
+
+  it('paces software WebGL viewports unless an explicit fpsCap query override is present', async () => {
+    const { computeNextSessionLoopDelayMs } = await import('../app/online/parts/sessionSpectator');
+    const softVp = {
+      renderer: {
+        getContext: () => ({
+          RENDERER: 0x1f01,
+          getExtension: () => null,
+          getParameter: () => 'Google SwiftShader',
+        }),
+      },
+    } as never;
+    const hwVp = {
+      renderer: {
+        getContext: () => ({
+          RENDERER: 0x1f01,
+          getExtension: () => null,
+          getParameter: () => 'Apple M3 Max',
+        }),
+      },
+    } as never;
+    expect(computeNextSessionLoopDelayMs(hwVp, '', 8)).toBe(0);
+    expect(computeNextSessionLoopDelayMs(softVp, '', 8)).toBe(180);
+    expect(computeNextSessionLoopDelayMs(softVp, '?fpsCap=60', 8)).toBe(0);
+    expect(computeNextSessionLoopDelayMs(hwVp, '', 300)).toBe(150);
+  });
+});

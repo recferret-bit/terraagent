@@ -79,4 +79,53 @@ describe('W04 MapsController redraw routing', () => {
     expect(update).toHaveBeenCalledTimes(2);
     controller.dispose();
   });
+
+  it('repaints rasterCache with union vs scoped colony vision when toggling spectator ALL VISION / BOT FOV', () => {
+    let allVision = true;
+    const rts = { target: { x: 0, y: 0, z: 0 }, enabled: true };
+    const camera = { position: { x: 10, y: 20, z: 10 } };
+    const ctx = {
+      flags: new Set(['W00', 'W01', 'W02', 'W03', 'W04']),
+      services: {
+        rtsCamera: rts,
+        camera,
+        colonyId: 6,
+        isSpectator: () => true,
+        isSpectatorVisionAll: () => allVision,
+      },
+    } as unknown as FeatureContext;
+    const el = document.createElement('div');
+    document.body.appendChild(el);
+    const rasterCache = new PlanetRasterCache();
+    const controller = new MapsController({ el, ctx, registry: new MapLayerRegistry(), rasterCache });
+    const update = vi.spyOn(rasterCache, 'update');
+
+    const count = hexCount(RADIUS);
+    const bytes = Math.ceil(count / 8);
+    const tiles: ClientTiles = {
+      count,
+      terrain: new Uint8Array(count),
+      prep: new Uint8Array(count),
+      height: new Float32Array(count),
+      owner: new Int8Array(count).fill(-1),
+      explored: new Uint8Array(count),
+      exploredByColony: { 6: new Uint8Array(bytes), 7: new Uint8Array(bytes) },
+    };
+    tiles.exploredByColony![7]![0] = 1; // Only Bot 7 explored tile 0.
+
+    controller.updateFromView(viewWith(tiles));
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(update.mock.calls[0]?.[1]?.viewerColony).toBe(-1);
+
+    // Same tiles, repeated frame while ALL VISION stays true -> no extra repaint.
+    controller.updateFromView(viewWith(tiles));
+    expect(update).toHaveBeenCalledTimes(1);
+
+    // Toggle to BOT FOV (Bot 6 only) -> worldContextKey invalidates and passes viewerColony 6.
+    allVision = false;
+    controller.updateFromView(viewWith(tiles));
+    expect(update).toHaveBeenCalledTimes(2);
+    expect(update.mock.calls[1]?.[1]?.viewerColony).toBe(6);
+    controller.dispose();
+  });
 });

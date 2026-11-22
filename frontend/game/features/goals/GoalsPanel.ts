@@ -7,7 +7,7 @@ import {
 import type { FeatureContext } from '../../core/registry/types';
 import { formatColonyOrPilotName } from '../identity/PilotChip';
 import { extractRaidTargets } from '../raid/raidTargets';
-import { ownColonyIndex, viewColony } from '../shared/colony';
+import { isReadOnlySpectator, ownColonyIndex, viewColony } from '../shared/colony';
 import { renderStageSuggestion } from './suggestion';
 import { GoalForm, type GoalColonyOption } from './GoalForm';
 
@@ -159,7 +159,12 @@ export class GoalsPanel {
     return this.collapsed;
   }
 
+  private isReadOnly(): boolean {
+    return isReadOnlySpectator(this.ctx.services);
+  }
+
   addGoal(args: QueueGoalArgs): void {
+    if (this.isReadOnly()) return;
     const open = this.getOpenGoals();
     if (open.length >= this.goalLimit) return;
 
@@ -188,6 +193,7 @@ export class GoalsPanel {
   }
 
   cancelGoal(goalId: string): void {
+    if (this.isReadOnly()) return;
     this.goals = this.goals.filter((g) => g.id !== goalId);
     const open = this.getOpenGoals();
     if (open.length > 0 && !open.some((g) => g.status === 'active')) {
@@ -198,6 +204,7 @@ export class GoalsPanel {
   }
 
   reorderGoal(goalId: string, opts: { direction?: 'up' | 'down' | 'top' | 'bottom'; toIndex?: number }): void {
+    if (this.isReadOnly()) return;
     const open = this.getOpenGoals();
     const fromIdx = open.findIndex((g) => g.id === goalId);
     if (fromIdx >= 0) {
@@ -228,6 +235,7 @@ export class GoalsPanel {
   }
 
   acceptSuggestion(stage = 0, goal: GoalKind = 'establish_colony'): void {
+    if (this.isReadOnly()) return;
     this.suggestionDismissed = true;
     const open = this.getOpenGoals();
     if (open.length < this.goalLimit) {
@@ -251,13 +259,16 @@ export class GoalsPanel {
   }
 
   dismissSuggestion(): void {
+    if (this.isReadOnly()) return;
     this.suggestionDismissed = true;
     this.render();
   }
 
   update(view?: unknown): void {
     if (!view) return;
-    this.colonyIndex = ownColonyIndex(this.ctx.services);
+    const nextColony = ownColonyIndex(this.ctx.services);
+    const switchedColony = nextColony !== this.colonyIndex;
+    this.colonyIndex = nextColony;
     this.form.setColonyOptions(resolveRaidColonyOptions(view, this.colonyIndex));
     const col = viewColony(view, this.colonyIndex) as {
       goals?: ColonyGoalEntry[];
@@ -265,6 +276,11 @@ export class GoalsPanel {
       stage?: number;
     } | undefined;
 
+    if (switchedColony) {
+      this.goals = [];
+      this.lastListKey = '';
+      this.suggestionDismissed = false;
+    }
     if (col) {
       if (typeof col.goalLimit === 'number') {
         this.goalLimit = col.goalLimit;
@@ -276,11 +292,15 @@ export class GoalsPanel {
           spent: { ...(g.spent ?? {}) },
           childTaskIds: [...(g.childTaskIds ?? [])],
         }));
+      } else if (switchedColony) {
+        this.goals = [];
       }
-      if (typeof col.stage === 'number' && col.stage !== this.colonyStage) {
+      if (typeof col.stage === 'number' && (switchedColony || col.stage !== this.colonyStage)) {
         this.colonyStage = col.stage;
         this.suggestionDismissed = false;
       }
+      this.render();
+    } else if (switchedColony) {
       this.render();
     }
   }
@@ -288,7 +308,7 @@ export class GoalsPanel {
   render(): void {
     const open = this.getOpenGoals();
     this.limitBadge.textContent = `${open.length} / ${this.goalLimit}`;
-    this.form.setDisabled(open.length >= this.goalLimit);
+    this.form.setDisabled(this.isReadOnly() || open.length >= this.goalLimit);
 
     this.renderSuggestion();
     this.renderList();
@@ -303,19 +323,21 @@ export class GoalsPanel {
       (goal) => this.acceptSuggestion(this.colonyStage, goal),
       () => this.dismissSuggestion(),
       this.ctx.flags,
+      this.isReadOnly(),
     );
   }
 
   private renderList(): void {
     const open = this.getOpenGoals();
-    const listKey = open
+    const ro = this.isReadOnly();
+    const listKey = `${ro}|${open
       .map(
         (g) =>
           `${g.id}:${g.goal}:${g.status}:${Math.round((g.progress ?? 0) * 100)}:${g.stepsCompleted ?? 0}/${
             g.stepsTotal ?? 1
-          }:${g.budgetBp ?? 5000}:${g.detail ?? ""}:${JSON.stringify(g.params ?? {})}`,
+          }:${g.budgetBp ?? 5000}:${g.detail ?? ''}:${JSON.stringify(g.params ?? {})}`,
       )
-      .join('|');
+      .join('|')}`;
     if (listKey === this.lastListKey && this.listEl.childElementCount === open.length) {
       return;
     }
@@ -336,12 +358,14 @@ export class GoalsPanel {
     const reorderControls = document.createElement('div');
     reorderControls.className = 'ta-goal-item__reorder';
 
+    const ro = this.isReadOnly();
     const upBtn = document.createElement('button');
     upBtn.type = 'button';
     upBtn.className = 'ta-goal-item__reorder-btn';
     upBtn.setAttribute('data-testid', `goal-up-${entry.id}`);
     upBtn.textContent = '▲';
     upBtn.title = 'Move Up';
+    upBtn.disabled = ro;
     upBtn.onclick = () => this.reorderGoal(entry.id, { direction: 'up' });
 
     const downBtn = document.createElement('button');
@@ -350,6 +374,7 @@ export class GoalsPanel {
     downBtn.setAttribute('data-testid', `goal-down-${entry.id}`);
     downBtn.textContent = '▼';
     downBtn.title = 'Move Down';
+    downBtn.disabled = ro;
     downBtn.onclick = () => this.reorderGoal(entry.id, { direction: 'down' });
 
     reorderControls.append(upBtn, downBtn);
@@ -374,6 +399,7 @@ export class GoalsPanel {
     cancelBtn.setAttribute('data-testid', `goal-cancel-${entry.id}`);
     cancelBtn.textContent = '✕';
     cancelBtn.title = 'Cancel Goal';
+    cancelBtn.disabled = ro;
     cancelBtn.onclick = () => this.cancelGoal(entry.id);
 
     topRow.append(reorderControls, titleWrap, cancelBtn);
@@ -414,6 +440,7 @@ export class GoalsPanel {
   }
 
   private attachGoalDragAndDrop(item: HTMLElement, goalId: string, itemIndex: number): void {
+    if (this.isReadOnly()) return;
     item.ondragstart = (e) => {
       this.draggedGoalId = goalId;
       e.dataTransfer?.setData('text/plain', goalId);
@@ -446,7 +473,7 @@ export class GoalsPanel {
     item.setAttribute('data-testid', `goal-item-${entry.id}`);
     item.setAttribute('data-goal-kind', entry.goal);
     item.setAttribute('data-goal-status', entry.status);
-    item.draggable = true;
+    item.draggable = !this.isReadOnly();
 
     item.append(this.createGoalTopRow(entry), this.createGoalProgressRow(entry));
     const detail = document.createElement('p');

@@ -83,6 +83,7 @@ export class ArmyStancePanel {
   }
 
   render(snap: ArmyOrdersSnapshot = this.controller.getSnapshot()): void {
+    const ro = this.controller.isReadOnly();
     const count = snap.selectedEntityIds.length;
     const visible = count > 0;
     this.el.hidden = !visible;
@@ -92,10 +93,12 @@ export class ArmyStancePanel {
 
     for (const [stance, btn] of this.stanceButtons.entries()) {
       const active = snap.currentStance === stance;
+      btn.disabled = ro;
       btn.setAttribute('data-active', String(active));
       btn.setAttribute('aria-pressed', String(active));
     }
 
+    this.attackMoveBtn.disabled = ro;
     this.attackMoveBtn.setAttribute('data-armed', String(snap.attackMoveArmed));
     this.attackMoveBtn.setAttribute('aria-pressed', String(snap.attackMoveArmed));
 

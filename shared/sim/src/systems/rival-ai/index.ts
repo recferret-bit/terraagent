@@ -8,6 +8,7 @@ import { seedRivalAiColonies } from './seed';
 export * from './store';
 export * from './seed';
 export * from './governor';
+export * from './planner';
 export { colonyIsAway, resolveColonyAwayRaids } from '../away/gate';
 
 export const rivalAiSystem = defineSystem({
@@ -15,7 +16,8 @@ export const rivalAiSystem = defineSystem({
   slot: 4,
   wave: 'W18',
   run(state, ctx) {
-    runPlanetGovernorTick(state, ctx);
+    if (ctx.hostRole === 'replica') return;
+    runPlanetGovernorTick(state, ctx, { skipBotColonies: ctx.hostRole === 'authority_external_bots' });
   },
 });
 

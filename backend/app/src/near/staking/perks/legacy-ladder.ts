@@ -1,5 +1,6 @@
 import { parseWaves, STAKING_TIERS, stakingTierForYocto, type StakingTierRow } from '@terra/contracts';
 import { resolveProtocolFeeSchedule } from '../../infrastructure/network/protocol-fee.config.js';
+import { resolveStakingTimings } from '../local-staking-timings.js';
 
 type EnvBag = Readonly<Record<string, string | undefined>>;
 
@@ -14,6 +15,8 @@ export interface PerkLadder {
   readonly grossApyBp: number;
   readonly netApyBp: number;
   readonly protocolYieldShareBp: number;
+  readonly feeWarmupMs?: number;
+  readonly earlyExitWindowMs?: number;
 }
 
 /** Wave gate: an explicit flag wins, else `TA_WAVES` of `env` (then of `process.env`), default `all` (W28 on). */
@@ -34,11 +37,13 @@ export function resolvePerkLadder(opts: {
   readonly standardPlatformFeeBp?: number;
   readonly grossApyBp?: number;
 }): PerkLadder {
-  const sched = resolveProtocolFeeSchedule(opts.env ?? process.env, {
+  const envSource = opts.env ?? process.env;
+  const sched = resolveProtocolFeeSchedule(envSource, {
     basePlatformFeeBp: opts.standardPlatformFeeBp,
     validatorGrossApyBp: opts.grossApyBp,
     w28: opts.w28,
   });
+  const timings = resolveStakingTimings(envSource);
   const common = {
     w28: opts.w28,
     standardPlatformFeeBp: sched.standardPlatformFeeBp,
@@ -47,6 +52,8 @@ export function resolvePerkLadder(opts: {
     grossApyBp: sched.validatorGrossApyBp,
     netApyBp: sched.stakerNetApyBp,
     protocolYieldShareBp: sched.protocolStakingYieldShareBp,
+    feeWarmupMs: timings.feeWarmupMs,
+    earlyExitWindowMs: timings.earlyExitWindowMs,
   };
   if (opts.w28) return { ...common, rows: STAKING_TIERS };
   const cadet = STAKING_TIERS[0]!;

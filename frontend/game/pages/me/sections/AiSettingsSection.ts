@@ -4,13 +4,19 @@ import {
   type MeProfileResponse,
   type PlayerAiSettings,
 } from '@terra/contracts';
-import { saveMeAiSettings, type MeFetchFn } from '../api';
+import { buildWavesQuerySuffix, resolveMeBearerToken, saveMeAiSettings, type MeFetchFn } from '../api';
 import { verifyTeeAttestationClient, type TeeAttestationClientInput } from '../../../../design/pilot/teeVerifier';
 import { el } from '../dom';
+import { buildBlockHeaderWithTip } from '../parts/helpTip';
+
+export interface AiSettingsController {
+  syncStakerState(totalStakedNear: number): void;
+}
 
 export interface RenderAiSettingsOptions {
   readonly fetch?: MeFetchFn;
   readonly search?: string;
+  readonly onReady?: (ctrl: AiSettingsController) => void;
 }
 
 const CUSTOM_MODEL_OPTION = '__custom__';
@@ -132,7 +138,15 @@ function applyUpdatedSettings(refs: AiSettingsDomRefs, next: PlayerAiSettings, m
 async function runAiEnclaveProbe(refs: AiSettingsDomRefs, opts: RenderAiSettingsOptions): Promise<void> {
   refs.statusNode.textContent = 'Probing NEAR.AI TEE enclave attestation…';
   try {
-    const res = await (opts.fetch ?? fetch)(`/v1/me/ai-settings/verify${opts.search ?? ''}`, { method: 'POST' });
+    const rawSearch = opts.search ?? (typeof location !== 'undefined' ? location.search : '');
+    const token = resolveMeBearerToken(rawSearch);
+    const headers: Record<string, string> = { Accept: 'application/json' };
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const res = await (opts.fetch ?? fetch)(`/v1/me/ai-settings/verify${buildWavesQuerySuffix(rawSearch)}`, {
+      method: 'POST',
+      credentials: 'include',
+      headers,
+    });
     const body = (await res.json().catch(() => ({}))) as {
       ok?: boolean;
       model?: string;
@@ -161,7 +175,30 @@ async function runAiEnclaveProbe(refs: AiSettingsDomRefs, opts: RenderAiSettings
   }
 }
 
-function wireAiSettingsHandlers(refs: AiSettingsDomRefs, opts: RenderAiSettingsOptions): void {
+function wireAiSettingsHandlers(
+  refs: AiSettingsDomRefs,
+  opts: RenderAiSettingsOptions,
+  mergeSettings: (next: PlayerAiSettings) => PlayerAiSettings = (n) => n,
+): void {
+  let inFlight = false;
+  const runExclusive = async (fn: () => Promise<void>): Promise<void> => {
+    if (inFlight) return;
+    inFlight = true;
+    for (const b of [refs.saveBtn, refs.clearBtn, refs.verifyBtn]) {
+      b.disabled = true;
+      b.setAttribute('aria-busy', 'true');
+    }
+    try {
+      await fn();
+    } finally {
+      inFlight = false;
+      for (const b of [refs.saveBtn, refs.clearBtn, refs.verifyBtn]) {
+        b.disabled = false;
+        b.removeAttribute('aria-busy');
+      }
+    }
+  };
+
   refs.modelSelect.addEventListener('change', () => {
     const isCustom = refs.modelSelect.value === CUSTOM_MODEL_OPTION;
     refs.customModelInput.hidden = !isCustom;
@@ -174,7 +211,7 @@ function wireAiSettingsHandlers(refs: AiSettingsDomRefs, opts: RenderAiSettingsO
   });
 
   refs.saveBtn.addEventListener('click', () => {
-    void (async () => {
+    void runExclusive(async () => {
       const chosenModel = resolveChosenModel(refs);
       if (!chosenModel) {
         refs.customModelInput.setAttribute('aria-invalid', 'true');
@@ -194,12 +231,12 @@ function wireAiSettingsHandlers(refs: AiSettingsDomRefs, opts: RenderAiSettingsO
         refs.statusNode.textContent = out.message;
         return;
       }
-      applyUpdatedSettings(refs, out.settings, `Saved NEAR.AI model (${out.settings.model}).`);
-    })();
+      applyUpdatedSettings(refs, mergeSettings(out.settings), `Saved NEAR.AI model (${out.settings.model}).`);
+    });
   });
 
   refs.clearBtn.addEventListener('click', () => {
-    void (async () => {
+    void runExclusive(async () => {
       const chosenModel = resolveChosenModel(refs) ?? DEFAULT_PLAYER_NEAR_AI_MODEL;
       refs.statusNode.textContent = 'Clearing NEAR.AI API key…';
       const out = await saveMeAiSettings(
@@ -211,13 +248,37 @@ function wireAiSettingsHandlers(refs: AiSettingsDomRefs, opts: RenderAiSettingsO
         refs.statusNode.textContent = out.message;
         return;
       }
-      applyUpdatedSettings(refs, out.settings, 'Personal NEAR.AI key removed.');
-    })();
+      applyUpdatedSettings(refs, mergeSettings(out.settings), 'Personal NEAR.AI key removed.');
+    });
   });
 
   refs.verifyBtn.addEventListener('click', () => {
-    void runAiEnclaveProbe(refs, opts);
+    void runExclusive(() => runAiEnclaveProbe(refs, opts));
   });
+}
+
+function buildAiInputs(models: readonly string[], selectedModel: string) {
+  const modelSelect = createModelSelect(models, selectedModel);
+  const customModelInput = el('input', {
+    id: 'me-ai-custom-model-input',
+    className: 'input ta-ai-input ta-ai-custom-input',
+    type: 'text',
+    dataset: { testid: 'me-ai-custom-model-input' },
+  });
+  customModelInput.placeholder = 'e.g. meta-llama/Llama-3.3-70B-Instruct';
+  customModelInput.maxLength = 128;
+  customModelInput.autocomplete = 'off';
+  syncModelControls({ models, modelSelect, customModelInput }, selectedModel);
+
+  const keyInput = el('input', {
+    id: 'me-ai-key-input',
+    className: 'input ta-ai-input',
+    type: 'password',
+    dataset: { testid: 'me-ai-key-input' },
+  });
+  keyInput.placeholder = 'Enter NEAR AI Cloud API key (leave blank to keep existing)';
+  keyInput.autocomplete = 'off';
+  return { modelSelect, customModelInput, keyInput };
 }
 
 export function renderAiSettingsSection(
@@ -228,75 +289,74 @@ export function renderAiSettingsSection(
   const models = current.availableModels.length > 0 ? current.availableModels : [...NEAR_AI_AVAILABLE_MODELS];
   const initialBadge = aiBadgeFor(current);
 
-  const badge = el(
-    'span',
-    {
-      className: initialBadge.cls,
-      dataset: { testid: 'me-ai-badge' },
-    },
-    initialBadge.text,
-  );
-  const previewNode = el(
-    'span',
-    { className: 'ta-me-muted', dataset: { testid: 'me-ai-key-preview' } },
-    initialBadge.preview,
-  );
-  const modelSelect = createModelSelect(models, current.model);
-  const customModelInput = el('input', {
-    id: 'me-ai-custom-model-input',
-    className: 'input ta-ai-input ta-ai-custom-input',
-    type: 'text',
-    dataset: { testid: 'me-ai-custom-model-input' },
-  });
-  customModelInput.placeholder = 'e.g. meta-llama/Llama-3.3-70B-Instruct';
-  customModelInput.maxLength = 128;
-  customModelInput.autocomplete = 'off';
-  syncModelControls({ models, modelSelect, customModelInput }, current.model);
-
-  const keyInput = el('input', {
-    id: 'me-ai-key-input',
-    className: 'input ta-ai-input',
-    type: 'password',
-    dataset: { testid: 'me-ai-key-input' },
-  });
-  keyInput.placeholder = 'Enter NEAR AI Cloud API key (leave blank to keep existing)';
-  keyInput.autocomplete = 'off';
+  const badge = el('span', { className: initialBadge.cls, dataset: { testid: 'me-ai-badge' } }, initialBadge.text);
+  const previewNode = el('span', { className: 'ta-me-muted', dataset: { testid: 'me-ai-key-preview' } }, initialBadge.preview);
+  const { modelSelect, customModelInput, keyInput } = buildAiInputs(models, current.model);
   const statusNode = el(
     'p',
-    {
-      className: 'ta-me-muted',
-      role: 'status',
-      aria: { live: 'polite' },
-      dataset: { testid: 'me-ai-status' },
-    },
+    { className: 'ta-me-muted', role: 'status', aria: { live: 'polite' }, dataset: { testid: 'me-ai-status' } },
     'Staking ≥10 NEAR in Colony Staking unlocks server-sponsored Managed NEAR.AI Autopilot (z-ai/glm-5.3-flash) automatically. Prefer custom models (Claude, GPT-5, DeepSeek, or any custom NEAR AI Cloud model ID) or playing unstaked? Save your own encrypted BYOK NEAR AI Cloud key (https://cloud-api.near.ai/v1) below — AI remains bounded on-server and can never break truces, stake NEAR, or lock human funds.',
   );
-  const saveBtn = el(
-    'button',
-    { className: 'btn btn-primary btn-sm', type: 'button', dataset: { testid: 'me-ai-save-btn' } },
-    'Save NEAR.AI Config',
-  );
-  const clearBtn = el(
-    'button',
-    { className: 'btn btn-ghost btn-sm', type: 'button', dataset: { testid: 'me-ai-clear-btn' } },
-    'Disconnect Key',
-  );
+  const saveBtn = el('button', { className: 'btn btn-primary btn-sm', type: 'button', dataset: { testid: 'me-ai-save-btn' } }, 'Save NEAR.AI Config');
+  const clearBtn = el('button', { className: 'btn btn-ghost btn-sm', type: 'button', dataset: { testid: 'me-ai-clear-btn' } }, 'Disconnect Key');
+  const verifyBtn = el('button', { className: 'btn btn-ghost btn-sm', type: 'button', dataset: { testid: 'me-ai-verify-btn' } }, 'TEST & VERIFY TEE ENCLAVE');
 
-  const verifyBtn = el(
-    'button',
-    { className: 'btn btn-ghost btn-sm', type: 'button', dataset: { testid: 'me-ai-verify-btn' } },
-    'TEST & VERIFY TEE ENCLAVE',
-  );
-
+  let latest: PlayerAiSettings = current;
+  const domRefs: AiSettingsDomRefs = {
+    models,
+    badge,
+    previewNode,
+    modelSelect,
+    customModelInput,
+    keyInput,
+    statusNode,
+    saveBtn,
+    clearBtn,
+    verifyBtn,
+  };
   wireAiSettingsHandlers(
-    { models, badge, previewNode, modelSelect, customModelInput, keyInput, statusNode, saveBtn, clearBtn, verifyBtn },
+    domRefs,
     opts,
+    (next) => {
+      latest = {
+        ...next,
+        stakerAutopilotActive: next.stakerAutopilotActive ?? latest.stakerAutopilotActive,
+        stakedNear: next.stakedNear ?? latest.stakedNear,
+      };
+      return latest;
+    },
+  );
+  opts.onReady?.({
+    syncStakerState(totalStakedNear: number) {
+      const clean = Math.max(0, Number.isFinite(totalStakedNear) ? totalStakedNear : 0);
+      latest = {
+        ...latest,
+        stakerAutopilotActive: clean >= 10,
+        stakedNear: clean.toFixed(6).replace(/\.?0+$/, '') || '0',
+      };
+      const b = aiBadgeFor(latest);
+      badge.textContent = b.text;
+      badge.className = b.cls;
+      previewNode.textContent = b.preview;
+    },
+  });
+
+  const header = buildBlockHeaderWithTip(
+    {
+      id: 'ai-settings',
+      title: 'NEAR.AI BOT DECISION MANAGER',
+      description:
+        'Configure how your colony AI Autopilot runs: stake ≥10 NEAR for free protocol-sponsored Managed NEAR.AI TEE (glm-5.3-flash), or save your own AES-256-GCM encrypted NEAR AI Cloud API key to unlock Claude, GPT-5, DeepSeek, or custom models. AI is strictly bounded and can never stake NEAR or break treaties.',
+    },
+    el('span', { className: 'label c-orange' }, 'NEAR.AI BOT DECISION MANAGER'),
+    badge,
   );
 
   return el(
     'div',
     { className: 'plate-sm ta-ai-settings', dataset: { testid: 'me-ai-settings' } },
-    el('div', { className: 'ta-colony-head' }, el('span', { className: 'label c-orange' }, 'NEAR.AI BOT DECISION MANAGER'), badge),
+    header.head,
+    header.panel,
     statusNode,
     el(
       'div',

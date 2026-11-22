@@ -52,8 +52,10 @@ export interface StakingWalletTxQuery {
 const WHITELISTED_LST_CONTRACTS = new Set([
   'meta-pool.near',
   'meta-v2.pool.testnet',
+  'meta-pool.mock',
   'linear-protocol.near',
   'linear-protocol.testnet',
+  'linear-protocol.mock',
   'rnear.near',
   'rnear.testnet',
 ]);
@@ -67,8 +69,14 @@ export function resolveStakingContractId(env?: Record<string, string | undefined
   return resolveNearNetworkConfig(source, kind === 'mainnet' ? 'mainnet' : 'testnet').contracts.staking;
 }
 
+function defaultNativePoolFor(kind: string): string {
+  if (kind === 'mock') return 'astro-stakers.pool.mock';
+  if (kind === 'testnet') return 'astro-stakers.pool.testnet';
+  return 'astro-stakers.poolv1.near';
+}
+
 function resolveLstContract(raw: string | undefined, kind: string): string {
-  const defaultLst = kind === 'testnet' ? 'meta-v2.pool.testnet' : 'meta-pool.near';
+  const defaultLst = kind === 'mock' ? 'meta-pool.mock' : kind === 'testnet' ? 'meta-v2.pool.testnet' : 'meta-pool.near';
   const lstContract = (raw ?? defaultLst).trim().toLowerCase();
   if (!WHITELISTED_LST_CONTRACTS.has(lstContract)) {
     throw new CoreException('INVALID_REQUEST', {
@@ -127,7 +135,7 @@ function buildCompoundTx(
   kind: string,
   source: Record<string, string | undefined>,
 ): StakingWalletTxDescriptor {
-  const defaultPool = kind === 'testnet' ? 'astro-stakers.pool.testnet' : 'astro-stakers.poolv1.near';
+  const defaultPool = defaultNativePoolFor(kind);
   const poolId = query.lstContract
     ? resolveLstPoolId(query.poolId, resolveLstContract(query.lstContract, kind), source, kind)
     : requirePool(query.poolId ?? defaultPool, 'compound_yield');
@@ -155,7 +163,7 @@ function buildUnstakeTx(
   source: Record<string, string | undefined>,
 ): StakingWalletTxDescriptor {
   const owner = requireAccount(accountId, 'unstake');
-  const defaultPool = kind === 'testnet' ? 'astro-stakers.pool.testnet' : 'astro-stakers.poolv1.near';
+  const defaultPool = defaultNativePoolFor(kind);
   const poolId = query.lstContract
     ? resolveLstPoolId(query.poolId, resolveLstContract(query.lstContract, kind), source, kind)
     : requirePool(query.poolId ?? defaultPool, 'unstake');
@@ -183,7 +191,7 @@ function buildWithdrawTx(
   kind: string,
 ): StakingWalletTxDescriptor {
   const owner = requireAccount(accountId, 'withdraw');
-  const defaultPool = kind === 'testnet' ? 'astro-stakers.pool.testnet' : 'astro-stakers.poolv1.near';
+  const defaultPool = defaultNativePoolFor(kind);
   return {
     contractId,
     methodName: 'withdraw',
@@ -311,7 +319,7 @@ export function buildStakingWalletTxDescriptor(
       gasTgas: 30,
     };
   }
-  const defaultPool = kind === 'testnet' ? 'astro-stakers.pool.testnet' : 'astro-stakers.poolv1.near';
+  const defaultPool = defaultNativePoolFor(kind);
   const poolId = requirePool(query.poolId ?? defaultPool, 'stake_payable');
   return {
     contractId,

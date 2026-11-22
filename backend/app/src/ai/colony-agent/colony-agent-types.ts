@@ -14,6 +14,7 @@ import {
   isRivalAiColony,
   readDiplomacyBlob,
   resolveColonyAwayRaids,
+  resolveTileSector,
   type PlanetState,
 } from '@terra/sim';
 import { checkAllowance, type AllowanceUsage } from '../../market/trade/allowance.js';
@@ -52,6 +53,7 @@ export interface ColonyAgentEvalResult {
 export interface ColonyObservation {
   readonly colonyIndex: number;
   readonly colonyId: string;
+  readonly sectorId?: string;
   readonly name: string;
   readonly isBot: boolean;
   readonly stage: number;
@@ -146,9 +148,17 @@ export function observeColony(state: PlanetState, colonyIndex: number): ColonyOb
   const pwr = getColonyPower(state, colonyIndex);
   const powerNetPerS = Math.round((pwr?.net ?? 0) * 10) / 10;
   const brownout = Boolean(pwr?.brownout) || Boolean((col as { brownout?: boolean }).brownout) || powerNetPerS < 0;
+  const explicitSector = (col as { foundingSectorId?: unknown }).foundingSectorId;
+  const sectorId =
+    typeof explicitSector === 'string' && explicitSector.startsWith('sec_')
+      ? explicitSector
+      : meta
+        ? resolveTileSector(state, meta.anchorQ, meta.anchorR)?.sectorId ?? 'sec_0_0'
+        : 'sec_0_0';
   return {
     colonyIndex,
     colonyId: col.id,
+    sectorId,
     name: col.name || col.id,
     isBot,
     stage: Math.max(Number(col.stage ?? 0), Number(col.unlockStage ?? 0)),

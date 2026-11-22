@@ -48,6 +48,11 @@ export interface SessionHudDeps {
   token?(): string | null;
   /** Defer mounting the 25+ HUD feature panels off the Orbit `#deploy` click frame until an airborne slice or reveal. */
   deferInitialMount?: boolean;
+  isSpectator?(): boolean;
+  isSpectatorVisionAll?(): boolean;
+  setSpectatorVisionAll?(on: boolean): void;
+  inspectColony?(colonyIndex: number, focusCamera?: boolean): void;
+  onReadOnlyReject?(kind: string): void;
 }
 
 /**
@@ -69,8 +74,15 @@ export function createSessionHud(d: SessionHudDeps): FeatureHud {
   const baseDev = d.local ? d.local.devServer : httpDevServer();
   // an attached in-process fallback answers like `?host=local`; never send tune / scenario to a real server planet
   const devServer: DevServer = async (name, args) => (d.localHost()?.devServer ?? baseDev)(name, args);
+  const guardedSend: CommandBus['send'] = (kind, args, opts) => {
+    if (d.isSpectator?.()) {
+      d.onReadOnlyReject?.(kind);
+      return Promise.resolve({ ok: false, code: 'spectator_read_only', detail: 'Spectator mode is read-only' });
+    }
+    return d.commandBus.send(kind, args, opts);
+  };
   const services: Partial<FeatureServices> = {
-    sendCommand: d.commandBus.send, devServer,
+    sendCommand: guardedSend, devServer,
     ledgerQuery: sessionLedgerQuery(d.localHost, d.local ? d.local.devServer : null, d.planetId),
     session: { planetId: d.planetId, colonyId: d.homeColonyId },
     scene3d, netStats: d.netStats, transport: d.transport, store: d.store,
@@ -79,6 +91,10 @@ export function createSessionHud(d: SessionHudDeps): FeatureHud {
     focusTile: d.focusTile,
     pilot: d.pilot,
     marketSnapshot: (planetId) => fetchMarketSnapshot(planetId, d.token?.() ?? null),
+    isSpectator: d.isSpectator,
+    isSpectatorVisionAll: d.isSpectatorVisionAll,
+    setSpectatorVisionAll: d.setSpectatorVisionAll,
+    inspectColony: d.inspectColony,
   };
   Object.defineProperties(services, {
     colonyId: { get: d.colonyIndex, enumerable: true, configurable: true },

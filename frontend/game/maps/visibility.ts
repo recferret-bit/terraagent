@@ -1,4 +1,4 @@
-import { getEntitySpottingRadius, isColonyTileExplored, isEntityContributingVision, type CombatVisionBlob } from '@terra/sim';
+import { getEntitySpottingRadius, isAnyColonyTileExplored, isColonyTileExplored, isEntityContributingVision, type CombatVisionBlob } from '@terra/sim';
 import { hexDistance } from '@terra/sim/grid/hex';
 import { forEachEntity } from '../store/replica/viewCodec';
 import { resolveMapAdapterForView } from './atlasMapAdapter';
@@ -7,6 +7,7 @@ import type { MapLayerDrawView } from './types';
 export function isMapTileExplored(view: MapLayerDrawView, index: number): boolean {
   const tiles = view.tiles;
   if (!tiles || (!tiles.explored && !tiles.exploredByColony)) return true; // Preview maps without fog data.
+  if (view.spectatorAllVision) return isAnyColonyTileExplored(tiles, index);
   const colony = view.ownColonySlot ?? 0;
   return isColonyTileExplored(tiles, index, colony);
 }
@@ -15,13 +16,21 @@ export function isMapTileExplored(view: MapLayerDrawView, index: number): boolea
 export function createMapVisibility(
   view: Pick<
     MapLayerDrawView,
-    'tiles' | 'ownColonySlot' | 'radius' | 'clientView' | 'simData' | 'atlasAdapter' | 'atlasManifest'
+    'tiles' | 'ownColonySlot' | 'spectatorAllVision' | 'radius' | 'clientView' | 'simData' | 'atlasAdapter' | 'atlasManifest'
   >,
 ): (q: number, r: number) => boolean {
   const colony = view.ownColonySlot ?? 0;
+  const allColonies = Boolean(view.spectatorAllVision);
   const adapter = resolveMapAdapterForView(view);
   const bufferCount = view.tiles?.count;
   const vision = view.clientView?.blobs?.combatVision as CombatVisionBlob | undefined;
+  if (allColonies && vision?.byColony) {
+    const live = new Set<number>();
+    for (const list of Object.values(vision.byColony)) {
+      if (Array.isArray(list)) for (const t of list) live.add(t);
+    }
+    return (q, r) => live.has(adapter.tileIndexOf(q, r, bufferCount));
+  }
   const spotted = vision?.byColony?.[colony];
   if (spotted) {
     const live = new Set(spotted);
@@ -31,7 +40,7 @@ export function createMapVisibility(
   const sources: Array<{ q: number; r: number; radius: number }> = [];
   if (view.clientView?.entities) {
     forEachEntity(view.clientView.entities, view.clientView.count, row => {
-      if (row.owner !== colony || row.hp <= 0 || !isEntityContributingVision(row.state)) return;
+      if ((allColonies ? row.owner < 0 : row.owner !== colony) || row.hp <= 0 || !isEntityContributingVision(row.state)) return;
       const radius = getEntitySpottingRadius(row.kind, view.simData);
       if (radius > 0) sources.push({ q: row.q, r: row.r, radius });
     });
@@ -47,18 +56,31 @@ interface FogCacheEntry {
 
 const fogCacheByCtx = new WeakMap<CanvasRenderingContext2D, FogCacheEntry>();
 
-function hashExploredTiles(view: MapLayerDrawView): number {
-  const tiles = view.tiles;
-  if (!tiles) return 0;
-  const colony = view.ownColonySlot ?? 0;
-  const arr = tiles.exploredByColony?.[colony] ?? tiles.explored;
-  if (!arr) return 0;
-  let h = (arr.length * 2654435761) | 0;
+function hashByteArray(h: number, arr: ArrayLike<number> | undefined): number {
+  if (!arr) return h;
+  h = Math.imul(h ^ arr.length, 2654435761) | 0;
   for (let i = 0; i < arr.length; i++) {
     const v = arr[i]!;
     if (v !== 0) h = (Math.imul(h ^ (i + 1), 16777619) ^ v) | 0;
   }
   return h;
+}
+
+function hashExploredTiles(view: MapLayerDrawView): number {
+  const tiles = view.tiles;
+  if (!tiles) return 0;
+  if (view.spectatorAllVision) {
+    let h = 17;
+    if (tiles.exploredByColony) {
+      for (const key of Object.keys(tiles.exploredByColony)) {
+        h = hashByteArray(h, tiles.exploredByColony[Number(key)]);
+      }
+    }
+    return hashByteArray(h, tiles.explored);
+  }
+  const colony = view.ownColonySlot ?? 0;
+  const arr = tiles.exploredByColony?.[colony] ?? tiles.explored;
+  return arr ? hashByteArray(0, arr) : 0;
 }
 
 function buildFogCacheKey(ctx: CanvasRenderingContext2D, view: MapLayerDrawView, w: number, h: number): string {
@@ -67,21 +89,32 @@ function buildFogCacheKey(ctx: CanvasRenderingContext2D, view: MapLayerDrawView,
   const t = typeof ctx.getTransform === 'function' ? ctx.getTransform() : null;
   const tx = t ? `${t.a.toFixed(3)},${t.d.toFixed(3)},${t.e.toFixed(2)},${t.f.toFixed(2)}` : '1,1,0,0';
   const vision = view.clientView?.blobs?.combatVision as CombatVisionBlob | undefined;
-  const spotted = vision?.byColony?.[colony];
+  const allColonies = Boolean(view.spectatorAllVision);
   let visionSig = '';
-  if (spotted) {
-    let sh = spotted.length;
-    for (let i = 0; i < spotted.length; i++) sh = (Math.imul(sh, 31) + spotted[i]!) | 0;
-    visionSig = `s:${spotted.length}:${sh}`;
-  } else if (view.clientView?.entities) {
-    let eh = 0;
-    forEachEntity(view.clientView.entities, view.clientView.count, row => {
-      if (row.owner !== colony || row.hp <= 0 || !isEntityContributingVision(row.state)) return;
-      eh = (Math.imul(eh ^ row.q, 31) ^ row.r) | 0;
-    });
-    visionSig = `e:${eh}`;
+  if (allColonies && vision?.byColony) {
+    let sh = 0;
+    for (const list of Object.values(vision.byColony)) {
+      if (!Array.isArray(list)) continue;
+      sh = (Math.imul(sh, 31) + list.length) | 0;
+      for (let i = 0; i < list.length; i++) sh = (Math.imul(sh, 31) + list[i]!) | 0;
+    }
+    visionSig = `all:${sh}`;
+  } else {
+    const spotted = vision?.byColony?.[colony];
+    if (spotted) {
+      let sh = spotted.length;
+      for (let i = 0; i < spotted.length; i++) sh = (Math.imul(sh, 31) + spotted[i]!) | 0;
+      visionSig = `s:${spotted.length}:${sh}`;
+    } else if (view.clientView?.entities) {
+      let eh = 0;
+      forEachEntity(view.clientView.entities, view.clientView.count, row => {
+        if ((allColonies ? row.owner < 0 : row.owner !== colony) || row.hp <= 0 || !isEntityContributingVision(row.state)) return;
+        eh = (Math.imul(eh ^ row.q, 31) ^ row.r) | 0;
+      });
+      visionSig = `e:${eh}`;
+    }
   }
-  return `${w}x${h}|${tx}|${view.radius}|${colony}|${view.tilePixelRadius.toFixed(2)}|${origin.x.toFixed(2)},${origin.y.toFixed(2)}|${hashExploredTiles(view)}|${visionSig}`;
+  return `${w}x${h}|${tx}|${view.radius}|${colony}|${view.spectatorAllVision ? 1 : 0}|${view.tilePixelRadius.toFixed(2)}|${origin.x.toFixed(2)},${origin.y.toFixed(2)}|${hashExploredTiles(view)}|${visionSig}`;
 }
 
 function paintMapFogHexes(ctx: CanvasRenderingContext2D, view: MapLayerDrawView): void {

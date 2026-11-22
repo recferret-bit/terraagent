@@ -15,6 +15,7 @@ export const Join = ClientEnvelope('join', z.strictObject({
   planetId: HomePlanetId,
   sectorId: z.string().min(1).max(64).optional(),
   colonyId: z.string().min(1).max(64).optional(),
+  mode: z.enum(['play', 'spectator']).optional(),
 }));
 export const Leave = ClientEnvelope('leave', z.strictObject({}));
 const Topic = z.enum(['planets', 'queue', 'party', 'market']);

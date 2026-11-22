@@ -392,7 +392,7 @@ export class SectorHashIndex {
     }
     for (const col of colonies) {
       const known =
-        (col.colonyId ? this.byColonyId.get(col.colonyId) : undefined) ??
+        (col.colonyId && !/^col_\d+$/.test(col.colonyId) ? this.byColonyId.get(col.colonyId) : undefined) ??
         this.byPlanetColony.get(planetColonyKey(planetId, col.colonyIndex));
       const colonyId = col.colonyId ?? known?.colonyId ?? `col_${planetId}_${col.colonyIndex}`;
       const playerId = col.playerId ?? known?.playerId ?? (col.isRivalAi ? `ai:${planetId}:${col.colonyIndex}` : '');

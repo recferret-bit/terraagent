@@ -1,4 +1,4 @@
-import { flagsFromList, newId, type AwayDigestV1, type BuildingCatalogEntry, type CargoStatusPayload, type DeedUpdatedPayload, type DirectorKeyStatusPayload, type GuildArrivedPayload, type GuildDepartedPayload, type MarketBookPayload, type MarketTradePayload, type ServerMessage, type SimEventWire, type TreasuryProposalPush } from '@terra/contracts';
+import { flagsFromList, newId, type AgentDecisionFeedItemV1, type AwayDigestV1, type BuildingCatalogEntry, type CargoStatusPayload, type DeedUpdatedPayload, type DirectorKeyStatusPayload, type GuildArrivedPayload, type GuildDepartedPayload, type MarketBookPayload, type MarketTradePayload, type ServerMessage, type SimEventWire, type SimInputFeedItemV1, type TreasuryProposalPush } from '@terra/contracts';
 import { compileData, TICK_MS, type BalanceOverrides } from '@terra/sim';
 import { digestFromWelcome } from './awayWelcome';
 import { ownBytes } from './bytes';
@@ -98,6 +98,13 @@ export class WorldStore {
   private readonly guildArrivals = new Emitter<GuildArrivedPayload>();
   private readonly guildDepartures = new Emitter<GuildDepartedPayload>();
   private readonly treasuryProposals = new Emitter<TreasuryProposalPush>();
+  private spectator = false;
+  private readonly inputFeeds: SimInputFeedItemV1[] = [];
+  private readonly decisionFeeds: AgentDecisionFeedItemV1[] = [];
+  private readonly feedBatch = new Emitter<{
+    readonly inputs: readonly SimInputFeedItemV1[];
+    readonly decisions: readonly AgentDecisionFeedItemV1[];
+  }>();
 
   constructor(
     private readonly transport: Pick<Transport, 'send' | 'onMessage'> & { bindStore?: (store: WorldStore) => void },
@@ -135,6 +142,19 @@ export class WorldStore {
   onGuildDeparted(fn: (p: GuildDepartedPayload) => void): () => void { return this.guildDepartures.on(fn); }
   /** W22 `treasury.proposal` pushes for the joined planet. */
   onTreasuryProposal(fn: (p: TreasuryProposalPush) => void): () => void { return this.treasuryProposals.on(fn); }
+  isSpectator(): boolean { return this.spectator; }
+  setSpectator(on: boolean): void { this.spectator = on; }
+  recentInputs(colonyIndex?: number): readonly SimInputFeedItemV1[] {
+    return colonyIndex === undefined ? this.inputFeeds : this.inputFeeds.filter((i) => i.colonyIndex === colonyIndex);
+  }
+  recentDecisions(colonyIndex?: number): readonly AgentDecisionFeedItemV1[] {
+    return colonyIndex === undefined ? this.decisionFeeds : this.decisionFeeds.filter((d) => d.colonyIndex === colonyIndex);
+  }
+  onFeed(
+    fn: (batch: { readonly inputs: readonly SimInputFeedItemV1[]; readonly decisions: readonly AgentDecisionFeedItemV1[] }) => void,
+  ): () => void {
+    return this.feedBatch.on(fn);
+  }
 
   /** Render-only events from the predicted engine (projectiles, VFX); never toasts or alerts. */
   onRenderEvents(fn: (e: readonly SimEventWire[]) => void): () => void { return this.renderEvents.on(fn); }
@@ -246,6 +266,16 @@ export class WorldStore {
     switch (m.t) {
       case 'welcome': {
         this.planetId = m.d.planet.id;
+        if (m.d.mode === 'spectator') this.spectator = true;
+        if (Array.isArray(m.d.recentInputs) && m.d.recentInputs.length) {
+          this.inputFeeds.splice(0, this.inputFeeds.length, ...m.d.recentInputs.slice(-250));
+        }
+        if (Array.isArray(m.d.recentDecisions) && m.d.recentDecisions.length) {
+          this.decisionFeeds.splice(0, this.decisionFeeds.length, ...m.d.recentDecisions.slice(-250));
+        }
+        if (m.d.recentInputs?.length || m.d.recentDecisions?.length) {
+          this.feedBatch.emit({ inputs: m.d.recentInputs ?? [], decisions: m.d.recentDecisions ?? [] });
+        }
         this.welcomeData = {
           flags: [...m.d.flags],
           overrides: m.d.overrides as BalanceOverrides | undefined,
@@ -297,6 +327,22 @@ export class WorldStore {
       case 'cmd.reject':
         w.postMessage({ t: 'reject', id: m.d.id, code: m.d.code }, []);
         return;
+      case 'sim.input': {
+        if (m.d.items.length) {
+          this.inputFeeds.push(...m.d.items);
+          if (this.inputFeeds.length > 250) this.inputFeeds.splice(0, this.inputFeeds.length - 250);
+          this.feedBatch.emit({ inputs: m.d.items, decisions: [] });
+        }
+        return;
+      }
+      case 'sim.decision': {
+        if (m.d.items.length) {
+          this.decisionFeeds.push(...m.d.items);
+          if (this.decisionFeeds.length > 250) this.decisionFeeds.splice(0, this.decisionFeeds.length - 250);
+          this.feedBatch.emit({ inputs: [], decisions: m.d.items });
+        }
+        return;
+      }
       default:
         return;
     }
@@ -367,6 +413,13 @@ export class WorldStore {
   /** A diff did not fit: ask for a fresh welcome by joining again (the transport must be connected). */
   private requestResync(): void {
     if (!this.planetId) return;
-    try { this.transport.send({ t: 'join', d: { planetId: this.planetId } }); } catch (e) { console.warn('[world] resync join failed', e); }
+    try {
+      this.transport.send({
+        t: 'join',
+        d: { planetId: this.planetId, ...(this.spectator ? { mode: 'spectator' as const } : {}) },
+      });
+    } catch (e) {
+      console.warn('[world] resync join failed', e);
+    }
   }
 }

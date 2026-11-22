@@ -1,6 +1,6 @@
 import type { FeatureContext } from '../../core/registry/types';
 import { patchSharedAutopilotState, subscribeSharedAutopilotState } from '../shared/aiAutopilotState';
-import { ownColonyIndex, viewColony } from '../shared/colony';
+import { isReadOnlySpectator, ownColonyIndex, viewColony } from '../shared/colony';
 
 /**
  * Colony AI on/off switch (default OFF). The host owns the flag (`setAiEnabled`, `ViewColony.aiEnabled`); this button
@@ -36,6 +36,7 @@ export class AiToggle {
   }
 
   private send(next: boolean): void {
+    if (isReadOnlySpectator(this.ctx.services)) return;
     const send = this.ctx.services.sendCommand ?? this.ctx.services.store?.sendCommand;
     if (!send) return;
     void send('setAiEnabled', { enabled: next });
@@ -46,7 +47,8 @@ export class AiToggle {
     const col = viewColony(view, ownColonyIndex(this.ctx.services));
     const next = col?.aiEnabled === true;
     patchSharedAutopilotState({ aiEnabled: next });
-    if (next === this.enabled && this.button.textContent) return;
+    const ro = isReadOnlySpectator(this.ctx.services);
+    if (next === this.enabled && this.button.textContent && this.button.disabled === ro) return;
     this.enabled = next;
     this.render();
   }
@@ -56,10 +58,16 @@ export class AiToggle {
   }
 
   private render(): void {
+    const ro = isReadOnlySpectator(this.ctx.services);
     this.button.textContent = this.enabled ? 'AI ON' : 'AI OFF';
     this.button.className = this.enabled ? 'btn btn-primary btn-sm' : 'btn btn-ghost btn-sm';
+    this.button.disabled = ro;
     this.button.setAttribute('aria-pressed', String(this.enabled));
-    this.button.title = this.enabled ? 'Bots pick up goals and priorities on their own. Click to take control.' : 'Bots only run your commands. Click to let the HQ AI work on goals and priorities.';
+    this.button.title = ro
+      ? 'Read-only spectator inspection'
+      : this.enabled
+        ? 'Bots pick up goals and priorities on their own. Click to take control.'
+        : 'Bots only run your commands. Click to let the HQ AI work on goals and priorities.';
     this.hint.textContent = this.enabled ? 'Bots follow goals and priorities' : 'Bots wait for your orders';
     this.root.dataset.enabled = String(this.enabled);
   }

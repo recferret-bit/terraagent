@@ -3,6 +3,7 @@ import { colonyNightBlend, computeSolarState, getDayNightParams, isDayNightOn } 
 import {
   applyBuildingLight,
   attachEntityProjectorRig,
+  getColonyVisionUniforms,
   peekArchetypeLights,
   projectorCosOuter,
   stepLightLevel,
@@ -181,8 +182,10 @@ export function syncColonyVisionAndProjectors(opts: {
    * colony projectors stay off, then ease in over `COLONY_FADE_IN_S` once the colony takes over without dipping `uNightFactor`.
    */
   colonyActive?: boolean;
+  /** Spectator all-bots FoV mode: unites live vision, projectors, and explored memory across every active colony. */
+  spectatorAllVision?: boolean;
 }): void {
-  const { records, ownerColonyIndex, terrain, tiles } = opts;
+  const { records, ownerColonyIndex, terrain, tiles, spectatorAllVision } = opts;
   const active = opts.colonyActive ?? true;
   const blend = stepFovBlend(active);
   const dnParams = getDayNightParams();
@@ -206,19 +209,47 @@ export function syncColonyVisionAndProjectors(opts: {
     attachEntityProjectorRig(rec.mesh, archetypeId);
     if (isEntityInViewFocus(rec.mesh)) applyBuildingLight(rec.mesh, stateMul, rigIntensity, rec.buildStage);
 
-    if (rec.owner === ownerColonyIndex) {
+    if (spectatorAllVision ? rec.owner >= 0 : rec.owner === ownerColonyIndex) {
       collectOwnedEntityVisionAndProjectors(rec, visionSources, projectors, lightScale, stateMul, opts.data);
     }
   }
 
   if (terrain && active) {
-    updateColonyVisionTexture({
-      radius: terrain.radius,
-      colonyIndex: ownerColonyIndex,
-      explored: tiles?.explored,
-      exploredByColony: tiles?.exploredByColony,
-      visionSources,
-    });
+    if (spectatorAllVision && (tiles?.exploredByColony || tiles?.explored)) {
+      const arrays = Object.values(tiles.exploredByColony ?? {}).filter(
+        (a): a is Uint8Array => Boolean(a && a.length > 0),
+      );
+      const tileCount = tiles.count ?? tiles.explored?.length ?? 0;
+      const bitBytes = Math.max(
+        tileCount > 0 ? Math.ceil(tileCount / 8) : 0,
+        arrays.reduce((m, a) => Math.max(m, a.length), 0),
+      );
+      const mergedBitset = bitBytes > 0 ? new Uint8Array(bitBytes) : undefined;
+      if (mergedBitset) {
+        for (const arr of arrays) {
+          for (let b = 0; b < arr.length; b++) mergedBitset[b]! |= arr[b]!;
+        }
+        if (tiles.explored) {
+          for (let t = 0; t < tiles.explored.length; t++) {
+            if (tiles.explored[t]! !== 0) mergedBitset[t >> 3]! |= 1 << (t & 7);
+          }
+        }
+      }
+      updateColonyVisionTexture({
+        radius: terrain.radius,
+        colonyIndex: 0,
+        exploredByColony: mergedBitset ? { 0: mergedBitset } : undefined,
+        visionSources,
+      });
+    } else {
+      updateColonyVisionTexture({
+        radius: terrain.radius,
+        colonyIndex: ownerColonyIndex,
+        explored: tiles?.explored,
+        exploredByColony: tiles?.exploredByColony,
+        visionSources,
+      });
+    }
   }
 
   updateColonyProjectorsAndVision({
@@ -229,4 +260,31 @@ export function syncColonyVisionAndProjectors(opts: {
     fovDim: dnParams.fovDim,
     nightFactor: active ? nightFactor : undefined,
   });
+}
+
+export function syncEntitiesVisionAndForeignVisibility(opts: {
+  data?: CompiledDataLike;
+  entries: Map<number, EntityMeshRecord>;
+  ownerColonyIndex: number;
+  terrain: HexTerrain | null;
+  hasTerrain: boolean;
+  tiles: ClientTiles | null;
+  colonyActive: boolean;
+  spectatorAllVision: boolean;
+  isTileVisible: ((q: number, r: number) => boolean) | null;
+  isMeshVisible: (rec: EntityMeshRecord) => boolean;
+}): void {
+  const { entries, ownerColonyIndex, terrain, hasTerrain, tiles, colonyActive, spectatorAllVision, isTileVisible, isMeshVisible } = opts;
+  syncColonyVisionAndProjectors({
+    records: entries.values(), data: opts.data, ownerColonyIndex, terrain, tiles, colonyActive, spectatorAllVision,
+  });
+  const fogOn = (getColonyVisionUniforms().uFovEnabled.value as number) > 0.001;
+  for (const rec of entries.values()) {
+    const foreign = spectatorAllVision ? rec.owner < 0 : rec.owner !== ownerColonyIndex;
+    const ownPod = !spectatorAllVision && !foreign && rec.kind === ENTITY_KIND.pod;
+    if (!foreign && !(ownPod && fogOn)) continue;
+    const spotted = !isTileVisible || isTileVisible(rec.q, rec.r);
+    const inCircle = !hasTerrain || isWorldPointInColonyFov(rec.mesh.position.x, rec.mesh.position.z);
+    rec.mesh.visible = spotted && inCircle && isMeshVisible(rec);
+  }
 }

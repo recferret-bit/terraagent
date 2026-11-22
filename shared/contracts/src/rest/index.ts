@@ -6,5 +6,6 @@ export * from './near-cargo';
 export * from './near-claim';
 export * from './near-deed';
 export * from './near-relay';
+export * from './planets-state';
 export * from './social';
 export * from './near-intents';

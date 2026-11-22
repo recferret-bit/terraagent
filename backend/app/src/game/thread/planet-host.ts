@@ -8,6 +8,7 @@ import {
   effectiveOverrides,
   getColonyStock,
   mergeOverrides,
+  planBackendBotActions,
   restore,
   snapshot,
   step,
@@ -19,6 +20,8 @@ import {
   type SimModule,
   type TuneRequest,
 } from '@terra/sim';
+import { extractSectorSyncPayload } from '../persistence/sector-extract';
+import { buildHostStepFeeds } from './parts/planet-host-feed';
 import {
   applyDueProfile,
   collectPlanetStats,
@@ -96,6 +99,7 @@ export class PlanetHost {
         return;
       }
       case 'snapshotNow': return this.snapshotNow(msg.planetId);
+      case 'sectorSyncNow': return this.sectorSyncNow(msg.planetId);
       case 'fullState': return this.fullState(msg.planetId, msg.reqId);
       case 'profile': return this.scheduleProfile(msg);
       case 'tune': return this.tune(msg.planetId, msg.reqId, msg.req);
@@ -120,13 +124,19 @@ export class PlanetHost {
     const modules = this.opts.modules ? [...allModules(), ...this.opts.modules] : undefined;
     const scenario = msg.overrides ?? {};
     const base = mergeOverrides(this.threadOverrides, scenario);
-    const pipeline = buildPipeline(flags, base, modules);
-    this.planets.set(msg.planetId, {
+    const pipeline = buildPipeline(flags, base, modules, 'authority_external_bots');
+    const planet: Planet = {
       state, pipeline, scenario, tuning: { flags, base, live: {} }, pending: [], subscribed: false, lastDeltaTick: state.meta.tick, nextDeltaMs: 0, windowEvents: [], deltaMs: 0, deltaBytes: 0,
       ...(flags.includes('W02') ? { production: new ProductionBatches(state) } : {}),
-    });
+      lastInputTickByColony: new Map(),
+      seenAutopilotTickByColony: new Map(),
+      lastSectorSyncTick: state.meta.tick,
+      feedSeq: 0,
+    };
+    this.planets.set(msg.planetId, planet);
     const stocks = Array.from({ length: state.colonies?.length ?? 0 }, (_, i) => getColonyStock(state, i));
     this.post({ t: 'loaded', planetId: msg.planetId, tick: state.meta.tick, restored: !!msg.snapshot, genesis: !!msg.genesis, stocks });
+    this.emitSectorSync(msg.planetId, planet);
   }
 
   private enqueue(planetId: string, cmd: SimCommandV1): void {
@@ -147,41 +157,78 @@ export class PlanetHost {
     const p = this.planets.get(planetId);
     if (!p) return true;
     this.applyProfileIfDue(planetId, p);
-    const cmds = p.pending.splice(0);
+    const prevTick = p.state.meta.tick;
+    const queuedCmds = p.pending.splice(0);
+    const botBatch = planBackendBotActions(
+      p.state,
+      p.pipeline.config.data,
+      p.pipeline.config.flags,
+      prevTick + dt,
+      prevTick,
+    );
+    const botCommandIds = new Set(botBatch.commands.map((c) => c.commandId));
+    const cmds = botBatch.commands.length ? [...queuedCmds, ...botBatch.commands] : queuedCmds;
     let r: ReturnType<typeof step>;
     try {
       r = step(p.state, cmds, dt, p.pipeline);
     } catch (e) {
-      this.fail(planetId, p, cmds, e);
+      this.fail(planetId, p, queuedCmds, e, botCommandIds);
       return false;
     }
     this.steps++;
     // Every step's postings leave right away (subscribed or not): the server journal must never miss one (D-34).
-    this.answer(planetId, r.stats.tick, r.postings, r.outcomes);
+    this.answer(planetId, r.stats.tick, r.postings, r.outcomes, botCommandIds);
+    const { inputs, decisions } = buildHostStepFeeds({
+      planetId,
+      state: p.state,
+      queuedCmds,
+      botBatch,
+      outcomes: r.outcomes,
+      tick: r.stats.tick,
+      wallMs: Date.now(),
+      seenAutopilotTickByColony: p.seenAutopilotTickByColony,
+      lastInputTickByColony: p.lastInputTickByColony,
+      nextFeedId: () => ++p.feedSeq,
+    });
+    if (inputs.length || decisions.length) {
+      this.post({ t: 'simFeeds', planetId, tick: r.stats.tick, inputs, decisions });
+    }
+    if ((inputs.length > 0 && r.stats.tick - p.lastSectorSyncTick >= 5) || r.stats.tick - p.lastSectorSyncTick >= 25) {
+      this.emitSectorSync(planetId, p);
+    }
     const batches = p.production?.collect(p.state) ?? [];
     this.publish(planetId, p, batches.length ? [...r.events, ...batches] : r.events);
     return true;
   }
 
-  /** Posts a step's postings (`ledger`), then one `ack` / `reject` (with the sim's `detail`, GP-31) per outcome. */
-  private answer(planetId: string, tick: number, postings: readonly LedgerPosting[], outcomes: readonly CommandOutcome[]): void {
+  /** Posts a step's postings (`ledger`), then one `ack` / `reject` (with the sim's `detail`, GP-31) per non-bot outcome. */
+  private answer(
+    planetId: string,
+    tick: number,
+    postings: readonly LedgerPosting[],
+    outcomes: readonly CommandOutcome[],
+    botCommandIds?: ReadonlySet<string>,
+  ): void {
     if (postings.length) this.post({ t: 'ledger', planetId, tick, postings });
     for (const o of outcomes) {
+      if (botCommandIds?.has(o.commandId)) continue;
       if (o.code) this.post({ t: 'reject', planetId, commandId: o.commandId, code: o.code, appliedAtTick: o.appliedAtTick, ...(o.detail ? { detail: o.detail } : {}), ...(o.unlocksAt ? { unlocksAt: o.unlocksAt } : {}) });
       else this.post({ t: 'ack', planetId, commandId: o.commandId, appliedAtTick: o.appliedAtTick });
     }
   }
 
-  private fail(planetId: string, p: Planet, cmds: readonly SimCommandV1[], e: unknown): void {
+  private fail(planetId: string, p: Planet, cmds: readonly SimCommandV1[], e: unknown, botCommandIds?: ReadonlySet<string>): void {
     this.planets.delete(planetId);
     const answered = new Set<string>();
     if (e instanceof StepError) {
       // The ledger message must precede `planetFailed`: main drops the planet's journal when it hears the planet is down.
-      this.answer(planetId, e.tick, e.postings, e.outcomes);
+      this.answer(planetId, e.tick, e.postings, e.outcomes, botCommandIds);
       for (const o of e.outcomes) answered.add(o.commandId);
     }
     for (const c of [...cmds, ...p.pending]) {
-      if (!answered.has(c.commandId)) this.post({ t: 'reject', planetId, commandId: c.commandId, code: 'internal' });
+      if (!answered.has(c.commandId) && !botCommandIds?.has(c.commandId)) {
+        this.post({ t: 'reject', planetId, commandId: c.commandId, code: 'internal' });
+      }
     }
     this.post({ t: 'planetFailed', planetId, message: e instanceof Error ? e.message : String(e) });
   }
@@ -262,9 +309,23 @@ export class PlanetHost {
       const production = p.production?.collect(p.state, true) ?? [];
       if (production.length) this.publish(id, p, production);
       this.flushEvents(id, p); // checkpoint must follow every event it commits, including the open delta window
+      this.emitSectorSync(id, p);
       const bytes = owned(snapshot(p.state));
       this.post({ t: 'snapshot', planetId: id, tick: p.state.meta.tick, bytes }, [bytes.buffer as ArrayBuffer]);
     }
+  }
+
+  private sectorSyncNow(planetId?: string): void {
+    for (const id of planetId ? [planetId] : [...this.planets.keys()]) {
+      const p = this.planets.get(id);
+      if (p) this.emitSectorSync(id, p);
+    }
+  }
+
+  private emitSectorSync(planetId: string, p: Planet): void {
+    p.lastSectorSyncTick = p.state.meta.tick;
+    const payload = extractSectorSyncPayload(planetId, p.state, p.lastInputTickByColony);
+    this.post({ t: 'sectorSync', planetId, payload });
   }
 
   /** Reply to `fullState`: the engine snapshot (D-31) plus the sim/data identity the client must match (SIM-X-08). */

@@ -1,11 +1,13 @@
 import { compileData } from '../../data';
+import { resolveTileSector } from '../../atlas/crossSectorGameplay';
 import { hexDistance, hexIndex } from '../../grid/hex';
 import { DEPOSIT, PREP, TERRAIN } from '../../grid/layers';
 import { setTileHeight, setTileOwner, setTilePrep, setTileTerrain } from '../../grid/tileModel';
 import { getSpawnSlots } from '../../gen/spawnSlots';
+import { getDepositRichnessBp } from '../../gen/temperate';
 import { ensureColonyRecord } from '../../kernel/colonies';
 import type { CompiledDataLike } from '../../kernel/config';
-import type { StepContext } from '../../kernel/context';
+import type { LedgerPosting, StepContext } from '../../kernel/context';
 import type { PlanetState } from '../../kernel/state';
 import { applyAutopilot } from '../away/store';
 import { ensureColonyCargoState } from '../cargo/state';
@@ -26,11 +28,13 @@ import {
 } from './store';
 
 export interface SeedRivalAiOptions {
-  count?: 1 | 2;
+  count?: number;
+  colonyIndices?: readonly number[];
   capacity?: number;
   tick?: number;
   data?: CompiledDataLike;
   ctx?: StepContext;
+  recordPosting?: (posting: LedgerPosting) => void;
 }
 
 const RIVAL_SPECS: ReadonlyArray<{
@@ -118,10 +122,28 @@ function prepareRivalPad(state: PlanetState, colonyIndex: number, cx: number, cy
       if (state.grid.layers.feature) state.grid.layers.feature[i] = 0;
     }
   }
-  const metalTile = hx.indexOf(cx - 5, cy + 2);
-  if (metalTile >= 0) state.grid.layers.deposit[metalTile] = DEPOSIT.metals;
+  const metalTile = hx.indexOf(cx - 2, cy + 5);
+  if (metalTile >= 0) {
+    state.grid.layers.deposit[metalTile] = DEPOSIT.metals;
+    (state.grid.layers.richness as Float32Array)[metalTile] = getDepositRichnessBp(
+      state.meta.seed,
+      metalTile,
+      DEPOSIT.metals,
+      state.meta.planetType,
+    );
+    if (state.grid.layers.depositTier) (state.grid.layers.depositTier as Uint8Array)[metalTile] = 1;
+  }
   const mineralTile = hx.indexOf(cx - 5, cy + 4);
-  if (mineralTile >= 0) state.grid.layers.deposit[mineralTile] = DEPOSIT.minerals;
+  if (mineralTile >= 0) {
+    state.grid.layers.deposit[mineralTile] = DEPOSIT.minerals;
+    (state.grid.layers.richness as Float32Array)[mineralTile] = getDepositRichnessBp(
+      state.meta.seed,
+      mineralTile,
+      DEPOSIT.minerals,
+      state.meta.planetType,
+    );
+    if (state.grid.layers.depositTier) (state.grid.layers.depositTier as Uint8Array)[mineralTile] = 1;
+  }
 }
 
 export function linkAllActiveColonyContacts(state: PlanetState, tick: number): void {
@@ -138,6 +160,35 @@ export function linkAllActiveColonyContacts(state: PlanetState, tick: number): v
     dip.contactsByColony[a] = [...cur].sort((x, y) => x - y);
   }
   writeDiplomacyBlob(state, dip, tick);
+}
+
+function seedRivalColonyEntities(
+  state: PlanetState,
+  colonyIndex: number,
+  anchor: { q: number; r: number },
+  persona: RivalPersona,
+  recons: number,
+  tick: number,
+  data: CompiledDataLike,
+  ctx?: StepContext,
+): void {
+  spawnHqUnit(state, { owner: colonyIndex, q: anchor.q - 1, r: anchor.r + 2 });
+  startBuildingConstruction(state, { owner: colonyIndex, building: 'commandHub', q: anchor.q, r: anchor.r, instant: true, costOverride: {}, data });
+  startBuildingConstruction(state, { owner: colonyIndex, building: 'solar', q: anchor.q + 3, r: anchor.r - 1, instant: true, costOverride: {}, data });
+  startBuildingConstruction(state, { owner: colonyIndex, building: 'solar', q: anchor.q + 1, r: anchor.r + 3, instant: true, costOverride: {}, data });
+  startBuildingConstruction(state, { owner: colonyIndex, building: 'wind', q: anchor.q + 3, r: anchor.r - 3, instant: true, costOverride: {}, data });
+  startBuildingConstruction(state, { owner: colonyIndex, building: 'depot', q: anchor.q - 4, r: anchor.r + 2, instant: true, costOverride: {}, data });
+  startBuildingConstruction(state, { owner: colonyIndex, building: 'tradeHub', q: anchor.q - 3, r: anchor.r - 1, instant: true, costOverride: {}, data });
+  startBuildingConstruction(state, { owner: colonyIndex, building: 'roboticsFactory', q: anchor.q, r: anchor.r - 3, instant: true, costOverride: {}, data });
+  startBuildingConstruction(state, { owner: colonyIndex, building: 'turret', q: anchor.q + 3, r: anchor.r + 1, instant: true, costOverride: {}, data });
+  if (persona === 'warlord') {
+    startBuildingConstruction(state, { owner: colonyIndex, building: 'turret', q: anchor.q - 4, r: anchor.r, instant: true, costOverride: {}, data });
+  }
+  spawnWorkerUnit(state, { owner: colonyIndex, q: anchor.q + 2, r: anchor.r - 1, tick, data }, ctx);
+  spawnWorkerUnit(state, { owner: colonyIndex, q: anchor.q - 2, r: anchor.r + 1, tick, data }, ctx);
+  for (let u = 0; u < recons; u++) {
+    produceReconAtFactoryEdge(state, colonyIndex, ctx);
+  }
 }
 
 /**
@@ -161,9 +212,21 @@ export function seedRivalAiColonies(
   const created: RivalColonyMeta[] = [];
 
   for (let k = 0; k < Math.min(count, anchors.length); k++) {
-    const spec = RIVAL_SPECS[k]!;
+    const baseSpec = RIVAL_SPECS[k % RIVAL_SPECS.length]!;
+    const tier = Math.floor(k / RIVAL_SPECS.length);
+    const spec = tier === 0
+      ? baseSpec
+      : {
+          ...baseSpec,
+          name: `${baseSpec.name} #${tier + 1}`,
+          handle: `${baseSpec.handle}_${k + 1}`,
+          color: (baseSpec.color + k) % 8,
+        };
     const anchor = anchors[k]!;
-    const colonyIndex = Math.max(1 + k, capacity - count + k);
+    const colonyIndex =
+      opts.colonyIndices && typeof opts.colonyIndices[k] === 'number'
+        ? opts.colonyIndices[k]!
+        : Math.max(1 + k, capacity - count + k);
     const existing = state.colonies[colonyIndex];
     if (existing && existing.status === 'active' && !(existing as { isAiColony?: boolean }).isAiColony) {
       continue;
@@ -182,11 +245,19 @@ export function seedRivalAiColonies(
     colRec.playerId = `ai:${spec.handle}`;
     colRec.handle = spec.handle;
     colRec.isAiColony = true;
+    colRec.isBot = true;
+    colRec.botPersona = spec.persona;
+    colRec.foundingSectorId = resolveTileSector(state, anchor.q, anchor.r)?.sectorId ?? 'sec_0_0';
     colRec.spawnQ = anchor.q;
     colRec.spawnR = anchor.r;
     colRec.awayRaids = spec.awayRaids;
 
-    setColonyStock(state, colonyIndex, spec.stock, opts.ctx ? treasuryCtx(tick, opts.ctx) : undefined);
+    const stockCtx = opts.ctx
+      ? treasuryCtx(tick, opts.ctx)
+      : opts.recordPosting
+        ? treasuryCtx(tick, { record: opts.recordPosting, data })
+        : undefined;
+    setColonyStock(state, colonyIndex, spec.stock, stockCtx);
     const cargo = ensureColonyCargoState(col);
     cargo.inOrbit = { ...cargo.inOrbit, 'metals.t1': 180, 'minerals.t1': 120, 'bio.water': 120, 'bio.biomass': 80 };
     setColonyPriorities(state, colonyIndex, spec.priorities, tick);
@@ -199,24 +270,7 @@ export function seedRivalAiColonies(
     );
     mirrorAutopilotOnDirector(state, colonyIndex, { mode: 'director', awayRaids: spec.awayRaids }, tick);
 
-    spawnHqUnit(state, { owner: colonyIndex, q: anchor.q - 1, r: anchor.r + 2 });
-    startBuildingConstruction(state, { owner: colonyIndex, building: 'commandHub', q: anchor.q, r: anchor.r, instant: true, costOverride: {}, data });
-    startBuildingConstruction(state, { owner: colonyIndex, building: 'solar', q: anchor.q + 3, r: anchor.r - 1, instant: true, costOverride: {}, data });
-    startBuildingConstruction(state, { owner: colonyIndex, building: 'solar', q: anchor.q + 1, r: anchor.r + 3, instant: true, costOverride: {}, data });
-    startBuildingConstruction(state, { owner: colonyIndex, building: 'wind', q: anchor.q + 3, r: anchor.r - 3, instant: true, costOverride: {}, data });
-    startBuildingConstruction(state, { owner: colonyIndex, building: 'depot', q: anchor.q - 4, r: anchor.r + 2, instant: true, costOverride: {}, data });
-    startBuildingConstruction(state, { owner: colonyIndex, building: 'tradeHub', q: anchor.q - 3, r: anchor.r - 1, instant: true, costOverride: {}, data });
-    startBuildingConstruction(state, { owner: colonyIndex, building: 'roboticsFactory', q: anchor.q, r: anchor.r - 3, instant: true, costOverride: {}, data });
-    startBuildingConstruction(state, { owner: colonyIndex, building: 'turret', q: anchor.q + 3, r: anchor.r + 1, instant: true, costOverride: {}, data });
-    if (spec.persona === 'warlord') {
-      startBuildingConstruction(state, { owner: colonyIndex, building: 'turret', q: anchor.q - 4, r: anchor.r, instant: true, costOverride: {}, data });
-    }
-
-    spawnWorkerUnit(state, { owner: colonyIndex, q: anchor.q + 2, r: anchor.r - 1, tick, data }, opts.ctx);
-    spawnWorkerUnit(state, { owner: colonyIndex, q: anchor.q - 2, r: anchor.r + 1, tick, data }, opts.ctx);
-    for (let u = 0; u < spec.recons; u++) {
-      produceReconAtFactoryEdge(state, colonyIndex, opts.ctx);
-    }
+    seedRivalColonyEntities(state, colonyIndex, anchor, spec.persona, spec.recons, tick, data, opts.ctx);
 
     initColonyNewcomerShield(state, colonyIndex, tick, data);
 

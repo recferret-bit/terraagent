@@ -133,9 +133,15 @@ export function computeEntityMeshVisible(
   tdState: PodTouchdownState,
   wx?: number,
   wz?: number,
+  spectatorAllVision = false,
 ): boolean {
-  if (owner !== ownerColonyIndex && hasTerrain && wx !== undefined && wz !== undefined) {
+  if ((spectatorAllVision ? owner < 0 : owner !== ownerColonyIndex) && hasTerrain && wx !== undefined && wz !== undefined) {
     if (!isWorldPointInColonyFov(wx, wz)) return false;
+  }
+  if (spectatorAllVision) {
+    if (kind === ENTITY_KIND.hq && state === ENTITY_STATE.descending) return false;
+    if (kind === ENTITY_KIND.tradeHub && (state === ENTITY_STATE.inert || !w10Enabled)) return false;
+    return true;
   }
   if (kind === ENTITY_KIND.pod) {
     return owner === ownerColonyIndex ? tdState.podVisible : true;

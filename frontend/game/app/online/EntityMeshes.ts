@@ -8,7 +8,6 @@ import { getWindUniforms } from '@terra/render/core/windConfig';
 import { rotorClockRate } from '@terra/render/core/rotorSpeed';
 import { computeSolarState, getDayNightParams, isDayNightOn, isSceneInDescent } from '@terra/render/core/dayNightConfig';
 import { createArchetypeMesh, setArchetypeBuildProgress, tickArchetypeMesh } from '@terra/render/kitbash';
-import { getColonyVisionUniforms, isWorldPointInColonyFov } from '@terra/render/lighting';
 import { GridCableRenderer } from '@terra/render/lighting/gridCables';
 import {
   BugsOrchestrator,
@@ -27,7 +26,7 @@ import { PrestigeDressing } from '../prestige/PrestigeDressing';
 import { resolveEntityActivityProgress } from '../../features/landfall/selectionHelpers';
 import { syncEntityShadowCaster } from './entityFocus';
 import { MotionTrack, RenderClock } from '@terra/render/motion/entityMotion';
-import { resetColonyVisionAndLights, syncColonyVisionAndProjectors } from './entityVisionSync';
+import { resetColonyVisionAndLights, syncEntitiesVisionAndForeignVisibility } from './entityVisionSync';
 import { POD_EGRESS_DIR, POD_EGRESS_YAW, POD_LAND_OFFSET_M } from './PodImpactRig';
 import { derivePowerCableSpans } from './powerCableSpans';
 import { PodTouchdownFx, type PodTouchdownState } from './PodTouchdownFx';
@@ -104,6 +103,7 @@ export class EntityMeshes {
   private readonly deferredSpaceRows = new Map<number, EntityRow>();
   private selectedEntityId: number | null = null;
   private ownerColonyIndex = 0;
+  private spectatorAllVision = false;
   private markerT = 99;
   private markerTile: { q: number; r: number } | null = null;
   private time = 0;
@@ -113,6 +113,7 @@ export class EntityMeshes {
   private currentPlanetId: string | null = null;
   private latestTiles: ClientTiles | null = null;
   private latestView: ClientView | null = null;
+  private lastTerrain: HexTerrain | null = null;
   private hasTerrain = false;
   private simData?: CompiledDataLike;
   private isTileVisible: ((q: number, r: number) => boolean) | null = null;
@@ -162,11 +163,24 @@ export class EntityMeshes {
     if (this.ownerColonyIndex === colonyIndex) return;
     this.ownerColonyIndex = colonyIndex;
     this.healthBars.setOwnColonyIndex(colonyIndex);
-    const tdState = this.podTouchdown.computeState(false, 1);
-    for (const rec of this.entries.values()) {
-      rec.mesh.visible = this.computeMeshVisible(rec.kind, rec.owner, rec.state, tdState);
-    }
+    this.refreshVision();
     this.updateSelectionRing();
+  }
+  setSpectatorAllVision(on: boolean): void {
+    if (this.spectatorAllVision === on) return;
+    this.spectatorAllVision = on;
+    this.refreshVision();
+  }
+  private refreshVision(): void {
+    const td = this.podTouchdown.computeState(false, 1);
+    if (!this.latestView) {
+      for (const rec of this.entries.values()) rec.mesh.visible = this.computeMeshVisible(rec.kind, rec.owner, rec.state, td);
+      return;
+    }
+    this.isTileVisible = createMapVisibility({ simData: this.simData, clientView: this.latestView, tiles: this.latestTiles, radius: this.latestView.planet.radius, ownColonySlot: this.ownerColonyIndex, spectatorAllVision: this.spectatorAllVision });
+    this.syncVisionAndForeignVisibility(this.lastTerrain, td);
+    const ground = this.lastTerrain ? (x: number, z: number) => this.lastTerrain!.heightAt(x, z) : undefined;
+    this.gridCables.setSpans(derivePowerCableSpans(this.entries.values(), this.latestView, this.ownerColonyIndex), ground);
   }
 
   setSelectedEntityId(entityId: number | null): void {
@@ -191,7 +205,7 @@ export class EntityMeshes {
   }
 
   private computeMeshVisible(kind: number, owner: number, state: number, tdState: PodTouchdownState, wx?: number, wz?: number): boolean {
-    return computeEntityMeshVisible(kind, owner, state, this.ownerColonyIndex, this.hasTerrain, this.isW10Enabled(), tdState, wx, wz);
+    return computeEntityMeshVisible(kind, owner, state, this.ownerColonyIndex, this.hasTerrain, this.isW10Enabled(), tdState, wx, wz, this.spectatorAllVision);
   }
 
   /**
@@ -229,9 +243,11 @@ export class EntityMeshes {
     if (nextPlanetId !== null) this.currentPlanetId = nextPlanetId;
     this.prewarmForBiome(normalizeEntityBiomeKey(biomeKey, view.planet?.type, this.prewarmedBiomeKey ?? this.biomeKey));
     this.latestView = view;
+    this.lastTerrain = terrain;
     if (view.tiles) this.latestTiles = view.tiles;
     this.isTileVisible = createMapVisibility({
-      simData: data, clientView: view, tiles: this.latestTiles, radius: view.planet.radius, ownColonySlot: this.ownerColonyIndex,
+      simData: data, clientView: view, tiles: this.latestTiles, radius: view.planet.radius,
+      ownColonySlot: this.ownerColonyIndex, spectatorAllVision: this.spectatorAllVision,
     });
     this.hasTerrain = Boolean(terrain);
     this.clock.observe(Math.min(confirmedTick, view.tick));
@@ -289,24 +305,13 @@ export class EntityMeshes {
   }
 
   private syncVisionAndForeignVisibility(terrain: HexTerrain | null, tdState: PodTouchdownState): void {
-    syncColonyVisionAndProjectors({
-      records: this.entries.values(), data: this.simData,
-      ownerColonyIndex: this.ownerColonyIndex,
-      terrain,
-      tiles: this.latestTiles,
-      // The session exists from DEPLOY on; hold the colony shroud/night/projectors off through the orbital stage and
-      // the descent cinematic (their pod, surface and the offset hex terrain are not in colony coordinates).
+    syncEntitiesVisionAndForeignVisibility({
+      data: this.simData, entries: this.entries, ownerColonyIndex: this.ownerColonyIndex,
+      terrain, hasTerrain: this.hasTerrain, tiles: this.latestTiles,
       colonyActive: !this.podTouchdown.isSpacePhaseActive() && !isSceneInDescent(this.scene),
+      spectatorAllVision: this.spectatorAllVision, isTileVisible: this.isTileVisible,
+      isMeshVisible: (rec) => this.computeMeshVisible(rec.kind, rec.owner, rec.state, tdState),
     });
-    const fogOn = (getColonyVisionUniforms().uFovEnabled.value as number) > 0.001;
-    for (const rec of this.entries.values()) {
-      const foreign = rec.owner !== this.ownerColonyIndex;
-      const ownPod = !foreign && rec.kind === ENTITY_KIND.pod;
-      if (!foreign && !(ownPod && fogOn)) continue;
-      const spotted = !this.isTileVisible || this.isTileVisible(rec.q, rec.r);
-      const inCircle = !this.hasTerrain || isWorldPointInColonyFov(rec.mesh.position.x, rec.mesh.position.z);
-      rec.mesh.visible = spotted && inCircle && this.computeMeshVisible(rec.kind, rec.owner, rec.state, tdState);
-    }
   }
 
   /** Returns how far (tiles) this view moved the entity's sample at `tick` (0: a new sample). */
@@ -462,8 +467,6 @@ export class EntityMeshes {
   private acquireEntityMesh(id: number, archetypeId: string, biomeKey: string): THREE.Object3D { return acquirePooledEntityMesh(this, id, archetypeId, biomeKey); }
   private releaseEntityMesh(id: number, archetypeId?: string, expectedMesh?: THREE.Object3D): void { releasePooledEntityMesh(this, id, archetypeId, expectedMesh); }
   private updateSelectionRing(): void { updateGroundSelection(this.selectionRing, this.selectedEntityId !== null ? this.entries.get(this.selectedEntityId) : undefined, this.time); }
-
-  /** Incrementally instantiates deferred off-screen/foreign entities while the drop pod is descending from space. */
   stepSpacePrewarm(terrain: HexTerrain | null, maxCount = 2): boolean {
     if (this.deferredSpaceRows.size === 0 || !this.latestView) return true;
     const view = this.latestView; const tdState = this.podTouchdown.computeState(true, 0); let built = 0;
@@ -484,12 +487,11 @@ export class EntityMeshes {
   flushSpacePrewarm(terrain: HexTerrain | null): void { if (this.deferredSpaceRows.size > 0) this.stepSpacePrewarm(terrain, Number.MAX_SAFE_INTEGER); }
 
   dispose(): void {
-    this.deferredSpaceRows.clear(); this.swarms.dispose(); resetColonyVisionAndLights();
-    this.podTouchdown.dispose(); this.healthBars.dispose(); this.workParticles.dispose();
-    this.combatSync.dispose(); this.gridCables.dispose(); this.entries.clear();
-    this.buildingsOrchestrator.dispose(); this.unitsOrchestrator.dispose(); this.bugsOrchestrator.dispose();
-    this.scene.remove(this.group); this.scene.remove(this.selectionRing);
+    this.deferredSpaceRows.clear(); this.swarms.dispose(); resetColonyVisionAndLights(); this.podTouchdown.dispose();
+    this.healthBars.dispose(); this.workParticles.dispose(); this.combatSync.dispose(); this.gridCables.dispose();
+    this.entries.clear(); this.buildingsOrchestrator.dispose(); this.unitsOrchestrator.dispose(); this.bugsOrchestrator.dispose();
+    this.scene.remove(this.group); this.scene.remove(this.selectionRing); this.scene.remove(this.targetMarker);
     this.selectionRing.geometry.dispose(); (this.selectionRing.material as THREE.Material).dispose();
-    this.scene.remove(this.targetMarker); this.targetMarker.geometry.dispose(); (this.targetMarker.material as THREE.Material).dispose();
+    this.targetMarker.geometry.dispose(); (this.targetMarker.material as THREE.Material).dispose();
   }
 }

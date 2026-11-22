@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   EVENT_KINDS,
+  LocalMockAuthRequestSchema,
   NEAR_CLAIM_NOT_AVAILABLE,
   NearClaimRequestSchema,
   SocialAuthRequestSchema,
@@ -11,6 +12,7 @@ import {
   parseWaves,
   playerAccountId,
   storageDepositOpId,
+  validateLocalMockPlayerName,
   type EventKind,
 } from '../src';
 
@@ -53,5 +55,38 @@ describe('W06-01 contracts: social and claim DTOs, relay events, flag W06', () =
     expect(parseWaves('..06').has('W06')).toBe(true);
     expect(parseWaves('..05').has('W06')).toBe(false);
     expect(parseWaves('..05').list).not.toContain('W06');
+  });
+
+  it('validates LocalMockAuthRequestSchema and player names strictly (positive, negative, corner)', () => {
+    expect(LocalMockAuthRequestSchema.parse({ playerName: 'Commander Nova' })).toEqual({ playerName: 'Commander Nova' });
+    expect(LocalMockAuthRequestSchema.parse({ playerName: '  Alice  ', mode: 'signup' })).toEqual({
+      playerName: 'Alice',
+      mode: 'signup',
+    });
+    expect(LocalMockAuthRequestSchema.parse({ playerName: 'ab' })).toEqual({ playerName: 'ab' });
+    expect(LocalMockAuthRequestSchema.parse({ playerName: 'Pilot_01-X.9' })).toEqual({ playerName: 'Pilot_01-X.9' });
+    const exact32 = 'A'.repeat(32);
+    expect(LocalMockAuthRequestSchema.parse({ playerName: exact32 })).toEqual({ playerName: exact32 });
+
+    for (const bad of [
+      '',
+      '   ',
+      'a',
+      'A'.repeat(33),
+      '---',
+      'a-b'.slice(0, 2),
+      'Foo  Bar',
+      '<script>',
+      'foo|bar',
+      'foo\nbar',
+      'foo\tbar',
+      '-alice',
+      'alice.',
+    ]) {
+      expect(validateLocalMockPlayerName(bad).ok).toBe(false);
+      expect(LocalMockAuthRequestSchema.safeParse({ playerName: bad }).success).toBe(false);
+    }
+    expect(LocalMockAuthRequestSchema.safeParse({ playerName: 'Alice', extra: true }).success).toBe(false);
+    expect(LocalMockAuthRequestSchema.safeParse({ playerName: 'Alice', mode: 'other' }).success).toBe(false);
   });
 });

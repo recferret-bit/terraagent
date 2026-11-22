@@ -12,6 +12,9 @@ import { GamePlanets, type LoadOptions } from '../game-planets.service';
 import { PlanetLedgerService } from '../ledger/planet-ledger.service';
 import { persistenceEnabled } from '../../core/persistence';
 import { capturePlanetSnapshot, errText, restoreOnePlanet } from './parts/snapshot-restore';
+import { SectorStateService } from './sector-state.service';
+import { SimHistoryService } from './sim-history.service';
+import { SimLeaseService } from './sim-lease.service';
 import { SnapshotScheduler } from './snapshot-scheduler';
 import { SnapshotStore } from './snapshot-store';
 
@@ -68,6 +71,9 @@ export class SnapshotService implements BeforeApplicationShutdown {
     @Optional() private readonly homes?: HomeRepository,
     @Optional() private readonly progression?: CheckpointProgression,
     @Optional() private readonly flags?: Pick<FlagsService, 'list' | 'has'>,
+    @Optional() @Inject(SectorStateService) private readonly sectorState?: SectorStateService,
+    @Optional() @Inject(SimHistoryService) private readonly simHistory?: SimHistoryService,
+    @Optional() @Inject(SimLeaseService) private readonly simLease?: SimLeaseService,
   ) {
     this.log = layerLogger(root, 'sim', env.LOG_LEVELS as string | undefined);
     this.enabled = persistenceEnabled(env);
@@ -99,7 +105,21 @@ export class SnapshotService implements BeforeApplicationShutdown {
       this.log.error({ err: errText(e) }, 'snapshot restore skipped: database unavailable (no planet is generated fresh)');
       return { ...report, dbUnavailable: true };
     }
-    const outcomes = await Promise.all(ids.map(async (id) => [id, await this.restore(id, options)] as const));
+    const outcomes = await Promise.all(
+      ids.map(async (id) => {
+        if (this.simLease && !(await this.simLease.tryAcquire(id))) return [id, 'skipped'] as const;
+        try {
+          const outcome = await this.restore(id, options);
+          if (outcome !== 'restored') {
+            await this.simLease?.releasePlanet(id).catch(() => undefined);
+          }
+          return [id, outcome] as const;
+        } catch (err) {
+          await this.simLease?.releasePlanet(id).catch(() => undefined);
+          throw err;
+        }
+      }),
+    );
     for (const [id, outcome] of outcomes) {
       if (outcome === 'restored') report.restored.push(id);
       else if (outcome === 'held') report.held.push(id);
@@ -123,7 +143,36 @@ export class SnapshotService implements BeforeApplicationShutdown {
       this.log.warn({ planetId }, `not generating ${planetId}: it has snapshots but is not loaded`);
       throw new PlanetHeldError(planetId, 'it has snapshots but is not loaded (newer build, corrupt or failed restore)');
     }
-    await this.planets.ensureLoaded(planetId, { ...opts, noSnapshots: true });
+    if (this.simLease && !(await this.simLease.tryAcquire(planetId))) return;
+    try {
+      await this.planets.ensureLoaded(planetId, { ...opts, noSnapshots: true });
+      if (!this.planets.isLoaded(planetId)) {
+        await this.simLease?.releasePlanet(planetId).catch(() => undefined);
+      }
+    } catch (err) {
+      await this.simLease?.releasePlanet(planetId).catch(() => undefined);
+      throw err;
+    }
+    if (this.enabled) this.scheduler.request(planetId, 'PERIODIC');
+  }
+
+  /** Restores a persisted planet from snapshots without generating a fresh world when no snapshot exists. */
+  async restoreIfPersisted(planetId: string): Promise<'loaded' | 'restored' | 'absent'> {
+    if (this.planets.isLoaded(planetId)) return 'loaded';
+    if (!this.enabled || !(await this.store.hasSnapshots(planetId))) return 'absent';
+    if (this.simLease && !(await this.simLease.tryAcquire(planetId))) return 'loaded';
+    let outcome: 'restored' | 'held' | 'wiped';
+    try {
+      outcome = await this.restore(planetId);
+    } catch (err) {
+      await this.simLease?.releasePlanet(planetId).catch(() => undefined);
+      throw err;
+    }
+    if (outcome !== 'restored') {
+      await this.simLease?.releasePlanet(planetId).catch(() => undefined);
+      throw new PlanetHeldError(planetId, outcome === 'held' ? 'its snapshots cannot be restored' : 'it was wiped as an old dev planet');
+    }
+    return 'restored';
   }
 
   /**
@@ -132,12 +181,8 @@ export class SnapshotService implements BeforeApplicationShutdown {
    * cannot be restored.
    */
   async loadHome(planetId: string, opts: LoadOptions): Promise<'loaded' | 'restored' | 'generated'> {
-    if (this.planets.isLoaded(planetId)) return 'loaded';
-    if (this.enabled && (await this.store.hasSnapshots(planetId))) {
-      const outcome = await this.restore(planetId);
-      if (outcome !== 'restored') throw new PlanetHeldError(planetId, outcome === 'held' ? 'its snapshots cannot be restored' : 'it was wiped as an old dev planet');
-      return 'restored';
-    }
+    const existing = await this.restoreIfPersisted(planetId);
+    if (existing !== 'absent') return existing;
     await this.loadNew(planetId, opts);
     return 'generated';
   }
@@ -242,6 +287,12 @@ export class SnapshotService implements BeforeApplicationShutdown {
     this.log.debug({ planetId, tick: s.tick, kind: s.kind, sizeBytes: saved.sizeBytes }, 'snapshot saved');
     void this.digestFlush?.(planetId, s.bytes)?.catch((e: unknown) => {
       this.log.warn({ planetId, err: errText(e) }, 'digest flush failed');
+    });
+    void this.sectorState?.flushPlanet(planetId).catch((e: unknown) => {
+      this.log.warn({ planetId, err: errText(e) }, 'sector state snapshot flush failed');
+    });
+    void this.simHistory?.flush().catch((e: unknown) => {
+      this.log.warn({ planetId, err: errText(e) }, 'sim history snapshot flush failed');
     });
     void this.store.prune(planetId).catch((e: unknown) => this.log.warn({ planetId, err: String(e) }, 'snapshot prune failed'));
   }

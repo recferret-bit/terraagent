@@ -18,6 +18,7 @@ export function buildWarBadgeElement(
   war: DiplomacyWarView,
   currentTick: number,
   actions?: Partial<DiplomacyPanelActions>,
+  readOnly = false,
 ): HTMLElement {
   const badge = document.createElement('div');
   badge.className = 'ta-diplomacy-war-badge plate-sm';
@@ -58,8 +59,11 @@ export function buildWarBadgeElement(
     cancelBtn.dataset.action = 'cancel-war';
     cancelBtn.dataset.warId = war.warId;
     cancelBtn.textContent = 'Cancel (Slash)';
-    cancelBtn.title = 'Forfeit war bond: 90% to Defender, 10% to TerraAgent Protocol';
-    cancelBtn.onclick = () => actions?.onCancelWar?.(war.warId);
+    cancelBtn.title = readOnly
+      ? 'Spectator mode is read-only'
+      : 'Forfeit war bond: 90% to Defender, 10% to TerraAgent Protocol';
+    cancelBtn.disabled = readOnly;
+    cancelBtn.onclick = () => { if (!readOnly) actions?.onCancelWar?.(war.warId); };
     footer.appendChild(cancelBtn);
   }
 
@@ -74,6 +78,7 @@ export function renderWarDeclareSection(
   selectedWarPreset: WarBondPresetKey,
   onSelectPreset: (preset: WarBondPresetKey) => void,
   onDeclare: () => void,
+  readOnly = false,
 ): void {
   warDeclareEl.replaceChildren();
 
@@ -90,7 +95,8 @@ export function renderWarDeclareSection(
     chip.className = `ta-diplomacy-chip btn btn-ghost btn-sm ${key === selectedWarPreset ? 'ta-chip--active' : ''}`;
     chip.dataset.testid = `war-bond-chip-${key}`;
     chip.textContent = preset.label;
-    chip.onclick = () => onSelectPreset(key);
+    chip.disabled = readOnly;
+    chip.onclick = () => { if (!readOnly) onSelectPreset(key); };
     chips.appendChild(chip);
   }
 
@@ -106,8 +112,8 @@ export function renderWarDeclareSection(
   declareBtn.className = 'btn btn-ghost btn-sm ta-diplomacy-war__submit';
   declareBtn.dataset.action = 'declare-war';
   declareBtn.textContent = `Declare 6h War on #${selectedTargetColony}`;
-  declareBtn.disabled = hasTruce || hasWar;
-  declareBtn.onclick = onDeclare;
+  declareBtn.disabled = readOnly || hasTruce || hasWar;
+  declareBtn.onclick = () => { if (!readOnly) onDeclare(); };
 
   warDeclareEl.append(label, chips, note, declareBtn);
 }

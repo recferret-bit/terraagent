@@ -153,7 +153,15 @@ export class WsTransport implements Transport {
     const m = parsed.data;
     // the handshake's `ready` joins; the `ready` that answers a `reauth` on a joined socket only re-arms the renewal
     if (m.t === 'ready') {
-      if (this.current.phase === 'connecting') this.raw({ t: 'join', d: { planetId: this.planetId } });
+      if (this.current.phase === 'connecting') {
+        this.raw({
+          t: 'join',
+          d: {
+            planetId: this.planetId,
+            ...(this.target.mode ? { mode: this.target.mode } : {}),
+          },
+        });
+      }
       else this.armReauth();
     } else if (m.t === 'welcome') this.onWelcome(m);
     else if (m.t === 'delta' && !this.acceptDelta(m)) return;
@@ -191,7 +199,13 @@ export class WsTransport implements Transport {
     if (this.current.phase === 'resyncing') return false;
     if (m.d.fromTick !== this.lastToTick) {
       this.setState({ phase: 'resyncing' });
-      this.raw({ t: 'join', d: { planetId: this.planetId } });
+      this.raw({
+        t: 'join',
+        d: {
+          planetId: this.planetId,
+          ...(this.target.mode ? { mode: this.target.mode } : {}),
+        },
+      });
       return false;
     }
     this.lastToTick = m.d.toTick;

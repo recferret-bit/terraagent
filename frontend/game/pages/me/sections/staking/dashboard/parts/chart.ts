@@ -1,5 +1,6 @@
 import { PERFORMANCE_WINDOWS, type PerformanceWindow, type StakingPerformanceResponse } from '@terra/contracts';
 import { el } from '../../../../dom';
+import { buildBlockHeaderWithTip } from '../../../../parts/helpTip';
 import { formatNear } from '../../stakingMath';
 import { buildChartPaths, type ChartGeometry } from '../dashboardMath';
 
@@ -49,22 +50,35 @@ export function renderChart(initial: StakingPerformanceResponse['series'], onWin
   const buttons = new Map<PerformanceWindow, HTMLButtonElement>();
   const toggle = el('div', { className: 'ta-stk-toggle', role: 'group', aria: { label: 'Chart window' } });
   for (const w of PERFORMANCE_WINDOWS) {
-    const b = el('button', { className: 'btn btn-sm', type: 'button', dataset: { testid: `staking-chart-window-${w}` }, onClick: () => onWindow(w) }, w.toUpperCase());
+    const b = el('button', { className: 'btn btn-ghost btn-sm', type: 'button', dataset: { testid: `staking-chart-window-${w}` }, onClick: () => onWindow(w) }, w.toUpperCase());
     buttons.set(w, b);
     toggle.append(b);
   }
   const update = (series: StakingPerformanceResponse['series']): void => {
     host.replaceChildren(renderChartSvg(series));
     for (const [w, b] of buttons) {
-      b.setAttribute('aria-pressed', String(w === series.window));
-      b.classList.toggle('btn-primary', w === series.window);
+      const active = w === series.window;
+      b.setAttribute('aria-pressed', String(active));
+      b.classList.toggle('btn-primary', active);
+      b.classList.toggle('btn-ghost', !active);
     }
   };
   update(initial);
+  const header = buildBlockHeaderWithTip(
+    {
+      id: 'staking-chart',
+      title: 'EARNINGS CHART',
+      description:
+        'Visualizes cumulative NEAR value earned over 30d, 90d, or 1y. Solid orange traces realized compounds, market-fee savings, royalties, and patron share; dashed blue projects forward at your current rate.',
+    },
+    el('h3', { className: 'label ta-stk-h' }, 'EARNINGS · REALIZED vs PROJECTED'),
+    toggle,
+  );
   const root = el(
     'div',
     { className: 'ta-stk-block plate-sm ta-stk-pad', dataset: { testid: 'staking-chart' } },
-    el('div', { className: 'ta-stk-top' }, el('h3', { className: 'label ta-stk-h' }, 'EARNINGS · REALIZED vs PROJECTED'), toggle),
+    header.head,
+    header.panel,
     host,
     el('span', { className: 'ta-stk-sub' }, 'Solid = realized · dashed = projected · self-fills excluded'),
   );

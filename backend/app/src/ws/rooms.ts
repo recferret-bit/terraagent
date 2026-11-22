@@ -1,6 +1,23 @@
-import { encodeWire, hasEventKind } from '@terra/contracts';
+import {
+  encodeWire,
+  hasEventKind,
+  type AgentDecisionFeedItemV1,
+  type SimInputFeedItemV1,
+} from '@terra/contracts';
+import type { Logger } from 'pino';
 import type { SectorAntiCheatService } from '../core/anticheat';
+import type { InternalAuthEnv } from '../game/cluster/internal-auth';
 import type { GamePlanets, PlanetSubscriber } from '../game/game-planets.service';
+import { subscribeRemotePlanetStream } from './parts/cluster-relay';
+
+export interface RemoteRoomSubscription {
+  readonly internalUrl: string;
+  readonly env: InternalAuthEnv;
+  readonly onSimFeeds: (tick: number, inputs: readonly SimInputFeedItemV1[], decisions: readonly AgentDecisionFeedItemV1[]) => void;
+  readonly onWarp: (k: number) => void;
+  readonly onDown: () => void;
+  readonly log?: Logger;
+}
 
 /** A socket as a room sees it. */
 export interface RoomMember {
@@ -33,11 +50,36 @@ export class PlanetRooms {
     private readonly antiCheat?: Pick<SectorAntiCheatService, 'applyPlanetDelta' | 'applyPlanetEvents'>,
   ) {}
 
-  join(planetId: string, m: RoomMember): void {
+  join(planetId: string, m: RoomMember, remote?: RemoteRoomSubscription): void {
     let room = this.rooms.get(planetId);
     if (!room) {
       const members = new Set<RoomMember>();
-      room = { members, unsubscribe: this.planets.subscribe(planetId, this.fanout(planetId, members)) };
+      const subscriber = this.fanout(planetId, members);
+      let created: Room | undefined;
+      const onRemoteDown = () => {
+        if (created && this.rooms.get(planetId) === created) {
+          this.rooms.delete(planetId);
+          try {
+            created.unsubscribe();
+          } catch {
+            // ignore
+          }
+        }
+        remote?.onDown();
+      };
+      const unsubscribe = remote
+        ? subscribeRemotePlanetStream({
+            internalUrl: remote.internalUrl,
+            planetId,
+            env: remote.env,
+            subscriber,
+            onSimFeeds: remote.onSimFeeds,
+            onWarp: remote.onWarp,
+            onDown: onRemoteDown,
+            log: remote.log,
+          })
+        : this.planets.subscribe(planetId, subscriber);
+      room = created = { members, unsubscribe };
       this.rooms.set(planetId, room);
     }
     room.members.add(m);

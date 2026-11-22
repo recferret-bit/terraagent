@@ -38,6 +38,8 @@ const HOTKEY_OP_MAP: Readonly<Record<string, TerraformPrimaryOp>> = Object.fromE
 export interface TerraformMenuOptions {
   /** Another map mode owns input (a Hub / construction ghost): the brush hotkeys stay quiet. */
   isBlocked?: () => boolean;
+  /** Read-only spectator mode: disables terraform buttons and hotkeys. */
+  isReadOnly?: () => boolean;
   /** The player's colony (whose work jobs the status line shows). */
   getColonyId?: () => number;
   /** The client flags: ops of a wave that is off (`?waves=..01`: REPAIR, DISMANTLE) are not offered. Absent: all on. */
@@ -87,13 +89,14 @@ export class TerraformMenu {
 
   /** Clicking the armed op again disarms the brush. */
   private toggleOp(op: TerraformPrimaryOp): void {
+    if (this.opts.isReadOnly?.()) return;
     if (this.brush.isArmed() && this.brush.getSelectedOp() === op) this.brush.disarm();
     else this.brush.selectOp(op);
     this.render();
   }
 
   private handleKey(e: KeyboardEvent): void {
-    if (!isHotkeyPress(e) || this.opts.isBlocked?.()) return;
+    if (!isHotkeyPress(e) || this.opts.isReadOnly?.() || this.opts.isBlocked?.()) return;
     const k = (e.key ?? '').toLowerCase();
     if (k === 'escape') {
       if (!this.brush.isArmed()) return;
@@ -118,10 +121,12 @@ export class TerraformMenu {
   }
 
   private renderState(): void {
+    const ro = Boolean(this.opts.isReadOnly?.());
     const selectedOp = this.brush.getSelectedOp();
-    const armed = this.brush.isArmed();
+    const armed = !ro && this.brush.isArmed();
     for (const [op, btn] of this.opButtons) {
       const isSelected = armed && selectedOp === op;
+      btn.disabled = ro;
       btn.setAttribute('aria-pressed', String(isSelected));
       btn.className = isSelected ? 'btn btn-sm btn-primary ta-tf-menu__op-btn' : 'btn btn-sm btn-ghost ta-tf-menu__op-btn';
     }

@@ -4,7 +4,7 @@ import {
   type GameView,
   type HudPanelInstance,
 } from '../../core/registry/types';
-import { ownColonyIndex } from '../shared/colony';
+import { isReadOnlySpectator, ownColonyIndex } from '../shared/colony';
 import { createPvpTracker, type PvpTracker } from './pvpTracker';
 import { RaidTargetPicker, type RaidTargetPickerOptions } from './RaidTargetPicker';
 
@@ -57,6 +57,8 @@ export function mountRaidFeature(
     },
     ownColonyIndex: ownColonyIndex(ctx.services),
     getOwnColonyIndex: () => ownColonyIndex(ctx.services),
+    readOnly: isReadOnlySpectator(ctx.services),
+    getReadOnly: () => isReadOnlySpectator(ctx.services),
     initialView: ctx.services.store?.latest,
     ...opts,
   });

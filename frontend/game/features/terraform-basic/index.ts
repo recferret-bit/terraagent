@@ -8,7 +8,7 @@ import { ENTITY_KIND } from '@terra/sim';
 import '../../net/services';
 import { isDockPaneShown } from '../../core/hud/CommandDock';
 import { isGameInputBlocked } from '../../core/input/gameInputBlock';
-import { ownColonyIndex } from '../shared/colony';
+import { isReadOnlySpectator, ownColonyIndex } from '../shared/colony';
 import type { InProcessHost } from '../shared/commandDispatch';
 import type { TilePickerFn } from '../shared/pointer';
 import {
@@ -220,7 +220,9 @@ export function mountTerraformBasic(el?: HTMLElement, opts?: MountTerraformOptio
   const simHost = opts?.host ?? services.host;
   const store = opts?.store ?? services.store;
   const getColonyId = () => ownColonyIndex(services, opts?.colonyId);
+  const isReadOnly = () => isReadOnlySpectator(services);
   const isBlocked = () =>
+    isReadOnly() ||
     isGameInputBlocked() ||
     services.hubPlacement?.isPlacementActive() === true || (services.getPlacementGhostState?.() ?? null) !== null;
   const getWorkerId = () => resolveSelectedWorkerId(services);
@@ -251,11 +253,12 @@ export function mountTerraformBasic(el?: HTMLElement, opts?: MountTerraformOptio
     getColonyId,
     getWorkerId,
     isBlocked: () => isBlocked() || (menu !== null && !isDockPaneShown(menu.el)),
+    isReadOnly,
     simData: () => store?.simData?.(),
     onChange: () => syncView(),
   });
 
-  menu = new TerraformMenu(container, brush, overlay, { isBlocked, getColonyId, flags: opts?.flags });
+  menu = new TerraformMenu(container, brush, overlay, { isBlocked, isReadOnly, getColonyId, flags: opts?.flags });
 
   const surface = opts?.surface ?? services.surface ?? services.canvas;
   const pickTile = opts?.pickTile ?? services.pickTile;

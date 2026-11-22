@@ -60,11 +60,13 @@ const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls: string, testid?:
   return e;
 };
 
-function teeLink(h: AiAccessHandlers): HTMLButtonElement {
+const handlerMap = new WeakMap<HTMLElement, AiAccessHandlers>();
+
+function teeLink(host: HTMLElement): HTMLButtonElement {
   const b = el('button', 'btn btn-ghost btn-sm ta-director__ai-proof', 'director-ai-tee-proof', 'TEE ✓');
   b.type = 'button';
   b.title = 'Inspect & cryptographically verify NEAR.AI TEE attestations';
-  b.addEventListener('click', () => h.onOpenTee());
+  b.addEventListener('click', () => handlerMap.get(host)?.onOpenTee());
   return b;
 }
 
@@ -91,6 +93,10 @@ function ctaLink(): HTMLAnchorElement {
 
 /** Draws the AI access card into `host` (`hidden` for `legacy`). Never uses innerHTML. */
 export function renderAiAccess(host: HTMLElement, s: AiAccessState, h: AiAccessHandlers): void {
+  handlerMap.set(host, h);
+  const sig = JSON.stringify(s);
+  if (host.dataset.renderedSig === sig && (s.kind === 'legacy' || host.childElementCount > 0)) return;
+  host.dataset.renderedSig = sig;
   host.dataset.state = s.kind;
   host.hidden = s.kind === 'legacy';
   if (s.kind === 'legacy') { host.replaceChildren(); return; }
@@ -98,10 +104,10 @@ export function renderAiAccess(host: HTMLElement, s: AiAccessState, h: AiAccessH
   const kids: HTMLElement[] = [badge];
   if (s.kind === 'trial') {
     badge.textContent = `FREE TEE TRIAL (${s.left} / ${s.total} TURNS LEFT · ${modelLabel(s.model)})`;
-    badge.append(' ', teeLink(h));
+    badge.append(' ', teeLink(host));
   } else if (s.kind === 'tee') {
     badge.textContent = `NEAR.AI TEE · TIER ${s.tier}`;
-    badge.append(' ', teeLink(h));
+    badge.append(' ', teeLink(host));
     const stats = el('div', 'ta-director__ai-stats', 'director-ai-stats', `${usd(s.usedUsd)} / ${usd(s.capUsd)} today · ${s.calls}/${s.callLimit} calls · slots ${s.slotsUsed}/${s.slotsMax}`);
     kids.push(meter(s.usedUsd, s.capUsd), stats);
   } else if (s.kind === 'byok') {

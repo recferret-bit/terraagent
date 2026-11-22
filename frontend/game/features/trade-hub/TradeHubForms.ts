@@ -8,6 +8,7 @@ import {
 } from '@terra/contracts';
 import type { FeatureContext } from '../../core/registry/types';
 import '../../net/services';
+import { isReadOnlySpectator } from '../shared/colony';
 import {
   computeTransferBounds,
   formatCargoCount,
@@ -366,7 +367,12 @@ export class TradeHubForms {
     this.render();
   }
 
+  private isReadOnly(): boolean {
+    return isReadOnlySpectator(this.callbacks.getContext()?.services);
+  }
+
   confirm(amountOverride?: number): boolean {
+    if (this.isReadOnly()) return false;
     if (amountOverride !== undefined) {
       this.setAmount(amountOverride);
     } else {
@@ -436,20 +442,22 @@ export class TradeHubForms {
       btn.textContent = `${sub.label} (${formatCargoCount(avail)})`;
     }
 
+    const ro = this.isReadOnly();
     const sliderVal = Math.max(0, Math.min(this.amount, bounds.maxAmount));
     this.sliderEl.setAttribute('max', String(bounds.maxAmount));
     this.sliderEl.setAttribute('data-slider-max', String(bounds.maxAmount));
     this.sliderEl.setAttribute('data-stock-max', String(bounds.availableAmount));
     this.sliderEl.setAttribute('data-cap-max', String(bounds.capBound));
     setRangeProgress(this.sliderEl, sliderVal, bounds.maxAmount);
-    this.sliderEl.disabled = !resolved.hubOnline || bounds.maxAmount <= 0;
+    this.sliderEl.disabled = ro || !resolved.hubOnline || bounds.maxAmount <= 0;
     this.updateDisabledReason(this.sliderEl, resolved.hubOnline);
     this.lastSliderStr = String(sliderVal);
     this.writeElementValue(this.sliderEl, this.lastSliderStr);
 
     const maxInputBound = Math.max(1, bounds.availableAmount);
     this.amountInputEl.setAttribute('max', String(maxInputBound));
-    this.amountInputEl.disabled = !resolved.hubOnline;
+    this.amountInputEl.disabled = ro || !resolved.hubOnline;
+    this.maxBtnEl.disabled = ro || !resolved.hubOnline || bounds.maxAmount <= 0;
     this.updateDisabledReason(this.amountInputEl, resolved.hubOnline);
     this.lastInputStr = String(this.amount);
     this.writeElementValue(this.amountInputEl, this.lastInputStr);
@@ -467,7 +475,7 @@ export class TradeHubForms {
 
     this.confirmBtnEl.textContent = isExport ? 'CONFIRM EXPORT' : 'CONFIRM IMPORT';
     const effectiveAmount = isExport ? this.amount : Math.min(this.amount, bounds.capBound);
-    const disabled = !resolved.hubOnline || effectiveAmount <= 0 || effectiveAmount > bounds.maxAmount;
+    const disabled = ro || !resolved.hubOnline || effectiveAmount <= 0 || effectiveAmount > bounds.maxAmount;
     this.confirmBtnEl.disabled = disabled;
     this.confirmBtnEl.setAttribute('data-disabled', String(disabled));
     this.updateDisabledReason(this.confirmBtnEl, resolved.hubOnline);

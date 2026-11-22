@@ -34,6 +34,7 @@ export interface HubPlacementModel {
   hqWorkRate: number;
   /** The colony's open (not completed, not cancelled) construction order, if any. */
   order: ConstructionOrder | undefined;
+  readOnly?: boolean;
 }
 
 export interface HubPlacementActions {
@@ -99,9 +100,11 @@ export class HubPlacementView {
   }
 
   render(m: HubPlacementModel): void {
+    const ro = Boolean(m.readOnly);
     const g = m.ghost;
-    this.buildHubBtn.setAttribute('aria-pressed', String(m.active));
-    this.buildHubBtn.className = `btn btn-sm ${m.active ? 'btn-primary' : 'btn-ghost'} ta-hub-menu__build-btn`;
+    this.buildHubBtn.disabled = ro;
+    this.buildHubBtn.setAttribute('aria-pressed', String(!ro && m.active));
+    this.buildHubBtn.className = `btn btn-sm ${!ro && m.active ? 'btn-primary' : 'btn-ghost'} ta-hub-menu__build-btn`;
     setDataAttr(this.buildHubBtn, 'cost', m.costText);
     this.buildCostEl.textContent = m.costText;
 
@@ -119,10 +122,10 @@ export class HubPlacementView {
     if (m.active && !g.valid) this.renderFootprintGrid(g);
     else if (g.valid) { this.gridKey = ''; this.gridEl.replaceChildren(); }
     this.renderBill(g.bill, m.hqWorkRate);
-    this.confirmBtn.disabled = !g.valid;
+    this.confirmBtn.disabled = ro || !g.valid;
 
     this.orderStatusEl.textContent = m.order ? `${m.order.building}: ${m.order.statusText || m.order.status}` : 'No active Hub order';
-    this.cancelOrderBtn.disabled = !m.order;
+    this.cancelOrderBtn.disabled = ro || !m.order;
   }
 
   private renderBill(bill: HubGhostBill, hqWorkRate: number): void {

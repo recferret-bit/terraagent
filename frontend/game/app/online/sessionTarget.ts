@@ -1,4 +1,5 @@
 import type { SessionTarget } from '../../net/types';
+import { isSpectatorSearch } from './onlineMode';
 import {
   browserKeyValue,
   matchingLiveClaim,
@@ -51,6 +52,7 @@ export function createSessionTarget(
 ): SessionTarget {
   const scenario = scenarioParam(loc.search);
   const join = joinParam(loc.search);
+  const spectator = isSpectatorSearch(loc.search);
   const tab = tabId(seats);
   const explicit = explicitAs(loc.search);
   const opening = openingSeat(loc.search, scenario, seats, live, tab);
@@ -85,6 +87,7 @@ export function createSessionTarget(
 
   return {
     url: `${loc.protocol === 'https:' ? 'wss' : 'ws'}://${loc.host}/ws`,
+    ...(spectator ? { mode: 'spectator' as const } : {}),
     get accessToken() { return `dev:${name}`; },
     resolve() {
       if (join) return Promise.resolve({ planetId: join });

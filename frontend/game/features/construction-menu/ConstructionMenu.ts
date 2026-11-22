@@ -7,6 +7,7 @@ import { createBuildingCard, syncBuildingCard, type BuildingCardRefs } from './b
 import { buildConstructionCatalog, type BuildingKind } from './catalog';
 import { PlacementGhostController, type PlacementGhostState } from './PlacementGhost';
 import { ownColonyIndex } from './sitePlacement';
+import { isReadOnlySpectator } from '../shared/colony';
 
 export { formatResourceLabel } from './catalog';
 
@@ -107,7 +108,12 @@ export class ConstructionMenu implements Disposable {
     this.renderCards();
   }
 
+  private isReadOnly(): boolean {
+    return isReadOnlySpectator(this.ctx.services);
+  }
+
   startPlacement(building: BuildingKind | string): void {
+    if (this.isReadOnly()) return;
     if (this.ctx.services.hubPlacement?.isPlacementActive?.()) {
       this.ctx.services.hubPlacement.cancelPlacement();
     }
@@ -161,6 +167,7 @@ export class ConstructionMenu implements Disposable {
   }
 
   private activateCard(building: BuildingKind): void {
+    if (this.isReadOnly()) return;
     this.startPlacement(building);
     if (this.externalStartPlacement && this.externalStartPlacement !== this.ctx.services.startPlacement) {
       this.externalStartPlacement(building);
@@ -188,6 +195,7 @@ export class ConstructionMenu implements Disposable {
         this.cardRefs.delete(kind);
       }
     }
+    const ro = this.isReadOnly();
     const placed: { key: string; el: HTMLElement }[] = [];
     for (const card of cards) {
       let ref = this.cardRefs.get(card.building);
@@ -195,7 +203,11 @@ export class ConstructionMenu implements Disposable {
         ref = createBuildingCard(card, (building) => this.activateCard(building));
         this.cardRefs.set(card.building, ref);
       }
-      syncBuildingCard(ref, card, this.selectedBuilding === card.building);
+      syncBuildingCard(ref, card, !ro && this.selectedBuilding === card.building);
+      if (ro) {
+        ref.btn.disabled = true;
+        ref.btn.setAttribute('data-disabled', 'true');
+      }
       setTierVisible(ref.btn, card.tier === tier);
       placed.push({ key: card.building, el: ref.btn });
     }

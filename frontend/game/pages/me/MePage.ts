@@ -1,11 +1,14 @@
 import type { MeAchievementsResponse, MeProfileResponse } from '@terra/contracts';
+import { isLocalMockAuthEnabled } from '../../../design/pilot/localMockPilot';
 import { consumeNearWalletCallback } from '../../../design/pilot/mockToken';
 import { decodeNep413SocialToken } from '../../../design/pilot/nearAuthApi';
 import { PilotAccess, type PilotAccessOptions, type PilotAccessSession } from '../../../design/pilot/PilotAccess';
 import { clearMeCachedToken, fetchMeData, resolveMeBearerToken, type MeFetchFn } from './api';
 import { clearChildren, el } from './dom';
+import { createLocalModeFetch, isBrowserLocalHost } from './localModeSim';
+import { createBlockHelpTip } from './parts/helpTip';
 import { renderAchievementsSection } from './sections/AchievementsSection';
-import { renderAiSettingsSection } from './sections/AiSettingsSection';
+import { renderAiSettingsSection, type AiSettingsController } from './sections/AiSettingsSection';
 import { renderPilotSection } from './sections/PilotSection';
 import {
   renderHistorySection,
@@ -41,6 +44,8 @@ export class MePage {
   private headerAuth: PilotAccess | null = null;
   private promptAuth: PilotAccess | null = null;
   private readonly waveStakingOn: boolean;
+  private readonly localHost: boolean;
+  private readonly effectiveFetch?: MeFetchFn;
   /** Set while the signed-out view is showing (the staking tab bypasses the auth wall). */
   private unauthMessage: string | null = null;
   private hashListening = false;
@@ -53,6 +58,8 @@ export class MePage {
     this.root.classList.add('ta-me-root');
     const search = opts.search ?? (typeof location !== 'undefined' ? location.search : '');
     this.waveStakingOn = resolveClientFlags({ search, dev: Boolean(import.meta.env?.DEV), warn: () => undefined }).flags.has('W28');
+    this.localHost = isBrowserLocalHost(search);
+    this.effectiveFetch = opts.fetch ?? (this.localHost ? createLocalModeFetch() : undefined);
   }
 
   private currentHash(): string {
@@ -74,17 +81,28 @@ export class MePage {
     }
   }
 
-  private renderStakingPlate(accountId: string | null): HTMLElement {
+  private renderStakingPlate(
+    accountId: string | null,
+    defaultPlanetId?: string,
+    onStakingChange?: (totalStakedNear: number) => void,
+  ): HTMLElement {
     const handle = renderStakingSection({
       amount: parseStakingHash(this.currentHash()).amount,
-      fetch: this.opts.fetch,
+      defaultPlanetId,
+      fetch: this.effectiveFetch,
       search: this.opts.search,
       connected: accountId !== null,
       accountId,
       onConnect: () => this.headerAuth?.openSignInDialog(),
       onOff: () => this.hideStaking(plate),
+      onStakingChange,
     });
-    const plate = this.renderSectionPlate(STAKING_TAB.id, STAKING_TAB.label, handle.el);
+    const plate = this.renderSectionPlate(
+      STAKING_TAB.id,
+      STAKING_TAB.label,
+      handle.el,
+      'Stake NEAR, stNEAR, or LiNEAR with 100% principal custody to earn net validator yield, unlock Managed NEAR.AI TEE slots, cut market taker fees, and compete for Planetary Patron seats.',
+    );
     return plate;
   }
 
@@ -122,7 +140,7 @@ export class MePage {
   private async consumeRedirectLoginIfPresent(): Promise<void> {
     const walletHit = consumeNearWalletCallback();
     if (!walletHit) return;
-    const doFetch: MeFetchFn = this.opts.fetch ?? ((input, init) => fetch(input, init));
+    const doFetch: MeFetchFn = this.effectiveFetch ?? ((input, init) => fetch(input, init));
     try {
       const nep413 = decodeNep413SocialToken(walletHit.token);
       const res = await doFetch(nep413 ? '/v1/auth/near/verify' : '/v1/auth/social', {
@@ -133,7 +151,7 @@ export class MePage {
       });
       if (!res.ok) return;
       const body = (await res.json()) as PilotAccessSession;
-      if (!body?.accessToken || !body.player) return;
+      if (!body?.accessToken || !body.player || body.accessToken === 'local-mode-token' || this.localHost) return;
       const isGuest = body.player.isGuest !== false;
       localStorage.setItem(
         'ta_active_pilot',
@@ -164,18 +182,19 @@ export class MePage {
     this.root.appendChild(loading);
 
     await this.consumeRedirectLoginIfPresent();
-    const res = await fetchMeData(this.opts.fetch, this.opts.search);
+    const res = await fetchMeData(this.effectiveFetch, this.opts.search);
     this.disposeAuthControls();
     clearChildren(this.root);
 
     if (res.kind === 'wave_disabled') {
+      const returnHref = this.localHost ? '/play.html?host=local' : '/play.html';
       this.root.appendChild(
         el(
           'div',
           { className: 'plate ta-me-disabled', dataset: { testid: 'me-wave-disabled' } },
           el('h1', { className: 'ta-me-disabled-title' }, 'Player page is off'),
           el('p', { className: 'ta-me-muted' }, res.message),
-          el('a', { className: 'btn btn-ghost btn-sm', href: '/play.html' }, 'Return to Game →'),
+          el('a', { className: 'btn btn-ghost btn-sm', href: returnHref }, 'Return to Game →'),
         ),
       );
       return;
@@ -209,6 +228,9 @@ export class MePage {
     this.promptAuth = new PilotAccess(authSlot, {
       triggerLabel: 'Sign in / Sign up',
       skipRestore: true,
+      fetch: this.effectiveFetch,
+      allowOfflineLocalAuth: this.localHost,
+      profileHref: this.localHost ? '/me.html?host=local' : undefined,
       onAuthChange: () => {
         void this.load();
       },
@@ -247,40 +269,61 @@ export class MePage {
     this.root.appendChild(this.renderStickyNav({ initialSession, skipRestore: true }));
 
     const main = el('main', { className: 'ta-me-main', dataset: { testid: 'me-main' } });
+    const defaultPlanetId =
+      profile.currentColonies[0]?.planetId ?? (isLocalMockAuthEnabled() || this.localHost ? 'pl_local_prime' : undefined);
+    let aiCtrl: AiSettingsController | null = null;
 
     main.appendChild(
       this.renderSectionPlate(
         'pilot',
         'PILOT',
-        renderPilotSection(profile),
-        renderAiSettingsSection(profile, { fetch: this.opts.fetch, search: this.opts.search }),
+        [
+          renderPilotSection(profile, {
+            fetch: this.effectiveFetch,
+            search: this.opts.search,
+            onRenamed: (nextHandle) => this.headerAuth?.setHandle(nextHandle),
+          }),
+          renderAiSettingsSection(profile, {
+            fetch: this.effectiveFetch,
+            search: this.opts.search,
+            onReady: (ctrl) => {
+              aiCtrl = ctrl;
+            },
+          }),
+        ],
+        'Your Pilot identity, progression XP, and NEAR.AI Bot Decision Manager settings.',
       ),
     );
+    if (this.waveStakingOn) {
+      main.appendChild(
+        this.renderStakingPlate(profile.identity.accountId ?? null, defaultPlanetId, (total) => {
+          aiCtrl?.syncStakerState(total);
+        }),
+      );
+    }
     main.appendChild(
       this.renderSectionPlate(
         'progress',
         'PROGRESS',
-        renderProgressSection(profile),
-        renderStatsSection(profile.stats),
+        [renderProgressSection(profile), renderStatsSection(profile.stats)],
       ),
     );
     main.appendChild(
-      this.renderSectionPlate('planets', 'PLANETS', renderPlanetsSection(profile)),
+      this.renderSectionPlate('planets', 'PLANETS', [renderPlanetsSection(profile, { localHost: this.localHost })]),
     );
     main.appendChild(
-      this.renderSectionPlate('history', 'HISTORY', renderHistorySection(profile)),
+      this.renderSectionPlate('history', 'HISTORY', [renderHistorySection(profile)]),
     );
     main.appendChild(
       this.renderSectionPlate(
         'achievements',
         `ACHIEVEMENTS · ${achievements.earnedCount} / ${achievements.totalCount}`,
-        renderAchievementsSection(achievements),
+        [renderAchievementsSection(achievements)],
       ),
     );
     main.appendChild(
-      this.renderSectionPlate('play', 'PLAY', renderPlaySection()),
+      this.renderSectionPlate('play', 'PLAY', [renderPlaySection({ localHost: this.localHost })]),
     );
-    if (this.waveStakingOn) main.appendChild(this.renderStakingPlate(profile.identity.accountId ?? null));
 
     this.root.appendChild(main);
     this.scrollToStaking();
@@ -289,12 +332,14 @@ export class MePage {
   private renderStickyNav(
     navOpts: Pick<PilotAccessOptions, 'initialSession' | 'skipRestore'> & { readonly mountAuth?: boolean } = {},
   ): HTMLElement {
-    const tabs = this.waveStakingOn ? [...ME_SECTION_TABS, STAKING_TAB] : ME_SECTION_TABS;
+    const tabs = this.waveStakingOn
+      ? [ME_SECTION_TABS[0], STAKING_TAB, ...ME_SECTION_TABS.slice(1)]
+      : ME_SECTION_TABS;
     const links = tabs.map((t) =>
       el(
         'a',
         {
-          className: 'ta-me-tab',
+          className: t.id === STAKING_SECTION_ID ? 'ta-me-tab ta-me-tab--staking' : 'ta-me-tab',
           href: `#${t.id}`,
           dataset: { testid: `me-tab-${t.id}`, section: t.id },
         },
@@ -307,6 +352,9 @@ export class MePage {
       this.headerAuth = new PilotAccess(authHost, {
         initialSession: navOpts.initialSession,
         skipRestore: navOpts.skipRestore,
+        fetch: this.effectiveFetch,
+        allowOfflineLocalAuth: this.localHost,
+        profileHref: this.localHost ? '/me.html?host=local' : undefined,
         onAuthChange: (session) => {
           if (!session) clearMeCachedToken();
           void this.load();
@@ -334,8 +382,13 @@ export class MePage {
   private renderSectionPlate(
     id: string,
     eyebrowText: string,
-    ...children: HTMLElement[]
+    children: HTMLElement | readonly HTMLElement[],
+    tipDescription?: string,
   ): HTMLElement {
+    const childList = Array.isArray(children) ? children : [children];
+    const tip = tipDescription
+      ? createBlockHelpTip({ id: `section-${id}`, title: eyebrowText, description: tipDescription })
+      : null;
     return el(
       'section',
       {
@@ -347,12 +400,18 @@ export class MePage {
         'div',
         { className: 'ta-me-section-head' },
         el(
-          'h2',
-          { className: 'label ta-me-eyebrow', dataset: { testid: `me-eyebrow-${id}` } },
-          eyebrowText,
+          'div',
+          { className: 'ta-help-title-group' },
+          tip ? tip.button : null,
+          el(
+            'h2',
+            { className: 'label ta-me-eyebrow', dataset: { testid: `me-eyebrow-${id}` } },
+            eyebrowText,
+          ),
         ),
       ),
-      ...children,
+      tip ? tip.panel : null,
+      ...childList,
     );
   }
 }

@@ -23,6 +23,7 @@ export function renderIncomingOfferBanner(
   offer: DiplomacyOfferView | undefined,
   currentTick: number,
   actions?: Partial<DiplomacyPanelActions>,
+  readOnly = false,
 ): void {
   const hasOffer = Boolean(offer && offer.expiresAtTick > currentTick);
   bannerEl.hidden = !hasOffer;
@@ -60,7 +61,8 @@ export function renderIncomingOfferBanner(
   acceptBtn.dataset.action = 'accept-truce';
   acceptBtn.dataset.offerId = offer.offerId;
   acceptBtn.textContent = offer.bondAmount && offer.bondAmount > 0 ? 'Match & Accept' : 'Accept';
-  acceptBtn.onclick = () => actions?.onRespondTruce?.(offer.offerId, true);
+  acceptBtn.disabled = readOnly;
+  acceptBtn.onclick = () => { if (!readOnly) actions?.onRespondTruce?.(offer.offerId, true); };
 
   const declineBtn = document.createElement('button');
   declineBtn.type = 'button';
@@ -68,7 +70,8 @@ export function renderIncomingOfferBanner(
   declineBtn.dataset.action = 'decline-truce';
   declineBtn.dataset.offerId = offer.offerId;
   declineBtn.textContent = 'Decline';
-  declineBtn.onclick = () => actions?.onRespondTruce?.(offer.offerId, false);
+  declineBtn.disabled = readOnly;
+  declineBtn.onclick = () => { if (!readOnly) actions?.onRespondTruce?.(offer.offerId, false); };
 
   btns.append(acceptBtn, declineBtn);
   bannerEl.append(header, meta, btns);
@@ -78,6 +81,7 @@ export function buildTruceBadgeElement(
   truce: DiplomacyTruceView,
   currentTick: number,
   actions?: Partial<DiplomacyPanelActions>,
+  readOnly = false,
 ): HTMLElement {
   const badge = document.createElement('div');
   badge.className = 'ta-diplomacy-truce-badge plate-sm';
@@ -122,8 +126,8 @@ export function buildTruceBadgeElement(
   cancelBtn.dataset.action = 'cancel-truce';
   cancelBtn.dataset.truceId = truce.truceId;
   cancelBtn.textContent = truce.bondAmount && truce.bondAmount > 0 ? 'Break (Slash)' : 'Cancel';
-  cancelBtn.disabled = truce.status === 'notice';
-  cancelBtn.onclick = () => actions?.onCancelTruce?.(truce.truceId);
+  cancelBtn.disabled = readOnly || truce.status === 'notice';
+  cancelBtn.onclick = () => { if (!readOnly) actions?.onCancelTruce?.(truce.truceId); };
 
   footer.append(timer, cancelBtn);
   badge.append(main, footer);
@@ -140,6 +144,7 @@ export function renderProposeTruceSection(
   onSelectHours: (hours: TruceDurationHours) => void,
   onSelectBondPreset: (preset: TruceBondPresetKey) => void,
   onSubmit: () => void,
+  readOnly = false,
 ): number {
   proposeEl.replaceChildren();
 
@@ -150,6 +155,7 @@ export function renderProposeTruceSection(
   const select = document.createElement('select');
   select.dataset.testid = 'propose-target-colony';
   select.dataset.action = 'select-target';
+  select.disabled = readOnly;
 
   const contacts = view.contacts.length > 0 ? view.contacts : [1];
   let resolvedTarget = selectedTargetColony;
@@ -176,7 +182,8 @@ export function renderProposeTruceSection(
     chip.dataset.testid = `duration-chip-${h}h`;
     chip.dataset.hours = String(h);
     chip.textContent = `${h}h`;
-    chip.onclick = () => onSelectHours(h);
+    chip.disabled = readOnly;
+    chip.onclick = () => { if (!readOnly) onSelectHours(h); };
     chips.appendChild(chip);
   }
 
@@ -189,7 +196,8 @@ export function renderProposeTruceSection(
     chip.className = `ta-diplomacy-chip btn btn-ghost btn-sm ${key === selectedBondPreset ? 'ta-chip--active' : ''}`;
     chip.dataset.testid = `truce-bond-chip-${key}`;
     chip.textContent = preset.label;
-    chip.onclick = () => onSelectBondPreset(key);
+    chip.disabled = readOnly;
+    chip.onclick = () => { if (!readOnly) onSelectBondPreset(key); };
     bondChips.appendChild(chip);
   }
 
@@ -209,9 +217,13 @@ export function renderProposeTruceSection(
   const isOathbreaker = Boolean(
     typeof view.oathbreakerUntil === 'number' && view.oathbreakerUntil > view.currentTick,
   );
-  submitBtn.disabled = isOathbreaker;
-  submitBtn.title = isOathbreaker ? 'Cannot propose truce while marked Oathbreaker' : 'Propose truce';
-  submitBtn.onclick = onSubmit;
+  submitBtn.disabled = readOnly || isOathbreaker;
+  submitBtn.title = readOnly
+    ? 'Spectator mode is read-only'
+    : isOathbreaker
+      ? 'Cannot propose truce while marked Oathbreaker'
+      : 'Propose truce';
+  submitBtn.onclick = () => { if (!readOnly) onSubmit(); };
 
   proposeEl.append(label, select, chips, bondChips, slashNote, submitBtn);
   return resolvedTarget;

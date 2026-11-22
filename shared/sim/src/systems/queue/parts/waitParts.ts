@@ -148,7 +148,7 @@ export function enqueueAuthority(
       : (CONTRACT_PRECEDENCE[word] ??
         (word === 'system' || word === 'player' || word === 'hq' || word === 'ai' || word === 'auto' ? word : undefined));
   if (TRUSTED_SOURCES.has(source)) return { precedence: asked, costOverride: norm.costOverride };
-  if (source === 'ai') {
+  if (source === 'ai' || source === 'bot') {
     return { precedence: asked && PRECEDENCE_RANK[asked] <= PRECEDENCE_RANK.ai ? asked : 'ai' };
   }
   if (asked === undefined) return { precedence: undefined };

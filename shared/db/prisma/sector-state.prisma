@@ -1,0 +1,131 @@
+/// Relational live & persisted state of every player AND bot inside each planet sector.
+/// Synced continuously by the backend simulation workers and snapshots so Postgres always holds
+/// queryable per-sector occupancy, stocks, queues, goals, power, and entity counts.
+model SectorParticipantState {
+  id              String   @id
+  planetId        String   @map("planet_id")
+  sectorId        String   @map("sector_id")
+  colonyId        String   @map("colony_id")
+  colonyIndex     Int      @map("colony_index")
+  playerId        String?  @map("player_id")
+  actorKind       String   @default("player") @map("actor_kind")
+  isBot           Boolean  @default(false) @map("is_bot")
+  handle          String
+  botPersona      String?  @map("bot_persona")
+  status          String   @default("ACTIVE")
+  stage           Int      @default(1)
+  aiEnabled       Boolean  @default(false) @map("ai_enabled")
+  alive           Boolean  @default(true)
+  hqQ             Int?     @map("hq_q")
+  hqR             Int?     @map("hq_r")
+  unitCount       Int      @default(0) @map("unit_count")
+  buildingCount   Int      @default(0) @map("building_count")
+  stockJson       Json     @default("{}") @map("stock_json")
+  capsJson        Json     @default("{}") @map("caps_json")
+  powerJson       Json     @default("{}") @map("power_json")
+  queueJson       Json     @default("[]") @map("queue_json")
+  goalsJson       Json     @default("[]") @map("goals_json")
+  entitiesJson    Json     @default("[]") @map("entities_json")
+  lastInputAtTick Int?     @map("last_input_at_tick")
+  lastTick        Int      @default(0) @map("last_tick")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([planetId, colonyId])
+  @@index([planetId, sectorId])
+  @@index([planetId, isBot])
+  @@index([playerId])
+  @@map("sector_participant_state")
+  @@schema("world")
+}
+
+/// Complete history of all simulation inputs/commands from ALL actors (players, bots, dev, system, NEAR).
+model SimInputHistory {
+  id            String   @id
+  planetId      String   @map("planet_id")
+  sectorId      String   @default("sec_0_0") @map("sector_id")
+  colonyId      String?  @map("colony_id")
+  colonyIndex   Int?     @map("colony_index")
+  actorId       String?  @map("actor_id")
+  isBot         Boolean  @default(false) @map("is_bot")
+  source        String
+  commandId     String   @map("command_id")
+  kind          String
+  argsJson      Json     @default("{}") @map("args_json")
+  status        String   @default("queued")
+  rejectCode    String?  @map("reject_code")
+  rejectDetail  String?  @map("reject_detail")
+  issuedAtTick  Int?     @map("issued_at_tick")
+  appliedAtTick Int?     @map("applied_at_tick")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([planetId, createdAt])
+  @@index([planetId, sectorId, createdAt])
+  @@index([planetId, colonyIndex, createdAt])
+  @@index([planetId, isBot, createdAt])
+  @@index([commandId])
+  @@map("sim_input_history")
+  @@schema("world")
+}
+
+/// Complete history of decisions across ALL actors (bot governors, autopilot, colony agents, director, players).
+model AgentDecisionHistory {
+  id           String   @id
+  planetId     String   @map("planet_id")
+  sectorId     String   @default("sec_0_0") @map("sector_id")
+  colonyId     String?  @map("colony_id")
+  colonyIndex  Int?     @map("colony_index")
+  actorId      String?  @map("actor_id")
+  isBot        Boolean  @default(false) @map("is_bot")
+  actorSource  String   @map("actor_source")
+  decisionKind String   @map("decision_kind")
+  summary      String
+  rationale    String?
+  commandId    String?  @map("command_id")
+  commandKind  String?  @map("command_kind")
+  payloadJson  Json     @default("{}") @map("payload_json")
+  outcome      String   @default("emitted")
+  atTick       Int      @default(0) @map("at_tick")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([planetId, createdAt])
+  @@index([planetId, sectorId, createdAt])
+  @@index([planetId, colonyIndex, atTick])
+  @@index([commandId])
+  @@map("agent_decision_history")
+  @@schema("ai")
+}
+
+/// Distributed lease coordinating active simulation ownership across backend worker & app replicas.
+model SimWorkerLease {
+  planetId     String   @id @map("planet_id")
+  workerId     String   @map("worker_id")
+  role         String   @default("all")
+  internalUrl  String?  @map("internal_url")
+  mode         String   @default("active")
+  lastTick     Int      @default(0) @map("last_tick")
+  alivePlayers Int      @default(0) @map("alive_players")
+  aliveBots    Int      @default(0) @map("alive_bots")
+  leasedAt     DateTime @default(now()) @map("leased_at") @db.Timestamptz(3)
+  expiresAt    DateTime @map("expires_at") @db.Timestamptz(3)
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@index([workerId, expiresAt])
+  @@index([expiresAt])
+  @@map("sim_worker_lease")
+  @@schema("world")
+}
+
+/// Active simulation-capable nodes (`all` or `sim-worker`) registered for cluster routing & landing delegation.
+model SimWorkerNode {
+  workerId    String   @id @map("worker_id")
+  role        String   @default("all")
+  internalUrl String   @map("internal_url")
+  loadCount   Int      @default(0) @map("load_count")
+  expiresAt   DateTime @map("expires_at") @db.Timestamptz(3)
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@index([role, expiresAt])
+  @@map("sim_worker_node")
+  @@schema("world")
+}

@@ -1,14 +1,16 @@
 import {
   MeAchievementsResponseSchema,
   MeProfileResponseSchema,
+  PilotHandleResponseSchema,
   PlayerAiSettingsSchema,
   type MeAchievementsResponse,
   type MeProfileResponse,
   type PlayerAiSettings,
   type UpdatePlayerAiSettings,
 } from '@terra/contracts';
-import { refreshPilotSession } from '../../../design/pilot/PilotAccess';
+import { jwtStillValid, refreshPilotSession } from '../../../design/pilot/PilotAccess';
 import { readActivePilot } from '../../features/achievements/activePilot';
+import { isLocalSimSignedOut } from './localModeSim';
 
 export type MeFetchResult =
   | {
@@ -42,6 +44,24 @@ export function clearMeCachedToken(): void {
   cachedRefreshedToken = '';
 }
 
+function isUsableServerBearer(token: string): boolean {
+  if (!token || token === 'local-mode-token' || token.startsWith('player:')) return false;
+  return token.split('.').length === 3 ? jwtStillValid(token) : true;
+}
+
+function syncRefreshedPilotToken(accessToken: string): void {
+  if (!isUsableServerBearer(accessToken)) return;
+  try {
+    const raw = typeof localStorage !== 'undefined' ? localStorage.getItem('ta_active_pilot') : null;
+    if (!raw) return;
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    if (parsed.accessToken === 'local-mode-token') return;
+    localStorage.setItem('ta_active_pilot', JSON.stringify({ ...parsed, accessToken, updatedAt: Date.now() }));
+  } catch {
+    /* ignore storage errors */
+  }
+}
+
 export function resolveMeBearerToken(search?: string): string {
   const rawSearch = search ?? (typeof location !== 'undefined' ? location.search : '');
   try {
@@ -50,15 +70,16 @@ export function resolveMeBearerToken(search?: string): string {
     if (pid) return `player:${pid}`;
     const as = params.get('as')?.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
     if (as) return `dev:${as}`;
+    if (params.get('host') === 'local') return isLocalSimSignedOut() ? '' : 'local-mode-token';
   } catch {
     // Ignore malformed query
   }
 
   const stored = readActivePilot();
-  if (stored && stored.isGuest !== true && stored.accessToken && !stored.accessToken.startsWith('player:')) {
+  if (stored && stored.isGuest !== true && stored.accessToken && isUsableServerBearer(stored.accessToken)) {
     return stored.accessToken;
   }
-  return cachedRefreshedToken;
+  return isUsableServerBearer(cachedRefreshedToken) ? cachedRefreshedToken : '';
 }
 
 function isWaveDisabledPayload(status: number, body: unknown): boolean {
@@ -72,7 +93,7 @@ function isWaveDisabledPayload(status: number, body: unknown): boolean {
   );
 }
 
-function buildWavesQuerySuffix(rawSearch: string): string {
+export function buildWavesQuerySuffix(rawSearch: string): string {
   try {
     const waves = new URLSearchParams(rawSearch).get('waves')?.trim();
     if (waves) return `?waves=${encodeURIComponent(waves)}`;
@@ -102,7 +123,11 @@ export async function fetchMeData(
       if (refreshed.accessToken) {
         token = refreshed.accessToken;
         cachedRefreshedToken = refreshed.accessToken;
+        syncRefreshedPilotToken(refreshed.accessToken);
       }
+    } else {
+      cachedRefreshedToken = '';
+      token = resolveMeBearerToken(rawSearch);
     }
   }
   if (!token) {
@@ -166,12 +191,7 @@ export async function fetchMeData(
   }
 }
 
-export async function saveMeAiSettings(
-  input: UpdatePlayerAiSettings,
-  doFetch: MeFetchFn = (url, init) => fetch(url, init),
-  search?: string,
-): Promise<{ readonly ok: true; readonly settings: PlayerAiSettings } | { readonly ok: false; readonly message: string }> {
-  const rawSearch = search ?? (typeof location !== 'undefined' ? location.search : '');
+async function resolveMeWriteBearer(doFetch: MeFetchFn, rawSearch: string): Promise<string> {
   const params = new URLSearchParams(rawSearch);
   let token = resolveMeBearerToken(rawSearch);
   if (!params.has('as') && !params.has('playerId')) {
@@ -191,6 +211,16 @@ export async function saveMeAiSettings(
       }
     }
   }
+  return token;
+}
+
+export async function saveMeAiSettings(
+  input: UpdatePlayerAiSettings,
+  doFetch: MeFetchFn = (url, init) => fetch(url, init),
+  search?: string,
+): Promise<{ readonly ok: true; readonly settings: PlayerAiSettings } | { readonly ok: false; readonly message: string }> {
+  const rawSearch = search ?? (typeof location !== 'undefined' ? location.search : '');
+  const token = await resolveMeWriteBearer(doFetch, rawSearch);
   if (!token) {
     return { ok: false, message: 'Sign in to save your NEAR.AI API key and model.' };
   }
@@ -219,5 +249,38 @@ export async function saveMeAiSettings(
       ok: false,
       message: err instanceof Error ? err.message : 'Unable to save NEAR.AI settings',
     };
+  }
+}
+
+export async function saveMePilotHandle(
+  handle: string,
+  doFetch: MeFetchFn = (url, init) => fetch(url, init),
+  search?: string,
+): Promise<{ readonly ok: true; readonly handle: string } | { readonly ok: false; readonly message: string }> {
+  const rawSearch = search ?? (typeof location !== 'undefined' ? location.search : '');
+  const token = await resolveMeWriteBearer(doFetch, rawSearch);
+  if (!token) return { ok: false, message: 'Sign in to rename your pilot.' };
+  const querySuffix = buildWavesQuerySuffix(rawSearch);
+  try {
+    const res = await doFetch(`/v1/me/profile/handle${querySuffix}`, {
+      method: 'PUT',
+      credentials: 'include',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ handle }),
+    });
+    const body = await res.json().catch(() => null);
+    if (!res.ok) {
+      const msg = (body as { message?: string; error?: { message?: string } } | null)?.error?.message
+        ?? (body as { message?: string } | null)?.message
+        ?? `Failed to rename pilot (${res.status})`;
+      return { ok: false, message: msg };
+    }
+    return { ok: true, handle: PilotHandleResponseSchema.parse(body).handle };
+  } catch (err) {
+    return { ok: false, message: err instanceof Error ? err.message : 'Unable to rename pilot' };
   }
 }

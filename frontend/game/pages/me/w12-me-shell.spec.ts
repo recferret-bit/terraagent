@@ -21,7 +21,10 @@ describe('W12-13 /me page shell, sticky tabs, wave_disabled plate, and PA-03 saf
     await page.load();
 
     const tabs = [...root.querySelectorAll('.ta-me-tab')].map((a) => a.textContent);
-    expect(tabs).toEqual(['PILOT', 'PROGRESS', 'PLANETS', 'HISTORY', 'ACHIEVEMENTS', 'PLAY', 'STAKING']);
+    expect(tabs).toEqual(['PILOT', 'STAKING', 'PROGRESS', 'PLANETS', 'HISTORY', 'ACHIEVEMENTS', 'PLAY']);
+    expect(root.querySelector('[data-testid="me-tab-staking"]')?.classList.contains('ta-me-tab--staking')).toBe(true);
+    const sectionIds = [...root.querySelectorAll('main > section')].map((s) => s.id);
+    expect(sectionIds.slice(0, 3)).toEqual(['pilot', 'staking', 'progress']);
 
     expect(root.querySelector('#pilot')).not.toBeNull();
     expect(root.querySelector('#progress')).not.toBeNull();
