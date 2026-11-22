@@ -99,8 +99,8 @@ export class SnapshotService implements BeforeApplicationShutdown {
       this.log.error({ err: errText(e) }, 'snapshot restore skipped: database unavailable (no planet is generated fresh)');
       return { ...report, dbUnavailable: true };
     }
-    for (const id of ids) {
-      const outcome = await this.restore(id, options);
+    const outcomes = await Promise.all(ids.map(async (id) => [id, await this.restore(id, options)] as const));
+    for (const [id, outcome] of outcomes) {
       if (outcome === 'restored') report.restored.push(id);
       else if (outcome === 'held') report.held.push(id);
     }

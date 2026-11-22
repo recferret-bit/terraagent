@@ -6,7 +6,7 @@ Prisma schema, migrations and DB tooling. Postgres 16 with five namespaces: `cor
 
 ```bash
 npm run db:up        # docker compose (infra/docker-compose.yml): container terra-pg on 127.0.0.1:15434, user/password terra/terra
-npm run db:migrate   # create the worktree database if missing, then `prisma migrate deploy`
+npm run db:migrate   # create the worktree database if missing, then `prisma migrate deploy` + `prisma generate`
 npm run db:reset     # dev only: drop the worktree database and migrate from scratch
 npm run db:seed      # run shared/db/seeds/*.ts in name order (idempotent seeds only)
 npm run db:down

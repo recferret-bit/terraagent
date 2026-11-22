@@ -3,6 +3,7 @@ import {
   devPlanetTypeOf,
   GEN_VERSION,
   restore,
+  TICKS_PER_SECOND,
   validateAtlasSaveCompatibility,
   type AtlasSaveCompatibilityOptions,
   type WaveFlagsInput,
@@ -13,7 +14,7 @@ import type { AppEnv } from '../../../core/tokens';
 import type { FlagsService } from '../../../flags/flags.service';
 import type { GamePlanets } from '../../game-planets.service';
 import { hasLiveColony, liveColonyIndices } from '../../live-colony';
-import { missedRestartTicks } from '../../restart/missed-ticks';
+import { missedRestartTicks, RESTART_FASTRUN_MAX_TICKS } from '../../restart/missed-ticks';
 import { devSnapshotVerdict } from '../dev-planet-verdict';
 import type { SnapshotScheduler } from '../snapshot-scheduler';
 import type { SnapshotStore } from '../snapshot-store';
@@ -29,6 +30,15 @@ export function resolveActiveSnapshotFlags(
   if (flags) return flags.list;
   if (typeof env.TA_WAVES === 'string') return parseWaves(env.TA_WAVES).list;
   return undefined;
+}
+
+export function resolveMaxCatchUpTicks(env: AppEnv): number {
+  const raw = env.RESTART_FASTRUN_MAX_S;
+  if (typeof raw === 'number' && Number.isFinite(raw)) return Math.floor(raw * TICKS_PER_SECOND);
+  if (typeof raw === 'string' && raw.trim() !== '' && Number.isFinite(Number(raw))) {
+    return Math.floor(Number(raw) * TICKS_PER_SECOND);
+  }
+  return env.NODE_ENV === 'development' ? 60 * TICKS_PER_SECOND : RESTART_FASTRUN_MAX_TICKS;
 }
 
 export interface RestoreOneDeps {
@@ -87,7 +97,7 @@ export async function restoreOnePlanet(
     if (!isDev && hasLiveColony(state) && !(await deps.homes?.listColoniesByPlanetId(id))?.length) {
       deps.planets.markScenarioColonyPlanet(id, liveColonyIndices(state));
     }
-    const catchUpTicks = missedRestartTicks(deps.nowMs(), snap.savedAt.getTime()).ticks;
+    const catchUpTicks = missedRestartTicks(deps.nowMs(), snap.savedAt.getTime(), resolveMaxCatchUpTicks(deps.env)).ticks;
     const tick = await deps.planets.load(id, {
       snapshot: snap.raw,
       ...(catchUpTicks > 0 ? { catchUpTicks } : {}),

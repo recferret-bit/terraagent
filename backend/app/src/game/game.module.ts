@@ -74,6 +74,8 @@ export const env = defineEnv('game', {
   }),
   /** Number of dev planets loaded at boot, spread evenly over the threads (desert with W01, the flat W00 planet without). */
   GAME_DEV_PLANETS: z.coerce.number().int().min(0).default(0),
+  /** Max wall seconds of missed ticks fast-forwarded on snapshot restore; unset = 60s in development, 24h in test/production. */
+  RESTART_FASTRUN_MAX_S: z.coerce.number().min(0).max(86_400).optional(),
   /** Default real-world hours for 1 full planetary day (24 solar hours); unset = data table default (0.25 h). */
   PLANET_DAY_HOURS: z.coerce.number().min(0.005).max(168).optional(),
   /** Default planetary time-scale multiplier; unset = data table default (1). */
@@ -193,13 +195,10 @@ export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown
     }
     this.wireSnapshotSavePoints();
     const seedRivalAi = this.env.TA_SEED_RIVAL_AI === '1' || this.env.TA_SEED_RIVAL_AI === 'true';
-    if (this.flags.has('W18')) {
-      if (seedRivalAi) {
-        this.planets.onPlanetLoaded((planetId, _tick, info) => {
-          if (!info.restored) void this.colonyAgentLoop.seedRivalsOnPlanet(planetId, 2);
-        });
-      }
-      if (this.env.NODE_ENV !== 'test') this.colonyAgentLoop.start();
+    if (this.flags.has('W18') && seedRivalAi) {
+      this.planets.onPlanetLoaded((planetId, _tick, info) => {
+        if (!info.restored) void this.colonyAgentLoop.seedRivalsOnPlanet(planetId, 2);
+      });
     }
     await this.pool.start();
     this.unsubAntiCheat = this.wireAntiCheat();
@@ -269,6 +268,7 @@ export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown
         : { params: { type: W00_PLANET_TYPE } };
     // `loadNew` refuses (logged) a planet that has snapshots, e.g. only an END one: it is not generated over them
     await Promise.all(ids.map((id) => this.snapshots.loadNew(id, devOptsFor(id)).catch((e: unknown) => { if (!(e instanceof PlanetHeldError)) throw e; })));
+    if (this.flags.has('W18') && this.env.NODE_ENV !== 'test') this.colonyAgentLoop.start();
   }
 
   /** Notify is a sibling module. A test that boots Game alone has no router; live play does. */

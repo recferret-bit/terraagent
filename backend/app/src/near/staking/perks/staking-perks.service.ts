@@ -44,19 +44,28 @@ export class StakingPerksService {
   async perksFor(query: { colonyId?: string; accountId?: string; playerId?: string | null; nowMs?: number }): Promise<StakerPerksResponse> {
     this.assertWaveEnabled();
     const colonyId = query.colonyId?.trim();
-    const sessionWallet = !query.accountId?.trim() && query.playerId && this.prisma
-      ? (await playerLinkedWallet(this.prisma, query.playerId))?.accountId
+    const playerId = query.playerId?.trim() || null;
+    const sessionWallet = !query.accountId?.trim() && playerId && this.prisma
+      ? (await playerLinkedWallet(this.prisma, playerId))?.accountId
       : undefined;
     const accountId = query.accountId?.trim() || sessionWallet;
-    if (!colonyId && !accountId) {
+    if (!colonyId && !accountId && !playerId) {
       throw new CoreException('INVALID_REQUEST', { status: 400, message: 'accountId or colonyId is required' });
     }
     if (nearAdapterFor('Staking', this.envBag()) !== 'mock' && this.positionSync && this.prisma) {
-      const wallet = await resolveWallet(this.prisma, { colonyId: sessionWallet ? undefined : colonyId, accountId }).catch(() => null);
+      const wallet = await resolveWallet(this.prisma, { colonyId: sessionWallet ? undefined : colonyId, accountId, playerId }).catch(() => null);
       const targets = wallet && wallet.accountIds.length > 0 ? wallet.accountIds : accountId ? [accountId] : [];
       await Promise.all(targets.map((acct) => this.positionSync!.syncAccountPositions(acct, undefined, acct === accountId).catch(() => [])));
     }
-    const r = await resolveWalletPerks(this.prisma, { colonyId: sessionWallet ? undefined : colonyId, accountId, env: this.envBag(), w28: true, full: true, nowMs: query.nowMs });
+    const r = await resolveWalletPerks(this.prisma, {
+      colonyId: sessionWallet ? undefined : colonyId,
+      accountId,
+      playerId,
+      env: this.envBag(),
+      w28: true,
+      full: true,
+      nowMs: query.nowMs,
+    });
     const { totalStakedYocto: _a, stakedYocto: _b, ...perks } = r.perks;
     return StakerPerksResponse.parse({
       accountId: accountId ?? r.wallet.accountIds[0] ?? null,

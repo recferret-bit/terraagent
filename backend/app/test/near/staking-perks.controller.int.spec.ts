@@ -65,10 +65,15 @@ describe('W28-03 GET /v1/near/staking/perks and /prestige', () => {
     expect(byColony.perks).toEqual(body.perks);
   });
 
-  it('answers a Cadet card for an unknown wallet and 400 without any query', async () => {
+  it('answers a Cadet card for an unknown wallet, unlinked bearer session, and 400 without any query', async () => {
     const url = urlOn;
     const cadet = StakerPerksResponse.parse(await (await fetch(`${url}/v1/near/staking/perks?accountId=nobody.near`)).json());
     expect(cadet.perks).toMatchObject({ tier: 0, platformFeeBp: 100, maxAiColonySlots: 0, aiMode: 'script' });
+    const devRes = await fetch(`${url}/v1/near/staking/perks`, { headers: { authorization: 'Bearer dev:a' } });
+    expect(devRes.status, await devRes.clone().text()).toBe(200);
+    const devBody = StakerPerksResponse.parse(await devRes.json());
+    expect(devBody.accountId).toBeNull();
+    expect(devBody.perks).toMatchObject({ tier: 0, platformFeeBp: 100, maxAiColonySlots: 0, aiMode: 'script' });
     expect((await fetch(`${url}/v1/near/staking/perks`)).status).toBe(400);
     expect((await fetch(`${url}/v1/near/staking/prestige`)).status).toBe(400);
   });
