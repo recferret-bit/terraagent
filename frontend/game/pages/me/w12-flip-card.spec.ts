@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { renderAchievementCard } from './sections/achievementCard';
 import { makeW12AchievementsFixture } from './testFixtures';
@@ -43,5 +45,16 @@ describe('W12-21 Flip card mechanics, directional sheen, and PA-02 keyboard / ta
     expect(card.getAttribute('aria-expanded')).toBe('false');
     expect(card.classList.contains('flip')).toBe(false);
     expect(card.dataset.flipDir).toBe('to-front');
+  });
+
+  it('keeps 3D flip faces visible via backface-visibility instead of delayed visibility:hidden', () => {
+    const css = readFileSync(resolve(__dirname, 'sections/flip-card.css'), 'utf8');
+    const [motionCss = ''] = css.split('@media (prefers-reduced-motion: reduce)');
+
+    expect(motionCss).not.toMatch(/(?<![a-z-])visibility\s*:\s*hidden/);
+    expect(motionCss).not.toMatch(/transition\s*:[^;]*(?<![a-z-])visibility/);
+    expect(motionCss).toMatch(/\.flip-sheen\s*\{[^}]*backface-visibility\s*:\s*hidden/s);
+    expect(motionCss).toMatch(/\.flip-card\.flip\s+\.flip-front[\s\S]*pointer-events\s*:\s*none/);
+    expect(motionCss).toMatch(/\.flip-card\.flip\s+\.flip-back[\s\S]*pointer-events\s*:\s*auto/);
   });
 });
