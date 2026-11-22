@@ -181,7 +181,7 @@ export class PlaygroundApp {
       select: (id) => this.select(id), setView: (v) => this.setView(v), setPlanet: (k) => { this.state.kind = k; this.applyPlanet(); },
       toggle: (k) => this.toggle(k), setNight: (on) => this.setNight(on), contactSheet: () => this.contactSheet(),
       setBuild: (s) => this.setBuild(s),
-      setStakeTier: (tier) => { this.state.stakeTier = tier; this.rebuildContent(); syncURL(this.state); },
+      setStakeTier: (tier) => { this.state.stakeTier = tier; this.rebuildContent(); this.refreshInfo(); syncURL(this.state); },
       setWorkTarget: (t, ew) => this.setWorkTarget(t, ew),
       setDepositStage: (s) => this.setDepositStage(s), setTileState: (ts) => this.setTileState(ts),
       setFaunaScene: (s, o) => this.setFaunaScene(s, o), setFaunaMode: (m) => this.setFaunaMode(m), setFaunaSeed: (s) => this.setFaunaSeed(s),
@@ -376,16 +376,14 @@ export class PlaygroundApp {
     this.applyValidation();
   }
 
-  private applyValidation() {
-    this.validation.apply(this.validation.report(this.state.id, this.state.validate), this.spawns.find(this.state.id));
-  }
-
+  private applyValidation() { this.validation.apply(this.validation.report(this.spawns.resolvedId(this.state.id), this.state.validate), this.spawns.find(this.state.id)); }
   private refreshInfo() {
     const { state } = this;
     if (state.march) return updateSceneInfo(this.marchHost.getStats());
     if (state.wildlife !== null) return updateSceneInfo(this.wildlife.host.getStats());
     if (state.faunaScene !== null) return updateSceneInfo(this.faunaHost.getStats());
-    updateInfo(state.id, (state.row || state.floraRow) ? this.spawns.spawns.length : 1, validationHtml(this.validation.report(state.id, state.validate), state.id));
+    const id = this.spawns.resolvedId(state.id);
+    updateInfo(id, (state.row || state.floraRow) ? this.spawns.spawns.length : 1, validationHtml(this.validation.report(id, state.validate), id));
   }
 
   // ---------------------------------------------------------------- selection / view

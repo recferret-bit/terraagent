@@ -1,4 +1,3 @@
-import { addHeroDefenseWeapon } from '../../greebles/heroWeapon';
 import { rbox, cyl, sph, strut, sag, cable, mirror, lathe, solarPanel, type V3 } from '../../greebles/unitParts';
 import * as THREE from 'three';
 import { register } from './common';
@@ -45,14 +44,13 @@ register({
       b.addPart(box(0.135, 0.04, 0.155), 'warningAmber', { name: 'arm cuff light', position: [ax, 1.0, 0.09], rotation: [-0.45, 0, 0], emissiveIntensity: 3.4, ...armAnim });
     });
 
-    addHeroDefenseWeapon(b);
     // Pelvis + belt + torso (animType 8: BipedBody step-reaction carrier)
     const bodyAnim = { animType: 8 as const };
     b.addPart(rbox(0.48, 0.18, 0.32, 0.05, 1), 'frameGunmetal', { name: 'body pelvis', position: [0, 1.11, 0], ...bodyAnim });
     b.addPart(box(0.5, 0.05, 0.34), 'hullSecondary', { name: 'body belt', position: [0, 1.2, 0], ...bodyAnim });
     b.addPart(rbox(0.64, 0.48, 0.4, 0.08, 1), 'hullPrimary', { name: 'body torso', position: [0, 1.45, 0], ...bodyAnim });
     b.addPart(box(0.46, 0.2, 0.08), 'hullSecondary', { name: 'chest plate', position: [0, 1.5, 0.2], ...bodyAnim });
-    b.addPart(cyl(0.06, 0.06, 0.03, 10), 'energyCyan', { name: 'chest core light', position: [0, 1.5, 0.245], rotation: [Math.PI / 2, 0, 0], emissiveIntensity: 4.0, ...bodyAnim });
+    b.addPart(cyl(0.06, 0.06, 0.04, 10), 'energyCyan', { name: 'chest core light', position: [0, 1.5, 0.238], rotation: [Math.PI / 2, 0, 0], emissiveIntensity: 4.0, ...bodyAnim });
     // Neck + head + visor
     b.addPart(cyl(0.07, 0.09, 0.12, 8), 'frameGunmetal', { name: 'neck joint', position: [0, 1.72, 0], ...bodyAnim });
     b.addPart(rbox(0.38, 0.28, 0.34, 0.07, 1), 'hullPrimary', { name: 'head helmet', position: [0, 1.89, 0.01], ...bodyAnim });
@@ -81,7 +79,8 @@ register({
       'hullPrimary',
       { name: 'radar dish', position: [0.0, 1.82, -0.36], rotation: [-0.45, 0, 0], animType: 18, animPivot: [0, 1.82, -0.36] }
     );
-    b.addPart(sph(0.026, 8, 6), 'energyCyan', { name: 'radar feed light', position: [0, 1.86, -0.33], emissiveIntensity: 4.0, animType: 18, animPivot: [0, 1.82, -0.36] });
+    strut(b, [0, 1.82, -0.36], [0, 1.87, -0.384], 0.014, 'frameGunmetal', { name: 'radar feed rod', animType: 18, animPivot: [0, 1.82, -0.36] });
+    b.addPart(sph(0.026, 8, 6), 'energyCyan', { name: 'radar feed light', position: [0, 1.87, -0.384], emissiveIntensity: 4.0, animType: 18, animPivot: [0, 1.82, -0.36] });
 
     // External power cables (anchored from backpack cap to upper torso roof, clear of swinging shoulder joints)
     cable(b, [[0.16, 1.7, -0.28], [0.21, 1.75, -0.21], [0.22, 1.68, -0.14]] as V3[], 0.014, 'frameGunmetal', { name: 'pack cable L', ...bodyAnim });

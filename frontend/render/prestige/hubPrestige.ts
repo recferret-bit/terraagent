@@ -1,9 +1,9 @@
 import * as THREE from 'three';
 import { ArchetypeCatalog, stripBuildingPlinth, type ArchetypeMesh } from '../kitbash/catalog';
 import { HUB_UPLINK_ORIGIN } from '../kitbash/archetypes/buildings/hub';
-import { createUplinkBeam, type UplinkBeam } from './uplinkBeam';
+import { createUplinkBeam, type UplinkBeam, type UplinkBeamStyle } from './uplinkBeam';
 import {
-  baseHubArchetypeId, hubArchetypeForTier, HUB_BASE_ID, prestigeVisualsForTier, type PrestigeVisuals,
+  baseHubArchetypeId, hubArchetypeForTier, HUB_BASE_ID, HUB_GOLD_ID, HUB_UPLINK_ID, prestigeVisualsForTier, type PrestigeVisuals,
 } from './tierVisuals';
 
 interface HubPrestigeState { tier: number; beam: UplinkBeam | null }
@@ -15,6 +15,13 @@ const stateOf = (mesh: THREE.Object3D): HubPrestigeState | undefined => (mesh.us
 export function isHubMesh(mesh: THREE.Object3D): boolean {
   const id = (mesh.userData as HubUserData).archetypeId;
   return typeof id === 'string' && baseHubArchetypeId(id) === HUB_BASE_ID;
+}
+
+/** Intrinsic staking tier represented by a hub catalog variant id (0 for base/other, 1 for uplink, 3 for gold). */
+export function defaultHubTierForArchetype(id: string): number {
+  if (id === HUB_GOLD_ID) return 3;
+  if (id === HUB_UPLINK_ID) return 1;
+  return 0;
 }
 
 /** The tier last applied to `mesh` (0 when none). */
@@ -49,9 +56,10 @@ function placeBeam(mesh: THREE.Object3D, beam: UplinkBeam): void {
 }
 
 /**
- * Dress an existing Command Hub mesh for a staking tier: swap its baked variant (Quantum Dish from Tier 1, gold trim
- * from Tier 3) and attach or drop the uplink beam. Works before or after `stripBuildingPlinth` (game) and on an
- * unstripped pedestal model (playground), and is idempotent. Not a hub mesh: nothing happens, tier 0 result returned.
+ * Dress an existing Command Hub mesh for a staking tier: swap its baked variant (Orbital Uplink from Tier 1,
+ * Sovereign Gold Citadel from Tier 3) and attach, upgrade, or drop the tier-specific uplink beam effect. Works before
+ * or after `stripBuildingPlinth` (game) and on an unstripped pedestal model (playground/whitepaper), and is idempotent.
+ * Not a hub mesh: nothing happens, tier 0 result returned.
  */
 export function applyHubPrestige(mesh: THREE.Object3D, tier: unknown): PrestigeVisuals {
   const v = prestigeVisualsForTier(tier);
@@ -61,8 +69,14 @@ export function applyHubPrestige(mesh: THREE.Object3D, tier: unknown): PrestigeV
   const m = mesh as ArchetypeMesh;
   if (m.userData.archetypeId !== want) swapHubGeometry(m, want);
   let beam = prev?.beam ?? null;
-  if (v.uplinkBeam && !beam) { beam = createUplinkBeam(); mesh.add(beam.group); }
-  if (!v.uplinkBeam && beam) { beam.dispose(); beam = null; }
+  const wantStyle: UplinkBeamStyle = v.goldTrim ? 'gold' : 'uplink';
+  if (v.uplinkBeam) {
+    if (beam && beam.style !== wantStyle) { beam.dispose(); beam = null; }
+    if (!beam) { beam = createUplinkBeam(wantStyle); mesh.add(beam.group); }
+  } else if (beam) {
+    beam.dispose();
+    beam = null;
+  }
   if (beam) placeBeam(mesh, beam);
   (mesh.userData as HubUserData).hubPrestige = { tier: v.tier, beam };
   return v;

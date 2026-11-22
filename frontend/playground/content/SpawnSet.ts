@@ -21,7 +21,7 @@ import {
   type ActiveWorkSiteInput,
   type InteractionTargetKind,
 } from '@terra/render/particles';
-import { applyHubPrestige, isHubMesh } from '@terra/render/prestige/hubPrestige';
+import { applyHubPrestige, defaultHubTierForArchetype, hubUplinkBeam, isHubMesh } from '@terra/render/prestige/hubPrestige';
 import type { PlanetKind } from '@terra/render/planets/PlanetSpec';
 import type { VertebratePoseMode } from '../state';
 import {
@@ -112,6 +112,7 @@ export class SpawnSet {
       }
       // every robot / building mesh carries a projector rig (cones, pools, lenses, halo): free it with the model
       (s.mesh.userData as { projectorRig?: EntityProjectorRigState } | undefined)?.projectorRig?.dispose();
+      hubUplinkBeam(s.mesh)?.dispose();
       s.mesh.geometry.dispose();
       (s.mesh.material as THREE.Material).dispose();
     }
@@ -137,6 +138,8 @@ export class SpawnSet {
       }
       let mesh: ArchetypeMesh;
       try { mesh = createArchetypeMesh(id, biomeKey, depositStage); } catch (e) { console.error('archetype build failed', id, e); continue; }
+      const defaultTier = defaultHubTierForArchetype(id);
+      if (defaultTier > 0) applyHubPrestige(mesh, defaultTier);
       mesh.geometry.computeBoundingBox();
       const box = mesh.geometry.boundingBox!.clone();
       widths.push(footprint(box));
@@ -164,15 +167,21 @@ export class SpawnSet {
   /** Ruin variant (W18-22: charred, cracked, unlit) of every shown archetype. */
   applyRuin(ruin: boolean) { for (const s of this.spawns) if (!s.floraDispose) setArchetypeRuin(s.mesh, ruin); }
 
-  /** Staking prestige (W28-12): dress every shown Command Hub for `tier` (dish, gold trim, uplink beam). Null: leave as built. */
+  /** Staking prestige (W28-12): dress every shown Command Hub for `tier` (dish, gold trim, uplink beam). Null: restore each hub's default tier. */
   applyStakeTier(tier: number | null) {
-    if (tier === null) return;
     for (const s of this.spawns) {
       if (!isHubMesh(s.mesh)) continue;
-      applyHubPrestige(s.mesh, tier);
+      applyHubPrestige(s.mesh, tier ?? defaultHubTierForArchetype(s.id));
       s.mesh.geometry.computeBoundingBox();
       s.box = s.mesh.geometry.boundingBox!.clone();
     }
+  }
+
+  /** Actual catalog id currently worn by the spawned mesh for `id` (reflects hub stake-tier swaps). */
+  resolvedId(id: string): string {
+    const s = this.find(id);
+    const active = s && !s.floraDispose ? (s.mesh.userData as { archetypeId?: string }).archetypeId : undefined;
+    return active ?? id;
   }
 
   find(id: string) { return this.spawns.find((s) => s.id === id); }

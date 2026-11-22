@@ -1,7 +1,7 @@
 // Registers colony building archetypes. Order here is the ArchetypeCatalog.list() order.
 import * as THREE from 'three';
 import { ArchetypeCatalog } from '../../catalog';
-import { commandHub, claimBeacon, HUB_GOLD_TRIM, HUB_GOLD_TRIM_PARTS } from './hub';
+import { commandHub, claimBeacon, HUB_UPLINK_TRIM, HUB_GOLD_TRIM, HUB_GOLD_TRIM_PARTS } from './hub';
 import { pylon, capacitor, solar, wind, coalGen } from './power';
 import { mine, waterPump, supplyDepot } from './industry';
 import { tradeHub } from './trade';
@@ -12,9 +12,9 @@ import { rocket } from './rocket';
 const reg = (id: string, label: string, create: () => THREE.BufferGeometry, footprint: [number, number], notes: string) =>
   ArchetypeCatalog.register({ id, label, category: 'building', create, footprint, notes: `${notes} Footprint in 2 m tiles.` });
 
-reg('building.commandHub', 'Command Hub', commandHub, [3, 3], 'Hero: domed hull, door light, tilted antenna beacon, rotating radar dish, tanks, guy cables.');
-reg('building.commandHub.uplink', 'Command Hub (Tier 1-2 Uplink)', () => commandHub({ uplink: true }), [3, 3], 'W28-12 staking prestige: the hub plus a rotating Quantum Dish and the uplink emitter (the cyan beam is a render effect).');
-reg('building.commandHub.gold', 'Command Hub (Tier 3+ Gold)', () => commandHub({ uplink: true, zones: { hullSecondary: HUB_GOLD_TRIM }, trimParts: HUB_GOLD_TRIM_PARTS }), [3, 3], 'W28-12 staking prestige: uplink hub with gold-anodized trim on the accent zone.');
+reg('building.commandHub', 'Command Hub', commandHub, [3, 3], 'Hero: domed hull, armored airlock hood, flank cooling fins, roof field-comms aerial, tilted antenna beacon, rotating radar dish, tanks, guy cables.');
+reg('building.commandHub.uplink', 'Command Hub (Tier 1-2 Uplink)', () => commandHub({ uplink: true, zones: { hullSecondary: HUB_UPLINK_TRIM } }), [3, 3], 'W28-12 staking prestige: orbital azure trim, tri-pylon focusing cage with dual halos, flank telemetry pods, larger spinning Quantum Dish and cyan uplink beam.');
+reg('building.commandHub.gold', 'Command Hub (Tier 3+ Gold)', () => commandHub({ uplink: true, citadel: true, zones: { hullSecondary: HUB_GOLD_TRIM }, trimParts: HUB_GOLD_TRIM_PARTS }), [3, 3], 'W28-12 staking prestige: towering 4-rib sovereign gold cathedral spire, triple halo crowns, corner obelisks, grand entry portico and gold-cyan orbital beam.');
 reg('building.claimBeacon', 'Claim Beacon', claimBeacon, [1, 1], 'Obelisk w/ spinning crystal, bobbing rings, banner.');
 reg('building.pylon', 'Pylon', pylon, [1, 1], 'Lattice power pylon, insulator crossarms, sagging line cables.');
 reg('building.capacitor', 'Capacitor', capacitor, [1, 1], 'Three cyan-banded cells with bus cables.');

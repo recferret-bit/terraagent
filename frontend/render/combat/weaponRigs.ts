@@ -17,11 +17,6 @@ const combat: WeaponRigDefinition = {
   sockets: [-1, 1].map(s => ({ pivot: [s * 0.13, 1.14, 0.34], muzzle: [s * 0.13, 1.14, 0.97] })),
 };
 const rigs = new Map<string, WeaponRigDefinition>([
-  ['robot.hero', {
-    pivot: [0, 2.13 * 0.88, 0.01 * 0.88], carrier: 'biped',
-    head: ['defense gun housing'], barrels: ['defense gun barrel'],
-    sockets: [{ pivot: [0, 2.13 * 0.88, 0.11 * 0.88], muzzle: [0, 2.13 * 0.88, 0.41 * 0.88] }],
-  }],
   ['robot.combat', combat], ['robot.tank', combat], ['robot.artillery', combat],
   ['robot.recon', {
     pivot: [0, 0.78, 0.03],

@@ -3,6 +3,7 @@ import { getInsectAnimator } from '../animation/insects/InsectAnimationControlle
 import { getWeaponRig } from '../combat/WeaponRig';
 import { setArchetypeBuildProgress, setArchetypeRuin } from '../kitbash/catalog';
 import { updateEntityProjectorRig } from '../lighting/EntityProjectorRig';
+import { applyHubPrestige, hubPrestigeTier, hubUplinkBeam } from '../prestige/hubPrestige';
 import type { ObjectPool } from './ObjectPool';
 
 /**
@@ -142,6 +143,9 @@ export class PooledMeshEntry<TMesh extends THREE.Object3D = THREE.Object3D> exte
 
   reset(): void {
     this.detachTransientAttachments();
+    if (hubPrestigeTier(this.mesh) > 0 || hubUplinkBeam(this.mesh) !== null) {
+      applyHubPrestige(this.mesh, 0);
+    }
     const u = (this.mesh.userData as { uniforms?: Record<string, { value: unknown }> })?.uniforms;
     if (u) {
       if (u.uSelected) u.uSelected.value = 0;
@@ -162,7 +166,9 @@ export class PooledMeshEntry<TMesh extends THREE.Object3D = THREE.Object3D> exte
     this.active = false;
     this.entityId = null;
     this.detachTransientAttachments();
-    const userData = this.mesh.userData as { projectorRig?: { dispose?: () => void } } | undefined;
+    hubUplinkBeam(this.mesh)?.dispose();
+    const userData = this.mesh.userData as { projectorRig?: { dispose?: () => void }; hubPrestige?: unknown } | undefined;
+    if (userData) delete userData.hubPrestige;
     userData?.projectorRig?.dispose?.();
     if (userData) delete userData.projectorRig;
     this.mesh.removeFromParent();

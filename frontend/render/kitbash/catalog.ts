@@ -423,6 +423,13 @@ function bakeStrippedGeometry(oldGeo: THREE.BufferGeometry): THREE.BufferGeometr
   return newGeo;
 }
 
+function adjustHubBeamForStrip(m: THREE.Mesh, oldStrip: number, newStrip: number): void {
+  const delta = newStrip - oldStrip;
+  if (Math.abs(delta) < 1e-6) return;
+  const beamGroup = (m.userData as { hubPrestige?: { beam?: { group?: THREE.Group } | null } })?.hubPrestige?.beam?.group;
+  if (beamGroup) beamGroup.position.y -= delta;
+}
+
 /**
  * Removes the square `plinth` / `plinthDetail` foundation slab from a building mesh when placed on the hex terrain
  * so the building stands directly on the hex terrain's metal hexagonal foundation pads without covering them up.
@@ -430,6 +437,7 @@ function bakeStrippedGeometry(oldGeo: THREE.BufferGeometry): THREE.BufferGeometr
 export function stripBuildingPlinth(mesh: THREE.Object3D): void {
   const m = mesh as THREE.Mesh;
   if (!m.isMesh || !m.geometry) return;
+  const oldStrip = (m.geometry.userData?.stripOffsetY as number | undefined) ?? 0;
   const archetypeId = typeof m.userData?.archetypeId === 'string' ? resolveCanonicalArchetypeId(m.userData.archetypeId) : null;
   if (archetypeId && strippedGeometryCache.has(archetypeId)) {
     const cached = strippedGeometryCache.get(archetypeId);
@@ -440,6 +448,7 @@ export function stripBuildingPlinth(mesh: THREE.Object3D): void {
       cloned.userData = { ...cached.userData };
       m.geometry = cloned;
       oldGeo.dispose();
+      adjustHubBeamForStrip(m, oldStrip, (cloned.userData.stripOffsetY as number | undefined) ?? 0);
       const u = (m.userData as any)?.uniforms;
       if (u?.uBuildHeight && cloned.boundingBox) {
         u.uBuildHeight.value = Math.max(0.1, cloned.boundingBox.max.y);
@@ -461,6 +470,7 @@ export function stripBuildingPlinth(mesh: THREE.Object3D): void {
   }
   m.geometry = newGeo;
   oldGeo.dispose();
+  adjustHubBeamForStrip(m, oldStrip, (newGeo.userData.stripOffsetY as number | undefined) ?? 0);
   const u = (m.userData as any)?.uniforms;
   if (u?.uBuildHeight && newGeo.boundingBox) {
     u.uBuildHeight.value = Math.max(0.1, newGeo.boundingBox.max.y);

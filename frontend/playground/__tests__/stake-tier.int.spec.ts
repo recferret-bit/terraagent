@@ -43,4 +43,35 @@ describe('W28-12 SpawnSet.applyStakeTier (integration with real meshes)', () => 
     expect(spawns.find('building.solar')!.mesh.userData.archetypeId).toBe('building.solar');
     spawns.dispose();
   });
+
+  it('auto-attaches the tier-specific beam VFX when inspecting uplink or gold hub variants directly', () => {
+    const spawns = new SpawnSet();
+    spawns.rebuild([HUB_BASE_ID, HUB_UPLINK_ID, HUB_GOLD_ID], 'dune', false);
+    const baseBeam = hubUplinkBeam(spawns.find(HUB_BASE_ID)!.mesh);
+    const uplinkBeam = hubUplinkBeam(spawns.find(HUB_UPLINK_ID)!.mesh);
+    const goldBeam = hubUplinkBeam(spawns.find(HUB_GOLD_ID)!.mesh);
+    expect(baseBeam).toBeNull();
+    expect(uplinkBeam?.style).toBe('uplink');
+    expect(goldBeam?.style).toBe('gold');
+    spawns.dispose();
+    expect(uplinkBeam!.group.parent).toBeNull();
+    expect(goldBeam!.group.parent).toBeNull();
+  });
+
+  it('resolves the active dressed hub id and restores default tiers when applyStakeTier(null) is called', () => {
+    const spawns = new SpawnSet();
+    spawns.rebuild([HUB_BASE_ID, HUB_UPLINK_ID, HUB_GOLD_ID], 'dune', false);
+    spawns.applyStakeTier(3);
+    expect(spawns.resolvedId(HUB_BASE_ID)).toBe(HUB_GOLD_ID);
+    expect(hubUplinkBeam(spawns.find(HUB_BASE_ID)!.mesh)?.style).toBe('gold');
+
+    spawns.applyStakeTier(null);
+    expect(spawns.resolvedId(HUB_BASE_ID)).toBe(HUB_BASE_ID);
+    expect(hubUplinkBeam(spawns.find(HUB_BASE_ID)!.mesh)).toBeNull();
+    expect(spawns.resolvedId(HUB_UPLINK_ID)).toBe(HUB_UPLINK_ID);
+    expect(hubUplinkBeam(spawns.find(HUB_UPLINK_ID)!.mesh)?.style).toBe('uplink');
+    expect(spawns.resolvedId(HUB_GOLD_ID)).toBe(HUB_GOLD_ID);
+    expect(hubUplinkBeam(spawns.find(HUB_GOLD_ID)!.mesh)?.style).toBe('gold');
+    spawns.dispose();
+  });
 });
