@@ -9,8 +9,8 @@ const slowStepMs = Number(process.env.TA_TEST_SLOW_STEP_MS ?? 300);
 /**
  * Test/bench-only sim module (scheduler fairness, placement, rebalancing): a system that makes every step of a
  * `pl_slow*` planet cost `TA_TEST_SLOW_STEP_MS` of wall time, standing in for a planet whose systems are slow. A coarse
- * step (`dt` 5) costs twice that: measured on the scenario planets, one `dt 5` step costs 1.3-3.3x one `dt 1` step
- * (0.12-0.65x five of them).
+ * step (`dt` 5) costs twice that. That factor is an assumption: on the scenario planets (0.4-3 ms per step) one `dt 5`
+ * step costs 0.6-3.3x one `dt 1` step (0.12-0.65x five of them); how 100-300 ms planets scale is not measured.
  */
 export default defineSimModule({
   id: 'test-slow',

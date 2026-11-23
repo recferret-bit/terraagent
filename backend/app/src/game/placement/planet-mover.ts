@@ -105,11 +105,18 @@ export class PlanetMover {
     return this.port.send(thread, msg, [bytes.buffer as ArrayBuffer]);
   }
 
-  /** The target refused or is gone: the planet goes back to its source thread from the handoff snapshot. */
+  /**
+   * The target refused or is gone: the planet goes back to its source thread from the handoff snapshot. If that fails
+   * too, it is on no thread: the listeners get `planetFailed` (as from a throwing step), so its waiters are answered
+   * and recovery restores it from its last snapshot.
+   */
   private fallBack(m: Move): void {
     const bytes = m.fallback;
     m.fallback = undefined;
-    if (!bytes || m.to === m.from || !this.load(m, m.from, bytes)) this.moves.delete(m.planetId);
+    if (bytes && m.to !== m.from && this.load(m, m.from, bytes)) return;
+    this.moves.delete(m.planetId);
+    this.port.emit(m.from, { t: 'planetFailed', planetId: m.planetId, message: `move from thread ${m.from} failed: the planet could not be loaded again` });
+    this.table.release(m.planetId);
   }
 
   private abort(m: Move): void {
