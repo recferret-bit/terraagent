@@ -7,6 +7,7 @@ import {
 } from '@terra/contracts';
 import type { PrismaClient } from '@terra/db';
 import { CoreException } from '../../../core/errors/index.js';
+import { databaseEnabled } from '../../../core/persistence.js';
 import { APP_ENV, type AppEnv } from '../../../core/tokens.js';
 import { PRISMA } from '../../../db/db.module.js';
 import { FlagsService } from '../../../flags/flags.service.js';
@@ -33,6 +34,10 @@ export class StakingPerksService {
     @Optional() @Inject(StakingPositionSyncService) private readonly positionSync?: StakingPositionSyncService,
   ) {}
 
+  private db(): PrismaClient | undefined {
+    return this.prisma && (databaseEnabled(this.env) || !('$connect' in this.prisma)) ? this.prisma : undefined;
+  }
+
   assertWaveEnabled(): void {
     if (!this.flags.has('W28')) throw new CoreException('NOT_FOUND', { status: 404, message: 'Not found' });
   }
@@ -43,21 +48,22 @@ export class StakingPerksService {
    */
   async perksFor(query: { colonyId?: string; accountId?: string; playerId?: string | null; nowMs?: number }): Promise<StakerPerksResponse> {
     this.assertWaveEnabled();
+    const db = this.db();
     const colonyId = query.colonyId?.trim();
     const playerId = query.playerId?.trim() || null;
-    const sessionWallet = !query.accountId?.trim() && playerId && this.prisma
-      ? (await playerLinkedWallet(this.prisma, playerId))?.accountId
+    const sessionWallet = !query.accountId?.trim() && playerId && db
+      ? (await playerLinkedWallet(db, playerId))?.accountId
       : undefined;
     const accountId = query.accountId?.trim() || sessionWallet;
     if (!colonyId && !accountId && !playerId) {
       throw new CoreException('INVALID_REQUEST', { status: 400, message: 'accountId or colonyId is required' });
     }
-    if (nearAdapterFor('Staking', this.envBag()) !== 'mock' && this.positionSync && this.prisma) {
-      const wallet = await resolveWallet(this.prisma, { colonyId: sessionWallet ? undefined : colonyId, accountId, playerId }).catch(() => null);
+    if (nearAdapterFor('Staking', this.envBag()) !== 'mock' && this.positionSync && db) {
+      const wallet = await resolveWallet(db, { colonyId: sessionWallet ? undefined : colonyId, accountId, playerId }).catch(() => null);
       const targets = wallet && wallet.accountIds.length > 0 ? wallet.accountIds : accountId ? [accountId] : [];
       await Promise.all(targets.map((acct) => this.positionSync!.syncAccountPositions(acct, undefined, acct === accountId).catch(() => [])));
     }
-    const r = await resolveWalletPerks(this.prisma, {
+    const r = await resolveWalletPerks(db, {
       colonyId: sessionWallet ? undefined : colonyId,
       accountId,
       playerId,
@@ -78,7 +84,7 @@ export class StakingPerksService {
     this.assertWaveEnabled();
     const planet = planetId?.trim();
     if (!planet) throw new CoreException('INVALID_REQUEST', { status: 400, message: 'planetId is required' });
-    const db = this.prisma;
+    const db = this.db();
     if (!db) return { planetId: planet, leadPatron: null, colonies: [] };
     const seat = await new PatronSeatService(db).refreshPlanet(planet);
     const rows = (await db.colony.findMany({

@@ -23,6 +23,7 @@ import { renderProgressSection } from './sections/ProgressSection';
 import { renderStatsSection } from './sections/StatsSection';
 import { renderStakingSection } from './sections/staking/StakingSection';
 import { parseStakingHash, STAKING_SECTION_ID } from './sections/staking/stakingRoute';
+import { isProductionBuild } from '../../core/buildEnv';
 import { resolveClientFlags } from '../../core/flags/resolve';
 
 export const ME_SECTION_TABS = [
@@ -61,7 +62,7 @@ export class MePage {
     this.root.dataset.page = 'me';
     this.root.classList.add('ta-me-root');
     const search = opts.search ?? (typeof location !== 'undefined' ? location.search : '');
-    this.waveStakingOn = resolveClientFlags({ search, dev: Boolean(import.meta.env?.DEV), warn: () => undefined }).flags.has('W28');
+    this.waveStakingOn = resolveClientFlags({ search, dev: !isProductionBuild() && Boolean(import.meta.env?.DEV), warn: () => undefined }).flags.has('W28');
     this.localHost = isBrowserLocalHost(search);
     this.effectiveFetch = opts.fetch ?? (this.localHost ? createLocalModeFetch() : undefined);
   }

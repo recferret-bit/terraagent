@@ -104,6 +104,21 @@ export class SnapshotScheduler {
     this.timers.delete(planetId);
   }
 
+  /** Cancels timers/queued snapshot jobs for `planetId` and waits for any in-flight write on it to settle. */
+  async drop(planetId: string): Promise<void> {
+    this.untrack(planetId);
+    const st = this.planets.get(planetId);
+    if (!st) return;
+    for (const a of st.asked.splice(0)) a.done?.();
+    if (st.queued) {
+      const dones = st.queued.dones;
+      st.queued = undefined;
+      for (const d of dones) d();
+    }
+    while (st.inflight) await new Promise((r) => setTimeout(r, 5));
+    if (!st.queued && !st.asked.length) this.planets.delete(planetId);
+  }
+
   /**
    * Drops an unanswered request (a save point that gave up waiting). A snapshot that arrives later is not
    * retagged with the abandoned kind.

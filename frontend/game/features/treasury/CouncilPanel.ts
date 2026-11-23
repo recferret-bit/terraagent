@@ -23,6 +23,7 @@ export class CouncilPanel {
   private sheetOpen = false;
   private readonly offs: Array<() => void> = [];
   private readonly fetchImpl: CouncilFetch;
+  private readonly isOfflineLocal: boolean;
   private readonly tracker: TreasuryTracker;
 
   constructor(
@@ -32,6 +33,7 @@ export class CouncilPanel {
     opts: CouncilPanelOptions = {},
   ) {
     this.tracker = new TreasuryTracker(ctx.services.track);
+    this.isOfflineLocal = ctx.host === 'local' && !opts.fetchImpl;
     this.fetchImpl = opts.fetchImpl ?? ((input, init) => fetch(input, init));
     this.menu = new PlanetMenu(host);
     if (ctx.flags.has('W22')) this.offs.push(this.menu.register({ id: 'council', label: 'Council', open: () => { void this.open(); } }));
@@ -113,6 +115,12 @@ export class CouncilPanel {
       this.paint();
       return;
     }
+    if (this.isOfflineLocal) {
+      this.errorCode = 'host_unavailable';
+      this.painted = '';
+      this.paint();
+      return;
+    }
     try {
       const res = await fetchCouncil(planetId, this.token(), this.fetchImpl);
       if (!res.ok) this.errorCode = (await readApiErrorCode(res)) ?? 'REQUEST_FAILED';
@@ -129,12 +137,20 @@ export class CouncilPanel {
 
   private async propose(kind: string): Promise<void> {
     if (isReadOnlySpectator(this.ctx.services)) return;
+    if (this.isOfflineLocal) {
+      this.fail('host_unavailable');
+      return;
+    }
     if (!kind || !await this.send((planetId) => postProposal(planetId, kind, this.token(), this.fetchImpl))) return;
     await this.refresh();
   }
 
   private async cast(id: string, vote: 'approve' | 'reject'): Promise<void> {
     if (isReadOnlySpectator(this.ctx.services)) return;
+    if (this.isOfflineLocal) {
+      this.fail('host_unavailable');
+      return;
+    }
     if (!await this.send((planetId) => postVote(planetId, id, vote, this.token(), this.fetchImpl))) return;
     await this.refresh();
   }

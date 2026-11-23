@@ -92,6 +92,16 @@ export class SectorStateService implements OnApplicationShutdown {
     await Promise.all([...ids].map((id) => this.flushPlanet(id)));
   }
 
+  /** Drops buffered sector state for `planetId` and waits for any active DB write to finish before a wipe. */
+  async clearPlanet(planetId: string): Promise<void> {
+    this.clearTimer(planetId);
+    this.pendingPayloads.delete(planetId);
+    this.liveCache.delete(planetId);
+    const active = this.inFlight.get(planetId);
+    if (active) await active;
+    this.liveCache.delete(planetId);
+  }
+
   latestCounts(planetId: string): { tick: number; alivePlayers: number; aliveBots: number } | undefined {
     const cached = this.liveCache.get(planetId);
     if (!cached) return undefined;

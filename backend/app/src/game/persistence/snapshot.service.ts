@@ -156,6 +156,12 @@ export class SnapshotService implements BeforeApplicationShutdown {
     if (this.enabled) this.scheduler.request(planetId, 'PERIODIC');
   }
 
+  /** True when snapshot persistence is enabled and `planetId` already has at least one persisted snapshot row. */
+  async hasPersistedSnapshots(planetId: string): Promise<boolean> {
+    if (!this.enabled) return false;
+    return this.store.hasSnapshots(planetId);
+  }
+
   /** Restores a persisted planet from snapshots without generating a fresh world when no snapshot exists. */
   async restoreIfPersisted(planetId: string): Promise<'loaded' | 'restored' | 'absent'> {
     if (this.planets.isLoaded(planetId)) return 'loaded';
@@ -219,6 +225,23 @@ export class SnapshotService implements BeforeApplicationShutdown {
     await this.homes?.deleteColoniesOfPlanet(planetId); // drops the colony cache (the rows are already gone)
     this.recoveries.delete(planetId);
     this.log.warn({ planetId }, `wiped ${planetId} (dev planet.wipe)`);
+  }
+
+  /**
+   * Unloads `planetId` if currently hosted locally, drains pending snapshot/ledger/sector/history queues,
+   * and wipes all persisted rows for `planetId` so spectator `reset=1` can start cleanly from tick 0.
+   */
+  async wipeLoadedOrHeld(planetId: string): Promise<void> {
+    await this.planets.unload(planetId);
+    await this.scheduler.drop(planetId);
+    await this.ledger?.settled(planetId);
+    await this.sectorState?.clearPlanet(planetId);
+    await this.simHistory?.clearPlanet(planetId);
+    await this.simLease?.releasePlanet(planetId).catch(() => undefined);
+    if (this.enabled) await this.store.wipePlanet(planetId);
+    await this.homes?.deleteColoniesOfPlanet(planetId);
+    this.recoveries.delete(planetId);
+    this.log.info({ planetId }, `wiped ${planetId} for fresh spectator reset`);
   }
 
   /** One live planet: restored, held (snapshots kept, not loaded) or wiped (an old dev planet: generated fresh later). */

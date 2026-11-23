@@ -8,6 +8,7 @@ import type { PlanetKind } from '@terra/render/planets/PlanetSpec';
 import { getSharedTerrainPrep } from '@terra/render/planets/prep';
 import type { OrbitalGlobeMarkerInput, OrbitalStage } from '@terra/render/orbit/types';
 import { track } from '../core/analytics';
+import { isProductionBuild } from '../core/buildEnv';
 import type { ClientFlagsStore } from '../core/flags';
 import { HudRoot } from '../core/hud/HudRoot';
 import { loadFeatures } from '../core/registry';
@@ -67,15 +68,19 @@ const FORWARDED_ONLINE_QUERY_KEYS = [
   'colonyId',
 ] as const;
 
+const DEV_ONLY_FORWARDED_QUERY_KEYS = new Set<string>(['host', 'waves', 'lag', 'predict', 'as']);
+
 /**
  * Extracts session/runtime query parameters (`?host=local`, `?seed=<number|hash>`, `?waves=`, etc.)
  * from the initial `/play.html` URL while stripping orbital one-shot flags (`planet`, `skip`, `deploy`, `t`).
+ * In production builds, dev-only parameters (`host`, `waves`, `lag`, `predict`, `as`) are stripped.
  */
-export function buildForwardedOnlineSearch(rawSearch: string): string {
+export function buildForwardedOnlineSearch(rawSearch: string, prod = isProductionBuild()): string {
   if (!rawSearch) return '';
   const src = new URLSearchParams(rawSearch);
   const out = new URLSearchParams();
   for (const key of FORWARDED_ONLINE_QUERY_KEYS) {
+    if (prod && DEV_ONLY_FORWARDED_QUERY_KEYS.has(key)) continue;
     const val = src.get(key);
     if (val !== null && val.trim() !== '') out.set(key, val.trim());
   }

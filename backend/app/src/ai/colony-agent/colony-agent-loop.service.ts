@@ -108,6 +108,13 @@ export class ColonyAgentLoopService {
     this.decisionCache.clear();
   }
 
+  clearPlanetCache(planetId: string): void {
+    const prefix = `${planetId}:`;
+    for (const k of [...this.decisionCache.keys()]) {
+      if (k.startsWith(prefix)) this.decisionCache.delete(k);
+    }
+  }
+
   setDecisionRecorder(fn: (item: Omit<AgentDecisionFeedItemV1, 'id'>) => void): void {
     this.decisionRecorder = fn;
   }

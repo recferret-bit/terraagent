@@ -10,6 +10,7 @@ import {
 } from '@terra/contracts';
 import type { PrismaClient } from '@terra/db';
 import { CoreException } from '../../../core/errors/index.js';
+import { databaseEnabled } from '../../../core/persistence.js';
 import { APP_ENV, type AppEnv } from '../../../core/tokens.js';
 import { PRISMA } from '../../../db/db.module.js';
 import { FlagsService } from '../../../flags/flags.service.js';
@@ -58,6 +59,10 @@ export class StakingPerformanceService implements OnModuleDestroy {
     releasePerksPriceProvider(this.price);
   }
 
+  private db(): PrismaClient | undefined {
+    return this.prisma && (databaseEnabled(this.env) || !('$connect' in this.prisma)) ? this.prisma : undefined;
+  }
+
   assertWaveEnabled(): void {
     if (!this.flags.has('W28')) throw new CoreException('NOT_FOUND', { status: 404, message: 'Not found' });
   }
@@ -66,7 +71,7 @@ export class StakingPerformanceService implements OnModuleDestroy {
     this.assertWaveEnabled();
     const network = this.network();
     const timings = resolveStakingTimings(this.envBag());
-    const [price, apy, ecosystem] = await Promise.all([this.price.view(), this.apy(network), readEcosystemTvl(this.prisma)]);
+    const [price, apy, ecosystem] = await Promise.all([this.price.view(), this.apy(network), readEcosystemTvl(this.db())]);
     return StakingOverviewResponse.parse({
       asOfMs: stakingNowMs(),
       network,
@@ -95,7 +100,7 @@ export class StakingPerformanceService implements OnModuleDestroy {
     this.assertWaveEnabled();
     const { accountId, window, windowMs, sinceMs } = this.parsePerformanceQuery(rawAccountId, rawWindow, nowMs);
     const network = this.network();
-    const db = this.prisma;
+    const db = this.db();
     if (network !== 'mock' && this.positionSync) {
       const wallet = db ? await resolveWallet(db, { accountId }).catch(() => null) : null;
       const targets = wallet && wallet.accountIds.length > 0 ? wallet.accountIds : [accountId];

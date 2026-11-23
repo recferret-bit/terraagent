@@ -1,9 +1,11 @@
 import type { IncomingMessage } from 'node:http';
 import { Body, Controller, Get, Inject, NotFoundException, Optional, Param, Post, Req } from '@nestjs/common';
 import type { SimCommandV1 } from '@terra/contracts';
+import { ColonyAgentLoopService } from '../../ai/colony-agent/colony-agent-loop.service';
 import { APP_ENV, type AppEnv } from '../../core/tokens';
 import { GamePlanets, type CommandOutcomeMsg, type LoadOptions } from '../game-planets.service';
 import type { LandingSiteAnswer } from '../thread/protocol';
+import { SectorStateService } from '../persistence/sector-state.service';
 import { SimLeaseService } from '../persistence/sim-lease.service';
 import { SnapshotService } from '../persistence/snapshot.service';
 import { assertInternalAuth } from './internal-auth';
@@ -19,6 +21,8 @@ export class InternalSimController {
     @Inject(GamePlanets) private readonly planets: GamePlanets,
     @Inject(SnapshotService) private readonly snapshots: SnapshotService,
     @Optional() @Inject(SimLeaseService) private readonly simLease?: SimLeaseService,
+    @Optional() @Inject(SectorStateService) private readonly sectorState?: SectorStateService,
+    @Optional() @Inject(ColonyAgentLoopService) private readonly colonyAgentLoop?: ColonyAgentLoopService,
   ) {}
 
   @Get('planets/:planetId/full-state')
@@ -67,12 +71,12 @@ export class InternalSimController {
   @Post('planets/:planetId/load-new')
   async loadNew(
     @Param('planetId') planetId: string,
-    @Body() opts: LoadOptions & { snapshotBase64?: string; scenarioSeats?: number[] },
+    @Body() opts: LoadOptions & { snapshotBase64?: string; scenarioSeats?: number[]; captureInitial?: boolean },
     @Req() req: IncomingMessage,
   ): Promise<{ hosted: boolean }> {
     assertInternalAuth(req.headers, this.env);
     if (opts?.snapshotBase64) {
-      const { snapshotBase64, scenarioSeats, ...rest } = opts;
+      const { snapshotBase64, scenarioSeats, captureInitial, ...rest } = opts;
       if (!this.planets.isLoaded(planetId) && this.simLease && !(await this.simLease.tryAcquire(planetId))) {
         return { hosted: false };
       }
@@ -92,6 +96,11 @@ export class InternalSimController {
         await this.simLease?.releasePlanet(planetId).catch(() => undefined);
       } else {
         await this.simLease?.tryAcquire(planetId).catch(() => undefined);
+        if (captureInitial) {
+          this.planets.requestSectorSync(planetId);
+          await this.snapshots.capture(planetId, 'SEAL', 5_000);
+          await this.sectorState?.flushPlanet(planetId);
+        }
       }
       return { hosted: this.planets.isLoaded(planetId) };
     }
@@ -100,6 +109,17 @@ export class InternalSimController {
       await this.simLease?.tryAcquire(planetId).catch(() => undefined);
     }
     return { hosted: this.planets.isLoaded(planetId) };
+  }
+
+  @Post('planets/:planetId/wipe')
+  async wipePlanet(
+    @Param('planetId') planetId: string,
+    @Req() req: IncomingMessage,
+  ): Promise<{ wiped: boolean }> {
+    assertInternalAuth(req.headers, this.env);
+    this.colonyAgentLoop?.clearPlanetCache(planetId);
+    await this.snapshots.wipeLoadedOrHeld(planetId);
+    return { wiped: true };
   }
 
   @Post('planets/:planetId/load-home')

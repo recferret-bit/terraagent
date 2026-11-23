@@ -1,3 +1,4 @@
+import { isProductionBuild } from '../../core/buildEnv';
 import type { FeatureContext } from '../../core/registry/types';
 import type { Transport } from '../../net/types';
 import '../../net/services';
@@ -70,6 +71,7 @@ export class ActivePilotTracker {
   }
 
   private syncFromSearch(): void {
+    if (isProductionBuild() || this.ctx.host === 'local') return;
     try {
       const search = typeof location !== 'undefined' ? location.search : '';
       const params = new URLSearchParams(search);

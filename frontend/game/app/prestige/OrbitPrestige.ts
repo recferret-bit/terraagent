@@ -1,6 +1,7 @@
 import type { OrbitalStage } from '@terra/render/orbit/types';
 import { isKnownPrestigeTier, prestigeVisualsForTier } from '@terra/render/prestige/tierVisuals';
 import type { DescentPrestige } from '@terra/render/descent/types';
+import { isProductionBuild } from '../../core/buildEnv';
 import { prestigeStore, type PrestigeStore } from './PrestigeStore';
 
 /**
@@ -151,7 +152,7 @@ export class MenuPrestige {
   /** Getter for `DescentOptions.prestige`: the player's own tier, read every descent frame. */
   readonly descent: () => DescentPrestige | undefined;
 
-  constructor(deps: MenuPrestigeDeps, store: PrestigeStore = prestigeStore, search = typeof location !== 'undefined' ? location.search : '', dev = import.meta.env.DEV) {
+  constructor(deps: MenuPrestigeDeps, store: PrestigeStore = prestigeStore, search = typeof location !== 'undefined' ? location.search : '', dev = !isProductionBuild() && Boolean(import.meta.env?.DEV)) {
     const enabled = () => deps.flagOn() && !deps.isLocalHost();
     const walletTier = createWalletTierReader(deps.pilotAccount ?? readStoredPilotAccount, deps.fetchWalletTier ?? defaultFetchWalletTier);
     this.orbit = new OrbitPrestige(enabled, store);
@@ -171,7 +172,7 @@ export class MenuPrestige {
  * wallet. Anything else (and every production build) reads as no override.
  */
 export function devStakeTier(search: string, dev: boolean): number | null {
-  if (!dev) return null;
+  if (!dev || isProductionBuild()) return null;
   const raw = new URLSearchParams(search).get('stakeTier');
   if (raw === null || raw.trim() === '') return null;
   const n = Number(raw);

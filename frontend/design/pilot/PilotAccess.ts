@@ -1,4 +1,5 @@
 import { SocialAuthResponseSchema } from '@terra/contracts';
+import { isProductionBuild } from '@terra/render/ui/buildEnv';
 import {
   consentedAuthHeaders, failAuthHttp, failAuthThrown, failOAuthMessage, rememberAuthProvider, stopProviderWatch, succeedAuth, trackProviderPopup,
 } from '../analytics/auth';
@@ -372,12 +373,15 @@ export class PilotAccess {
       sessionStorage.removeItem(PENDING_NEP413_STORAGE_KEY);
       sessionStorage.removeItem(RECENT_NEP413_POPUP_KEY);
     } catch { /* ignore */ }
-    if (!this.opts.allowOfflineLocalAuth) {
+    const isOfflineLocalUrl = !isProductionBuild() && typeof location !== 'undefined' && new URLSearchParams(location.search).get('host') === 'local';
+    if (!this.opts.allowOfflineLocalAuth && !isOfflineLocalUrl) {
       await signOutNearWalletSelector();
     }
-    try {
-      await this.doFetch('/v1/auth/logout', { method: 'POST', credentials: 'include' });
-    } catch { /* ignore network errors on logout */ }
+    if (!isOfflineLocalUrl || this.opts.fetch) {
+      try {
+        await this.doFetch('/v1/auth/logout', { method: 'POST', credentials: 'include' });
+      } catch { /* ignore network errors on logout */ }
+    }
     if (!this.disposed) {
       this.guest();
       this.opts.onAuthChange?.(null);
@@ -385,7 +389,7 @@ export class PilotAccess {
   }
 
   private async restore(): Promise<void> {
-    if (typeof location !== 'undefined' && new URLSearchParams(location.search).get('host') === 'local') {
+    if (!isProductionBuild() && typeof location !== 'undefined' && new URLSearchParams(location.search).get('host') === 'local') {
       return;
     }
     const epoch = this.loginEpoch;

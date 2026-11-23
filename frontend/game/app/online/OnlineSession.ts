@@ -14,6 +14,7 @@ import type { WsTransportDeps } from '../../net/WsTransport';
 import { LocalHost } from '../../store/local/LocalHost';
 import type { WorldStore } from '../../store/WorldStore';
 import type { ClientTiles, ClientView } from '../../store/replica/viewCodec';
+import { isProductionBuild } from '../../core/buildEnv';
 import { createClientFlagsStore, resolveClientFlags, type ClientFlagsStore } from '../../core/flags';
 import type { LandfallController } from '../../features/landfall';
 import type { RTSCamera } from '../RTSCamera';
@@ -22,7 +23,7 @@ import type { BootAuthResult, FetchLike, StorageLike } from './bootOnline';
 import type { EntityMeshes, MeshFactory } from './EntityMeshes';
 import type { FeatureHud } from './featureHud';
 import type { GuestBootTarget } from './guestBoot';
-import { isSpectatorSearch, type OnlineMode } from './onlineMode';
+import { isLocalSpectatorAllowed, isSpectatorSearch, stripSpectatorResetFromUrl, type OnlineMode } from './onlineMode';
 import {
   applySessionBootResult, attachSessionLocalHost, bindSessionKeys, createSessionBootRig,
   resolveInitialLoadMode, resolveSocketFallback, runGuestBootSequence,
@@ -118,16 +119,17 @@ export class OnlineSession {
     this.skipDescent = Boolean(opts.skipDescent || q.get('skip') === '1' || this.loadMode === 'instant' || this.spectator);
     this.fromSpaceDescent = Boolean(!this.spectator && opts.fromSpaceDescent && this.loadMode === 'pod');
     this.freshDeployment = Boolean(!this.spectator && opts.freshDeployment && this.loadMode === 'pod');
-    this.orbitalCameraDrop = opts.orbitalCameraDrop ?? (!this.spectator && this.loadMode !== 'instant' && !this.fromSpaceDescent && mode === 'boot' && !scenarioParam(this.search));
+    const devBuild = !isProductionBuild();
+    const devScenario = devBuild ? scenarioParam(this.search) : null;
+    this.orbitalCameraDrop = opts.orbitalCameraDrop ?? (!this.spectator && this.loadMode !== 'instant' && !this.fromSpaceDescent && mode === 'boot' && !devScenario);
     this.deferReveal = Boolean(!this.spectator && opts.deferReveal);
-    this.fastStartLand = Boolean(!this.spectator && (this.skipDescent || this.loadMode === 'direct' || (!opts.wsDeps && !opts.localHost && !scenarioParam(this.search))));
+    this.fastStartLand = Boolean(!this.spectator && (this.skipDescent || this.loadMode === 'direct' || (!opts.wsDeps && !opts.localHost && !devScenario)));
     this.onReturnToOrbit = opts.onReturnToOrbit;
-    this.allowLocalFallback = opts.allowLocalFallback ?? import.meta.env.DEV;
+    this.allowLocalFallback = devBuild && (opts.allowLocalFallback ?? Boolean(import.meta.env?.DEV));
     this.planetKind = resolveSessionPlanetKind(q, opts.planetKind);
     this.sectorIntent = normalizeSectorIntent(opts.sectorIntent ?? q.get('sector'));
-    if (q.get('host') === 'local') setPlayHost('local');
-    notePlayBooted(this.planetKind, q.get('host') === 'local' ? 'local' : 'online');
-
+    if (devBuild && q.get('host') === 'local') setPlayHost('local');
+    notePlayBooted(this.planetKind, devBuild && q.get('host') === 'local' ? 'local' : 'online');
     this.flags = createClientFlagsStore(this.search);
     const uiParent = opts.uiParent ?? (typeof document !== 'undefined' ? document.body : root);
     if (!opts.store) prewarmSimWorker();
@@ -140,6 +142,7 @@ export class OnlineSession {
       uiParent, scene: this.viewport.scene, opts, getBootOverlay: () => this.bootOverlay,
       onBooted: (b) => this.applyBootResult(b), onQueueCancelled: () => this.returnToOrbit(),
     });
+    if (this.spectator && opts.search === undefined) stripSpectatorResetFromUrl();
     this.guest = rig.guest; this.bootTarget = rig.bootTarget; this.pilot = rig.pilot;
     this.transport = rig.transport; this.banner = rig.banner; this.store = rig.store;
     this.cleanups.push(bindVersionMismatchNotice(uiParent, this.store, () => this.store.currentPlanetId() || this.planetId || null));
@@ -155,18 +158,17 @@ export class OnlineSession {
       store: this.store, commandBus: this.commandBus, netStats: this.netStats, transport: this.transport, landfall: this.landfall,
       terrain: () => this.terrain, biomeKey: () => this.biomeKey, localHost: () => this.localHost, colonyIndex: () => this.colonyIndex,
       homeColonyId: () => this.colonyId, planetId: () => this.store.currentPlanetId() || this.planetId || null, pickAt: (cx, cy) => this.pickAt(cx, cy),
-      camera: () => this.viewport.camera, rtsCamera: () => this.cam, focusTile: (q, r, s) => this.focusTile(q, r, s),
-      pilot: this.pilot, token: () => this.bootTarget.accessToken,
+      camera: () => this.viewport.camera, rtsCamera: () => this.cam, focusTile: (q, r, s) => this.focusTile(q, r, s), pilot: this.pilot, token: () => this.bootTarget.accessToken,
       renderedEntityPosition: (id) => this.entities.getRecord(id)?.mesh.position ?? null,
       deferInitialMount: Boolean(opts.externalFrameLoop && ((this.fromSpaceDescent && !this.skipDescent) || this.deferReveal)),
-      isSpectator: () => this.spectator, isSpectatorVisionAll: () => this.spectatorVisionAll,
-      setSpectatorVisionAll: (on) => this.setSpectatorVisionAll(on), inspectColony: (idx, focus) => this.inspectColony(idx, focus),
-      onReadOnlyReject: () => this.hud.toast('Spectator mode is read-only'),
+      isLocalHost: Boolean(rig.local || opts.localHost || (devBuild && q.get('host') === 'local')),
+      isSpectator: () => this.spectator, isSpectatorVisionAll: () => this.spectatorVisionAll, setSpectatorVisionAll: (on) => this.setSpectatorVisionAll(on),
+      inspectColony: (idx, focus) => this.inspectColony(idx, focus), onReadOnlyReject: () => this.hud.toast('Spectator mode is read-only'),
     });
     this.pauseOverlay = new PauseOverlay(uiParent, { onResume: () => this.setPaused(false), onReturnToOrbit: () => this.returnToOrbit() });
     if (rig.local) this.cleanups.push(bindLocalSaveListeners(rig.local));
     this.bindTransportListeners(); this.bindKeys();
-    const predict = q.get('predict') !== '0';
+    const predict = !devBuild || q.get('predict') !== '0';
     const hideInitialHud = (this.fromSpaceDescent && !this.skipDescent) || this.deferReveal || Boolean(this.bootOverlay && this.bootOverlay.phase !== 'colony');
     this.hud.setVisible(!hideInitialHud); this.hud.collapseCommandDock();
     if (this.guest) { this.whenBooted = this.startBootSequence(this.guest, opts, predict); }
@@ -193,9 +195,9 @@ export class OnlineSession {
     ingestHostMessageCombatEvents(m, this.entities.combatSync, this.terrain);
     if (m.t === 'welcome') {
       this.planetId = m.d.planet.id;
-      if (m.d.mode === 'spectator') this.spectator = true;
+      if (m.d.mode === 'spectator' && isLocalSpectatorAllowed()) this.spectator = true;
       if (!this.spectator && m.d.colonyId && !this.colonyId) this.colonyId = m.d.colonyId;
-      this.flags.update(resolveClientFlags({ welcomeFlags: m.d.flags, search: this.search, dev: import.meta.env.DEV }));
+      this.flags.update(resolveClientFlags({ welcomeFlags: m.d.flags, search: this.search, dev: !isProductionBuild() && Boolean(import.meta.env?.DEV) }));
       this.hud.showWelcome(m.d);
     }
   }
@@ -342,14 +344,13 @@ export class OnlineSession {
 
   /** In-process host (`?host=local` or offline fallback): routes commands, binds store, and hides banner when offline. */
   private attachLocalHost(lh: LocalHost, autoStep: boolean, offline: boolean): void {
-    this.localHost = lh;
+    this.localHost = lh; this.entities.prestige.isEnabled = () => false; this.hud.setHost('local');
     const r = attachSessionLocalHost({
       lh, autoStep, offline, transport: this.transport, store: this.store, commandBus: this.commandBus,
       bootOverlay: this.bootOverlay, banner: this.banner, getActiveLocalHost: () => this.localHost,
       onHostMessage: (m) => this.onHostMessage(m),
     });
-    this.cleanups.push(r.cleanup);
-    this.banner = r.banner;
+    this.cleanups.push(r.cleanup); this.banner = r.banner;
   }
 
   private bindKeys(): void {
@@ -367,7 +368,7 @@ export class OnlineSession {
   }
 
   private onView(v: ClientView): void {
-    if (this.spectator || this.store.isSpectator()) {
+    if (this.spectator || (this.store.isSpectator() && isLocalSpectatorAllowed())) {
       this.spectator = true;
       this.spectatorAutoFocused = applySpectatorViewSetup({
         view: v, entities: this.entities, landfall: this.landfall,
@@ -473,11 +474,8 @@ export class OnlineSession {
     const delayMs = computeNextSessionLoopDelayMs(this.viewport, this.search, (typeof performance !== 'undefined' ? performance.now() : Date.now()) - t0);
     if (typeof requestAnimationFrame === 'function' && !this.disposed) {
       if (this.raf && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(this.raf);
-      if (delayMs > 0 && typeof setTimeout === 'function') {
-        setTimeout(() => { if (!this.disposed) this.raf = requestAnimationFrame(this.loop); }, delayMs);
-      } else {
-        this.raf = requestAnimationFrame(this.loop);
-      }
+      if (delayMs > 0 && typeof setTimeout === 'function') setTimeout(() => { if (!this.disposed) this.raf = requestAnimationFrame(this.loop); }, delayMs);
+      else this.raf = requestAnimationFrame(this.loop);
     }
   };
 

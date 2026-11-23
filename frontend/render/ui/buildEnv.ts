@@ -22,12 +22,21 @@ function normalizeEnvTag(raw: unknown): string | undefined {
  * 3. Vite `mode` (`'development' | 'dev' | 'local' | 'test'` -> `false`; `'production' | 'prod'` -> `true`; custom modes fall through to `Boolean(prod)`)
  * 4. `import.meta.env.PROD` boolean fallback
  */
+interface ViteEnvBag {
+  readonly MODE?: string;
+  readonly PROD?: boolean;
+  readonly DEV?: boolean;
+  readonly VITE_APP_ENV?: unknown;
+}
+
+function readImportMetaEnv(): ViteEnvBag | undefined {
+  return (import.meta as unknown as { readonly env?: ViteEnvBag }).env;
+}
+
 export function isProductionBuild(
-  mode: string | undefined = import.meta.env?.MODE,
-  prod: boolean | undefined = import.meta.env?.PROD,
-  appEnv: string | undefined = normalizeEnvTag(
-    (import.meta.env as Record<string, unknown> | undefined)?.VITE_APP_ENV,
-  ),
+  mode: string | undefined = readImportMetaEnv()?.MODE,
+  prod: boolean | undefined = readImportMetaEnv()?.PROD,
+  appEnv: string | undefined = normalizeEnvTag(readImportMetaEnv()?.VITE_APP_ENV),
 ): boolean {
   if (productionOverride !== null) return productionOverride;
   const normalizedAppEnv = normalizeEnvTag(appEnv);

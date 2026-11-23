@@ -430,6 +430,21 @@ export class SimHistoryService implements OnApplicationShutdown {
     });
   }
 
+  /** Clears in-memory and queued history for `planetId` and waits for any active DB batch flush to finish. */
+  async clearPlanet(planetId: string): Promise<void> {
+    this.inputsByPlanet.delete(planetId);
+    this.decisionsByPlanet.delete(planetId);
+    for (let i = this.queuedInputs.length - 1; i >= 0; i--) {
+      if (this.queuedInputs[i]?.planetId === planetId) this.queuedInputs.splice(i, 1);
+    }
+    for (let i = this.queuedDecisions.length - 1; i >= 0; i--) {
+      if (this.queuedDecisions[i]?.planetId === planetId) this.queuedDecisions.splice(i, 1);
+    }
+    await this.flushing;
+    this.inputsByPlanet.delete(planetId);
+    this.decisionsByPlanet.delete(planetId);
+  }
+
   async onApplicationShutdown(): Promise<void> {
     this.unsubFeeds?.();
     this.unsubFeeds = undefined;

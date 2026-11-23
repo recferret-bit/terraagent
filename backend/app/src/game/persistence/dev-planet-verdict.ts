@@ -22,8 +22,9 @@ export type DevSnapshotVerdict =
 
 export function devSnapshotVerdict(planetId: string, raw: Uint8Array): DevSnapshotVerdict {
   const isCanonical = canonicalPlanetById(planetId) !== null;
+  const isSpectator = !isCanonical && planetId.startsWith('pl_spec_');
   const devType = isCanonical ? null : devPlanetTypeOf(planetId);
-  if (devType === null && !isCanonical) return { kind: 'keep', state: null };
+  if (devType === null && !isCanonical && !isSpectator) return { kind: 'keep', state: null };
 
   let state: ReturnType<typeof restore>;
   try {
@@ -39,6 +40,8 @@ export function devSnapshotVerdict(planetId: string, raw: Uint8Array): DevSnapsh
   if (gv !== undefined && gv > GEN_VERSION) return { kind: 'newer', reason: `genVersion ${gv} > ${GEN_VERSION}` };
   if (isCanonical || isAtlasSaveState(state)) return { kind: 'keep', state };
   if (gv === undefined || gv < GEN_VERSION) return { kind: 'wipe', reason: `genVersion ${gv ?? 'none'} < ${GEN_VERSION}` };
-  if (state.meta.planetType !== devType) return { kind: 'wipe', reason: `planet type ${state.meta.planetType}, family ${devType}` };
+  if (devType !== null && state.meta.planetType !== devType) {
+    return { kind: 'wipe', reason: `planet type ${state.meta.planetType}, family ${devType}` };
+  }
   return { kind: 'keep', state };
 }

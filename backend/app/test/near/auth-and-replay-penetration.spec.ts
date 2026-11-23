@@ -3,8 +3,10 @@ import type { PrismaClient } from '@terra/db';
 import type { IncomingMessage } from 'node:http';
 import { describe, expect, it, vi } from 'vitest';
 import { type AuthTokenService } from '../../src/core/auth/index.js';
+import { AiAccessController } from '../../src/ai/colony-agent/ai-access.controller.js';
 import { PublicEconomySimController } from '../../src/dev/economy-sim.controller.js';
 import { FlagsService } from '../../src/flags/flags.service.js';
+import { GuildRadarController } from '../../src/market/guild/visit/guild-radar.controller.js';
 import { BountyController } from '../../src/near/bounty/bounty.controller.js';
 import { NearDeedController } from '../../src/near/deed/deed.controller.js';
 import { assertColonyOwnership } from '../../src/near/identity/colony-ownership.guard.js';
@@ -13,6 +15,11 @@ import { RelayStatusService } from '../../src/near/identity/relay-status.service
 import { resolveNearNetworkConfig } from '../../src/near/infrastructure/network/near-network.config.js';
 import { NearRpcClient } from '../../src/near/infrastructure/rpc/near-rpc.client.js';
 import { encodeBase58 } from '../../src/near/keystore/base58.js';
+import { AccountClaimService } from '../../src/near/staking/account-claim.service.js';
+import { StakingPerformanceService } from '../../src/near/staking/performance/staking-performance.service.js';
+import { NearUsdPriceService } from '../../src/near/staking/performance/near-usd-price.service.js';
+import { StakingPerksService } from '../../src/near/staking/perks/staking-perks.service.js';
+import { resolveDbStakerPerks } from '../../src/near/staking/staker-perks.js';
 import { StakingController } from '../../src/near/staking/staking.controller.js';
 
 function reqWithBearer(bearer: string | null, ip = '10.0.0.1'): IncomingMessage {
@@ -86,15 +93,16 @@ describe('Endpoint ownership IDOR & strict listing enforcement', () => {
       listForPlayerOrColony: vi.fn(async () => []),
       listAll: vi.fn(async () => [{ colonyId: 'col_1' }]),
     };
+    const mintForColony = vi.fn();
     const deedCtrl = new NearDeedController(
       flags,
       deedsRepo as never,
-      {} as never,
+      { mintForColony } as never,
       { flushReady: vi.fn() } as never,
       {} as never,
       {} as never,
       mockTokens,
-      undefined,
+      { isLoaded: () => true, loadedIds: () => ['pl_1'] } as never,
       undefined,
       undefined,
       strictEnv,
@@ -102,15 +110,33 @@ describe('Endpoint ownership IDOR & strict listing enforcement', () => {
     await expect(deedCtrl.settleDeed({ colonyId: 'col_1' }, reqWithBearer('dev:attacker'))).rejects.toMatchObject({
       errorCode: 'NEAR_NOT_OWNER',
     });
+
+    // Unauthenticated POST /v1/near/deed/settle in strict mode rejects with 401 before touching DeedRepository
+    deedsRepo.findByColonyId.mockClear();
+    deedsRepo.listForPlayerOrColony.mockClear();
+    await expect(deedCtrl.settleDeed({ colonyId: 'col_1', planetId: 'pl_wrong' }, reqWithBearer(null))).rejects.toMatchObject({
+      errorCode: 'NEAR_NOT_OWNER',
+      status: 401,
+    });
+    expect(deedsRepo.findByColonyId).not.toHaveBeenCalled();
+    expect(deedsRepo.listForPlayerOrColony).not.toHaveBeenCalled();
+
     const listOut = await deedCtrl.getOwnDeeds(reqWithBearer(null));
     expect(listOut.deed).toBeNull();
     expect(listOut.deeds).toEqual([]);
     expect(deedsRepo.listAll).not.toHaveBeenCalled();
+
+    // Unauthenticated GET /v1/near/deed?colonyId=col_missing in strict mode must not auto-mint a deed
+    deedsRepo.findByColonyId.mockResolvedValueOnce(null as never);
+    const missingOut = await deedCtrl.getOwnDeeds(reqWithBearer(null), 'col_missing', 'pl_1');
+    expect(missingOut.deed).toBeNull();
+    expect(missingOut.deeds).toEqual([]);
+    expect(mintForColony).not.toHaveBeenCalled();
   });
 });
 
 describe('StakingController IDOR & offline real-PrismaClient guard', () => {
-  it('blocks cross-player IDOR on StakingController and skips DB calls on un-migrated offline PrismaClient', async () => {
+  it('blocks cross-player IDOR on StakingController and skips DB calls on un-migrated offline PrismaClient across Staking, Perks, Performance, AiAccess, and AccountClaim', async () => {
     const flags = new FlagsService({ TA_WAVES: 'all' } as never);
     const stakingCtrl = new StakingController(
       {
@@ -118,6 +144,7 @@ describe('StakingController IDOR & offline real-PrismaClient guard', () => {
         stake: vi.fn(),
         unstake: vi.fn(),
         withdraw: vi.fn(),
+        getStatus: vi.fn(async () => ({ ok: true })),
       } as never,
       flags,
       mockTokens,
@@ -136,7 +163,13 @@ describe('StakingController IDOR & offline real-PrismaClient guard', () => {
     const realShapePrisma = {
       $connect: vi.fn(),
       nearColonyAccount: { findFirst: vi.fn(async () => { throw new Error('DB unreachable'); }) },
-      colony: { findUnique: vi.fn(async () => { throw new Error('DB unreachable'); }) },
+      colony: {
+        findUnique: vi.fn(async () => { throw new Error('DB unreachable'); }),
+        findFirst: vi.fn(async () => { throw new Error('DB unreachable'); }),
+        findMany: vi.fn(async () => { throw new Error('DB unreachable'); }),
+      },
+      player: { findUnique: vi.fn(async () => { throw new Error('DB unreachable'); }) },
+      socialIdentity: { findFirst: vi.fn(async () => { throw new Error('DB unreachable'); }) },
     } as unknown as PrismaClient;
     await expect(
       assertColonyOwnership({
@@ -148,6 +181,94 @@ describe('StakingController IDOR & offline real-PrismaClient guard', () => {
         colonyId: 'col_offline',
       }),
     ).resolves.toMatch(/^pr_/);
+
+    // AiAccessController, StakingPerksService, and StakingPerformanceService skip real PrismaClient under NODE_ENV=test without DATABASE_URL
+    const aiCtrl = new AiAccessController(flags, realShapePrisma, { NODE_ENV: 'test' } as never);
+    const aiOut = await aiCtrl.aiAccess('col_0', 'pl_1', '0');
+    expect(aiOut.colonyId).toBe('col_0');
+    expect(realShapePrisma.colony.findUnique).not.toHaveBeenCalled();
+
+    const perksSvc = new StakingPerksService(flags, realShapePrisma, { NODE_ENV: 'test' } as never);
+    const perksOut = await perksSvc.perksFor({ accountId: 'pilot.testnet', playerId: 'pr_1' });
+    expect(perksOut.perks.tier).toBe(0);
+    const prestigeOut = await perksSvc.prestigeFor('pl_1');
+    expect(prestigeOut.colonies).toEqual([]);
+
+    const perfSvc = new StakingPerformanceService(
+      flags,
+      new NearUsdPriceService({ NODE_ENV: 'test', NEAR_MODE: 'mock' } as never),
+      realShapePrisma,
+      { NODE_ENV: 'test', NEAR_MODE: 'mock' } as never,
+    );
+    const ov = await perfSvc.overview('100');
+    expect(ov.network).toBe('mock');
+    const perf = await perfSvc.performance('pilot.testnet', '30d');
+    expect(perf.accountId).toBe('pilot.testnet');
+
+    const radarCtrl = new GuildRadarController(
+      { upcoming: () => ({ nowMs: 1_000, windows: [] }) } as never,
+      flags,
+      realShapePrisma,
+      { NODE_ENV: 'test' } as never,
+    );
+    const radarOut = await radarCtrl.radar('pl_1', 'col_0', '0');
+    expect(radarOut.leadMs).toBe(0);
+    expect(realShapePrisma.colony.findUnique).not.toHaveBeenCalled();
+    const dbPerks = await resolveDbStakerPerks(realShapePrisma, {
+      colonyId: 'col_0',
+      env: { NODE_ENV: 'test' },
+      w28: true,
+    });
+    expect(dbPerks.tier).toBe(0);
+  });
+});
+
+describe('Strict unauthenticated rejection before DB / NEAR access', () => {
+  it('rejects unauthenticated AccountClaimService and assertColonyOwnership in strict mode with 401 before touching PrismaClient or IdentityPort', async () => {
+    const flags = new FlagsService({ TA_WAVES: 'all' } as never);
+    const realShapePrisma = {
+      $connect: vi.fn(),
+      nearColonyAccount: { findFirst: vi.fn(async () => { throw new Error('DB unreachable'); }) },
+      colony: { findUnique: vi.fn(async () => { throw new Error('DB unreachable'); }) },
+    } as unknown as PrismaClient;
+
+    await expect(
+      assertColonyOwnership({
+        req: reqWithBearer(null),
+        tokens: mockTokens,
+        env: { NODE_ENV: 'production', DATABASE_URL: 'postgresql://localhost/test' } as never,
+        prisma: realShapePrisma,
+        port: 'Escrow',
+        colonyId: 'col_1',
+      }),
+    ).rejects.toMatchObject({ errorCode: 'NEAR_NOT_OWNER', status: 401 });
+    expect(realShapePrisma.nearColonyAccount.findFirst).not.toHaveBeenCalled();
+    expect(realShapePrisma.colony.findUnique).not.toHaveBeenCalled();
+
+    // AccountClaimService in production / real network mode rejects unauthenticated claim even when no DB row exists yet
+    const claimAccount = vi.fn();
+    const emptyPrisma = {
+      nearColonyAccount: { findUnique: vi.fn(async () => null), findFirst: vi.fn(async () => null), upsert: vi.fn() },
+      deed: { findUnique: vi.fn(async () => null) },
+      player: { findUnique: vi.fn(async () => null), create: vi.fn() },
+      mockChainAccount: { upsert: vi.fn() },
+    } as unknown as PrismaClient;
+    const strictClaimSvc = new AccountClaimService(
+      flags,
+      { claimAccount } as never,
+      { NODE_ENV: 'production', DATABASE_URL: 'postgresql://localhost/test' } as never,
+      emptyPrisma,
+    );
+    await expect(
+      strictClaimSvc.claimColonyAccount({
+        colonyId: 'col_new',
+        walletAccountId: 'pilot.testnet',
+        newPublicKey: 'ed25519:11111111111111111111111111111111',
+      }),
+    ).rejects.toMatchObject({ errorCode: 'NEAR_NOT_OWNER', status: 401 });
+    expect(emptyPrisma.player.create).not.toHaveBeenCalled();
+    expect(emptyPrisma.nearColonyAccount.upsert).not.toHaveBeenCalled();
+    expect(claimAccount).not.toHaveBeenCalled();
   });
 });
 

@@ -5,6 +5,7 @@ import type { Logger } from 'pino';
 import { Counter, Gauge, type Registry } from 'prom-client';
 import { WebSocketServer } from 'ws';
 import { corsOrigin } from '../core/cors';
+import { isSpectatorEnvAllowed } from '../core/local-host-guard';
 import type { SectorAntiCheatService } from '../core/anticheat';
 import type { EventBus } from '../bus/event-bus';
 import type { MarketBookBusEvent } from '../market/api/market-book-push.service';
@@ -65,6 +66,7 @@ export class WsGateway {
   private detach: (() => void) | undefined;
   private readonly unwarp: () => void;
   private readonly undown: () => void;
+  private readonly ununload: (() => void) | undefined;
   private readonly uncargo: (() => void) | undefined;
   private readonly undeed: (() => void) | undefined;
   private readonly undirector: (() => void) | undefined;
@@ -93,6 +95,7 @@ export class WsGateway {
     })));
     // BE-11/BE-12: a planet whose thread died or whose step threw gets no more deltas; its sockets reconnect and rejoin.
     this.undown = o.planets.onPlanetDown((planetId) => this.kickPlanetDown(planetId));
+    this.ununload = o.planets.onPlanetUnloaded?.((planetId) => this.kickPlanetDown(planetId));
     this.uncargo = o.bus?.on('near.cargo.status', (ev) => this.broadcastCargoStatus(ev), { module: 'WsGateway' });
     this.undeed = o.bus?.on('near.deed.updated', (ev) => this.broadcastDeedUpdated(ev), { module: 'WsGateway' });
     this.undirector = o.bus?.on('director.status', (ev) => this.broadcastDirectorStatus(ev), { module: 'WsGateway' });
@@ -156,7 +159,7 @@ export class WsGateway {
     if (path !== WS_PATH) return refuse(socket, '404 Not Found');
     this.originOk(req.headers.origin, (_err, allow) => {
       if (!allow) return refuse(socket, '403 Forbidden');
-      this.wss.handleUpgrade(req, socket, head, (ws) => this.accept(ws));
+      this.wss.handleUpgrade(req, socket, head, (ws) => this.accept(ws, req));
     });
   }
 
@@ -173,11 +176,13 @@ export class WsGateway {
     this.o.planets.setMode(planetId, 'coarse');
   }
 
-  private accept(ws: import('ws').WebSocket): void {
+  private accept(ws: import('ws').WebSocket, req?: IncomingMessage): void {
     const cluster = this.o.cluster;
+    const spectatorAllowed = isSpectatorEnvAllowed(this.o.env, req?.headers, req?.socket?.remoteAddress);
     const deps: ConnectionDeps = {
       verifier: this.o.verifier, planets: this.o.planets, rooms: this.rooms, ingress: this.o.ingress, home: this.o.home, antiCheat: this.o.antiCheat, digests: this.o.digests, flags: this.o.flags,
       seatDevScenario: this.o.seatDevScenario,
+      spectatorAllowed,
       log: this.o.log, helloTimeoutMs: this.o.helloTimeoutMs, idleTimeoutMs: this.o.idleTimeoutMs,
       onWelcome: () => this.welcomes.inc(),
       // Join is recorded before replaceOlder: its `bye 4001` is a close, and this join must cancel that timer.
@@ -338,6 +343,7 @@ export class WsGateway {
     this.relayServer.closeAll();
     this.unwarp();
     this.undown();
+    this.ununload?.();
     this.uncargo?.();
     this.undeed?.();
     this.undirector?.();

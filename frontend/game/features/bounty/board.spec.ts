@@ -214,4 +214,18 @@ describe('bounty board edges', () => {
     expect(css).toContain('min(320px, calc(100vh - 16px))');
     expect(css).not.toContain('border-radius');
   });
+
+  it('never touches network fetch when mounted on offline host: "local"', async () => {
+    const panelHost = document.createElement('div');
+    document.body.appendChild(panelHost);
+    const ctx: FeatureContext = {
+      flags: new Set(['W22']),
+      host: 'local',
+      services: { track: () => undefined, session: { planetId: () => 'pl_dev' } },
+    };
+    const panel = new BountyBoard(panelHost, panelHost, ctx);
+    await expect(panel.open()).resolves.toBeUndefined();
+    expect(panelHost.querySelector('[data-testid="bounty-empty"]')?.textContent).toBe('No bounties');
+    panel.dispose();
+  });
 });

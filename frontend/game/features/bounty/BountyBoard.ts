@@ -22,6 +22,7 @@ export class BountyBoard {
   private timer: ReturnType<typeof setInterval> | null = null;
   private readonly offs: Array<() => void> = [];
   private readonly fetchImpl: BountyFetch;
+  private readonly isOfflineLocal: boolean;
 
   constructor(
     _host: HTMLElement,
@@ -29,6 +30,7 @@ export class BountyBoard {
     private readonly ctx: FeatureContext,
     opts: BountyBoardOptions = {},
   ) {
+    this.isOfflineLocal = ctx.host === 'local' && !opts.fetchImpl;
     this.fetchImpl = opts.fetchImpl ?? ((input, init) => fetch(input, init));
     if (ctx.flags.has('W22')) this.register(ctx);
     const overlay = ctx.services.hudOverlay ?? scope;
@@ -111,6 +113,13 @@ export class BountyBoard {
       this.paint();
       return;
     }
+    if (this.isOfflineLocal) {
+      this.payload = { planetId, bounties: [] };
+      this.errorCode = null;
+      this.painted = '';
+      this.paint();
+      return;
+    }
     const gen = ++this.gen;
     try {
       const res = await fetchBounties(planetId, this.token(), this.fetchImpl);
@@ -130,6 +139,10 @@ export class BountyBoard {
 
   private async post(draft: BountyDraft): Promise<void> {
     if (isReadOnlySpectator(this.ctx.services)) return;
+    if (this.isOfflineLocal) {
+      this.fail('host_unavailable');
+      return;
+    }
     const args = bountyPostArgs(draft, Date.now());
     if (!args) {
       this.fail('invalid_args');
@@ -144,6 +157,10 @@ export class BountyBoard {
 
   private async claim(id: string): Promise<void> {
     if (isReadOnlySpectator(this.ctx.services)) return;
+    if (this.isOfflineLocal) {
+      this.fail('host_unavailable');
+      return;
+    }
     const colony = this.poster();
     const ok = await this.send((planetId) => postClaim(planetId, id, colony, this.token(), this.fetchImpl));
     if (ok) await this.refresh();

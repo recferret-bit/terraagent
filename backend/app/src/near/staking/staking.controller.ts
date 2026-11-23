@@ -14,6 +14,7 @@ import type { IncomingMessage } from 'node:http';
 import { SectorAntiCheatService } from '../../core/anticheat/index.js';
 import { AuthTokenService } from '../../core/auth/index.js';
 import { CoreException, ZodPipe } from '../../core/errors/index.js';
+import { databaseEnabled } from '../../core/persistence.js';
 import { APP_ENV, type AppEnv } from '../../core/tokens.js';
 import { PRISMA } from '../../db/db.module.js';
 import { FlagsService } from '../../flags/flags.service.js';
@@ -57,6 +58,10 @@ export class StakingController {
     this.walletGuard = new WalletControlGuard(tokens, env, prisma);
   }
 
+  private db(): PrismaClient | undefined {
+    return this.prisma && (databaseEnabled(this.env) || !('$connect' in this.prisma)) ? this.prisma : undefined;
+  }
+
   /** `GET /v1/near/staking`: by colony, by wallet, or (W28, neither given) the Bearer pilot's linked wallet. */
   @Get('staking')
   async getStatus(
@@ -65,9 +70,10 @@ export class StakingController {
     @Req() req?: IncomingMessage,
   ): Promise<StakingStatusResponse> {
     this.assertWaveEnabled();
-    if (!colonyId?.trim() && !accountId?.trim() && this.flags.has('W28') && this.prisma) {
+    const db = this.db();
+    if (!colonyId?.trim() && !accountId?.trim() && this.flags.has('W28') && db) {
       const playerId = resolveOptionalBearerPlayerId(req, this.tokens, this.env);
-      const linked = playerId ? await playerLinkedWallet(this.prisma, playerId) : null;
+      const linked = playerId ? await playerLinkedWallet(db, playerId) : null;
       if (linked) return this.stakingService.getStatus({ accountId: linked.accountId });
     }
     return this.stakingService.getStatus({ colonyId, accountId });
@@ -160,10 +166,11 @@ export class StakingController {
     this.assertW28();
     this.assertHumanCaller(actorHeader, authHeader, apiKeyHeader, raw);
     let body = this.profitsPipe.transform(raw ?? {});
-    if (!body.accountId?.trim() && !body.colonyId?.trim() && this.prisma) {
+    const db = this.db();
+    if (!body.accountId?.trim() && !body.colonyId?.trim() && db) {
       const playerId = resolveOptionalBearerPlayerId(req, this.tokens, this.env);
       if (playerId) {
-        const wallet = await resolveWallet(this.prisma, { playerId });
+        const wallet = await resolveWallet(db, { playerId });
         const fallbackAcct = wallet.accountIds.includes(wallet.walletKey) ? wallet.walletKey : wallet.accountIds[0];
         if (fallbackAcct) body = { ...body, accountId: fallbackAcct };
       }

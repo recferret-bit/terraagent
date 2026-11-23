@@ -1,3 +1,4 @@
+import { isProductionBuild } from '@terra/render/ui/buildEnv';
 import { refreshPilotSession } from './PilotAccess';
 
 export type ActivePlanetKind = 'dune' | 'oceanForest' | 'forestRock';
@@ -56,7 +57,7 @@ export async function probeActiveHomeColony(opts: ProbeActiveColonyOptions = {})
   const doFetch = opts.fetch ?? (typeof fetch === 'function' ? fetch : undefined);
   if (!doFetch) return null;
   const search = opts.search ?? (typeof location !== 'undefined' ? location.search : '');
-  const dev = opts.dev ?? import.meta.env.DEV;
+  const dev = opts.dev ?? (!isProductionBuild() && Boolean(import.meta.env?.DEV));
   const storage = opts.storage === undefined ? (typeof localStorage !== 'undefined' ? localStorage : null) : opts.storage;
 
   try {

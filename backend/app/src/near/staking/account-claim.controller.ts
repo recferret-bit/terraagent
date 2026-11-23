@@ -3,6 +3,7 @@ import { ClaimAccountRequestSchema, type ClaimAccountRequest } from '@terra/cont
 import type { IncomingMessage } from 'node:http';
 import { AuthTokenService, extractBearerPlayer } from '../../core/auth/index.js';
 import { CoreException, ZodPipe } from '../../core/errors/index.js';
+import { APP_ENV, type AppEnv } from '../../core/tokens.js';
 import { FlagsService } from '../../flags/flags.service.js';
 import { devBearerPlayer } from '../../ws/session-verifier.js';
 import { AccountClaimService, type ClaimAccountResponse } from './account-claim.service.js';
@@ -38,7 +39,12 @@ export class AccountClaimController {
     @Inject(AccountClaimService) private readonly claimService: AccountClaimService,
     @Inject(FlagsService) private readonly flags: FlagsService,
     @Optional() @Inject(AuthTokenService) private readonly tokens?: AuthTokenService,
+    @Optional() @Inject(APP_ENV) private readonly env?: AppEnv,
   ) {}
+
+  private allowDevBearer(): boolean {
+    return (this.env?.NODE_ENV ?? process.env.NODE_ENV) !== 'production';
+  }
 
   @Post('claim-account')
   @HttpCode(200)
@@ -58,10 +64,9 @@ export class AccountClaimController {
     if (!this.flags.has('W20')) {
       throw new CoreException('NOT_FOUND', { status: 404, message: 'Not found' });
     }
-    const allowDevBearer = process.env.NODE_ENV !== 'production';
     return this.claimService.revokeTradingSessionKey({
       colonyId,
-      playerId: resolveOptionalPlayerId(req, this.tokens, allowDevBearer),
+      playerId: resolveOptionalPlayerId(req, this.tokens, this.allowDevBearer()),
     });
   }
 
@@ -71,10 +76,9 @@ export class AccountClaimController {
     if (!this.flags.has('W20')) {
       throw new CoreException('NOT_FOUND', { status: 404, message: 'Not found' });
     }
-    const allowDevBearer = process.env.NODE_ENV !== 'production';
     return this.claimService.reauthorizeTradingSessionKey({
       colonyId: body?.colonyId,
-      playerId: resolveOptionalPlayerId(req, this.tokens, allowDevBearer),
+      playerId: resolveOptionalPlayerId(req, this.tokens, this.allowDevBearer()),
     });
   }
 
@@ -86,14 +90,13 @@ export class AccountClaimController {
     if (body.colonyId !== undefined && body.colonyId.trim().length === 0) {
       this.pipe.transform({ colonyId: '' });
     }
-    const allowDevBearer = process.env.NODE_ENV !== 'production';
     return this.claimService.claimColonyAccount({
       colonyId: body.colonyId ?? 'col_0',
       walletAccountId: body.walletAccountId,
       newPublicKey: body.newPublicKey,
       signature: body.walletSignature,
       opId: body.opId,
-      playerId: resolveOptionalPlayerId(req, this.tokens, allowDevBearer),
+      playerId: resolveOptionalPlayerId(req, this.tokens, this.allowDevBearer()),
     });
   }
 }

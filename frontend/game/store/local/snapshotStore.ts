@@ -1,3 +1,4 @@
+import type { AgentDecisionFeedItemV1, SimInputFeedItemV1 } from '@terra/contracts';
 import type { LedgerState } from '@terra/ledger';
 import { canMigrateSnapshot } from '@terra/sim';
 
@@ -18,6 +19,10 @@ export interface LocalSnapshot {
    * have none and open their balances instead.
    */
   readonly journal?: LedgerState;
+  /** Recent bot/player sim input feed items persisted for seamless spectator resume. */
+  readonly recentInputs?: readonly SimInputFeedItemV1[];
+  /** Recent bot/agent decision feed items persisted for seamless spectator resume. */
+  readonly recentDecisions?: readonly AgentDecisionFeedItemV1[];
 }
 
 /** Where local planets are persisted. `idbSnapshotStore` in the browser, a Map in tests. */

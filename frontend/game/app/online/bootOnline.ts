@@ -1,5 +1,6 @@
 import { HomeResponse, type AuthResponse, type PlanetType } from '@terra/contracts';
 import { type DevPlanetType } from '@terra/sim';
+import { isProductionBuild } from '../../core/buildEnv';
 import { backoffDelay } from '../../net/backoff';
 import type { LocalHost } from '../../store/local/LocalHost';
 import type { PlanetKind } from '@terra/render/planets/PlanetSpec';
@@ -21,8 +22,8 @@ export const DEVICE_SECRET_KEY = 'ta_device_secret';
  * The `localStorage` key of the guest's device secret. Dev builds give every `?as=<name>` its own key
  * (`ta_device_secret:<name>`), so `?as=b`, `?as=c` are fresh guests in the same browser profile; otherwise one key.
  */
-export function deviceSecretKey(search: string, dev: boolean = import.meta.env.DEV): string {
-  const as = dev ? new URLSearchParams(search).get('as')?.toLowerCase().replace(/[^a-z0-9_-]/g, '').slice(0, 32) : '';
+export function deviceSecretKey(search: string, dev: boolean = !isProductionBuild() && Boolean(import.meta.env?.DEV)): string {
+  const as = dev && !isProductionBuild() ? new URLSearchParams(search).get('as')?.toLowerCase().replace(/[^a-z0-9_-]/g, '').slice(0, 32) : '';
   return as ? `${DEVICE_SECRET_KEY}:${as}` : DEVICE_SECRET_KEY;
 }
 
@@ -351,7 +352,8 @@ export async function bootAuthAndHome(opts: BootAuthOptions = {}): Promise<BootA
 
   const query = new URLSearchParams(search);
   const seedOverride = query.get('seed')?.trim() || undefined;
-  if (query.get('host') === 'local') {
+  const devBuild = !isProductionBuild();
+  if (devBuild && query.get('host') === 'local') {
     return createLocalBootFallback(deviceSecret, opts.onStatus, undefined, opts.planetType, undefined, seedOverride);
   }
 
@@ -418,7 +420,7 @@ export async function bootAuthAndHome(opts: BootAuthOptions = {}): Promise<BootA
       ...(foundingSectorId ? { foundingSectorId } : {}),
     };
   } catch (e) {
-    if ((opts.allowLocalFallback ?? import.meta.env.DEV) && backendUnreachable(e)) {
+    if (devBuild && (opts.allowLocalFallback ?? Boolean(import.meta.env?.DEV)) && backendUnreachable(e)) {
       return createLocalBootFallback(deviceSecret, opts.onStatus, undefined, opts.planetType, undefined, seedOverride);
     }
     throw e;

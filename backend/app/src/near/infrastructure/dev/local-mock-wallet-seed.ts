@@ -16,6 +16,7 @@ export const LOCAL_MOCK_DEFAULT_PLANET_ID = 'pl_local_prime';
 
 function canSeedMockStaking(prisma: PrismaClient | null | undefined, env: EnvBag): prisma is PrismaClient {
   if (!prisma || env.NODE_ENV === 'production') return false;
+  if (env.NODE_ENV === 'test' && !env.DATABASE_URL && '$connect' in prisma) return false;
   return nearAdapterFor('Staking', env) === 'mock' && nearAdapterFor('Intents', env) === 'mock';
 }
 

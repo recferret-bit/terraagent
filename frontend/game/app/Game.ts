@@ -32,6 +32,7 @@ import { MainMenu, type MenuSettings, type SectorIntentV1 } from '../ui/menu';
 import { normalizeSectorIntent } from '../ui/lobby/orbitalPickerModel';
 import { DescentHud, GameHud } from '../ui/hud';
 import '../net/services';
+import { isProductionBuild } from '../core/buildEnv';
 import { createClientFlagsStore, type ClientFlagsStore } from '../core/flags';
 import '../../design/css/tokens.css';
 import '../../design/css/base.css';
@@ -80,16 +81,17 @@ export class Game {
     this.fade.className = 'fade'; document.body.appendChild(this.fade);
     window.addEventListener('keydown', this.escListener);
     const q = new URLSearchParams(location.search);
+    const devBuild = !isProductionBuild();
     this.sessionSearch = buildForwardedOnlineSearch(location.search);
     const kind = (PLANET_KINDS.includes(q.get('planet') as PlanetKind) ? q.get('planet') : 'dune') as PlanetKind;
     writeStoredPlanetKind(kind);
-    if (q.has('menutime')) this.time = parseFloat(q.get('menutime')!) || 0;
+    if (devBuild && q.has('menutime')) this.time = parseFloat(q.get('menutime')!) || 0;
     const seed = parseGroundSeedInput(q.get('seed'), PLANET_SPECS[kind].seed);
     this.sectorIntent = normalizeSectorIntent(q.get('sector'));
     const store = this.flagsStore ??= createClientFlagsStore();
-    this.isLocalHost = q.get('host') === 'local';
-    const isLegacyQa = q.has('autodeploy') || q.has('qat') || q.has('t') || (q.has('seed') && q.get('skip') === '1' && !this.isLocalHost);
-    this.useOnlineGameplay = store.set.has('W01') && !isLegacyQa;
+    this.isLocalHost = devBuild && q.get('host') === 'local';
+    const isLegacyQa = devBuild && (q.has('autodeploy') || q.has('qat') || q.has('t') || (q.has('seed') && q.get('skip') === '1' && !this.isLocalHost));
+    this.useOnlineGameplay = !devBuild || (store.set.has('W01') && !isLegacyQa);
 
     this.menu = new MainMenu(document.body, {
       onPlanet: (k) => {
@@ -111,14 +113,14 @@ export class Game {
     this.mountStage(this.makeSpec(kind, this.menu.seed));
     this.applySettings();
     this.loop();
-    if (q.has('planet') && (q.get('skip') === '1' || q.has('t') || q.get('deploy') === '1')) {
+    if (q.has('planet') && (q.get('skip') === '1' || (devBuild && q.has('t')) || q.get('deploy') === '1')) {
       this.settings.skipCinematic = q.get('skip') === '1';
-      this.fastForward = Math.max(0, parseFloat(q.get('t') ?? '0') || 0);
+      this.fastForward = devBuild ? Math.max(0, parseFloat(q.get('t') ?? '0') || 0) : 0;
       void this.autoDeploy(kind);
     } else {
       this.syncOrbitUrl();
       this.schedulePrepare(60);
-      if (q.has('autodeploy')) setTimeout(() => {
+      if (devBuild && q.has('autodeploy')) setTimeout(() => {
         this.deploy(this.menu.kind, this.menu.seed);
         if (q.has('qat')) this.qaAdvance(parseFloat(q.get('qat')!) || 0);
       }, parseInt(q.get('autodeploy')!, 10) || 1500);

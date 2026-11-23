@@ -3,6 +3,7 @@ import '../design/css/tokens.css';
 import '../design/css/base.css';
 import './trade.css';
 import { PilotAccess } from '../design/pilot/PilotAccess';
+import { isProductionBuild } from '../game/core/buildEnv';
 import { TradeClient } from './api/client';
 import {
   consumeMockToken,
@@ -25,7 +26,7 @@ async function identify(): Promise<Identity | null> {
   const fromHash = await consumeMockToken(location.hash);
   if (fromHash) { history.replaceState(null, '', location.pathname + location.search); return fromHash; }
   const params = new URLSearchParams(location.search);
-  if (params.has('playerId') || params.has('as')) {
+  if (!isProductionBuild() && (params.has('playerId') || params.has('as'))) {
     return resolveIdentity(location.search, location.hash);
   }
   return (await refreshSession()) ?? resolveIdentity(location.search, location.hash);

@@ -3,6 +3,7 @@ import type { ColonyViewport } from '@terra/render/core/createColonyViewport';
 import { applyPlanetLook } from '@terra/render/planets/applyPlanetLook';
 import { tileXZ, type HexTerrain } from '@terra/render/planets/hex';
 import type { PlanetKind } from '@terra/render/planets/PlanetSpec';
+import { isProductionBuild } from '../../../core/buildEnv';
 import type { ClientFlagsStore } from '../../../core/flags';
 import type { LandfallController } from '../../../features/landfall';
 import type { ConnectionBanner } from '../../../net/ConnectionBanner';
@@ -99,6 +100,7 @@ function syncColonyArrival(deps: ViewOverlaySyncDeps, mode: ColonyLoadMode, stat
 }
 
 export function resolveSeatIndexFromSearch(search: string, v: ClientView): number | null {
+  if (isProductionBuild()) return null;
   const asParam = new URLSearchParams(search).get('as')?.trim().toLowerCase() ?? '';
   const asIdx = /^[a-e]$/.test(asParam) ? asParam.charCodeAt(0) - 97 : 0;
   if (asIdx > 0 && Array.isArray(v.colonies) && v.colonies.some((c) => c && c.index === asIdx)) {

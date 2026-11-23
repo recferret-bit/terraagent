@@ -19,6 +19,7 @@ import {
   type StakingTxRow,
 } from '@terra/contracts';
 import type { MeFetchFn } from './api';
+import { isProductionBuild } from '../../core/buildEnv';
 import {
   activateLocalPersona,
   createInitialPersonaLedger,
@@ -55,6 +56,7 @@ export function isLocalSimSignedOut(): boolean {
 }
 
 export function isBrowserLocalHost(search?: string): boolean {
+  if (isProductionBuild()) return false;
   const raw = search ?? (typeof location !== 'undefined' ? location.search : '');
   try {
     return new URLSearchParams(raw).get('host') === 'local';

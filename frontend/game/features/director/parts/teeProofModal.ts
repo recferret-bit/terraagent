@@ -1,5 +1,6 @@
 import { STAKING_RULES, STAKING_TIERS, type AiBudgetView } from '@terra/contracts';
 import { verifyTeeAttestationClient } from '../../../../design/pilot/teeVerifier';
+import { isProductionBuild } from '../../../core/buildEnv';
 import { aiAccessState, modelLabel, stakeCtaHref, type AiAccessState } from './aiAccessBadge';
 
 export interface TeeProofModalOptions {
@@ -79,6 +80,19 @@ function renderModalAiBanner(state: AiAccessState): HTMLElement | null {
 
 async function populateAttestationList(colonyId: string, bodyEl: HTMLElement, state: AiAccessState): Promise<void> {
   bodyEl.replaceChildren();
+  const isOfflineLocal =
+    !isProductionBuild() &&
+    typeof location !== 'undefined' &&
+    new URLSearchParams(location.search).get('host') === 'local';
+  if (isOfflineLocal) {
+    const empty = document.createElement('p');
+    empty.textContent =
+      state.kind === 'script'
+        ? 'No NEAR.AI TEE attestations recorded yet — this colony runs Script AI (Free) locally until NEAR.AI TEE is unlocked.'
+        : 'No NEAR.AI TEE attestations recorded for this colony yet.';
+    bodyEl.appendChild(empty);
+    return;
+  }
   const loading = document.createElement('p');
   loading.className = 'ta-me-muted';
   loading.textContent = `Fetching TEE proofs for ${colonyId}…`;

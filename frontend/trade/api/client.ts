@@ -4,6 +4,7 @@ import type {
   TradeKeyView, TradeOrdersResponse, TradeOverviewResponse, TradePairsResponse, TradePolicyResponse,
 } from '@terra/contracts';
 import { consentedAnonHeader } from '../../design/analytics/auth';
+import { isProductionBuild } from '../../game/core/buildEnv';
 
 /** Stable error of the trade API (`{ error: { code, message, details? } }`) or a transport failure (`network`). */
 export class TradeApiFailure extends Error {
@@ -78,13 +79,15 @@ export class TradeClient {
   }
 
   private async loadDevPlanetsList(): Promise<string[]> {
-    try {
-      const res = await this.doFetch('/v1/dev/planets');
-      if (res.ok) {
-        const ids = ((await res.json()) as { planets: Array<{ id: string }> }).planets.map((p) => p.id);
-        if (ids.length > 0) return ids;
-      }
-    } catch { /* fallback below */ }
+    if (!isProductionBuild()) {
+      try {
+        const res = await this.doFetch('/v1/dev/planets');
+        if (res.ok) {
+          const ids = ((await res.json()) as { planets: Array<{ id: string }> }).planets.map((p) => p.id);
+          if (ids.length > 0) return ids;
+        }
+      } catch { /* fallback below */ }
+    }
     const out: string[] = [];
     if (this.token) {
       try {

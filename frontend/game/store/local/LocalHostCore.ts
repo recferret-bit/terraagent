@@ -81,10 +81,10 @@ export class LocalHostCore {
     const waves = parseWaves(opts.waves).list;
     const core = new LocalHostCore(waves, deps, post);
     core.spectatorMode = Boolean(opts.spectator || opts.scenario === 'spectator');
-    const source = core.spectatorMode
+    const source = core.spectatorMode && (!opts.scenario || opts.scenario === 'spectator')
       ? spectatorSource({ planetType: opts.planetType, seed: opts.seed, waves, botCount: opts.botCount })
       : scenarioSource(opts.scenario, waves);
-    await core.build(source, false);
+    await core.build(source, Boolean(opts.reset));
     core.run();
     return core;
   }
@@ -137,13 +137,20 @@ export class LocalHostCore {
     const key = snapshotKey(source.name);
     let saved: LocalSnapshot | null = null;
     let resumed: { host: SimHost; live: BalanceOverrides } | null = null;
-    if (fresh) await this.deps.store.remove(key).catch(() => undefined);
-    else {
+    if (fresh) {
+      this.feed.reset();
+      await this.deps.store.remove(key).catch(() => undefined);
+    } else {
       saved = await this.deps.store.load(key).catch(() => null);
       resumed = saved && this.tryResume(saved, flags);
     }
     this.source = source;
-    if (!resumed) return this.installSeed(seeded);
+    if (!resumed) {
+      this.installSeed(seeded);
+      if (this.spectatorMode) await this.save();
+      return;
+    }
+    this.feed.restore(saved?.recentInputs, saved?.recentDecisions);
     // a resumed snapshot continues the journal saved with it, or opens its balances from col.stock when that journal is
     // missing or does not match
     const { journal, problem } = resumeJournal(saved?.journal, resumed.host.state);
@@ -403,10 +410,13 @@ export class LocalHostCore {
   save(): Promise<void> {
     if (this.down) return Promise.resolve(); // never persist a half-changed planet
     const live = this.tuning.live;
+    const recent = this.feed.getRecent();
     return this.deps.store.save(snapshotKey(this.source.name), {
       bytes: this.host.snapshot(), tick: this.host.tick, savedAt: this.deps.wallMs(), dataHash: this.host.pipeline.config.data.hash,
       simVersion: this.host.state.meta.simVersion, flags: [...this.tuning.flags], overrides: live as Record<string, unknown>,
       journal: this.ledger.toState(),
+      recentInputs: recent.inputs,
+      recentDecisions: recent.decisions,
     }).catch((e: unknown) => this.post({ t: 'error', message: `snapshot save failed: ${e instanceof Error ? e.message : String(e)}` }, []));
   }
 

@@ -1,4 +1,5 @@
 import type { DevPlanetType } from '@terra/sim';
+import { isProductionBuild } from '../../core/buildEnv';
 import type { SessionTarget } from '../../net/types';
 import type { SectorIntentInput } from '../../ui/lobby/orbitalPickerModel';
 import { bootAuthAndHome, renewAccessToken, type BootAuthResult, type FetchLike, type StorageLike } from './bootOnline';
@@ -66,7 +67,7 @@ export class GuestBootTarget implements SessionTarget {
     for (;;) {
       if (this.disposed) return null;
       try {
-        const shouldRefresh = this.o.tryRefresh ?? !new URLSearchParams(this.o.search).has('as');
+        const shouldRefresh = this.o.tryRefresh ?? (isProductionBuild() || !new URLSearchParams(this.o.search).has('as'));
         return this.adopt(await bootAuthAndHome(this.authOptions(shouldRefresh)));
       } catch (e) {
         if (e instanceof BootCancelledError || this.disposed) return null;

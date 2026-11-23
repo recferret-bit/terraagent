@@ -1,6 +1,7 @@
 import { Controller, Get, Inject, Optional, Query } from '@nestjs/common';
 import type { PrismaClient } from '@terra/db';
 import { CoreException } from '../../../core/errors/index.js';
+import { databaseEnabled } from '../../../core/persistence.js';
 import { APP_ENV, type AppEnv } from '../../../core/tokens.js';
 import { PRISMA } from '../../../db/db.module.js';
 import { FlagsService } from '../../../flags/flags.service.js';
@@ -21,6 +22,10 @@ export class GuildRadarController {
     @Optional() @Inject(PRISMA) private readonly prisma?: PrismaClient,
     @Optional() @Inject(APP_ENV) private readonly env?: AppEnv,
   ) {}
+
+  private db(): PrismaClient | undefined {
+    return this.prisma && (databaseEnabled(this.env) || !('$connect' in this.prisma)) ? this.prisma : undefined;
+  }
 
   @Get('guild/radar')
   async radar(
@@ -45,7 +50,7 @@ export class GuildRadarController {
     if ((!colonyIdRaw && !accountId) || !this.flags.has('W28')) return 0;
     const colonyId = await this.resolveColonyRowId(planetId, colonyIdRaw, colonyIndexRaw);
     const envBag = (this.env ?? process.env) as unknown as Record<string, string | undefined>;
-    return (await resolveDbStakerPerks(this.prisma, { colonyId, accountId, env: envBag, w28: true })).guildRadarLeadMs;
+    return (await resolveDbStakerPerks(this.db(), { colonyId, accountId, env: envBag, w28: true })).guildRadarLeadMs;
   }
 
   private async resolveColonyRowId(
@@ -54,7 +59,7 @@ export class GuildRadarController {
     colonyIndexRaw: string | undefined,
   ): Promise<string | undefined> {
     if (!simId) return undefined;
-    const db = this.prisma;
+    const db = this.db();
     if (!db || !/^\d{1,3}$/.test(colonyIndexRaw ?? '') || typeof db.colony?.findFirst !== 'function') return simId;
     if (typeof db.colony.findUnique === 'function' && (await db.colony.findUnique({ where: { id: simId }, select: { id: true } }))) {
       return simId;

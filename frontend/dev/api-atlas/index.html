@@ -11,7 +11,7 @@
   <p class="kicker">GENERATED</p>
   <h1>TerraAgent API atlas</h1>
   <p class="note">Generated file. Regenerate with <code>npm run api:atlas</code>. Do not hand-edit.</p>
-  <p class="counts">173 HTTP · 28 socket messages · 89 commands · 98 events · 45 HTTP routes with no client caller</p>
+  <p class="counts">176 HTTP · 28 socket messages · 89 commands · 98 events · 46 HTTP routes with no client caller</p>
   <nav>
     <a href="#http">HTTP</a>
     <a href="#socket">WebSocket</a>
@@ -70,6 +70,18 @@
 }</pre><h3>Response</h3><pre>{
   &quot;status&quot;: 204,
   &quot;returnType&quot;: &quot;Promise&lt;void&gt;&quot;,
+  &quot;note&quot;: &quot;No JSON Schema on this route. Return type is the controller method signature.&quot;
+}</pre></div></details>
+<details class="card" data-k="post /v1/analytics/surface backend/app/src/analytics/analytics.controller.ts frontend/design/analytics/boot.ts"><summary><span class="verb act">POST</span><span class="path">/v1/analytics/surface</span><span class="src">backend/app/src/analytics/analytics.controller.ts</span></summary><div class="body"><p class="from"><span class="lbl">called from</span> <code>frontend/design/analytics/boot.ts</code></p><h3>Request</h3><pre>{
+  &quot;params&quot;: [],
+  &quot;query&quot;: [],
+  &quot;body&quot;: {
+    &quot;type&quot;: &quot;AnalyticsSurfacePingV1&quot;,
+    &quot;schema&quot;: &quot;AnalyticsSurfacePingV1&quot;
+  }
+}</pre><h3>Response</h3><pre>{
+  &quot;status&quot;: 204,
+  &quot;returnType&quot;: &quot;void&quot;,
   &quot;note&quot;: &quot;No JSON Schema on this route. Return type is the controller method signature.&quot;
 }</pre></div></details>
 <details class="card" data-k="post /v1/auth/guest backend/app/src/core/auth/auth.controller.ts frontend/design/pilot/activehomecolony.ts frontend/game/app/online/bootonline.ts frontend/game/app/online/joinqueuecoordinator.ts"><summary><span class="verb act">POST</span><span class="path">/v1/auth/guest</span><span class="src">backend/app/src/core/auth/auth.controller.ts</span></summary><div class="body"><p class="from"><span class="lbl">called from</span> <code>frontend/design/pilot/activeHomeColony.ts</code> <code>frontend/game/app/online/bootOnline.ts</code> <code>frontend/game/app/online/joinQueueCoordinator.ts</code></p><h3>Request</h3><pre>{
@@ -478,8 +490,8 @@
   &quot;query&quot;: [],
   &quot;body&quot;: null
 }</pre><h3>Response</h3><pre>{
-  &quot;returnType&quot;: &quot;Promise&lt;&quot;,
-  &quot;note&quot;: &quot;No JSON Schema on this route. Return type is the controller method signature.&quot;
+  &quot;returnType&quot;: &quot;&quot;,
+  &quot;note&quot;: &quot;No JSON Schema or return type on this controller method.&quot;
 }</pre></div></details>
 <details class="card" data-k="get /v1/dev/planets/:planetid/ledger backend/app/src/game/ledger/dev-ledger.controller.ts frontend/game/net/devserver.ts"><summary><span class="verb get">GET</span><span class="path">/v1/dev/planets/:planetId/ledger</span><span class="src">backend/app/src/game/ledger/dev-ledger.controller.ts</span></summary><div class="body"><p class="from"><span class="lbl">called from</span> <code>frontend/game/net/devServer.ts</code></p><h3>Request</h3><pre>{
   &quot;params&quot;: [
@@ -526,6 +538,17 @@
   &quot;status&quot;: 200,
   &quot;returnType&quot;: null,
   &quot;note&quot;: &quot;No JSON Schema or return type on this controller method.&quot;
+}</pre></div></details>
+<details class="card" data-k="post /v1/dev/spectator backend/app/src/game/dev-planets.controller.ts frontend/game/app/online/sessiontarget.ts"><summary><span class="verb act">POST</span><span class="path">/v1/dev/spectator</span><span class="src">backend/app/src/game/dev-planets.controller.ts</span></summary><div class="body"><p class="from"><span class="lbl">called from</span> <code>frontend/game/app/online/sessionTarget.ts</code></p><h3>Request</h3><pre>{
+  &quot;params&quot;: [],
+  &quot;query&quot;: [],
+  &quot;body&quot;: {
+    &quot;type&quot;: &quot;unknown&quot;
+  }
+}</pre><h3>Response</h3><pre>{
+  &quot;status&quot;: 200,
+  &quot;returnType&quot;: &quot;Promise&lt;DevSpectatorResponse&gt;&quot;,
+  &quot;note&quot;: &quot;No JSON Schema on this route. Return type is the controller method signature.&quot;
 }</pre></div></details>
 <details class="card" data-k="post /v1/dev/trade/bots backend/app/src/market/trade/trade-dev.controller.ts "><summary><span class="verb act">POST</span><span class="path">/v1/dev/trade/bots</span><span class="src">backend/app/src/market/trade/trade-dev.controller.ts</span></summary><div class="body"><p class="from"><span class="lbl">called from</span> <span class="none">no client caller found</span></p><h3>Request</h3><pre>{
   &quot;params&quot;: [],
@@ -919,7 +942,7 @@
   ],
   &quot;query&quot;: [],
   &quot;body&quot;: {
-    &quot;type&quot;: &quot;{ loadOptions?: LoadOptions }&quot;
+    &quot;type&quot;: &quot;{ loadOptions?: LoadOptions; restoreOnly?: boolean }&quot;
   }
 }</pre><h3>Response</h3><pre>{
   &quot;returnType&quot;: &quot;Promise&lt;&quot;,
@@ -934,7 +957,7 @@
   ],
   &quot;query&quot;: [],
   &quot;body&quot;: {
-    &quot;type&quot;: &quot;LoadOptions &amp; { snapshotBase64?: string; scenarioSeats?: number[] }&quot;
+    &quot;type&quot;: &quot;LoadOptions &amp; { snapshotBase64?: string; scenarioSeats?: number[]; captureInitial?: boolean }&quot;
   }
 }</pre><h3>Response</h3><pre>{
   &quot;returnType&quot;: &quot;Promise&lt;&quot;,
@@ -954,6 +977,19 @@
 }</pre><h3>Response</h3><pre>{
   &quot;returnType&quot;: &quot;&quot;,
   &quot;note&quot;: &quot;No JSON Schema or return type on this controller method.&quot;
+}</pre></div></details>
+<details class="card" data-k="post /v1/internal/sim/planets/:planetid/wipe backend/app/src/game/cluster/internal-sim.controller.ts "><summary><span class="verb act">POST</span><span class="path">/v1/internal/sim/planets/:planetId/wipe</span><span class="src">backend/app/src/game/cluster/internal-sim.controller.ts</span></summary><div class="body"><p class="from"><span class="lbl">called from</span> <span class="none">no client caller found</span></p><h3>Request</h3><pre>{
+  &quot;params&quot;: [
+    {
+      &quot;name&quot;: &quot;planetId&quot;,
+      &quot;type&quot;: &quot;string&quot;
+    }
+  ],
+  &quot;query&quot;: [],
+  &quot;body&quot;: null
+}</pre><h3>Response</h3><pre>{
+  &quot;returnType&quot;: &quot;Promise&lt;&quot;,
+  &quot;note&quot;: &quot;No JSON Schema on this route. Return type is the controller method signature.&quot;
 }</pre></div></details>
 <details class="card" data-k="get /v1/market/:planetid backend/app/src/market/api/market.controller.ts frontend/game/features/market/board/boardcontroller.ts frontend/game/net/marketapi.ts"><summary><span class="verb get">GET</span><span class="path">/v1/market/:planetId</span><span class="src">backend/app/src/market/api/market.controller.ts</span></summary><div class="body"><p class="from"><span class="lbl">called from</span> <code>frontend/game/features/market/board/BoardController.ts</code> <code>frontend/game/net/marketApi.ts</code></p><h3>Request</h3><pre>{
   &quot;params&quot;: [
@@ -9919,7 +9955,7 @@
   &quot;wave&quot;: &quot;W01&quot;,
   &quot;origin&quot;: &quot;client&quot;
 }</pre></div></details>
-<details class="card" data-k="cmd landpod opens the caller colony's descending pod as soon as it has descended `hq.startingkit.podlandmins` (the client's touchdown animation); `already_landed` once it is open. frontend/game/app/online/onlinesession.ts"><summary><span class="verb act">cmd</span><span class="path">landPod</span></summary><div class="body"><p class="meta">Opens the caller colony's descending pod as soon as it has descended `hq.startingKit.podLandMinS` (the client's touchdown animation); `already_landed` once it is open.</p><p class="from"><span class="lbl">called from</span> <code>frontend/game/app/online/OnlineSession.ts</code></p><h3>Request</h3><pre>{
+<details class="card" data-k="cmd landpod opens the caller colony's descending pod as soon as it has descended `hq.startingkit.podlandmins` (the client's touchdown animation); `already_landed` once it is open. frontend/design/analytics/play.ts frontend/game/app/online/onlinesession.ts"><summary><span class="verb act">cmd</span><span class="path">landPod</span></summary><div class="body"><p class="meta">Opens the caller colony's descending pod as soon as it has descended `hq.startingKit.podLandMinS` (the client's touchdown animation); `already_landed` once it is open.</p><p class="from"><span class="lbl">called from</span> <code>frontend/design/analytics/play.ts</code> <code>frontend/game/app/online/OnlineSession.ts</code></p><h3>Request</h3><pre>{
   &quot;$schema&quot;: &quot;https://json-schema.org/draft/2020-12/schema&quot;,
   &quot;additionalProperties&quot;: false,
   &quot;properties&quot;: {},

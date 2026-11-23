@@ -1,4 +1,6 @@
 import type { DbClient } from '@terra/db';
+import { databaseEnabled } from '../../../core/persistence.js';
+import type { AppEnv } from '../../../core/tokens.js';
 import { EMPTY_AI_USAGE, type AiUsageSnapshot } from './ai-usage.reader.js';
 import { isW28Enabled, resolvePerkLadder } from './legacy-ladder.js';
 import { PatronSeatService } from './patron-seat.service.js';
@@ -47,12 +49,13 @@ export async function resolveWalletPerks(db: DbClient | null | undefined, q: Per
   const nowMs = q.nowMs ?? deps.clock();
   const w28 = isW28Enabled(q.env, q.w28);
   const ladder = resolvePerkLadder({ w28, env: q.env, standardPlatformFeeBp: q.standardPlatformFeeBp, grossApyBp: q.grossApyBp });
-  const wallet = db ? await resolveWallet(db, q) : NO_WALLET;
-  const clock = db ? await readStakeClock(db, wallet) : EMPTY_STAKE_CLOCK;
+  const activeDb = db && (databaseEnabled((q.env ?? process.env) as unknown as AppEnv) || !('$connect' in db)) ? db : null;
+  const wallet = activeDb ? await resolveWallet(activeDb, q) : NO_WALLET;
+  const clock = activeDb ? await readStakeClock(activeDb, wallet) : EMPTY_STAKE_CLOCK;
   const nearUsd = q.full ? await deps.priceProvider.nearUsd() : 0;
-  const usage = q.full && db ? await deps.usageReader.read(db, wallet, nowMs) : EMPTY_AI_USAGE;
-  const tradeFeeUsd = q.full && db ? await deps.tradeFeeProvider.dailyProtocolTradeFeeUsd(wallet, nowMs) : 0;
-  const seats = q.full && db && w28 ? new PatronSeatService(db) : null;
+  const usage = q.full && activeDb ? await deps.usageReader.read(activeDb, wallet, nowMs) : EMPTY_AI_USAGE;
+  const tradeFeeUsd = q.full && activeDb ? await deps.tradeFeeProvider.dailyProtocolTradeFeeUsd(wallet, nowMs) : 0;
+  const seats = q.full && activeDb && w28 ? new PatronSeatService(activeDb) : null;
   const leadPatronPlanetIds = seats ? await seats.leadPlanetIdsFor(wallet, nowMs) : [];
   const perks = evaluatePerks({
     ladder,

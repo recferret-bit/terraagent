@@ -145,7 +145,7 @@ export class SimClusterService {
     await this.postJson(internalUrl, `/v1/internal/sim/planets/${encodeURIComponent(planetId)}/mode`, { mode }).catch(() => undefined);
   }
 
-  async forwardLoadNew(planetId: string, opts: LoadOptions & { scenarioSeats?: number[] }): Promise<void> {
+  async forwardLoadNew(planetId: string, opts: LoadOptions & { scenarioSeats?: number[]; captureInitial?: boolean }): Promise<void> {
     const loc = await this.resolveLocation(planetId);
     const { snapshot, ...rest } = opts;
     const payload = {
@@ -159,6 +159,24 @@ export class SimClusterService {
     const worker = await this.simLease.pickHealthyWorker();
     if (!worker) throw new Error(`No simulation worker available to load ${planetId}`);
     await this.postJson(worker.internalUrl, `/v1/internal/sim/planets/${encodeURIComponent(planetId)}/load-new`, payload);
+  }
+
+  async wipeAnywhere(planetId: string): Promise<void> {
+    const loc = await this.resolveLocation(planetId);
+    if (loc?.kind === 'remote') {
+      await this.postJson(loc.internalUrl, `/v1/internal/sim/planets/${encodeURIComponent(planetId)}/wipe`, {});
+      return;
+    }
+    if (this.simLease.canHostSim() && this.snapshots) {
+      await this.snapshots.wipeLoadedOrHeld(planetId);
+      return;
+    }
+    const worker = await this.simLease.pickHealthyWorker();
+    if (worker) {
+      await this.postJson(worker.internalUrl, `/v1/internal/sim/planets/${encodeURIComponent(planetId)}/wipe`, {});
+    } else if (this.snapshots) {
+      await this.snapshots.wipeLoadedOrHeld(planetId);
+    }
   }
 
   async forwardLoadHome(planetId: string, opts: LoadOptions): Promise<'loaded' | 'restored' | 'generated'> {

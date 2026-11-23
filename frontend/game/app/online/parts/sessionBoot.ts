@@ -8,6 +8,7 @@ import type { ConnectionState, SessionTarget, Transport } from '../../../net/typ
 import { WsTransport, browserDeps } from '../../../net/WsTransport';
 import type { LocalHost } from '../../../store/local/LocalHost';
 import { WorldStore } from '../../../store/WorldStore';
+import { isProductionBuild } from '../../../core/buildEnv';
 import type { ClientFlagsStore } from '../../../core/flags';
 import type { ColonyLoadMode } from '../PodTouchdownFx';
 import { BootOverlay } from '../BootOverlay';
@@ -151,7 +152,7 @@ export function resolveSocketFallback(params: {
   planetKind: PlanetKind | null;
 }): BootAuthResult | null {
   const { state, boot, disposed, hasLatestView, hasLocalHost, allowLocalFallback, spawn, planetKind } = params;
-  if (state.phase !== 'terminal' || disposed || hasLatestView || hasLocalHost || !allowLocalFallback) return null;
+  if (isProductionBuild() || state.phase !== 'terminal' || disposed || hasLatestView || hasLocalHost || !allowLocalFallback) return null;
   if (state.reason === NOT_YOUR_PLANET) return null;
   return createLocalBootFallback(boot.deviceSecret, undefined, spawn, devPlanetTypeOfKind(planetKind));
 }
@@ -247,7 +248,8 @@ export function createSessionBootRig(params: {
     ? { protocol: location.protocol, host: location.host, search }
     : { protocol: 'http:', host: '127.0.0.1:5173', search };
 
-  const useGuestBoot = mode === 'boot' && flags.set.has('W01') && !scenarioParam(search) && !joinParam(search);
+  const devBuild = !isProductionBuild();
+  const useGuestBoot = mode === 'boot' && flags.set.has('W01') && (!devBuild || (!scenarioParam(search) && !joinParam(search)));
   const guest = useGuestBoot
     ? new GuestBootTarget(`${loc.protocol === 'https:' ? 'wss' : 'ws'}://${loc.host}/ws`, {
       fetch: opts.fetch,
@@ -281,7 +283,7 @@ export function createSessionBootRig(params: {
   const bootTarget = guest ?? createSessionTarget(loc);
   const pilot = new PilotBridge({ fetch: opts.fetch, target: () => guest, sessionToken: () => bootTarget.accessToken });
 
-  const localOpts = !useGuestBoot && !opts.transport && !opts.localHost ? localHostOptions(search) : null;
+  const localOpts = devBuild && !useGuestBoot && !opts.transport && !opts.localHost ? localHostOptions(search) : null;
   const local = localOpts ? new LocalTransport(workerLink(createLocalWorker()), localOpts) : null;
   const transport = withDevLag(opts.transport ?? local ?? new WsTransport(bootTarget, opts.wsDeps ?? browserDeps()), search);
   const banner = typeof window !== 'undefined' && typeof document !== 'undefined' && typeof document.createTextNode === 'function'
@@ -304,7 +306,8 @@ export function createSessionBootRig(params: {
   entities.healthBars.isEnabled = () => flags.current.flags.has('W02');
   entities.isW10Enabled = () => flags.current.flags.has('W10');
   // W28-12 prestige: cosmetic and server-fed, so never for an in-browser host (`?host=local` shows tier 0)
-  entities.prestige.isEnabled = () => flags.current.flags.has('W28') && !local && !opts.localHost;
+  const isLocalSearch = devBuild && new URLSearchParams(search).get('host') === 'local';
+  entities.prestige.isEnabled = () => flags.current.flags.has('W28') && !local && !opts.localHost && !isLocalSearch;
   if (loadMode !== 'pod') {
     entities.podTouchdown.setSkipLocked(true);
   } else if (fromSpaceDescent && !skipDescent) {

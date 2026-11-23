@@ -10,6 +10,7 @@ import {
 } from '@terra/contracts';
 import { classifyProfileFailure, type ProfileReason } from '../../../design/analytics/profile';
 import { jwtStillValid, refreshPilotSession } from '../../../design/pilot/PilotAccess';
+import { isProductionBuild } from '../../core/buildEnv';
 import { readActivePilot } from '../../features/achievements/activePilot';
 import { isLocalSimSignedOut } from './localModeSim';
 
@@ -66,15 +67,17 @@ function syncRefreshedPilotToken(accessToken: string): void {
 
 export function resolveMeBearerToken(search?: string): string {
   const rawSearch = search ?? (typeof location !== 'undefined' ? location.search : '');
-  try {
-    const params = new URLSearchParams(rawSearch);
-    const pid = params.get('playerId')?.trim();
-    if (pid) return `player:${pid}`;
-    const as = params.get('as')?.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
-    if (as) return `dev:${as}`;
-    if (params.get('host') === 'local') return isLocalSimSignedOut() ? '' : 'local-mode-token';
-  } catch {
-    // Ignore malformed query
+  if (!isProductionBuild()) {
+    try {
+      const params = new URLSearchParams(rawSearch);
+      const pid = params.get('playerId')?.trim();
+      if (pid) return `player:${pid}`;
+      const as = params.get('as')?.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
+      if (as) return `dev:${as}`;
+      if (params.get('host') === 'local') return isLocalSimSignedOut() ? '' : 'local-mode-token';
+    } catch {
+      // Ignore malformed query
+    }
   }
 
   const stored = readActivePilot();
@@ -96,6 +99,7 @@ function isWaveDisabledPayload(status: number, body: unknown): boolean {
 }
 
 export function buildWavesQuerySuffix(rawSearch: string): string {
+  if (isProductionBuild()) return '';
   try {
     const waves = new URLSearchParams(rawSearch).get('waves')?.trim();
     if (waves) return `?waves=${encodeURIComponent(waves)}`;
@@ -112,7 +116,8 @@ export async function fetchMeData(
   const rawSearch = search ?? (typeof location !== 'undefined' ? location.search : '');
   let token = resolveMeBearerToken(rawSearch);
   const params = new URLSearchParams(rawSearch);
-  if (!params.has('as') && !params.has('playerId')) {
+  const devOverride = !isProductionBuild() && (params.has('as') || params.has('playerId'));
+  if (!devOverride) {
     const refreshed = await refreshPilotSession(doFetch, doFetch === defaultMeFetch);
     if (refreshed) {
       if (refreshed.player?.isGuest === true) {
@@ -179,7 +184,7 @@ export async function fetchMeData(
 
     const profile = MeProfileResponseSchema.parse(profBody);
     const achievements = MeAchievementsResponseSchema.parse(achBody);
-    if (profile.identity.isGuest && !profile.identity.accountId && !params.has('as') && !params.has('playerId')) {
+    if (profile.identity.isGuest && !profile.identity.accountId && !devOverride) {
       return {
         kind: 'unauthenticated',
         message: 'Sign in or create a pilot account to view your profile, achievements, and NEAR.AI settings.',
@@ -200,8 +205,9 @@ export async function fetchMeData(
 
 async function resolveMeWriteBearer(doFetch: MeFetchFn, rawSearch: string): Promise<string> {
   const params = new URLSearchParams(rawSearch);
+  const devOverride = !isProductionBuild() && (params.has('as') || params.has('playerId'));
   let token = resolveMeBearerToken(rawSearch);
-  if (!params.has('as') && !params.has('playerId')) {
+  if (!devOverride) {
     if (!token && cachedRefreshedToken) token = cachedRefreshedToken;
     if (!token) {
       try {

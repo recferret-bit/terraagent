@@ -93,7 +93,7 @@ export async function restoreOnePlanet(
     }
     // A scenario planet (no colony rows: its colonies are the scenario's) stays playable as colony 0 by dev sessions.
     // A planet with colony rows is never marked: its colonies belong to their players (BE-07).
-    const isDev = devPlanetTypeOf(id) !== null;
+    const isDev = devPlanetTypeOf(id) !== null || id.startsWith('pl_spec_');
     if (!isDev && hasLiveColony(state) && !(await deps.homes?.listColoniesByPlanetId(id))?.length) {
       deps.planets.markScenarioColonyPlanet(id, liveColonyIndices(state));
     }

@@ -64,6 +64,7 @@ export interface ConnectionDeps {
   ensureHosted?(planetId: string): Promise<PlanetHostLocation | null>;
   fullState?(planetId: string): Promise<FullState>;
   joinRoom?(planetId: string, member: RoomMember, loc: PlanetHostLocation): void;
+  readonly spectatorAllowed?: boolean;
 }
 
 type State = 'new' | 'lobby' | 'joining' | 'playing' | 'closed';
@@ -314,6 +315,10 @@ export class Connection implements RoomMember {
    * production) may join any loaded planet (`?scenario=` / `?join=` dev flows, BE-07).
    */
   private async onJoin(msg: ClientMessageOf<'join'>): Promise<void> {
+    const joinMode: 'play' | 'spectator' = msg.d.mode === 'spectator' ? 'spectator' : 'play';
+    if (joinMode === 'spectator' && this.d.spectatorAllowed === false) {
+      return this.bye(CLOSE_CODES.forbidden, 'spectator_local_only');
+    }
     const planetId = msg.d.planetId;
     if (this.state === 'playing') this.leaveRoom();
     const loc: PlanetHostLocation | null = this.d.ensureHosted
@@ -323,7 +328,6 @@ export class Connection implements RoomMember {
         : null;
     if (this.state === 'closed') return;
     if (!loc) return this.bye(CLOSE_CODES.forbidden, 'forbidden');
-    const joinMode: 'play' | 'spectator' = msg.d.mode === 'spectator' ? 'spectator' : 'play';
     this.state = 'joining';
     this.planetId = planetId;
     this.mode = joinMode;
@@ -348,6 +352,7 @@ export class Connection implements RoomMember {
       dev: this.session?.dev === true,
       isScenarioPlanet: this.d.planets.isScenarioColonyPlanet(planetId),
       mode: joinMode,
+      spectatorAllowed: this.d.spectatorAllowed,
     });
     if (this.state !== 'joining') return; // closed or left meanwhile
     if (!joinCheck.ok) return this.bye(CLOSE_CODES.forbidden, joinCheck.reason);

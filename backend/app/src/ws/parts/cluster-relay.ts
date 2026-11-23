@@ -45,6 +45,7 @@ export class InternalSimRelayServer {
   private readonly unsubExtraFeeds: (() => void) | undefined;
   private readonly unwarp: () => void;
   private readonly undown: () => void;
+  private readonly ununload: (() => void) | undefined;
 
   constructor(
     private readonly planets: GamePlanets,
@@ -64,7 +65,7 @@ export class InternalSimRelayServer {
     this.unwarp = planets.onWarp((planetId, k) => {
       if (this.hasWatchers(planetId)) this.sendPlanetJson(planetId, { t: 'warp', k });
     });
-    this.undown = planets.onPlanetDown((planetId) => {
+    const evictPlanetRelays = (planetId: string) => {
       const set = this.socketsByPlanet.get(planetId);
       if (!set?.size) return;
       const frame = JSON.stringify({ t: 'planet_down' } satisfies RelayWireMsg);
@@ -73,7 +74,9 @@ export class InternalSimRelayServer {
         ws.close(1012, 'planet_down');
       }
       this.socketsByPlanet.delete(planetId);
-    });
+    };
+    this.undown = planets.onPlanetDown(evictPlanetRelays);
+    this.ununload = planets.onPlanetUnloaded?.(evictPlanetRelays);
   }
 
   hasWatchers(planetId: string): boolean {
@@ -151,6 +154,7 @@ export class InternalSimRelayServer {
     this.unsubExtraFeeds?.();
     this.unwarp();
     this.undown();
+    this.ununload?.();
     for (const set of this.socketsByPlanet.values()) {
       for (const ws of set) ws.close(1012, 'server_restarting');
     }

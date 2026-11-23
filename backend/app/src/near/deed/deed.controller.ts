@@ -26,6 +26,7 @@ import { FlagsService } from '../../flags/flags.service.js';
 import { SectorAntiCheatService } from '../../core/anticheat/index.js';
 import { GamePlanets } from '../../game/game-planets.service.js';
 import { OutboxRelayService } from '../application/outbox/outbox.module.js';
+import { NearException } from '../domain/errors.js';
 import {
   assertColonyOwnership,
   isStrictNearAuth,
@@ -102,7 +103,8 @@ export class NearDeedController {
     const playerId = resolveOptionalBearerPlayerId(req, this.tokens, this.env);
     await this.debounceService.flushReady();
 
-    if (isStrictNearAuth('DeedNft', this.env) && !playerId && !colonyId && !planetId) {
+    const strictAuth = isStrictNearAuth('DeedNft', this.env);
+    if (strictAuth && !playerId && !colonyId && !planetId) {
       return NearDeedListResponse.parse({ deed: null, deeds: [] });
     }
 
@@ -111,7 +113,7 @@ export class NearDeedController {
       const byColony = await this.deeds.findByColonyId(colonyId);
       if (byColony) records = [byColony];
     }
-    if (records.length === 0) {
+    if (records.length === 0 && (!strictAuth || playerId)) {
       const seeded = await this.ensureDeedForLoadedColony({ colonyId, planetId, playerId });
       if (seeded) records = [seeded];
     }
@@ -136,6 +138,12 @@ export class NearDeedController {
       throw new CoreException('NOT_FOUND', { status: 404, message: 'Not found' });
     }
     const callerPlayerId = resolveOptionalBearerPlayerId(req, this.tokens, this.env);
+    if (isStrictNearAuth('DeedNft', this.env) && !callerPlayerId) {
+      throw new NearException('NEAR_NOT_OWNER', {
+        status: 401,
+        message: 'Authentication is required for this NEAR action',
+      });
+    }
     const existing = body?.colonyId
       ? await this.deeds.findByColonyId(body.colonyId)
       : (await this.deeds.listForPlayerOrColony({ playerId: callerPlayerId, planetId: body?.planetId }))[0];

@@ -4,6 +4,7 @@ import {
   type PlanetType,
   type SectorPlacementIntentV1,
 } from '@terra/contracts';
+import { isProductionBuild } from '../../core/buildEnv';
 import {
   normalizeSectorIntent,
   toSectorPlacementIntentV1,
@@ -74,8 +75,8 @@ export interface JoinQueueOptions {
   readonly onDescent?: (update: { progress: number; q: number; r: number; colonyId: string; planetId: string }) => void;
 }
 
-export function pendingJoinStorageKey(search = '', dev: boolean = import.meta.env.DEV): string {
-  const as = dev ? new URLSearchParams(search).get('as')?.toLowerCase().replace(/[^a-z0-9_-]/g, '').slice(0, 32) : '';
+export function pendingJoinStorageKey(search = '', dev: boolean = !isProductionBuild() && Boolean(import.meta.env?.DEV)): string {
+  const as = dev && !isProductionBuild() ? new URLSearchParams(search).get('as')?.toLowerCase().replace(/[^a-z0-9_-]/g, '').slice(0, 32) : '';
   return as ? `${PENDING_JOIN_TICKET_KEY}:${as}` : PENDING_JOIN_TICKET_KEY;
 }
 

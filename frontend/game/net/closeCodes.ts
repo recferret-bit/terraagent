@@ -11,6 +11,7 @@ export const REPEAT_WINDOW_MS = 30_000;
  * join cannot succeed, so it is terminal at once and shown; any other `4003` (token expired, planet not loaded) retries.
  */
 export const NOT_YOUR_PLANET = 'not_your_planet';
+export const SPECTATOR_LOCAL_ONLY = 'spectator_local_only';
 
 export function closeAction(code: number, reason = ''): CloseAction {
   switch (code) {
@@ -19,7 +20,7 @@ export function closeAction(code: number, reason = ''): CloseAction {
     case CLOSE_CODES.colony_eliminated:
       return 'terminal';
     case CLOSE_CODES.forbidden:
-      return reason === NOT_YOUR_PLANET ? 'terminal' : 'reconnect-once';
+      return reason === NOT_YOUR_PLANET || reason === SPECTATOR_LOCAL_ONLY ? 'terminal' : 'reconnect-once';
     case CLOSE_CODES.bad_hello:
       return 'reconnect-once';
     default:
@@ -38,5 +39,6 @@ const TERMINAL_TEXT: Record<number, string> = {
 /** The banner text of a terminal close: by reason where the reason says more than the code, else by code. */
 export function terminalText(code: number | undefined, reason: string | undefined): string {
   if (code === CLOSE_CODES.forbidden && reason === NOT_YOUR_PLANET) return "Not your colony's planet";
+  if (code === CLOSE_CODES.forbidden && reason === SPECTATOR_LOCAL_ONLY) return 'Spectator mode is local-only';
   return TERMINAL_TEXT[code ?? 0] ?? 'Disconnected';
 }

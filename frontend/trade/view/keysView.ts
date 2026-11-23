@@ -84,6 +84,7 @@ export class KeysPanel {
   }
 
   private async create(form: HTMLFormElement, planetId: string): Promise<void> {
+    if (!this.d.client.token) return this.fail('Sign in to create an API key.');
     const val = (id: string): string => (form.querySelector<HTMLInputElement>(`#${id}`)?.value ?? '').trim();
     const scopes = [...form.querySelectorAll<HTMLInputElement>('input[name=scope]:checked')].map((x) => x.value as TradeScope);
     const notional = tryParse('USDC', val('key-notional'));

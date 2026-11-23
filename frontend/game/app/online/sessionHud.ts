@@ -48,6 +48,8 @@ export interface SessionHudDeps {
   token?(): string | null;
   /** Defer mounting the 25+ HUD feature panels off the Orbit `#deploy` click frame until an airborne slice or reveal. */
   deferInitialMount?: boolean;
+  /** True when the session is known to run on a local host (`?host=local`, `LocalTransport`, or `LocalHost`). */
+  isLocalHost?: boolean;
   isSpectator?(): boolean;
   isSpectatorVisionAll?(): boolean;
   setSpectatorVisionAll?(on: boolean): void;
@@ -102,5 +104,6 @@ export function createSessionHud(d: SessionHudDeps): FeatureHud {
     camera: { get: () => d.camera?.() ?? null, enumerable: true, configurable: true },
     rtsCamera: { get: () => d.rtsCamera?.() ?? null, enumerable: true, configurable: true },
   });
-  return new FeatureHud(d.uiParent, d.flags, d.local ? 'local' : 'server', services, Boolean(d.deferInitialMount));
+  const initialHost = d.local || d.localHost() || d.isLocalHost ? 'local' : 'server';
+  return new FeatureHud(d.uiParent, d.flags, initialHost, services, Boolean(d.deferInitialMount));
 }

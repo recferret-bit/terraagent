@@ -75,7 +75,7 @@ describe('LocalHostCore zero-player spectator mode + bot feeds', () => {
     });
     const rej = servers().find((m) => m.t === 'cmd.reject');
     expect(rej?.d).toMatchObject({ id: 'cm_spec_try', code: 'spectator_read_only' });
-    core.stop();
+    await core.stop();
   });
 });
 

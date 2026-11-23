@@ -1,6 +1,8 @@
-import { flagsFromList, newId, type AgentDecisionFeedItemV1, type AwayDigestV1, type BuildingCatalogEntry, type CargoStatusPayload, type DeedUpdatedPayload, type DirectorKeyStatusPayload, type GuildArrivedPayload, type GuildDepartedPayload, type MarketBookPayload, type MarketTradePayload, type ServerMessage, type SimEventWire, type SimInputFeedItemV1, type TreasuryProposalPush } from '@terra/contracts';
+import { flagsFromList, newId, type AgentDecisionFeedItemV1, type AwayDigestV1, type BuildingCatalogEntry, type CargoStatusPayload, type DeedUpdatedPayload, type DirectorKeyStatusPayload, type GuildArrivedPayload, type GuildDepartedPayload, type MarketBookPayload, type MarketTradePayload, type ServerMessage, type ServerMessageOf, type SimEventWire, type SimInputFeedItemV1, type TreasuryProposalPush } from '@terra/contracts';
 import { notePlayerCommand } from '../../design/analytics/play';
 import { compileData, TICK_MS, type BalanceOverrides } from '@terra/sim';
+import { isLocalSpectatorAllowed } from '../app/online/onlineMode';
+import { isProductionBuild } from '../core/buildEnv';
 import { digestFromWelcome } from './awayWelcome';
 import { ownBytes } from './bytes';
 import { Emitter } from '../net/emitter';
@@ -84,7 +86,7 @@ export class WorldStore {
   private awaitingPredictionSince = 0;
   private lagDirtyRender = true;
   private hadLagPending = false;
-  private readonly hasLagParam = typeof location !== 'undefined' && Number(new URLSearchParams(location.search).get('lag')) > 0;
+  private readonly hasLagParam = !isProductionBuild() && typeof location !== 'undefined' && Number(new URLSearchParams(location.search).get('lag')) > 0;
   private readonly renderEvents = new Emitter<readonly SimEventWire[]>();
   private readonly serverEvents = new Emitter<readonly SimEventWire[]>();
   private readonly rejects = new Emitter<{ id: string; kind: string; code: string }>();
@@ -268,16 +270,8 @@ export class WorldStore {
     switch (m.t) {
       case 'welcome': {
         this.planetId = m.d.planet.id;
-        if (m.d.mode === 'spectator') this.spectator = true;
-        if (Array.isArray(m.d.recentInputs) && m.d.recentInputs.length) {
-          this.inputFeeds.splice(0, this.inputFeeds.length, ...m.d.recentInputs.slice(-250));
-        }
-        if (Array.isArray(m.d.recentDecisions) && m.d.recentDecisions.length) {
-          this.decisionFeeds.splice(0, this.decisionFeeds.length, ...m.d.recentDecisions.slice(-250));
-        }
-        if (m.d.recentInputs?.length || m.d.recentDecisions?.length) {
-          this.feedBatch.emit({ inputs: m.d.recentInputs ?? [], decisions: m.d.recentDecisions ?? [] });
-        }
+        if (m.d.mode === 'spectator' && isLocalSpectatorAllowed()) this.spectator = true;
+        this.syncWelcomeFeeds(m.d);
         this.welcomeData = {
           flags: [...m.d.flags],
           overrides: m.d.overrides as BalanceOverrides | undefined,
@@ -347,6 +341,24 @@ export class WorldStore {
       }
       default:
         return;
+    }
+  }
+
+  private syncWelcomeFeeds(d: ServerMessageOf<'welcome'>['d']): void {
+    const hadFeeds = this.inputFeeds.length > 0 || this.decisionFeeds.length > 0;
+    const resetBackwards = d.tick < this.baseTick;
+    if (Array.isArray(d.recentInputs)) {
+      this.inputFeeds.splice(0, this.inputFeeds.length, ...d.recentInputs.slice(-250));
+    } else if (resetBackwards) {
+      this.inputFeeds.length = 0;
+    }
+    if (Array.isArray(d.recentDecisions)) {
+      this.decisionFeeds.splice(0, this.decisionFeeds.length, ...d.recentDecisions.slice(-250));
+    } else if (resetBackwards) {
+      this.decisionFeeds.length = 0;
+    }
+    if (hadFeeds || d.recentInputs?.length || d.recentDecisions?.length) {
+      this.feedBatch.emit({ inputs: [...this.inputFeeds], decisions: [...this.decisionFeeds] });
     }
   }
 

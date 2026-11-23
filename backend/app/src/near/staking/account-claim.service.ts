@@ -135,7 +135,10 @@ export class AccountClaimService {
   async revokeTradingSessionKey(input: { colonyId?: string; playerId?: string }): Promise<{ ok: true; colonyId: string; accountId: string; revoked: true }> {
     const prisma = this.db();
     const colonyId = (input.colonyId ?? '').trim() || 'col_0';
-    if (!prisma) return { ok: true, colonyId, accountId: `${sanitizeAccountStem(colonyId)}.pilot.terraagent.mock`, revoked: true };
+    if (!prisma) {
+      this.assertRowOwnership(undefined, input.playerId);
+      return { ok: true, colonyId, accountId: `${sanitizeAccountStem(colonyId)}.pilot.terraagent.mock`, revoked: true };
+    }
     const row = await this.findColonyAccountRow(prisma, colonyId, undefined, input.playerId);
     if (!row) throw new NearException('NEAR_ACCOUNT_NOT_FOUND', { status: 404, message: 'Colony account not found' });
     this.assertRowOwnership(row.playerId, input.playerId);
@@ -151,6 +154,7 @@ export class AccountClaimService {
     const colonyId = (input.colonyId ?? '').trim() || 'col_0';
     const sealed = generateSealedTradingSessionKey(this.sessionKeyStore());
     if (!prisma) {
+      this.assertRowOwnership(undefined, input.playerId);
       return { ok: true, colonyId, accountId: `${sanitizeAccountStem(colonyId)}.pilot.terraagent.mock`, tradingSessionPublicKey: sealed.publicKey };
     }
     const row = await this.findColonyAccountRow(prisma, colonyId, undefined, input.playerId);
@@ -230,12 +234,12 @@ export class AccountClaimService {
 
   private assertRowOwnership(ownerPlayerId: string | null | undefined, callerPlayerId: string | undefined): void {
     const nodeEnv = (this.env ?? process.env).NODE_ENV;
+    if (!callerPlayerId && (this.isRealNetworkMode() || nodeEnv === 'production')) {
+      throw new NearException('NEAR_NOT_OWNER', { status: 401, message: 'Authentication is required to claim this colony account' });
+    }
     if (!ownerPlayerId || (ownerPlayerId === 'dev_pilot' && nodeEnv !== 'production')) return;
     if (callerPlayerId && ownerPlayerId !== callerPlayerId) {
       throw new NearException('NEAR_NOT_OWNER', { message: 'Caller does not own this colony account' });
-    }
-    if (!callerPlayerId && (this.isRealNetworkMode() || nodeEnv === 'production')) {
-      throw new NearException('NEAR_NOT_OWNER', { message: 'Authentication is required to claim this colony account' });
     }
   }
 
@@ -286,6 +290,7 @@ export class AccountClaimService {
     const prisma = this.db();
     const defaultAccountId = `${input.stem}.pilot.terraagent.mock`;
     if (!prisma) {
+      this.assertRowOwnership(undefined, input.playerId);
       const mem = this.claimedAccounts.get(input.colonyId);
       return {
         accountId: mem?.accountId ?? defaultAccountId,
@@ -300,9 +305,7 @@ export class AccountClaimService {
     }
 
     const deed = await prisma.deed.findUnique({ where: { colonyId: input.colonyId } });
-    if (deed) {
-      this.assertRowOwnership(deed.playerId, input.playerId);
-    }
+    this.assertRowOwnership(deed?.playerId, input.playerId);
     const resolvedAccountId = (deed?.accountId ?? defaultAccountId).replace(/[-_]{2,}/g, '-');
     const playerId = input.playerId ?? deed?.playerId ?? 'dev_pilot';
     await this.ensurePlayerRow(prisma, playerId);

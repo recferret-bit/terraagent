@@ -2,6 +2,7 @@ import { Controller, Get, Inject, Optional, Query } from '@nestjs/common';
 import type { AiBudgetView } from '@terra/contracts';
 import type { PrismaClient } from '@terra/db';
 import { CoreException } from '../../core/errors/index.js';
+import { databaseEnabled } from '../../core/persistence.js';
 import { APP_ENV, type AppEnv } from '../../core/tokens.js';
 import { PRISMA } from '../../db/db.module.js';
 import { FlagsService } from '../../flags/flags.service.js';
@@ -24,9 +25,13 @@ export class AiAccessController {
   constructor(
     @Inject(FlagsService) private readonly flags: FlagsService,
     @Optional() @Inject(PRISMA) private readonly prisma?: PrismaClient,
-    @Optional() @Inject(APP_ENV) env?: AppEnv,
+    @Optional() @Inject(APP_ENV) private readonly env?: AppEnv,
   ) {
     this.gate = new ManagedAiGate(prisma, env);
+  }
+
+  private db(): PrismaClient | undefined {
+    return this.prisma && (databaseEnabled(this.env) || !('$connect' in this.prisma)) ? this.prisma : undefined;
   }
 
   @Get('staking/ai-access')
@@ -48,7 +53,7 @@ export class AiAccessController {
    * `col_N`, so a missing id falls back to `(planetId, colonyIndex)` when the client names them.
    */
   private async rowId(simId: string, planetId: string | undefined, colonyIndexRaw: string | undefined): Promise<string> {
-    const db = this.prisma;
+    const db = this.db();
     if (!db || !planetId || !/^\d{1,3}$/.test(colonyIndexRaw?.trim() ?? '') || typeof db.colony?.findFirst !== 'function') return simId;
     const index = Number(colonyIndexRaw);
     if (await db.colony.findUnique({ where: { id: simId }, select: { id: true } })) return simId;
@@ -58,7 +63,7 @@ export class AiAccessController {
 
   /** The colony owner saved a `/me.html` NEAR.AI key: their Director runs on it for `$0` protocol cost. */
   private async hasByokKey(colonyId: string): Promise<boolean> {
-    const db = this.prisma;
+    const db = this.db();
     if (!db || typeof db.colony?.findUnique !== 'function') return false;
     const colony = await db.colony.findUnique({ where: { id: colonyId }, select: { playerId: true } });
     if (!colony) return false;

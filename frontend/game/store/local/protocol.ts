@@ -15,6 +15,8 @@ export interface LocalHostOptions {
   seed?: string;
   /** Number of initial bot colonies when booting spectator mode (1..6; default 2). */
   botCount?: number;
+  /** When true, wipes any persisted local snapshot for this source and starts bots from scratch. */
+  reset?: boolean;
 }
 
 /** What the page sends to the local host: the same client messages as `/ws`, plus dev commands and housekeeping. */

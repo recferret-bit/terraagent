@@ -113,6 +113,10 @@ export class SnapshotStore extends RepositoryBase {
       this.prisma.sectorParticipantState.deleteMany({ where: { planetId } }),
       this.prisma.planetSector.deleteMany({ where: { planetId } }),
       this.prisma.simWorkerLease.deleteMany({ where: { planetId } }),
+      this.prisma.marketOrder.deleteMany({ where: { planetId } }),
+      this.prisma.intentTrade.deleteMany({ where: { planetId } }),
+      this.prisma.marketStall.deleteMany({ where: { planetId } }),
+      this.prisma.planetEventDigest.deleteMany({ where: { planetId } }),
       this.prisma.colony.deleteMany({ where: { planetId } }),
       this.prisma.planet.deleteMany({ where: { id: planetId } }),
     ]);

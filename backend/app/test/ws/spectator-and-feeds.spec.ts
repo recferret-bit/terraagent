@@ -1,6 +1,7 @@
 import 'reflect-metadata';
+import { request as httpRequest } from 'node:http';
 import type { INestApplication } from '@nestjs/common';
-import { decodeWire, newId, Welcome } from '@terra/contracts';
+import { CANONICAL_PLANETS, decodeWire, newId, Welcome } from '@terra/contracts';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { verifyPostSnapshotConnectionJoin } from '../../src/ws/parts/connection-helpers';
 import { PlanetRooms, type RoomMember } from '../../src/ws/rooms';
@@ -9,6 +10,8 @@ import { createApp } from '../../src/app';
 import { devPlanetIds } from '../../src/game/dev-planets';
 import { GamePlanets } from '../../src/game/game-planets.service';
 import { SimHistoryService } from '../../src/game/persistence/sim-history.service';
+import { HomeRepository } from '../../src/core/home/home.repository';
+import { isLocalRequestHeaders, isSpectatorEnvAllowed } from '../../src/core/local-host-guard';
 import { LiveStatsTelemetry } from '../../src/ws/live-stats-telemetry';
 import type { AppEnv } from '../../src/core/tokens';
 
@@ -37,8 +40,8 @@ class Client {
     });
     this.closed = new Promise((res) => ws.on('close', (code, reason) => res({ code, reason: reason.toString() })));
   }
-  static async open(url: string): Promise<Client> {
-    const ws = new WebSocket(url);
+  static async open(url: string, headers?: Record<string, string>): Promise<Client> {
+    const ws = new WebSocket(url, headers ? { headers } : undefined);
     await new Promise<void>((res, rej) => { ws.once('open', () => res()); ws.once('error', rej); });
     return new Client(ws);
   }
@@ -128,6 +131,180 @@ describe('WS spectator mode & live sim.input / sim.decision broadcast', () => {
       requestedSectorId: 'sec_0_0', dev: true, isScenarioPlanet: false, mode: 'spectator',
     });
     expect(specVerdict.ok).toBe(true);
+  });
+});
+
+describe('Server spectator provisioning, reset & local-only guards', () => {
+  it('provisions live bot-only server spectator planet via POST /v1/dev/spectator and wipes from scratch on reset=true', async () => {
+    const { url } = await boot();
+    const httpBase = url.replace(/^ws:/, 'http:').replace(/\/ws$/, '');
+
+    const createRes = await fetch(`${httpBase}/v1/dev/spectator`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ planetType: 'oceanForest', botCount: 2 }),
+    });
+    expect(createRes.status).toBe(200);
+    const created = (await createRes.json()) as { planetId: string; botCount: number; created: boolean; reset: boolean };
+    expect(created).toMatchObject({ planetId: 'pl_spec_ocean_2', botCount: 2, created: true, reset: false });
+
+    const spec = await Client.open(url);
+    spec.hello('spec_srv');
+    await spec.next('ready');
+    spec.send({ t: 'join', d: { planetId: created.planetId, mode: 'spectator' } });
+    const w1 = Welcome.parse(await spec.next('welcome'));
+    expect(w1.d.mode).toBe('spectator');
+    expect(w1.d.planet.id).toBe('pl_spec_ocean_2');
+
+    // Wait for bots to emit live sim.input frames on the server spectator planet
+    const botInput = await spec.next('sim.input', 10_000);
+    expect((botInput.d.items as Array<{ isBot: boolean }>)[0]?.isBot).toBe(true);
+
+    // Re-requesting without reset preserves the running planet
+    const resumeRes = await fetch(`${httpBase}/v1/dev/spectator`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ planetType: 'oceanForest', botCount: 2 }),
+    });
+    expect(resumeRes.status).toBe(200);
+    const resumed = (await resumeRes.json()) as { planetId: string; tick: number; created: boolean; reset: boolean };
+    expect(resumed.planetId).toBe('pl_spec_ocean_2');
+    expect(resumed.created).toBe(false);
+    expect(resumed.reset).toBe(false);
+    expect(resumed.tick).toBeGreaterThan(0);
+
+    // Resetting wipes bots + history, evicts open spectator sockets with 4012, and restarts from scratch
+    const resetRes = await fetch(`${httpBase}/v1/dev/spectator`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ planetType: 'oceanForest', botCount: 2, reset: true }),
+    });
+    expect(resetRes.status).toBe(200);
+    const resetBody = (await resetRes.json()) as { planetId: string; tick: number; created: boolean; reset: boolean };
+    expect(resetBody).toMatchObject({ planetId: 'pl_spec_ocean_2', tick: 0, created: true, reset: true });
+    const closedInfo = await spec.closed;
+    expect(closedInfo.code).toBe(4012);
+
+    // Canonical planets cannot be wiped via reset=true
+    const badCanonical = await fetch(`${httpBase}/v1/dev/spectator`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ planetId: CANONICAL_PLANETS.temperate.id, reset: true }),
+    });
+    expect(badCanonical.status).toBe(403);
+
+    // Non-canonical planets with active human colonies cannot be wiped via spectator reset
+    const homes = app!.get(HomeRepository);
+    await homes.createColony({ playerId: 'pr_human_1', planetId: PLANET, colonyIndex: 0, name: 'Human Base', spawnQ: 0, spawnR: 0 });
+    const badHuman = await fetch(`${httpBase}/v1/dev/spectator`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ planetId: PLANET, reset: true }),
+    });
+    expect(badHuman.status).toBe(403);
+
+    // Deterministic server scenario spectator (?spectator=1&host=server&scenario=w18) creates, resumes, and resets cleanly
+    const scCreate = await fetch(`${httpBase}/v1/dev/spectator`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ scenario: 'w18' }),
+    });
+    expect(scCreate.status).toBe(200);
+    const sc1 = (await scCreate.json()) as { planetId: string; tick: number; botCount: number; created: boolean; reset: boolean };
+    expect(sc1).toMatchObject({ planetId: 'pl_spec_sc_w18', created: true, reset: false });
+    expect(sc1.botCount).toBeGreaterThanOrEqual(4);
+
+    const scResume = await fetch(`${httpBase}/v1/dev/spectator`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ scenario: 'w18' }),
+    });
+    expect(scResume.status).toBe(200);
+    expect(await scResume.json()).toMatchObject({ planetId: 'pl_spec_sc_w18', created: false, reset: false });
+
+    const scReset = await fetch(`${httpBase}/v1/dev/spectator`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ scenario: 'w18', reset: true }),
+    });
+    expect(scReset.status).toBe(200);
+    expect(await scReset.json()).toMatchObject({ planetId: 'pl_spec_sc_w18', tick: sc1.tick, created: true, reset: true });
+  });
+});
+
+describe('Server spectator non-local host rejection', () => {
+  it('blocks spoofed Host: localhost from non-loopback IPs, X-Forwarded-For, cross-origin, and staging APP_ENV', () => {
+    expect(isLocalRequestHeaders({ host: 'localhost:4000' }, '127.0.0.1')).toBe(true);
+    expect(isLocalRequestHeaders({ host: '[::1]:5173' }, '::1')).toBe(true);
+    expect(isLocalRequestHeaders({ host: '::1' }, '::1')).toBe(true);
+
+    // Spoofed Host: localhost from remote IP must fail closed
+    expect(isLocalRequestHeaders({ host: 'localhost:4000' }, '203.0.113.42')).toBe(false);
+    expect(isLocalRequestHeaders({ host: '127.0.0.1:4000' }, '::ffff:192.168.1.50')).toBe(false);
+    // Reverse proxy forwarding remote client IP
+    expect(isLocalRequestHeaders({ host: '127.0.0.1:4000', 'x-forwarded-for': '203.0.113.42' }, '127.0.0.1')).toBe(false);
+    // Chained X-Forwarded-Host
+    expect(isLocalRequestHeaders({ host: 'localhost', 'x-forwarded-host': 'localhost, play.terraagent.fun' }, '127.0.0.1')).toBe(false);
+    // Non-local Origin
+    expect(isLocalRequestHeaders({ host: '127.0.0.1:4000', origin: 'https://play.terraagent.fun' }, '127.0.0.1')).toBe(false);
+    expect(isLocalRequestHeaders({ host: '127.0.0.1:4000', origin: 'http://127.0.0.1:5173' }, '127.0.0.1')).toBe(true);
+
+    expect(isSpectatorEnvAllowed({ NODE_ENV: 'development', APP_ENV: 'staging' }, { host: '127.0.0.1:4000' }, '127.0.0.1')).toBe(false);
+    expect(isSpectatorEnvAllowed({ NODE_ENV: 'production' }, { host: '127.0.0.1:4000' }, '127.0.0.1')).toBe(false);
+    expect(isSpectatorEnvAllowed({ NODE_ENV: 'development', APP_ENV: 'local' }, { host: '127.0.0.1:4000' }, '127.0.0.1')).toBe(true);
+  });
+
+  it('rejects WS spectator join and HTTP /v1/dev/spectator on non-local Host / X-Forwarded-Host / X-Forwarded-For / Origin headers', async () => {
+    const { url } = await boot();
+    const httpBase = url.replace(/^ws:/, 'http:').replace(/\/ws$/, '');
+
+    const forwardedHttp = await fetch(`${httpBase}/v1/dev/spectator`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-forwarded-host': 'play.terraagent.fun' },
+      body: JSON.stringify({}),
+    });
+    expect(forwardedHttp.status).toBe(404);
+
+    const xffHttp = await fetch(`${httpBase}/v1/dev/spectator`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-forwarded-for': '203.0.113.42' },
+      body: JSON.stringify({}),
+    });
+    expect(xffHttp.status).toBe(404);
+
+    const remoteOriginHttp = await fetch(`${httpBase}/v1/dev/spectator`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', origin: 'https://play.terraagent.fun' },
+      body: JSON.stringify({}),
+    });
+    expect(remoteOriginHttp.status).toBe(404);
+
+    const rawHostStatus = await new Promise<number>((resolve, reject) => {
+      const parsed = new URL(`${httpBase}/v1/dev/spectator`);
+      const req = httpRequest(
+        {
+          hostname: parsed.hostname,
+          port: parsed.port,
+          path: parsed.pathname,
+          method: 'POST',
+          headers: { 'content-type': 'application/json', host: 'play.terraagent.fun', 'content-length': 2 },
+        },
+        (res) => {
+          res.resume();
+          res.on('end', () => resolve(res.statusCode ?? 0));
+        },
+      );
+      req.on('error', reject);
+      req.end('{}');
+    });
+    expect(rawHostStatus).toBe(404);
+
+    const remoteWs = await Client.open(url, { Host: 'play.terraagent.fun' });
+    remoteWs.hello('viewer_remote');
+    await remoteWs.next('ready');
+    remoteWs.send({ t: 'join', d: { planetId: PLANET, mode: 'spectator' } });
+    const bye = await remoteWs.next('bye');
+    expect(bye.d).toMatchObject({ code: 4003, reason: 'spectator_local_only' });
   });
 });
 

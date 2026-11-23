@@ -46,13 +46,25 @@ export class FeatureHud {
   constructor(
     private readonly parent: HTMLElement,
     private readonly flags: ClientFlagsStore,
-    private readonly host: HostKind,
+    private host: HostKind,
     private readonly services: Partial<FeatureServices>,
     deferInitialMount = false,
   ) {
     if (deferInitialMount) this.visible = false;
     this.off = flags.onChange(() => this.onFlags());
     if (!deferInitialMount) this.mount();
+  }
+
+  getHost(): HostKind {
+    return this.host;
+  }
+
+  setHost(nextHost: HostKind): void {
+    if (this.host === nextHost) return;
+    this.host = nextHost;
+    if (this.mountedIds !== null) {
+      this.mount();
+    }
   }
 
   ensureMounted(): void {

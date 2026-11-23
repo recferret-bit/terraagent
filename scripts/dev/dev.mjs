@@ -11,6 +11,8 @@ const { env, appPort, clientPort, dbName } = loadEnv();
 env.GAME_DEV_PLANETS ??= '1';
 // Seed active Rival AI bots on dev planets so live multi-colony behavior & telemetry run out of the box.
 env.TA_SEED_RIVAL_AI ??= '1';
+// Persist planet snapshots every 10 s in local dev (alongside initial + shutdown snapshots).
+env.SNAPSHOT_EVERY_S ??= '10';
 // Local dev staking runs 1-minute warmup / unbonding / early-exit / accelerated yield unless overridden (`0`).
 env.TA_LOCAL_STAKING_TIMINGS ??= '1';
 const colors = { dev: 36, app: 32, client: 35 };
@@ -108,8 +110,8 @@ startApp();
 console.log(`
   TerraAgent dev stack (worktree base port ${env.TA_PORT_BASE})
     game              http://127.0.0.1:${clientPort}/play.html
-    local spectator   http://127.0.0.1:${clientPort}/play.html?spectator=1
-    server spectator  http://127.0.0.1:${clientPort}/play.html?spectator=1&host=server
+    local spectator   http://127.0.0.1:${clientPort}/play.html?spectator=1   (&reset=1 wipes bots)
+    server spectator  http://127.0.0.1:${clientPort}/play.html?spectator=1&host=server   (&reset=1 wipes bots)
     hub               http://127.0.0.1:${clientPort}/
     app       http://127.0.0.1:${appPort}/v1/healthz   (proxied: http://127.0.0.1:${clientPort}/v1, /ws)
     postgres  127.0.0.1:${env.TA_PG_PORT ?? 15434}/${dbName}

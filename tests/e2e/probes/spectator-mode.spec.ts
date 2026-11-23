@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test';
-import { expect, expectNoPageErrors, screenshot, test, waitForTick } from '../harness';
+import { expect, expectNoPageErrors, screenshot, stack, test, waitForTick } from '../harness';
 
 interface SpectatorWindow {
   __online?: {
@@ -141,29 +141,88 @@ test.describe('Local Spectator URL (/play.html?spectator=1)', () => {
   });
 });
 
+test.describe('Local Spectator Persistence & Reset (/play.html?spectator=1&reset=1)', () => {
+  test('persists local spectator progress across reloads and wipes cleanly on &reset=1', async ({ page }) => {
+    expectNoPageErrors(page);
+    await page.goto('/play.html?spectator=1&planet=temperate&bots=2&seed=e2e-spec-reset&shadow=0&crt=0&wind=0&water=0&reflect=0&pixel=0');
+    await waitForTick(page, (t) => t >= 25, 120_000);
+    const tickBeforeReload = await page.evaluate(() => (window as unknown as SpectatorWindow).__online!.store.tick ?? 0);
+    expect(tickBeforeReload).toBeGreaterThanOrEqual(25);
+
+    // Navigating away triggers pagehide save; returning without reset immediately resumes >= tickBeforeReload
+    await page.goto('about:blank');
+    await page.goto('/play.html?spectator=1&planet=temperate&bots=2&seed=e2e-spec-reset&shadow=0&crt=0&wind=0&water=0&reflect=0&pixel=0');
+    await expect.poll(async () => page.evaluate(() => Boolean((window as unknown as SpectatorWindow).__online?.store.latest)), { timeout: 60_000 }).toBe(true);
+    const resumedTick = await page.evaluate(() => (window as unknown as SpectatorWindow).__online!.store.tick ?? 0);
+    expect(resumedTick).toBeGreaterThanOrEqual(tickBeforeReload);
+
+    // Navigating with &reset=1 wipes IndexedDB snapshot back to tick 0 (< tickBeforeReload) and strips reset=1
+    await page.goto('/play.html?spectator=1&planet=temperate&bots=2&seed=e2e-spec-reset&reset=1&shadow=0&crt=0&wind=0&water=0&reflect=0&pixel=0');
+    await waitForTick(page, (t) => t >= 1, 60_000);
+    const tickAfterReset = await page.evaluate(() => (window as unknown as SpectatorWindow).__online!.store.tick ?? 0);
+    expect(tickAfterReset).toBeLessThan(tickBeforeReload);
+    expect(await page.evaluate(() => new URLSearchParams(window.location.search).has('reset'))).toBe(false);
+    await expect(page.locator('[data-testid="spectator-bot-0"]')).toBeVisible();
+    await expect(page.locator('[data-testid="spectator-bot-1"]')).toBeVisible();
+    expectNoPageErrors(page);
+  });
+});
+
 test.describe('Live Server Spectator URLs (?spectator=1&host=server and ?spectator=1&join=<planetId>)', () => {
   test.skip(process.env.E2E_HOST === 'local', 'Requires live NestJS + Postgres server (omit --host local)');
 
-  test('connects to live backend over WS via ?spectator=1&host=server without spawning a player', async ({ page }) => {
+  test('connects to live backend over WS via ?spectator=1&host=server with active bots, persists across stack restart, and wipes on &reset=1', async ({ page }) => {
     expectNoPageErrors(page);
 
-    await page.goto('/play.html?spectator=1&host=server&shadow=0&crt=0&wind=0&water=0&reflect=0&pixel=0');
-    await waitForTick(page, (t) => t >= 2, 120_000);
+    await page.goto('/play.html?spectator=1&host=server&seed=e2e-srv-spec&reset=1&shadow=0&crt=0&wind=0&water=0&reflect=0&pixel=0');
+    await waitForTick(page, (t) => t >= 25, 120_000);
     const serverDefault = await page.evaluate(() => {
       const o = (window as unknown as SpectatorWindow).__online!;
+      const cols = o.store.latest?.colonies ?? [];
       return {
         spectator: o.spectator && o.store.isSpectator(),
         moveBlocked: o.orderMove(0, 0),
         tick: o.store.tick ?? 0,
+        humans: cols.filter((c) => Boolean(c && !c.isBot && c.status !== 'founding')).length,
+        bots: cols.filter((c) => Boolean(c && c.isBot)).length,
       };
     });
     expect(serverDefault.spectator).toBe(true);
     expect(serverDefault.moveBlocked).toBe(false);
-    expect(serverDefault.tick).toBeGreaterThanOrEqual(2);
+    expect(serverDefault.humans).toBe(0);
+    expect(serverDefault.bots).toBe(2);
+    expect(serverDefault.tick).toBeGreaterThanOrEqual(25);
     await expect(page.locator('[data-testid="spectator-panel"]')).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator('[data-testid="spectator-bot-0"]')).toBeVisible();
+    await expect(page.locator('[data-testid="spectator-bot-1"]')).toBeVisible();
     await assertNoHudOverlap(page);
+
+    // Rerun the backend stack when E2E_CONTROL is active and verify immediate persistence on return
+    if (process.env.E2E_CONTROL) {
+      await page.goto('about:blank');
+      await stack.restartApp();
+      await page.goto('/play.html?spectator=1&host=server&seed=e2e-srv-spec&shadow=0&crt=0&wind=0&water=0&reflect=0&pixel=0');
+      await expect.poll(async () => page.evaluate(() => Boolean((window as unknown as SpectatorWindow).__online?.store.latest)), { timeout: 120_000 }).toBe(true);
+      const tickAfterStackRestart = await page.evaluate(() => (window as unknown as SpectatorWindow).__online!.store.tick ?? 0);
+      expect(tickAfterStackRestart).toBeGreaterThanOrEqual(serverDefault.tick);
+      await expect(page.locator('[data-testid="spectator-bot-0"]')).toBeVisible();
+      await expect(page.locator('[data-testid="spectator-bot-1"]')).toBeVisible();
+    }
+
+    // Navigate with &reset=1 -> wipes bots back to fresh start (< serverDefault.tick) and strips reset from location.search
+    await page.goto('/play.html?spectator=1&host=server&seed=e2e-srv-spec&reset=1&shadow=0&crt=0&wind=0&water=0&reflect=0&pixel=0');
+    await waitForTick(page, (t) => t >= 1, 120_000);
+    const tickAfterServerReset = await page.evaluate(() => (window as unknown as SpectatorWindow).__online!.store.tick ?? 0);
+    expect(tickAfterServerReset).toBeLessThan(serverDefault.tick);
+    expect(await page.evaluate(() => new URLSearchParams(window.location.search).has('reset'))).toBe(false);
+    await expect(page.locator('[data-testid="spectator-bot-0"]')).toBeVisible();
+    await expect(page.locator('[data-testid="spectator-bot-1"]')).toBeVisible();
     expectNoPageErrors(page);
   });
+});
+
+test.describe('Live Server Spectator ?join=<planetId> Inspection', () => {
+  test.skip(process.env.E2E_HOST === 'local', 'Requires live NestJS + Postgres server (omit --host local)');
 
   test('inspects multi-colony live world via ?spectator=1&join=<planetId> with read-only HUD and zero overlap', async ({ page }) => {
     expectNoPageErrors(page);

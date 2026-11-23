@@ -142,6 +142,19 @@ export class LocalFeedCollector {
     this.lastAutopilotTickByColony.clear();
   }
 
+  restore(
+    inputs?: readonly SimInputFeedItemV1[],
+    decisions?: readonly AgentDecisionFeedItemV1[],
+  ): void {
+    this.reset();
+    if (Array.isArray(inputs)) {
+      for (const item of inputs.slice(-MAX_FEED_RECENT)) this.pushInput(item);
+    }
+    if (Array.isArray(decisions)) {
+      for (const item of decisions.slice(-MAX_FEED_RECENT)) this.pushDecision(item);
+    }
+  }
+
   getRecent(): { inputs: SimInputFeedItemV1[]; decisions: AgentDecisionFeedItemV1[] } {
     return { inputs: [...this.recentInputs], decisions: [...this.recentDecisions] };
   }

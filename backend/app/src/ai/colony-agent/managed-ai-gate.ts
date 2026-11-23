@@ -105,14 +105,19 @@ export class ManagedAiGate {
     return { mode: 'trial', model: MANAGED_AI_MODEL, trialTurnsLeft: left };
   }
 
+  private db(): PrismaClient | undefined {
+    return this.prisma && (databaseEnabled(this.env) || !('$connect' in this.prisma)) ? this.prisma : undefined;
+  }
+
   /**
    * Read-only AI access card of one colony (`GET /v1/near/staking/ai-access`): the wallet's `AiBudgetView` with the
    * colony's own mode (`byok` when the player has a key, `script` when the colony sits outside the slot set).
    */
   async view(col: GateColony, opts: { byok?: boolean; nowMs?: number } = {}): Promise<AiBudgetView> {
     const nowMs = opts.nowMs ?? stakingNowMs();
-    const resolved = await resolveColonyIdentity(this.prisma, col);
-    const r = await resolveWalletPerks(this.prisma, {
+    const db = this.db();
+    const resolved = await resolveColonyIdentity(db, col);
+    const r = await resolveWalletPerks(db, {
       colonyId: resolved.colonyId,
       playerId: resolved.playerId,
       env: this.envBag(),

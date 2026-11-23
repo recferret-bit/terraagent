@@ -9,6 +9,7 @@ import {
 } from '../../design/pilot/nearAuthApi';
 import { refreshPilotSession } from '../../design/pilot/PilotAccess';
 import { signOutNearWalletSelector } from '../../design/pilot/walletSelectorRuntime';
+import { isProductionBuild } from '../../game/core/buildEnv';
 import { readActivePilot } from '../../game/features/achievements/activePilot';
 
 /** Where the page keeps a token it minted from the OAuth redirect. */
@@ -24,13 +25,15 @@ const store = (): Storage | null => {
   try { return globalThis.localStorage ?? null; } catch { return null; }
 };
 
-/** Same precedence as `/me.html`: `?playerId=`, `?as=`, then the stored pilot / trade session. Empty token = not signed in. */
+/** Same precedence as `/me.html`: `?playerId=`, `?as=` (dev builds only), then the stored pilot / trade session. Empty token = not signed in. */
 export function resolveIdentity(search: string, hash: string): Identity | null {
-  const params = new URLSearchParams(search);
-  const pid = params.get('playerId')?.trim();
-  if (pid) return { token: `player:${pid}`, label: pid };
-  const as = params.get('as')?.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
-  if (as) return { token: `dev:${as}`, label: as };
+  if (!isProductionBuild()) {
+    const params = new URLSearchParams(search);
+    const pid = params.get('playerId')?.trim();
+    if (pid) return { token: `player:${pid}`, label: pid };
+    const as = params.get('as')?.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
+    if (as) return { token: `dev:${as}`, label: as };
+  }
   void hash;
   const pilot = readActivePilot();
   if (pilot?.isGuest === true) {
@@ -51,6 +54,7 @@ export const mockOauthUrl = (returnTo: string): string => `/dev/mock-oauth?provi
 
 /** Reads `#mock_token=` (left by the mock OAuth page), trades it for an access token and stores it. Returns the identity or null. */
 export async function consumeMockToken(hash: string, doFetch: typeof fetch = fetch): Promise<Identity | null> {
+  if (isProductionBuild()) return null;
   const m = /(?:^|[#&])mock_token=([^&]+)/.exec(hash);
   if (!m) return null;
   const res = await doFetch('/v1/auth/social', {

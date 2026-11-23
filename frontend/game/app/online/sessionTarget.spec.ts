@@ -131,6 +131,115 @@ describe('?join=<planetId>', () => {
   });
   it('ignores a malformed id', () => {
     expect(joinParam('?join=bad id')).toBeNull();
+    expect(joinParam('?join=pl_spec_ocean_2')).toBe('pl_spec_ocean_2');
     expect(onlineMode('?join=pl_1')).toBe('scenario');
+  });
+});
+
+describe('server spectator target (?spectator=1&host=server & reset)', () => {
+  const localLoc = (search: string) => ({ protocol: 'http:', host: '127.0.0.1:5173', search });
+
+  it('provisions or resumes server spectator planet via POST /v1/dev/spectator on localhost', async () => {
+    const f = vi.fn(async () => okJson({ planetId: 'pl_spec_ocean_2', tick: 12, botCount: 2, created: false, reset: false }));
+    const t = createSessionTarget(localLoc('?spectator=1&host=server'), f, memoryStorage(), memoryStorage());
+    expect(t.mode).toBe('spectator');
+    expect(await t.resolve()).toEqual({ planetId: 'pl_spec_ocean_2' });
+    expect(f).toHaveBeenCalledWith('/v1/dev/spectator', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+  });
+
+  it('sends reset=true only once on initial resolve and re-ensures without reset on subsequent reconnects (retrying reset if initial fails)', async () => {
+    const bodies: unknown[] = [];
+    let attempt = 0;
+    const f = vi.fn(async (_url: string, init?: RequestInit) => {
+      bodies.push(JSON.parse(String(init?.body ?? '{}')));
+      if (++attempt === 1) return { ok: false, status: 503, json: async () => ({}) };
+      return okJson({ planetId: 'pl_spec_desert_4', tick: attempt === 2 ? 0 : 12, botCount: 4, created: attempt === 2, reset: attempt === 2 });
+    });
+    const t = createSessionTarget(
+      localLoc('?spectator=1&host=server&planet=dune&bots=4&seed=s9&reset=1'),
+      f,
+      memoryStorage(),
+      memoryStorage(),
+    );
+    await expect(t.resolve()).rejects.toThrow('503');
+    expect(await t.resolve()).toEqual({ planetId: 'pl_spec_desert_4' });
+    expect(await t.resolve()).toEqual({ planetId: 'pl_spec_desert_4' });
+    expect(bodies).toEqual([
+      { planetType: 'dune', botCount: 4, seed: 's9', reset: true },
+      { planetType: 'dune', botCount: 4, seed: 's9', reset: true },
+      { planetType: 'dune', botCount: 4, seed: 's9' },
+    ]);
+  });
+
+  it('routes server scenario spectator (?spectator=1&host=server&scenario=w18) through deterministic /v1/dev/spectator with one-shot reset', async () => {
+    const bodies: unknown[] = [];
+    const f = vi.fn(async (_url: string, init?: RequestInit) => {
+      bodies.push(JSON.parse(String(init?.body ?? '{}')));
+      return okJson({ planetId: 'pl_spec_sc_w18', tick: 0, botCount: 4, created: true, reset: bodies.length === 1 });
+    });
+    const t = createSessionTarget(
+      localLoc('?spectator=1&host=server&scenario=W18&reset=1'),
+      f,
+      memoryStorage(),
+      memoryStorage(),
+    );
+    expect(t.mode).toBe('spectator');
+    expect(await t.resolve()).toEqual({ planetId: 'pl_spec_sc_w18' });
+    expect(await t.resolve()).toEqual({ planetId: 'pl_spec_sc_w18' });
+    expect(bodies).toEqual([{ scenario: 'w18', reset: true }, { scenario: 'w18' }]);
+  });
+});
+
+describe('server spectator ?join=<planetId> & non-local origin guard', () => {
+  const localLoc = (search: string) => ({ protocol: 'http:', host: '127.0.0.1:5173', search });
+
+  it('resets explicit ?join=<planetId> once when &reset=1 is passed, re-ensures pl_spec_* on reconnect, and joins arbitrary planets read-only without mutating', async () => {
+    const specBodies: unknown[] = [];
+    const specFetch = vi.fn(async (_url: string, init?: RequestInit) => {
+      specBodies.push(JSON.parse(String(init?.body ?? '{}')));
+      return okJson({ planetId: 'pl_spec_ocean_2', tick: 0, botCount: 2, created: true, reset: specBodies.length === 1 });
+    });
+    const specJoin = createSessionTarget(
+      localLoc('?spectator=1&join=pl_spec_ocean_2&reset=1'),
+      specFetch,
+      memoryStorage(),
+      memoryStorage(),
+    );
+    expect(await specJoin.resolve()).toEqual({ planetId: 'pl_spec_ocean_2' });
+    expect(await specJoin.resolve()).toEqual({ planetId: 'pl_spec_ocean_2' });
+    expect(specBodies).toEqual([{ planetId: 'pl_spec_ocean_2', reset: true }, { planetId: 'pl_spec_ocean_2' }]);
+
+    const customBodies: unknown[] = [];
+    const customFetch = vi.fn(async (_url: string, init?: RequestInit) => {
+      customBodies.push(JSON.parse(String(init?.body ?? '{}')));
+      return okJson({ planetId: 'pl_custom_scenario', tick: 0, botCount: 2, created: true, reset: true });
+    });
+    const customJoinReset = createSessionTarget(
+      localLoc('?spectator=1&join=pl_custom_scenario&reset=1'),
+      customFetch,
+      memoryStorage(),
+      memoryStorage(),
+    );
+    expect(await customJoinReset.resolve()).toEqual({ planetId: 'pl_custom_scenario' });
+    expect(await customJoinReset.resolve()).toEqual({ planetId: 'pl_custom_scenario' });
+    expect(customFetch).toHaveBeenCalledTimes(1);
+    expect(customBodies).toEqual([{ planetId: 'pl_custom_scenario', reset: true }]);
+  });
+
+  it('disables spectator mode completely on non-local hostnames', async () => {
+    const f = vi.fn(async () => okJson({ planets: [{ id: 'pl_prod' }] }));
+    const t = createSessionTarget(
+      { protocol: 'https:', host: 'play.terraagent.fun', search: '?spectator=1&host=server&reset=1' },
+      f,
+      memoryStorage(),
+      memoryStorage(),
+    );
+    expect(t.mode).toBeUndefined();
+    expect(await t.resolve()).toEqual({ planetId: 'pl_prod' });
+    expect(f).toHaveBeenCalledWith('/v1/dev/planets');
   });
 });

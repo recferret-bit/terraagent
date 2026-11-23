@@ -1,4 +1,5 @@
 import type { ServerMessage } from '@terra/contracts';
+import { isProductionBuild } from '../core/buildEnv';
 import { Emitter } from './emitter';
 import type { ConnectionState, Listener, Outgoing, Transport } from './types';
 
@@ -81,7 +82,7 @@ export function lagFromSearch(search: string): number {
 
 /** Wraps `transport` in a `LagTransport` when the query has `?lag=<ms>`; dev builds only (never in production). */
 export function withDevLag(transport: Transport, search: string, deps?: LagDeps): Transport {
-  if (!(import.meta as unknown as { env?: { DEV?: boolean } }).env?.DEV) return transport;
+  if (isProductionBuild() || !(import.meta as unknown as { env?: { DEV?: boolean } }).env?.DEV) return transport;
   const ms = lagFromSearch(search);
   return ms > 0 ? new LagTransport(transport, ms, deps) : transport;
 }

@@ -47,9 +47,10 @@ export function spectatorSource(opts: {
   const parsedType = PlanetType.safeParse(aliased);
   const planetType = parsedType.success ? parsedType.data : 'ocean';
   const seedStr = opts.seed && opts.seed.trim() ? opts.seed.trim() : `spec-${planetType}`;
+  const botCount = Math.max(1, Math.min(6, opts.botCount ?? 2));
   const flagsList = opts.waves && opts.waves.length > 0 ? opts.waves : parseWaves(null).list;
   return {
-    name: `spectator:${planetType}:${seedStr}`,
+    name: botCount === 2 ? `spectator:${planetType}:${seedStr}` : `spectator:${planetType}:${botCount}:${seedStr}`,
     seed: () => {
       const host = new SimHost({
         flags: flagsFromList(flagsList),
@@ -67,7 +68,6 @@ export function spectatorSource(opts: {
       const off = host.onPostings((p) => setupPostings.push(...p));
       try {
         host.load(state);
-        const botCount = Math.max(1, Math.min(6, opts.botCount ?? 2));
         const colonyIndices = Array.from({ length: botCount }, (_, idx) => idx);
         seedRivalAiColonies(host.state, {
           count: botCount,

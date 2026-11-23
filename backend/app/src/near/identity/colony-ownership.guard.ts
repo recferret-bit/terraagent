@@ -180,6 +180,13 @@ export async function assertColonyOwnership(params: {
   const callerPlayerId = resolveOptionalBearerPlayerId(params.req, params.tokens, params.env);
   const strict = isStrictNearAuth(params.port, params.env);
 
+  if (strict && !callerPlayerId) {
+    throw new NearException('NEAR_NOT_OWNER', {
+      status: 401,
+      message: 'Authentication is required for this NEAR action',
+    });
+  }
+
   if (params.claimedPlayerId && callerPlayerId && params.claimedPlayerId !== callerPlayerId) {
     params.antiCheat?.recordRejection('http', 'ownership', 'not_own_colony');
     throw new NearException('NEAR_NOT_OWNER', {

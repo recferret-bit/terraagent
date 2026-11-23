@@ -93,6 +93,7 @@ export async function verifyConnectionJoin(opts: {
   readonly dev: boolean;
   readonly isScenarioPlanet: boolean;
   readonly mode?: 'play' | 'spectator';
+  readonly spectatorAllowed?: boolean;
 }): Promise<
   | {
       readonly ok: true;
@@ -106,13 +107,16 @@ export async function verifyConnectionJoin(opts: {
       readonly reason: string;
     }
 > {
-  const { homeProvider, antiCheat, log, playerId, planetId, requestedSectorId, requestedColonyId, dev, isScenarioPlanet, mode } = opts;
+  const { homeProvider, antiCheat, log, playerId, planetId, requestedSectorId, requestedColonyId, dev, isScenarioPlanet, mode, spectatorAllowed } = opts;
   const trimmedSector = requestedSectorId?.trim() || undefined;
   if (trimmedSector && !isValidSectorIdFormat(trimmedSector)) {
     antiCheat?.recordRejection('ws', 'join', 'invalid_sector');
     return { ok: false, reason: 'invalid_sector' };
   }
   if (mode === 'spectator') {
+    if (spectatorAllowed === false) {
+      return { ok: false, reason: 'spectator_local_only' };
+    }
     return { ok: true, colonyId: null, sectorId: trimmedSector };
   }
 

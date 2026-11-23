@@ -1,4 +1,5 @@
 import type { SessionTarget } from '../../net/types';
+import { parseSpectatorQueryOptions } from './localHost';
 import { isSpectatorSearch } from './onlineMode';
 import {
   browserKeyValue,
@@ -16,8 +17,17 @@ const SCENARIO_ID = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 
 type Fetch = (input: string, init?: RequestInit) => Promise<Pick<Response, 'ok' | 'status' | 'json'>>;
 
-const PLANET_ID = /^pl_[0-9A-Za-z]{1,40}$/;
+const PLANET_ID = /^pl_[A-Za-z0-9_-]{1,64}$/;
 type Listed = 'yes' | 'no' | 'unknown';
+
+function hostnameOfHost(host: string): string {
+  const trimmed = host.trim();
+  if (trimmed.startsWith('[')) {
+    const close = trimmed.indexOf(']');
+    return close > 0 ? trimmed.slice(0, close + 1) : trimmed;
+  }
+  return trimmed.split(':')[0] ?? '';
+}
 
 /** `?join=<planetId>` (an existing planet, e.g. a second player joining the first one's scenario planet) or null. */
 export const joinParam = (search: string): string | null => {
@@ -42,7 +52,7 @@ interface HeldPlanet {
  * (same player, live tick). The server then closes the older socket with `4001`. A reload before `away` starts
  * fresh once this tab has dropped its claim. After `away`, this tab's reload rejoins so the digest can be delivered.
  * `&as=` is a different player and does not take the other name's planet. `&fresh=1` creates another planet.
- * `?join=` joins that planet instead. With neither, the first loaded dev planet is used.
+ * `?join=` joins that planet instead. `?spectator=1&host=server` provisions or resumes the dedicated server spectator planet.
  */
 export function createSessionTarget(
   loc: Pick<Location, 'protocol' | 'host' | 'search'>,
@@ -50,15 +60,21 @@ export function createSessionTarget(
   seats: SeatStorage | null = browserSeatStorage(),
   live: KeyValueStore = browserKeyValue(),
 ): SessionTarget {
-  const scenario = scenarioParam(loc.search);
+  const spectator = isSpectatorSearch(loc.search, {
+    location: { protocol: loc.protocol, hostname: hostnameOfHost(loc.host) },
+  });
+  const rawScenario = scenarioParam(loc.search);
+  const scenario = spectator && rawScenario === 'spectator' ? null : rawScenario;
   const join = joinParam(loc.search);
-  const spectator = isSpectatorSearch(loc.search);
+  const specOpts = parseSpectatorQueryOptions(loc.search);
+  let resetPending = spectator && specOpts.reset;
   const tab = tabId(seats);
   const explicit = explicitAs(loc.search);
-  const opening = openingSeat(loc.search, scenario, seats, live, tab);
+  const opening = openingSeat(loc.search, scenario, seats, live, tab, resetPending);
   let name = opening.name;
-  let pinned = opening.planetId;
+  const pinned = opening.planetId;
   let created: Promise<{ planetId: string }> | null = null;
+  let spectatorInFlight: Promise<{ planetId: string }> | null = null;
   let watching = false;
 
   const claim = (planetId: string): void => {
@@ -85,12 +101,39 @@ export function createSessionTarget(
     return made;
   });
 
+  const resolveSpectator = (explicitPlanetId?: string, explicitScenario?: string): Promise<{ planetId: string }> => {
+    if (!spectatorInFlight) {
+      const sendReset = resetPending;
+      spectatorInFlight = postSpectator(doFetch, {
+        ...(explicitPlanetId ? { planetId: explicitPlanetId } : {}),
+        ...(explicitScenario ? { scenario: explicitScenario } : {}),
+        ...(specOpts.planetType ? { planetType: specOpts.planetType } : {}),
+        ...(specOpts.botCount ? { botCount: specOpts.botCount } : {}),
+        ...(specOpts.seed ? { seed: specOpts.seed } : {}),
+        ...(sendReset ? { reset: true } : {}),
+      })
+        .then((res) => {
+          if (sendReset) resetPending = false;
+          return res;
+        })
+        .finally(() => {
+          spectatorInFlight = null;
+        });
+    }
+    return spectatorInFlight;
+  };
+
   return {
     url: `${loc.protocol === 'https:' ? 'wss' : 'ws'}://${loc.host}/ws`,
     ...(spectator ? { mode: 'spectator' as const } : {}),
     get accessToken() { return `dev:${name}`; },
     resolve() {
-      if (join) return Promise.resolve({ planetId: join });
+      if (join) {
+        return spectator && (resetPending || join.startsWith('pl_spec_'))
+          ? resolveSpectator(join)
+          : Promise.resolve({ planetId: join });
+      }
+      if (spectator) return resolveSpectator(undefined, scenario ?? undefined);
       if (!scenario) return firstPlanet(doFetch);
       // One promise per page, so a reconnect does not create another planet. A failure may try again.
       created ??= scenarioPlanet().catch((error) => {
@@ -108,8 +151,10 @@ function openingSeat(
   seats: SeatStorage | null,
   live: KeyValueStore,
   tab: string,
+  forceFresh = false,
 ): { name: string; planetId: string | null } {
   const picked = chooseScenarioSeat(search, scenario, seats);
+  if (forceFresh) return { name: picked.name, planetId: null };
   if (picked.planetId || freshParam(search)) return picked;
   const sibling = matchingLiveClaim(readLiveClaims(live), scenario, explicitAs(search), tab);
   return sibling ? { name: sibling.as, planetId: sibling.planetId } : picked;
@@ -144,6 +189,20 @@ async function firstPlanet(doFetch: Fetch): Promise<{ planetId: string }> {
 async function postScenario(doFetch: Fetch, id: string): Promise<{ planetId: string }> {
   const res = await doFetch(`/v1/dev/scenarios/${encodeURIComponent(id)}`, { method: 'POST' });
   if (!res.ok) throw new Error(`POST /v1/dev/scenarios/${id}: ${res.status}`);
+  const body = (await res.json()) as { planetId: string };
+  return { planetId: body.planetId };
+}
+
+async function postSpectator(
+  doFetch: Fetch,
+  opts: { planetId?: string; scenario?: string; planetType?: string; botCount?: number; seed?: string; reset?: boolean },
+): Promise<{ planetId: string }> {
+  const res = await doFetch('/v1/dev/spectator', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(opts),
+  });
+  if (!res.ok) throw new Error(`POST /v1/dev/spectator: ${res.status}`);
   const body = (await res.json()) as { planetId: string };
   return { planetId: body.planetId };
 }

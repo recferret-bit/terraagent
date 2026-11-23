@@ -23,6 +23,7 @@ function optionsFrom(ctx: FeatureContext): AwayPanelOptions {
     mercenary: ctx.flags.has('W22'),
     colonyId: () => services.session?.colonyId?.() ?? null,
     accessToken: () => services.pilot?.view().accessToken || null,
+    fetchImpl: ctx.host === 'local' ? () => Promise.reject(new Error('host_unavailable')) : undefined,
     track: services.track,
     subscribeDirector: (fn) => services.store?.onDirectorStatus?.(fn) ?? (() => {}),
     onOpenHq: ctx.flags.has('W08')

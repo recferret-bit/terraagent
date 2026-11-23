@@ -35,6 +35,7 @@ import { loadBalanceOverrides } from './balance-overrides';
 import { bridgePlanetEvents } from './bus-bridge';
 import { attachAwayDigest, AwayDigestService, createDigestStory, installDigestRowsGauge, liveBaselineReader, MemoryDigestStore, PrismaDigestStore } from './digest';
 import { DevPlanetsController } from './dev-planets.controller';
+import { DevSpectatorService } from './dev-spectator.service';
 import { InternalSimController } from './cluster/internal-sim.controller';
 import { SimClusterService } from './cluster/sim-cluster.service';
 import { PlanetLiveStateController } from './planet-live-state.controller';
@@ -157,6 +158,7 @@ const POOL = Symbol('SIM_THREAD_POOL');
     SimLeaseService,
     SnapshotService,
     SimClusterService,
+    DevSpectatorService,
     ProgressionEventForwarder,
     HardModeClock,
     DevPresence,
@@ -182,6 +184,7 @@ const POOL = Symbol('SIM_THREAD_POOL');
     SimLeaseService,
     SnapshotService,
     SimClusterService,
+    DevSpectatorService,
     AwayDigestService,
     HardModeClock,
     DevPresence,

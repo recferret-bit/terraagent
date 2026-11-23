@@ -200,6 +200,10 @@ export class OrderTicket {
   }
 
   private async submit(): Promise<void> {
+    if (!this.d.client.token) {
+      this.result.replaceChildren(note('Sign in to place an order.', 'err'));
+      return;
+    }
     const st = this.d.state();
     const parsed = parsePairId(st.pair);
     if (!parsed || this.busy) return;
@@ -238,6 +242,10 @@ export class OrderTicket {
   }
 
   private async suggest(): Promise<void> {
+    if (!this.d.client.token) {
+      this.suggestMsg.replaceChildren(note('Sign in to ask the quote engine for a price suggestion.', 'warn'));
+      return;
+    }
     const st = this.d.state();
     const parsed = parsePairId(st.pair);
     if (!parsed || (parsed.quote !== 'USDC' && parsed.quote !== 'NEAR')) { this.suggestMsg.replaceChildren(note('Suggestions need a USDC or NEAR quote.', 'warn')); return; }
