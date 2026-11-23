@@ -6,9 +6,12 @@ import { NearAiLlmAdapter, type FetchLike } from '../../src/ai/adapters/nearai-l
 import { ColonyAgentLoopService } from '../../src/ai/colony-agent/colony-agent-loop.service.js';
 import { ManagedAiGate } from '../../src/ai/colony-agent/managed-ai-gate.js';
 import { PlanetHumanActivity } from '../../src/ai/colony-agent/planet-activity.js';
+import { AiAccessController } from '../../src/ai/colony-agent/ai-access.controller.js';
 import { GuardedLlmProvider } from '../../src/ai/provider/guarded-llm.js';
-import { ProviderHealth } from '../../src/ai/provider/provider-health.js';
+import { ProviderHealth, providerHealth } from '../../src/ai/provider/provider-health.js';
 import type { AppEnv } from '../../src/core/tokens.js';
+import { FlagsService } from '../../src/flags/flags.service.js';
+import { sealPlayerApiKey } from '../../src/profile/player-ai-settings.store.js';
 import { AiSlotLedger } from '../../src/near/staking/perks/ai-slot.ledger.js';
 import { nearToYocto } from '../../src/near/staking/yocto.js';
 import { LlmProviderError } from '../../src/ports/llm-provider.port.js';
@@ -122,6 +125,21 @@ describe('managed AI charge vs provider state (Postgres)', () => {
     const row = await db.prisma.aiWalletUsage.findFirstOrThrow({ where: { walletKey: 'first.near' } }); // the charge happened
     expect(row.callsUsed).toBe(0); // and was given back
     expect(row.usdMicros).toBe(0n);
+  });
+
+  it('GET ai-access: a sealed BYOK key whose circuit is open shows byok + provider_unfunded (same fingerprint as the guard)', async () => {
+    await db.prisma.player.create({ data: { id: 'p-byok', handle: 'byok-pilot', nearAiApiKey: sealPlayerApiKey('sk-drained-key') } });
+    await db.prisma.colony.create({ data: { id: 'co_byok', playerId: 'p-byok', planetId: 'pl_byok', colonyIndex: 0, name: 'Byok' } });
+    const controller = new AiAccessController(new FlagsService({ TA_WAVES: 'all' } as never), db.prisma, env);
+    providerHealth.reset();
+    try {
+      expect((await controller.aiAccess('co_byok')).aiBudget).toMatchObject({ mode: 'byok' });
+      expect((await controller.aiAccess('co_byok')).aiBudget.downshiftReason).toBeUndefined();
+      providerHealth.settle(' sk-drained-key ', new LlmProviderError('unfunded', 'NEAR AI Cloud HTTP 402', 402));
+      expect((await controller.aiAccess('co_byok')).aiBudget).toMatchObject({ mode: 'byok', downshiftReason: 'provider_unfunded' });
+    } finally {
+      providerHealth.reset();
+    }
   });
 
   it('PlanetHumanActivity reads core.colony.last_seen_at for the 24 h window', async () => {

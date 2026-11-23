@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { NearAiLlmAdapter, type FetchLike } from '../../src/ai/adapters/nearai-llm.adapter.js';
 import { ColonyAgentLoopService } from '../../src/ai/colony-agent/colony-agent-loop.service.js';
 import { ManagedAiGate } from '../../src/ai/colony-agent/managed-ai-gate.js';
-import { PlanetHumanActivity, IDLE_PLANET_AFTER_MS } from '../../src/ai/colony-agent/planet-activity.js';
+import { humanConnectedNow, IDLE_PLANET_AFTER_MS, PlanetHumanActivity } from '../../src/ai/colony-agent/planet-activity.js';
 import { GuardedLlmProvider } from '../../src/ai/provider/guarded-llm.js';
 import { ProviderHealth } from '../../src/ai/provider/provider-health.js';
 import type { AppEnv } from '../../src/core/tokens.js';
@@ -39,6 +39,7 @@ function setup(statusByKey: Record<string, number>) {
   const health = new ProviderHealth({ failuresToOpen: 5, openMs: 60_000 });
   const llm = new GuardedLlmProvider(new NearAiLlmAdapter(fetchImpl, ENV), health);
   const h = createFakePlanetHarness();
+  h.host.state.colonies[0]!.playerId = 'pl_human'; // a seated player's colony, as `system.spawnColony` lands it
   const svc = new ColonyAgentLoopService(h.planets, llm, undefined, undefined, ENV);
   const feed: Array<Omit<AgentDecisionFeedItemV1, 'id'>> = [];
   svc.setDecisionRecorder((d) => feed.push(d));
@@ -97,6 +98,8 @@ describe('NEAR AI zero balance: colonies keep playing on rules', () => {
     await s.svc.tickPlanetAgents('pl_loop');
     const gate = new ManagedAiGate(undefined, ENV, undefined, undefined, s.health);
     expect(await gate.view({ id: 'col_0' })).toMatchObject({ mode: 'script', model: SCRIPT_AI_MODEL, downshiftReason: 'provider_unfunded' });
+    // a BYOK colony is not told "your key has no balance" because the protocol key is out
+    expect((await gate.view({ id: 'col_0' }, { byok: true })).downshiftReason).toBeUndefined();
   });
 });
 
@@ -109,6 +112,27 @@ describe('idle planets sweep on rules only', () => {
     expect(s.total()).toBe(0);
     expect(evals.filter((e) => e.governed).every((e) => e.aiAccess?.reason === 'planet_idle' && e.model === SCRIPT_AI_MODEL)).toBe(true);
     expect(s.submitted.length).toBeGreaterThan(0);
+  });
+
+  it('default activity source (no injection, no database): a planet whose only human is away sweeps with zero LLM calls', async () => {
+    const s = setup({});
+    awayHuman(s);
+    const evals = await s.svc.sweepPlanet('pl_loop');
+    expect(s.total()).toBe(0);
+    expect(evals.filter((e) => e.isBot).every((e) => e.aiAccess?.reason === 'planet_idle')).toBe(true);
+  });
+
+  it('humanConnectedNow: seated players only; this process holding the socket beats a stale away flag', () => {
+    const h = createFakePlanetHarness();
+    const none = { isConnected: () => false };
+    expect(humanConnectedNow(h.host.state, none)).toBe(false); // col_0 has no player yet; Rival AIs and empty slots never count
+    h.host.state.colonies[0]!.playerId = 'pl_human';
+    expect(humanConnectedNow(h.host.state, none)).toBe(true);
+    awayHuman(h);
+    expect(humanConnectedNow(h.host.state, none)).toBe(false);
+    expect(humanConnectedNow(h.host.state, { isConnected: (id) => id === 'col_0' })).toBe(true);
+    h.host.state.colonies[0]!.status = 'eliminated';
+    expect(humanConnectedNow(h.host.state, { isConnected: () => true })).toBe(false);
   });
 
   it('a human seen in the window keeps LLM decisions', async () => {

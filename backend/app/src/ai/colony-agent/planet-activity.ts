@@ -3,6 +3,7 @@ import type { PlanetState } from '@terra/sim';
 import { colonyIsAway } from '@terra/sim/systems/away/gate';
 import { databaseEnabled } from '../../core/persistence.js';
 import type { AppEnv } from '../../core/tokens.js';
+import { colonyPresence, type MemoryPresence } from '../../notify/presence.js';
 
 /** A planet with no human for this long is swept on rules only (no LLM call, no managed charge). */
 export const IDLE_PLANET_AFTER_MS = 24 * 3_600_000;
@@ -15,16 +16,17 @@ export interface PlanetActivity {
 }
 
 /**
- * A seated human colony (not a Rival AI, not an empty slot) whose player the sim does not count as away: a socket is
- * connected right now (the presence tracker posts `away` 60 s after the last one closes).
+ * A seated human colony (a player's `playerId`, not a Rival AI `ai:` one, not an empty slot) with a socket connected
+ * right now: the sim does not count it away (the presence tracker posts `away` 60 s after the last socket closes), or
+ * this process holds its socket (covers a stale `away` flag after a restart).
  */
-export function humanConnectedNow(state: PlanetState): boolean {
+export function humanConnectedNow(state: PlanetState, sockets: Pick<MemoryPresence, 'isConnected'> = colonyPresence): boolean {
   return state.colonies.some((c) => {
     if (!c || c.status === 'eliminated') return false;
     const row = c as unknown as Record<string, unknown>;
-    if (row.isBot === true || row.isAiColony === true || String(row.playerId ?? '').startsWith('ai:')) return false;
-    const seated = typeof row.playerId === 'string' || row.foundedAtTick !== undefined;
-    return seated && !colonyIsAway(state, c.index);
+    const playerId = typeof row.playerId === 'string' ? row.playerId : '';
+    if (!playerId || playerId.startsWith('ai:') || row.isBot === true || row.isAiColony === true) return false;
+    return sockets.isConnected(c.id) || !colonyIsAway(state, c.index);
   });
 }
 

@@ -164,7 +164,8 @@ export class ManagedAiGate {
     });
     const base = { ...buildAiBudgetView(r.perks, r.usage, r.nearUsd), colonySlotsUsed: this.slots.used(r.wallet.walletKey, nowMs) };
     if (opts.byok || opts.byokKey) {
-      const own = this.health.availability(opts.byokKey ?? undefined);
+      // only the player's own key's circuit (never the protocol one: its outage is not "your key has no balance")
+      const own = opts.byokKey ? this.health.availability(opts.byokKey) : { available: true as const };
       return { ...base, mode: 'byok', model: 'byok', ...(own.available ? {} : { downshiftReason: downshiftForFailure(own.kind) }) };
     }
     const slotsFull =
