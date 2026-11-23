@@ -33,6 +33,11 @@ export class PlanetJobsService {
     @Optional() @Inject(JobsService) private readonly jobs?: JobsService,
   ) {}
 
+  /** True when planet jobs actually run in this process (a job queue exists and this process hosts sims). */
+  get enabled(): boolean {
+    return Boolean(this.jobs?.hostsSim);
+  }
+
   register(def: PlanetJobDef): JobRegistration {
     const jobs = this.jobs;
     if (!jobs || !jobs.hostsSim) return { stop: async () => undefined };

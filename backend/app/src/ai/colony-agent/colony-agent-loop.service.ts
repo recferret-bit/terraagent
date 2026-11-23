@@ -30,6 +30,8 @@ import { decisionFeedItem } from './colony-decision-feed.js';
 import { ColonyDecisionResolver, type PlayerColonyAiOverride } from './colony-decision-resolver.js';
 import { humanConnectedNow, PlanetHumanActivity, type PlanetActivity } from './planet-activity.js';
 import { TeeAttestationStore } from './tee-attestation.store.js';
+import { PlanetJobsService } from '../../game/lifecycle/planet-jobs.service.js';
+import type { JobRegistration } from '../../jobs/recurring.js';
 
 export { COLONY_DECISION_COOLDOWN_MS, type PlayerColonyAiOverride } from './colony-decision-resolver.js';
 
@@ -50,6 +52,7 @@ export const COLONY_AGENT_LOOP_MS = 180_000;
 @Injectable()
 export class ColonyAgentLoopService {
   private timer: ReturnType<typeof setInterval> | null = null;
+  private job: JobRegistration | null = null;
   private readonly resolver: ColonyDecisionResolver;
   private activity: PlanetActivity;
   private decisionRecorder?: (item: Omit<AgentDecisionFeedItemV1, 'id'>) => void;
@@ -62,14 +65,20 @@ export class ColonyAgentLoopService {
     @Optional() @Inject(APP_ENV) private readonly env?: AppEnv,
     @Optional() private readonly playerAiStore?: PlayerAiSettingsStore,
     @Optional() private readonly teeStore?: TeeAttestationStore,
+    @Optional() @Inject(PlanetJobsService) private readonly planetJobs?: PlanetJobsService,
   ) {
     this.resolver = new ColonyDecisionResolver(llm, prisma, env);
     this.activity = new PlanetHumanActivity(prisma, env);
   }
 
   start(intervalMs?: number): void {
-    if (this.timer) return;
+    if (this.timer || this.job) return;
     const ms = intervalMs ?? (isW28Enabled(this.envBag()) ? 30_000 : COLONY_AGENT_LOOP_MS);
+    // One sweep per planet at a time, on its lease holder, with retries (3.7); the timer is the no-queue fallback.
+    if (intervalMs === undefined && this.planetJobs?.enabled) {
+      this.job = this.planetJobs.register({ name: 'ai.colony-sweep', everyMs: ms, concurrency: 2, run: (id) => this.sweepPlanet(id) });
+      return;
+    }
     this.timer = setInterval(() => {
       void this.sweepLoadedPlanets();
     }, ms);
@@ -79,6 +88,8 @@ export class ColonyAgentLoopService {
   stop(): void {
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
+    void this.job?.stop();
+    this.job = null;
   }
 
   clearCache(): void {
