@@ -10,7 +10,12 @@ import { stepColonyGoalsBreakdown } from '../goals/breakdown';
 import { getOpenColonyGoals, queueColonyGoal } from '../goals/index';
 import { computeEffectivePowerNetPerS } from '../goals/parts/breakdownParts';
 import { enqueueQueueTask } from '../queue';
-import { selectDeterministicBuildSite } from '../rule-engine/site';
+import { shouldExpandPowerZoneWithPylon } from '../rule-engine/site';
+import {
+  findTerritoryObstacleToClear,
+  hasAvailableTerraformBuilder,
+} from '../terraform-basic/aiTerritory';
+import { enqueueWorkAtTile } from '../terraform-basic/dismantleAndWork';
 import { colonyTerraformStats } from '../terraform-basic/rules';
 import {
   getRivalColonyMeta,
@@ -156,6 +161,23 @@ export function stepColonyAutonomousGovernor(
   const dipDecision = tryDiplomacyAction(state, colonyIndex, counts.buildingHpRatio, tick, ctx);
   if (dipDecision) return dipDecision;
 
+  let didTerritoryWork = false;
+  const tfBuilder = hasAvailableTerraformBuilder(state, colonyIndex);
+  if (tfBuilder.ok && tfBuilder.workerId !== null) {
+    const obs = findTerritoryObstacleToClear(state, colonyIndex, { data: ctx?.data, workerId: tfBuilder.workerId });
+    if (obs) {
+      const res = enqueueWorkAtTile(state, colonyIndex, obs.q, obs.r, {
+        workerId: tfBuilder.workerId,
+        taskId: `gov-tf-${colonyIndex}-${tick}-${obs.q},${obs.r}`,
+        tick,
+        data: ctx?.data,
+        intent: 'terraform',
+        chain: false,
+      });
+      if (res.ok) didTerritoryWork = true;
+    }
+  }
+
   // Ensure open goals progress even when governed because of offline `away` while `aiEnabled` was false
   const openGoals = getOpenColonyGoals(state, colonyIndex);
   if (openGoals.length > 0) {
@@ -183,6 +205,20 @@ export function stepColonyAutonomousGovernor(
   const stage4Choice = tryStage4WarTerraformOrExpand(state, colonyIndex, stage, stock, counts, tick, ctx);
   if (stage4Choice) return stage4Choice;
 
+  if (stage >= 2 && (!ctx || ctx.flags.has('W03')) && Number(stock['metals.t1'] ?? 0) >= 60) {
+    const pylonCheck = shouldExpandPowerZoneWithPylon(state, colonyIndex, ctx?.data, ctx?.flags);
+    if (pylonCheck.needed && pylonCheck.site) {
+      const enq = enqueueQueueTask(
+        state,
+        { colonyIndex, precedence: 'hq', task: { kind: 'build', building: 'pylon', q: pylonCheck.site.q, r: pylonCheck.site.r }, tick, data: ctx?.data },
+        ctx,
+      );
+      if (enq.ok) {
+        return { colonyIndex, action: 'expand_pylon', detail: `Ordered Outpost Pylon expansion at (${pylonCheck.site.q},${pylonCheck.site.r})` };
+      }
+    }
+  }
+
   const q = queueColonyGoal(
     state,
     colonyIndex,
@@ -191,6 +227,9 @@ export function stepColonyAutonomousGovernor(
     ctx,
   );
   if (q.ok) return { colonyIndex, action: 'grow_economy', detail: 'Queued grow_economy (metals.t1)' };
+  if (didTerritoryWork) {
+    return { colonyIndex, action: 'terraform_zone', detail: 'Clearing territory obstacles for base expansion' };
+  }
   return { colonyIndex, action: 'idle', detail: 'Standing by' };
 }
 
@@ -234,8 +273,9 @@ function tryStage4WarTerraformOrExpand(
   }
 
   const tfStats = colonyTerraformStats(state, colonyIndex);
+  const livingGoalCap = Math.min(Math.max(6, tfStats.eligibleOwnedTiles), 18);
   if (
-    tfStats.livingTiles < 6 &&
+    tfStats.livingTiles < livingGoalCap &&
     Number(stock['metals.t1'] ?? 0) >= 260 &&
     (Number(stock['bio.water'] ?? 0) < 35 || Number(stock['minerals.t1'] ?? 0) < 20)
   ) {
@@ -256,20 +296,21 @@ function tryStage4WarTerraformOrExpand(
       });
     }
   }
-  if (Number(stock['bio.water'] ?? 0) >= 35 && Number(stock['minerals.t1'] ?? 0) >= 20 && tfStats.livingTiles < 6) {
-    const q = queueColonyGoal(state, colonyIndex, { goal: 'terraform_zone', params: { target: tfStats.livingTiles + 2 } }, tick, ctx);
-    if (q.ok) return { colonyIndex, action: 'terraform_zone', detail: `Queued terraform_zone → ${tfStats.livingTiles + 2} Living hexes` };
+  if (Number(stock['bio.water'] ?? 0) >= 35 && Number(stock['minerals.t1'] ?? 0) >= 20 && tfStats.livingTiles < livingGoalCap) {
+    const target = Math.min(livingGoalCap, tfStats.livingTiles + 3);
+    const q = queueColonyGoal(state, colonyIndex, { goal: 'terraform_zone', params: { target } }, tick, ctx);
+    if (q.ok) return { colonyIndex, action: 'terraform_zone', detail: `Queued terraform_zone → ${target} Living hexes` };
   }
 
-  if (counts.pylons < 1 && Number(stock['metals.t1'] ?? 0) >= 80) {
-    const site = selectDeterministicBuildSite(state, colonyIndex, 'pylon');
-    if (site) {
+  if (Number(stock['metals.t1'] ?? 0) >= 80) {
+    const pylonCheck = shouldExpandPowerZoneWithPylon(state, colonyIndex, ctx?.data, ctx?.flags);
+    if (pylonCheck.needed && pylonCheck.site) {
       const enq = enqueueQueueTask(
         state,
-        { colonyIndex, precedence: 'hq', task: { kind: 'build', building: 'pylon', q: site.q, r: site.r }, tick, data: ctx?.data },
+        { colonyIndex, precedence: 'hq', task: { kind: 'build', building: 'pylon', q: pylonCheck.site.q, r: pylonCheck.site.r }, tick, data: ctx?.data },
         ctx,
       );
-      if (enq.ok) return { colonyIndex, action: 'expand_pylon', detail: `Ordered Outpost Pylon expansion at (${site.q},${site.r})` };
+      if (enq.ok) return { colonyIndex, action: 'expand_pylon', detail: `Ordered Outpost Pylon expansion at (${pylonCheck.site.q},${pylonCheck.site.r})` };
     }
   }
   return null;

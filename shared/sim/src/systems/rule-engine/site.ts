@@ -1,21 +1,29 @@
 import { DEPOSIT_MAX_RICHNESS_BP } from '../../data';
-import { ENTITY_KIND } from '../../ecs/columns';
-import { geoBuildBlock, isPreparedGround, isTileUneven, MAX_FOOTPRINT_SPREAD_M, type DepositRule } from '../../grid/geo';
+import { geoBuildBlock, isPreparedGround, isTileUneven, MAX_FOOTPRINT_SPREAD_M } from '../../grid/geo';
 import { hexDistance, hexIndex } from '../../grid/hex';
-import { DEPOSIT } from '../../grid/layers';
 import type { CompiledDataLike } from '../../kernel/config';
 import { nextFloat } from '../../kernel/rng';
-import type { PlanetState } from '../../kernel/state';
-import { buildingFootprints, occupiedGroundTiles } from '../construction/occupancy';
-import { buildGapField, footprintGap, laneTier, organicTarget } from '../construction/siteSpacing';
+import type { Grid, PlanetState } from '../../kernel/state';
+import { occupiedGroundTiles } from '../construction/occupancy';
+import {
+  buildGapField,
+  colonyBuildingOrdinal,
+  evaluateFootprintPassability,
+  footprintGap,
+  LANE_GAP,
+  laneTier,
+  organicTarget,
+  type FootprintPassability,
+} from '../construction/siteSpacing';
 import { collectReservedTiles } from '../goals/sites';
+import { needsPowerZoneExpansion } from '../terraform-basic/aiTerritory';
 import {
   evaluatePlacement,
   getBuildingFootprintTiles,
-  resolvePlacementRule,
   type PlacementWorld,
 } from '../construction/placement';
 import { placementWorldFromState } from '../construction/placementWorld';
+import { findColonySupportNodes, resolveSiteBuildingSpec, type SiteBuildingSpec } from './siteSupport';
 
 export const DEFAULT_SITE_MAX_RADIUS = 20;
 
@@ -38,127 +46,6 @@ export interface BuildSiteSelection {
   depositRichnessBp: number;
   preparedCount: number;
   unpreparedCount: number;
-}
-
-interface SiteBuildingSpec {
-  canonicalBuilding: string;
-  hasNativeRule: boolean;
-  isHub: boolean;
-  isBeacon: boolean;
-  isPylon: boolean;
-  footprint: number;
-  depositRule: DepositRule;
-  requiresDeposit?: number;
-}
-
-const EXTRACTOR_DEPOSIT_MAP: Readonly<Record<string, number>> = {
-  metalsExtractor: DEPOSIT.metals,
-  extractor: DEPOSIT.metals,
-  mineralsExtractor: DEPOSIT.minerals,
-  mineralsQuarry: DEPOSIT.minerals,
-  quarry: DEPOSIT.minerals,
-  petroleumWell: DEPOSIT.oil,
-  biomassExtractor: DEPOSIT.oil,
-  oilExtractor: DEPOSIT.oil,
-};
-
-const FOOTPRINT_ONE_BUILDINGS: ReadonlySet<string> = new Set([
-  'pylon',
-  'turret',
-  'autocannon',
-  'pulseTurret',
-  'laserTower',
-  'outpostBeacon',
-  'claimBeacon',
-  'beacon',
-  'droneControlArray',
-  'dca',
-  'radar',
-  'wall',
-  'road',
-]);
-
-const FOOTPRINT_THREE_BUILDINGS: ReadonlySet<string> = new Set([
-  'commandHub',
-  'hub',
-  'roboticsFactory',
-  'robotics_factory',
-  'factory',
-]);
-
-function resolveSiteBuildingSpec(buildingKind: string, data?: CompiledDataLike): SiteBuildingSpec {
-  const nativeRule = resolvePlacementRule(buildingKind, data);
-  const reqDeposit = nativeRule?.requiresDeposit ?? EXTRACTOR_DEPOSIT_MAP[buildingKind];
-  if (nativeRule) {
-    return {
-      canonicalBuilding: buildingKind,
-      hasNativeRule: true,
-      isHub: nativeRule.isHub,
-      isBeacon: false,
-      isPylon: false,
-      footprint: nativeRule.footprint,
-      depositRule: nativeRule.deposit,
-      requiresDeposit: reqDeposit,
-    };
-  }
-  const footprint = FOOTPRINT_THREE_BUILDINGS.has(buildingKind)
-    ? 3
-    : FOOTPRINT_ONE_BUILDINGS.has(buildingKind)
-      ? 1
-      : 2;
-  return {
-    canonicalBuilding: buildingKind,
-    hasNativeRule: false,
-    isHub: buildingKind === 'commandHub' || buildingKind === 'hub',
-    isBeacon: buildingKind === 'outpostBeacon' || buildingKind === 'claimBeacon' || buildingKind === 'beacon',
-    isPylon: buildingKind === 'pylon',
-    footprint,
-    depositRule: reqDeposit !== undefined ? 'any' : 'forbid',
-    ...(reqDeposit !== undefined ? { requiresDeposit: reqDeposit } : {}),
-  };
-}
-
-function findColonySupportNodes(
-  state: PlanetState,
-  colonyIndex: number,
-): { hubAnchor: { q: number; r: number }; supportNodes: Array<{ q: number; r: number }> } {
-  const cols = state.entities.cols;
-  let hubAnchor: { q: number; r: number } | null = null;
-  let hqAnchor: { q: number; r: number } | null = null;
-  let podAnchor: { q: number; r: number } | null = null;
-  const supportNodes: Array<{ q: number; r: number }> = [];
-
-  for (let row = 0; row < state.entities.count; row++) {
-    if (cols.owner[row] !== colonyIndex) continue;
-    if (cols.hpMax[row] > 0 && cols.hp[row] <= 0) continue;
-    const pos = { q: cols.q[row]!, r: cols.r[row]! };
-    const kind = cols.kind[row];
-    if (kind === ENTITY_KIND.commandHub) {
-      if (!hubAnchor) hubAnchor = pos;
-      supportNodes.push(pos);
-    } else if (kind === ENTITY_KIND.hq) {
-      if (!hqAnchor) hqAnchor = pos;
-    } else if (kind === ENTITY_KIND.pod) {
-      if (!podAnchor) podAnchor = pos;
-    } else if (kind !== ENTITY_KIND.worker && kind !== ENTITY_KIND.devProbe) {
-      supportNodes.push(pos);
-    }
-  }
-
-  let fallbackAnchor = hubAnchor ?? hqAnchor ?? podAnchor;
-  if (!fallbackAnchor) {
-    const ownerLayer = state.grid.layers.owner as Int16Array;
-    const hx = hexIndex(state.grid.radius);
-    for (let i = 0; i < state.grid.count; i++) {
-      if (ownerLayer[i] === colonyIndex) {
-        fallbackAnchor = { q: hx.q[i]!, r: hx.r[i]! };
-        break;
-      }
-    }
-  }
-  const resolvedHub = fallbackAnchor ?? { q: 0, r: 0 };
-  if (supportNodes.length === 0) supportNodes.push(resolvedHub);
-  return { hubAnchor: resolvedHub, supportNodes };
 }
 
 function detectGridFlags(state: PlanetState, colonyIndex: number): {
@@ -260,40 +147,64 @@ function scoreCandidateSite(
   spec: SiteBuildingSpec,
   distToHub: number,
   minSupportDist: number,
+  minPowerSourceDist: number,
   richnessBp: number,
   directDepositMatch: boolean,
   ownedCount: number,
   preparedCount: number,
   gap: number,
   targetDist: number,
+  passability: FootprintPassability,
 ): number {
   const bonus = ownedCount * 100 + preparedCount * 25;
+  const passPenalty = passability.impassableCount * 300;
   if (spec.requiresDeposit !== undefined) {
     const anchorBonus = directDepositMatch ? 20000 : 5000;
-    // Deposit buildings must sit on ore; among equal deposits prefer one that leaves a walkable lane.
-    return anchorBonus + richnessBp - minSupportDist * 250 - distToHub * 100 + bonus + (laneTier(gap) === 0 ? 400 : 0);
+    // Deposit buildings must sit on ore; among equal deposits prefer one that keeps a walkable lane and open passage.
+    const tierBonus = gap >= LANE_GAP ? 2000 : -4000;
+    const pinchPenalty = passability.pinchesCorridor ? 3000 : 0;
+    return anchorBonus + richnessBp - minSupportDist * 250 - distToHub * 100 + bonus + tierBonus - pinchPenalty - passPenalty;
   }
   if (spec.isHub) {
-    return 15000 - distToHub * 300 + bonus;
+    return 15000 + (laneTier(gap) === 0 ? 2000 : 0) - distToHub * 300 + bonus - passPenalty;
   }
   if (spec.isBeacon) {
-    return 12000 - Math.abs(distToHub - 8) * 300 + bonus;
+    return (
+      12000 +
+      (laneTier(gap) === 0 ? 2000 : 0) -
+      Math.abs(distToHub - 8) * 300 +
+      bonus -
+      passability.impassableCount * 400 -
+      passability.roughCount * 150
+    );
   }
   if (spec.isPylon) {
-    return 12000 - Math.abs(minSupportDist - 5) * 300 - distToHub * 50 + bonus;
+    return (
+      12000 +
+      (laneTier(gap) === 0 ? 2500 : 800) -
+      Math.abs(minPowerSourceDist - 5) * 450 +
+      Math.min(distToHub, 12) * 100 +
+      bonus -
+      passability.impassableCount * 400 -
+      passability.roughCount * 150
+    );
   }
-  // Ordinary buildings: keep a walkable lane (one free tile) and head for this building's organic target point around
-  // the hub, so the base spreads out loosely instead of piling up beside the hub (`siteSpacing.ts`).
-  return 10000 + (laneTier(gap) === 0 ? 3000 : 0) - targetDist * 250 + bonus;
+  // Ordinary buildings: require at least a walkable lane (reject gap < LANE_GAP and pinched corridors),
+  // strongly prefer a wide 2+ tile boulevard (laneTier === 0), and spread toward this building's organic target.
+  const tierScore = laneTier(gap) === 0 ? 4500 + Math.min(gap, 6) * 200 : 1500;
+  return 10000 + tierScore - targetDist * 250 + bonus - passability.impassableCount * 500 - passability.roughCount * 200;
 }
 
 interface SiteSearchContext {
+  grid: Grid;
   spec: SiteBuildingSpec;
   world: PlacementWorld;
   occupied: ReadonlySet<number>;
+  reserved: ReadonlySet<number>;
   colonyIndex: number;
   hubAnchor: { q: number; r: number };
   supportNodes: ReadonlyArray<{ q: number; r: number }>;
+  powerSources: ReadonlyArray<{ q: number; r: number }>;
   maxRadius: number;
   mustOwnAnchor: boolean;
   jitterCap: number;
@@ -310,7 +221,7 @@ function evaluateCandidateTile(
   r: number,
   own: number,
 ): BuildSiteSelection | null {
-  const { spec, world, occupied, colonyIndex, hubAnchor, supportNodes, maxRadius, mustOwnAnchor } = ctx;
+  const { spec, world, occupied, reserved, colonyIndex, hubAnchor, supportNodes, powerSources, maxRadius, mustOwnAnchor } = ctx;
   if (mustOwnAnchor ? own !== colonyIndex : own >= 0 && own !== colonyIndex) return null;
   const distToHub = hexDistance(hubAnchor.q, hubAnchor.r, q, r);
   if (distToHub > maxRadius) return null;
@@ -339,8 +250,18 @@ function evaluateCandidateTile(
     fpIndices = getBuildingFootprintTiles(q, r, spec.footprint).map((pt) => hx.indexOf(pt.q, pt.r)).filter((i) => i >= 0);
   }
 
+  if (fpIndices.some((i) => reserved.has(i))) return null;
+
   const { richnessBp, directDepositMatch } = readCandidateRichnessBp(world, tileIndex, fpIndices, spec.requiresDeposit);
   if (spec.requiresDeposit !== undefined && richnessBp <= 0) return null;
+
+  const gap = footprintGap(ctx.gaps, fpIndices);
+  const passability = evaluateFootprintPassability(ctx.grid, reserved, fpIndices);
+  if (spec.requiresDeposit === undefined && !spec.isHub) {
+    if (gap < LANE_GAP || passability.pinchesCorridor) return null;
+  } else if (spec.isHub) {
+    if (passability.pinchesCorridor) return null;
+  }
 
   let minSupportDist = distToHub;
   for (const node of supportNodes) {
@@ -348,11 +269,29 @@ function evaluateCandidateTile(
     if (d < minSupportDist) minSupportDist = d;
   }
 
+  let minPowerSourceDist = distToHub;
+  if (powerSources.length > 0) {
+    minPowerSourceDist = Infinity;
+    for (const src of powerSources) {
+      const d = hexDistance(src.q, src.r, q, r);
+      if (d < minPowerSourceDist) minPowerSourceDist = d;
+    }
+  }
+
   const jitter = ctx.jitterCap > 0 ? Math.floor(ctx.drawRng() * (ctx.jitterCap + 1)) : 0;
   const score =
     scoreCandidateSite(
-      spec, distToHub, minSupportDist, richnessBp, directDepositMatch, ownedCount, preparedCount,
-      footprintGap(ctx.gaps, fpIndices), hexDistance(ctx.target.q, ctx.target.r, q, r),
+      spec,
+      distToHub,
+      minSupportDist,
+      minPowerSourceDist,
+      richnessBp,
+      directDepositMatch,
+      ownedCount,
+      preparedCount,
+      gap,
+      hexDistance(ctx.target.q, ctx.target.r, q, r),
+      passability,
     ) + jitter;
 
   return {
@@ -376,21 +315,25 @@ export function selectDeterministicBuildSite(
   opts?: SelectBuildSiteOptions,
 ): BuildSiteSelection | null {
   const spec = resolveSiteBuildingSpec(buildingKind, opts?.data);
-  const { hubAnchor, supportNodes } = findColonySupportNodes(state, colonyIndex);
+  const { hubAnchor, supportNodes, powerSources } = findColonySupportNodes(state, colonyIndex);
   const { colonyHasTerritory, planetHasRichness } = detectGridFlags(state, colonyIndex);
   const rawWorld = placementWorldFromState(state);
+  const reserved = collectReservedTiles(state, colonyIndex, opts?.data);
   const ctx: SiteSearchContext = {
+    grid: state.grid,
     spec,
     world: planetHasRichness ? rawWorld : { ...rawWorld, richness: null },
     occupied: occupiedGroundTiles(state, opts?.data),
+    reserved,
     colonyIndex,
     hubAnchor,
     supportNodes,
+    powerSources,
     maxRadius: opts?.maxRadius ?? DEFAULT_SITE_MAX_RADIUS,
     mustOwnAnchor: opts?.requireOwned ?? (colonyHasTerritory && !spec.isHub),
     jitterCap: opts?.jitterBp && opts.jitterBp > 0 ? Math.trunc(opts.jitterBp) : 0,
-    gaps: buildGapField(state.grid.radius, collectReservedTiles(state, colonyIndex, opts?.data)),
-    target: organicTarget(hubAnchor, colonyIndex, buildingFootprints(state, opts?.data).length),
+    gaps: buildGapField(state.grid.radius, reserved),
+    target: organicTarget(hubAnchor, colonyIndex, colonyBuildingOrdinal(state, colonyIndex, opts?.data)),
     drawRng: opts?.rng ?? (() => nextFloat(state.rng.ai)),
     data: opts?.data,
   };
@@ -418,4 +361,22 @@ export function selectDeterministicBuildSite(
   }
 
   return best;
+}
+
+/**
+ * Checks whether `colonyIndex` should expand its power zone with a `pylon` to keep building spacing wide
+ * (`gap >= LANE_GAP`) or reach nearby deposits and outer territory.
+ */
+export function shouldExpandPowerZoneWithPylon(
+  state: PlanetState,
+  colonyIndex: number,
+  data?: CompiledDataLike,
+  flags?: { has(w: string): boolean },
+): { needed: boolean; site: BuildSiteSelection | null } {
+  const noSpaciousSite = selectDeterministicBuildSite(state, colonyIndex, 'solar', { data }) === null;
+  if (!needsPowerZoneExpansion(state, colonyIndex, data, flags, { noSpaciousSite })) {
+    return { needed: false, site: null };
+  }
+  const site = selectDeterministicBuildSite(state, colonyIndex, 'pylon', { data });
+  return { needed: Boolean(site), site };
 }

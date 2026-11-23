@@ -16,6 +16,7 @@ import { cancelTerraformOrder, enqueueTerraformOrder, findTerraformOrder } from 
 import { enqueueAutoPrepares } from './rules';
 import { enqueueWorkOrder } from './workOrder';
 
+export * from './aiTerritory';
 export * from './autoRepair';
 export * from './chain';
 export * from './dismantleAndWork';
@@ -82,7 +83,10 @@ export const enqueueTask = defineCommandHandler({
 
     // A client id names one order or job (GP-09): a cancel by it never hits two.
     if (isOrderIdTaken(state, colonyId, cmd.commandId) || hasWorkJob(state, cmd.commandId)) return 'invalid_args';
-    if (op === 'work') return enqueueWorkOrder(state, colonyId, args.terraform, cmd.commandId, ctx.tick, ctx.data);
+    const isAutomated = cmd.source === 'bot' || cmd.source === 'ai';
+    if (op === 'work') {
+      return enqueueWorkOrder(state, colonyId, { ...args.terraform, chain: !isAutomated }, cmd.commandId, ctx.tick, ctx.data);
+    }
     const res = enqueueTerraformOrder(state, {
       colonyId,
       op,

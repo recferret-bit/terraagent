@@ -11,15 +11,17 @@ export interface WorkOrderArgs {
   workerId?: number;
   entityId?: number;
   intent?: WorkIntent;
+  chain?: boolean;
 }
 
 /**
  * A player's `work` order, the one entry point of every `op: 'work'` form (`enqueueTask { terraform: { op: 'work' } }`,
  * the direct `task` form, `enqueueTerraformOrder`): one work job per tile (job id = the command id, or
  * `${commandId}:${i}` for several tiles, whose jobs all carry `chainRootId: commandId` so `cancelTask` by the command id
- * ends the whole order). Terraform jobs chain (`chain.ts`). A terraform order naming its worker replaces that worker's
- * running chain; a repair order queues behind it (the chain goes on after the repair). A command id that already names
- * an open job is rejected (`invalid_args`). Returns the first reject when no tile was accepted.
+ * ends the whole order). Player terraform jobs chain by default (`chain.ts`), whereas automated bot/AI calls pass
+ * `chain: false` so workers clear one tile at a time and return for construction/harvest. A terraform order naming its
+ * worker replaces that worker's running chain; a repair order queues behind it (the chain goes on after the repair). A
+ * command id that already names an open job is rejected (`invalid_args`). Returns the first reject when no tile was accepted.
  */
 export function enqueueWorkOrder(
   state: SimState,
@@ -29,7 +31,7 @@ export function enqueueWorkOrder(
   tick: number,
   data?: CompiledDataLike,
 ): RejectCode | undefined {
-  const { tiles, workerId, entityId, intent } = args;
+  const { tiles, workerId, entityId, intent, chain } = args;
   if (tiles.length === 0) return 'invalid_args';
   if (hasWorkJob(state, commandId)) return 'invalid_args';
   const multi = tiles.length > 1;
@@ -39,7 +41,7 @@ export function enqueueWorkOrder(
     const t = tiles[i]!;
     const taskId = multi ? `${commandId}:${i}` : commandId;
     const res = enqueueWorkAtTile(state, colonyId, t.q, t.r, {
-      workerId, entityId, taskId, tick, data, intent, chain: true, ...(multi ? { chainRootId: commandId } : {}),
+      workerId, entityId, taskId, tick, data, intent, chain: chain ?? true, ...(multi ? { chainRootId: commandId } : {}),
     });
     if (res.ok) created.push(res.job);
     else firstReject ??= res.reason;

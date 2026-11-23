@@ -4,8 +4,17 @@ import { DEPOSIT, PREP, TERRAIN } from '../../grid/layers';
 import type { CompiledDataLike } from '../../kernel/config';
 import { ensureColonyRecord } from '../../kernel/colonies';
 import type { PlanetState } from '../../kernel/state';
-import { buildingFootprints, occupiedGroundTiles } from '../construction/occupancy';
-import { buildGapField, compareRank, footprintGap, laneTier, organicTarget } from '../construction/siteSpacing';
+import { occupiedGroundTiles } from '../construction/occupancy';
+import {
+  buildGapField,
+  colonyBuildingOrdinal,
+  compareRank,
+  evaluateFootprintPassability,
+  footprintGap,
+  LANE_GAP,
+  laneTier,
+  organicTarget,
+} from '../construction/siteSpacing';
 import { getConstructionOrders } from '../construction/orders';
 import { evaluatePlacement } from '../construction/placement';
 import { placementWorldFromState } from '../construction/placementWorld';
@@ -183,10 +192,11 @@ export function findExtractorSiteForGoal(
   }
   const unitTiles = collectUnitTileSet(state, colonyIndex);
   const world = placementWorldFromState(state);
+  const gaps = buildGapField(state.grid.radius, reserved);
   const { deposit } = state.grid.layers;
   const rad = Math.min(state.grid.radius, 14);
 
-  let best: { q: number; r: number; overlapsUnit: number; unowned: number; dist: number } | null = null;
+  let best: { q: number; r: number; rank: number[] } | null = null;
   for (let r = Math.max(-state.grid.radius, anchor.r - rad); r <= Math.min(state.grid.radius, anchor.r + rad); r++) {
     for (let q = Math.max(-state.grid.radius, anchor.q - rad); q <= Math.min(state.grid.radius, anchor.q + rad); q++) {
       if (hexDistance(0, 0, q, r) > state.grid.radius) continue;
@@ -202,17 +212,20 @@ export function findExtractorSiteForGoal(
         data,
       });
       if (!evalRes.ok) continue;
-      const overlapsUnit = fp.indices.some((i) => unitTiles.has(i)) ? 1 : 0;
-      const unowned = fp.indices.some((i) => state.grid.layers.owner[i] !== colonyIndex) ? 1 : 0;
-      const dist = hexDistance(anchor.q, anchor.r, q, r);
-      if (
-        !best ||
-        overlapsUnit < best.overlapsUnit ||
-        (overlapsUnit === best.overlapsUnit && unowned < best.unowned) ||
-        (overlapsUnit === best.overlapsUnit && unowned === best.unowned && dist < best.dist) ||
-        (overlapsUnit === best.overlapsUnit && unowned === best.unowned && dist === best.dist && (r < best.r || (r === best.r && q < best.q)))
-      ) {
-        best = { q, r, overlapsUnit, unowned, dist };
+      const gap = footprintGap(gaps, fp.indices);
+      if (gap < LANE_GAP) continue;
+      const passability = evaluateFootprintPassability(state.grid, reserved, fp.indices);
+      const rank = [
+        passability.pinchesCorridor ? 1 : 0,
+        fp.indices.some((i) => unitTiles.has(i)) ? 1 : 0,
+        fp.indices.some((i) => state.grid.layers.owner[i] !== colonyIndex) ? 1 : 0,
+        passability.impassableCount,
+        hexDistance(anchor.q, anchor.r, q, r),
+        r,
+        q,
+      ];
+      if (!best || compareRank(rank, best.rank) < 0) {
+        best = { q, r, rank };
       }
     }
   }
@@ -221,7 +234,7 @@ export function findExtractorSiteForGoal(
 
 /**
  * Finds the nearest valid 3x3 `commandHub` placement site around the colony anchor,
- * avoiding reserved tiles, unit positions, and leaving any nearby `metalsExtractor` site unobstructed.
+ * avoiding reserved tiles, unit positions, cramped corridors, and leaving any nearby `metalsExtractor` site unobstructed.
  */
 export function findHubSiteForGoal(
   state: PlanetState,
@@ -232,11 +245,12 @@ export function findHubSiteForGoal(
   const reserved = collectReservedTiles(state, colonyIndex, data);
   const unitTiles = collectUnitTileSet(state, colonyIndex);
   const world = placementWorldFromState(state);
+  const gaps = buildGapField(state.grid.radius, reserved);
   const { deposit } = state.grid.layers;
   const hasMetals = hasAnyDepositOnGrid(state, DEPOSIT.metals);
   const rad = Math.min(state.grid.radius, 10);
 
-  let best: { q: number; r: number; blocksExtractor: number; overlapsUnit: number; dist: number } | null = null;
+  let best: { q: number; r: number; rank: number[] } | null = null;
   for (let r = Math.max(-state.grid.radius, anchor.r - rad); r <= Math.min(state.grid.radius, anchor.r + rad); r++) {
     for (let q = Math.max(-state.grid.radius, anchor.q - rad); q <= Math.min(state.grid.radius, anchor.q + rad); q++) {
       const dist = hexDistance(anchor.q, anchor.r, q, r);
@@ -252,21 +266,23 @@ export function findHubSiteForGoal(
         data,
       });
       if (!evalRes.ok) continue;
-      const overlapsUnit = fp.indices.some((i) => unitTiles.has(i)) ? 1 : 0;
       const touchesMetals = hasMetals && fp.indices.some((i) => deposit[i] === DEPOSIT.metals);
       const blocksExtractor =
         touchesMetals && !findExtractorSiteForGoal(state, colonyIndex, data, new Set(fp.indices)) ? 1 : 0;
-      if (
-        !best ||
-        blocksExtractor < best.blocksExtractor ||
-        (blocksExtractor === best.blocksExtractor && overlapsUnit < best.overlapsUnit) ||
-        (blocksExtractor === best.blocksExtractor && overlapsUnit === best.overlapsUnit && dist < best.dist) ||
-        (blocksExtractor === best.blocksExtractor &&
-          overlapsUnit === best.overlapsUnit &&
-          dist === best.dist &&
-          (r < best.r || (r === best.r && q < best.q)))
-      ) {
-        best = { q, r, blocksExtractor, overlapsUnit, dist };
+      const gap = footprintGap(gaps, fp.indices);
+      const passability = evaluateFootprintPassability(state.grid, reserved, fp.indices);
+      const rank = [
+        blocksExtractor,
+        fp.indices.some((i) => unitTiles.has(i)) ? 1 : 0,
+        passability.pinchesCorridor ? 1 : 0,
+        laneTier(gap),
+        passability.impassableCount,
+        dist,
+        r,
+        q,
+      ];
+      if (!best || compareRank(rank, best.rank) < 0) {
+        best = { q, r, rank };
       }
     }
   }
@@ -274,15 +290,15 @@ export function findHubSiteForGoal(
 }
 
 /**
- * Finds a 2x2 `solar` / `depot` site around the colony anchor. Ranking (first difference wins): does not block the last
- * extractor site, does not overlap a unit, inside own territory, keeps a walkable lane to other buildings, then closest
- * to this building's organic target point (see `siteSpacing.ts`), then `r`, `q`. Every candidate passes `evaluatePlacement`.
+ * Finds a `solar` / `depot` / `pylon` site around the colony anchor. Rejects cramped sites (`gap < LANE_GAP`) and
+ * corridor-pinching sites (`pinchesCorridor`), prefers spacious boulevards (`laneTier` 0 = `gap >= 3`), open perimeters,
+ * and closest to this building's organic target point (see `siteSpacing.ts`). Every candidate passes `evaluatePlacement`.
  */
 export function findGeneratorSiteForGoal(
   state: PlanetState,
   colonyIndex: number,
   data?: CompiledDataLike,
-  building: 'solar' | 'depot' = 'solar',
+  building: 'solar' | 'depot' | 'pylon' = 'solar',
 ): HexCoord | null {
   const anchor = findColonyAnchor(state, colonyIndex);
   const reserved = collectReservedTiles(state, colonyIndex, data);
@@ -290,25 +306,35 @@ export function findGeneratorSiteForGoal(
   const world = placementWorldFromState(state);
   const { deposit } = state.grid.layers;
   const hasMetals = hasAnyDepositOnGrid(state, DEPOSIT.metals);
-  const rad = Math.min(state.grid.radius, 10);
+  const rad = Math.min(state.grid.radius, 14);
   const gaps = buildGapField(state.grid.radius, reserved);
-  const target = organicTarget(anchor, colonyIndex, occupiedFootprintCount(state, data));
+  const target = organicTarget(anchor, colonyIndex, colonyBuildingOrdinal(state, colonyIndex, data));
+  const rowSpec = resolveBuildingRow(building, data);
+  const defaultSize = building === 'pylon' ? 1 : 2;
+  const fpW = Number(rowSpec?.row.footprintW ?? rowSpec?.row.footprint ?? defaultSize);
+  const fpD = Number(rowSpec?.row.footprintD ?? rowSpec?.row.footprint ?? defaultSize);
 
   let best: { q: number; r: number; rank: number[] } | null = null;
   for (let r = Math.max(-state.grid.radius, anchor.r - rad); r <= Math.min(state.grid.radius, anchor.r + rad); r++) {
     for (let q = Math.max(-state.grid.radius, anchor.q - rad); q <= Math.min(state.grid.radius, anchor.q + rad); q++) {
-      if (hexDistance(anchor.q, anchor.r, q, r) > 10) continue;
-      const fp = getFootprintTileIndices(state, q, r, 2, 2, 0);
+      if (hexDistance(anchor.q, anchor.r, q, r) > 14) continue;
+      const fp = getFootprintTileIndices(state, q, r, fpW, fpD, 0);
       if (!fp.valid || fp.indices.some((i) => reserved.has(i))) continue;
       const evalRes = evaluatePlacement(world, { colonyId: colonyIndex, building, q, r, requireBuilder: false, data });
       if (!evalRes.ok) continue;
+      const gap = footprintGap(gaps, fp.indices);
+      const passability = evaluateFootprintPassability(state.grid, reserved, fp.indices);
+      if (gap < LANE_GAP || passability.pinchesCorridor) continue;
       const touchesMetals = hasMetals && fp.indices.some((i) => deposit[i] === DEPOSIT.metals);
       const rank = [
         touchesMetals && !findExtractorSiteForGoal(state, colonyIndex, data, new Set(fp.indices)) ? 1 : 0,
         fp.indices.some((i) => unitTiles.has(i)) ? 1 : 0,
         fp.indices.some((i) => state.grid.layers.owner[i] !== colonyIndex) ? 1 : 0,
-        laneTier(footprintGap(gaps, fp.indices)),
+        laneTier(gap),
+        passability.impassableCount,
+        passability.roughCount,
         hexDistance(target.q, target.r, q, r),
+        -Math.min(gap, 5),
         r,
         q,
       ];
@@ -316,9 +342,4 @@ export function findGeneratorSiteForGoal(
     }
   }
   return best ? { q: best.q, r: best.r } : null;
-}
-
-/** Number of buildings standing or under construction: the stable "which building is this" index for `organicTarget`. */
-function occupiedFootprintCount(state: PlanetState, data?: CompiledDataLike): number {
-  return buildingFootprints(state, data).length;
 }

@@ -3,7 +3,15 @@ import { defineSystem } from '../../kernel/system';
 import { parseArgs } from '../command';
 import { defineSimModule } from '../define';
 import { isColonyAiEnabled } from '../goals/ai';
+import { checkItemUnlockStage } from '../progression/validate';
 import { isRivalAiColony } from '../rival-ai/store';
+import {
+  findTerritoryObstacleToClear,
+  findTerritoryTileToCultivate,
+  hasAvailableTerraformBuilder,
+} from '../terraform-basic/aiTerritory';
+import { enqueueWorkAtTile } from '../terraform-basic/dismantleAndWork';
+import { enqueueTerraformOrder } from '../terraform-basic/queue';
 import {
   applyAutopilotStep,
   resolveColonyStage,
@@ -52,6 +60,34 @@ export const ruleEngineSystem = defineSystem({
       const stageChanged = stage >= 1 && col.lastAutopilotEvalStage !== stage;
       if (!isPeriodicTick && !stageChanged) continue;
       applyAutopilotStep(state, col.index, ctx);
+      if (!isPeriodicTick) continue;
+      const tfBuilder = hasAvailableTerraformBuilder(state, col.index);
+      if (!tfBuilder.ok || tfBuilder.workerId === null) continue;
+      const obs = findTerritoryObstacleToClear(state, col.index, { data: ctx.data, workerId: tfBuilder.workerId });
+      if (obs) {
+        enqueueWorkAtTile(state, col.index, obs.q, obs.r, {
+          workerId: tfBuilder.workerId,
+          taskId: `auto-tf-${col.index}-${nextTick}-${obs.q},${obs.r}`,
+          tick: nextTick,
+          data: ctx.data,
+          intent: 'terraform',
+          chain: false,
+        });
+        continue;
+      }
+      if (ctx.flags.has('W05')) {
+        const cult = findTerritoryTileToCultivate(state, col.index, { data: ctx.data });
+        if (cult && checkItemUnlockStage(state, col.index, cult.op, ctx.flags, ctx.data).ok) {
+          enqueueTerraformOrder(state, {
+            colonyId: col.index,
+            op: cult.op,
+            tiles: [{ q: cult.q, r: cult.r }],
+            taskId: `auto-cult-${col.index}-${nextTick}`,
+            tick: nextTick,
+            data: ctx.data,
+          });
+        }
+      }
     }
   },
 });

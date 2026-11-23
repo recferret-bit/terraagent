@@ -2,7 +2,7 @@ import { compileData } from '../../data';
 import { resolveTileSector } from '../../atlas/crossSectorGameplay';
 import { hexDistance, hexIndex } from '../../grid/hex';
 import { DEPOSIT, PREP, TERRAIN } from '../../grid/layers';
-import { setTileHeight, setTileOwner, setTilePrep, setTileTerrain } from '../../grid/tileModel';
+import { isGroundPassable, setTileHeight, setTileOwner, setTilePrep, setTileTerrain } from '../../grid/tileModel';
 import { getSpawnSlots } from '../../gen/spawnSlots';
 import { getDepositRichnessBp } from '../../gen/temperate';
 import { ensureColonyRecord } from '../../kernel/colonies';
@@ -11,6 +11,7 @@ import type { LedgerPosting, StepContext } from '../../kernel/context';
 import type { PlanetState } from '../../kernel/state';
 import { applyAutopilot } from '../away/store';
 import { ensureColonyCargoState } from '../cargo/state';
+import { occupiedGroundTiles } from '../construction/occupancy';
 import { mirrorAutopilotOnDirector } from '../director/store';
 import { readDiplomacyBlob, writeDiplomacyBlob } from '../diplomacy/store';
 import { setColonyStock, treasuryCtx } from '../../economy';
@@ -20,6 +21,7 @@ import { produceReconAtFactoryEdge, spawnWorkerUnit } from '../factories-hub';
 import { setColonyPriorities } from '../goals/priorities';
 import { spawnHqUnit } from '../hq';
 import { initColonyNewcomerShield } from '../pvp/shield';
+import { selectDeterministicBuildSite } from '../rule-engine/site';
 import {
   readRivalAiBlob,
   writeRivalAiBlob,
@@ -108,12 +110,15 @@ function pickRivalAnchors(state: PlanetState, count: number): Array<{ q: number;
 
 function prepareRivalPad(state: PlanetState, colonyIndex: number, cx: number, cy: number, tick: number): void {
   const hx = hexIndex(state.grid.radius);
-  for (let dq = -7; dq <= 7; dq++) {
-    for (let dr = -7; dr <= 7; dr++) {
-      if (hexDistance(0, 0, dq, dr) > 7) continue;
+  const padRadius = Math.max(7, Math.min(9, state.grid.radius - hexDistance(0, 0, cx, cy)));
+  for (let dq = -padRadius; dq <= padRadius; dq++) {
+    for (let dr = -padRadius; dr <= padRadius; dr++) {
+      if (hexDistance(0, 0, dq, dr) > padRadius) continue;
       const i = hx.indexOf(cx + dq, cy + dr);
       if (i < 0) continue;
       if (state.grid.layers.valid && state.grid.layers.valid[i] === 0) continue;
+      const curOwner = state.grid.layers.owner[i] ?? -1;
+      if (curOwner >= 0 && curOwner !== colonyIndex) continue;
       setTileTerrain(state.grid, i, TERRAIN.flat, tick);
       setTilePrep(state.grid, i, PREP.prepared, tick);
       setTileHeight(state.grid, i, 0, tick);
@@ -122,8 +127,9 @@ function prepareRivalPad(state: PlanetState, colonyIndex: number, cx: number, cy
       if (state.grid.layers.feature) state.grid.layers.feature[i] = 0;
     }
   }
-  const metalTile = hx.indexOf(cx - 2, cy + 5);
-  if (metalTile >= 0) {
+  const outerOff = Math.min(6, padRadius - 1);
+  const metalTile = hx.indexOf(cx - 2, cy + outerOff);
+  if (metalTile >= 0 && state.grid.layers.owner[metalTile] === colonyIndex) {
     state.grid.layers.deposit[metalTile] = DEPOSIT.metals;
     (state.grid.layers.richness as Float32Array)[metalTile] = getDepositRichnessBp(
       state.meta.seed,
@@ -133,8 +139,8 @@ function prepareRivalPad(state: PlanetState, colonyIndex: number, cx: number, cy
     );
     if (state.grid.layers.depositTier) (state.grid.layers.depositTier as Uint8Array)[metalTile] = 1;
   }
-  const mineralTile = hx.indexOf(cx - 5, cy + 4);
-  if (mineralTile >= 0) {
+  const mineralTile = hx.indexOf(cx - outerOff, cy + 4);
+  if (mineralTile >= 0 && state.grid.layers.owner[mineralTile] === colonyIndex) {
     state.grid.layers.deposit[mineralTile] = DEPOSIT.minerals;
     (state.grid.layers.richness as Float32Array)[mineralTile] = getDepositRichnessBp(
       state.meta.seed,
@@ -162,6 +168,40 @@ export function linkAllActiveColonyContacts(state: PlanetState, tick: number): v
   writeDiplomacyBlob(state, dip, tick);
 }
 
+function findSeedUnitSpawnTiles(
+  state: PlanetState,
+  anchorQ: number,
+  anchorR: number,
+  needed: number,
+  data: CompiledDataLike,
+): Array<{ q: number; r: number }> {
+  const hx = hexIndex(state.grid.radius);
+  const occupied = occupiedGroundTiles(state, data);
+  const deposit = state.grid.layers.deposit;
+  const used = new Set<number>();
+  const out: Array<{ q: number; r: number }> = [];
+
+  for (let dist = 2; dist <= 5 && out.length < needed; dist++) {
+    for (let dr = -dist; dr <= dist && out.length < needed; dr++) {
+      for (let dq = -dist; dq <= dist && out.length < needed; dq++) {
+        if (hexDistance(0, 0, dq, dr) !== dist) continue;
+        const q = anchorQ + dq;
+        const r = anchorR + dr;
+        const idx = hx.indexOf(q, r);
+        if (idx < 0 || used.has(idx) || occupied.has(idx)) continue;
+        if (!isGroundPassable(state, idx, data)) continue;
+        if (deposit && deposit[idx] !== DEPOSIT.none) continue;
+        used.add(idx);
+        out.push({ q, r });
+      }
+    }
+  }
+  while (out.length < needed) {
+    out.push({ q: anchorQ + 2 + out.length, r: anchorR });
+  }
+  return out;
+}
+
 function seedRivalColonyEntities(
   state: PlanetState,
   colonyIndex: number,
@@ -172,20 +212,51 @@ function seedRivalColonyEntities(
   data: CompiledDataLike,
   ctx?: StepContext,
 ): void {
-  spawnHqUnit(state, { owner: colonyIndex, q: anchor.q - 1, r: anchor.r + 2 });
   startBuildingConstruction(state, { owner: colonyIndex, building: 'commandHub', q: anchor.q, r: anchor.r, instant: true, costOverride: {}, data });
-  startBuildingConstruction(state, { owner: colonyIndex, building: 'solar', q: anchor.q + 3, r: anchor.r - 1, instant: true, costOverride: {}, data });
-  startBuildingConstruction(state, { owner: colonyIndex, building: 'solar', q: anchor.q + 1, r: anchor.r + 3, instant: true, costOverride: {}, data });
-  startBuildingConstruction(state, { owner: colonyIndex, building: 'wind', q: anchor.q + 3, r: anchor.r - 3, instant: true, costOverride: {}, data });
-  startBuildingConstruction(state, { owner: colonyIndex, building: 'depot', q: anchor.q - 4, r: anchor.r + 2, instant: true, costOverride: {}, data });
-  startBuildingConstruction(state, { owner: colonyIndex, building: 'tradeHub', q: anchor.q - 3, r: anchor.r - 1, instant: true, costOverride: {}, data });
-  startBuildingConstruction(state, { owner: colonyIndex, building: 'roboticsFactory', q: anchor.q, r: anchor.r - 3, instant: true, costOverride: {}, data });
-  startBuildingConstruction(state, { owner: colonyIndex, building: 'turret', q: anchor.q + 3, r: anchor.r + 1, instant: true, costOverride: {}, data });
-  if (persona === 'warlord') {
-    startBuildingConstruction(state, { owner: colonyIndex, building: 'turret', q: anchor.q - 4, r: anchor.r, instant: true, costOverride: {}, data });
+
+  const pylonOffsets: ReadonlyArray<readonly [number, number]> = [
+    [5, -2],
+    [-5, 1],
+  ];
+  for (const [dq, dr] of pylonOffsets) {
+    const first = startBuildingConstruction(state, {
+      owner: colonyIndex,
+      building: 'pylon',
+      q: anchor.q + dq,
+      r: anchor.r + dr,
+      instant: true,
+      costOverride: {},
+      data,
+    });
+    if (!first.ok) {
+      const site = selectDeterministicBuildSite(state, colonyIndex, 'pylon', { data, maxRadius: 9 });
+      if (site) {
+        startBuildingConstruction(state, { owner: colonyIndex, building: 'pylon', q: site.q, r: site.r, instant: true, costOverride: {}, data });
+      }
+    }
   }
-  spawnWorkerUnit(state, { owner: colonyIndex, q: anchor.q + 2, r: anchor.r - 1, tick, data }, ctx);
-  spawnWorkerUnit(state, { owner: colonyIndex, q: anchor.q - 2, r: anchor.r + 1, tick, data }, ctx);
+
+  const starterBuildings = ['roboticsFactory', 'tradeHub', 'depot', 'solar', 'solar', 'wind', 'turret'];
+  if (persona === 'warlord') starterBuildings.push('turret');
+  for (const building of starterBuildings) {
+    const site = selectDeterministicBuildSite(state, colonyIndex, building, { data, maxRadius: 9 });
+    if (site) {
+      startBuildingConstruction(state, {
+        owner: colonyIndex,
+        building,
+        q: site.q,
+        r: site.r,
+        instant: true,
+        costOverride: {},
+        data,
+      });
+    }
+  }
+
+  const unitSpawns = findSeedUnitSpawnTiles(state, anchor.q, anchor.r, 3, data);
+  spawnHqUnit(state, { owner: colonyIndex, q: unitSpawns[0]!.q, r: unitSpawns[0]!.r });
+  spawnWorkerUnit(state, { owner: colonyIndex, q: unitSpawns[1]!.q, r: unitSpawns[1]!.r, tick, data }, ctx);
+  spawnWorkerUnit(state, { owner: colonyIndex, q: unitSpawns[2]!.q, r: unitSpawns[2]!.r, tick, data }, ctx);
   for (let u = 0; u < recons; u++) {
     produceReconAtFactoryEdge(state, colonyIndex, ctx);
   }
