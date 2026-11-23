@@ -316,6 +316,19 @@ export class Connection implements RoomMember {
   }
 
   /**
+   * A join of a planet that is not loaded here restores it (an idle-unloaded planet wakes for its returning player),
+   * so it is checked first: only a player with a home on that planet may cause a restore. Without this any signed-in
+   * account could wake every dormant planet by id, which keeps them loaded and fills the planet cap. Dev sessions
+   * and spectators (neither exists in production) and loaded planets go straight to the full join check.
+   */
+  private async mayHost(planetId: string, mode: 'play' | 'spectator'): Promise<boolean> {
+    if (this.d.planets.isLoaded(planetId) || this.session?.dev === true || mode === 'spectator' || !this.d.home) return true;
+    if (!this.playerId) return false;
+    const home = await resolveConnectionHome(this.d.home, this.d.log, this.playerId, planetId);
+    return home.state === 'ACTIVE' && home.colony.planetId === planetId;
+  }
+
+  /**
    * WS-12: a player joins only the planet of its own live (ACTIVE) colony, else `bye 4003`. A `dev:` session (never in
    * production) may join any loaded planet (`?scenario=` / `?join=` dev flows, BE-07).
    */
@@ -326,11 +339,17 @@ export class Connection implements RoomMember {
     }
     const planetId = msg.d.planetId;
     if (this.state === 'playing') this.leaveRoom();
-    const loc: PlanetHostLocation | null = this.d.ensureHosted
-      ? await this.d.ensureHosted(planetId)
-      : this.d.planets.isLoaded(planetId)
-        ? { kind: 'local' }
-        : null;
+    if (!(await this.mayHost(planetId, joinMode))) {
+      this.d.antiCheat?.recordRejection('ws', 'join', 'not_your_planet');
+      return this.bye(CLOSE_CODES.forbidden, 'not_your_planet');
+    }
+    let loc: PlanetHostLocation | null;
+    try {
+      loc = this.d.ensureHosted ? await this.d.ensureHosted(planetId) : this.d.planets.isLoaded(planetId) ? { kind: 'local' } : null;
+    } catch (e) {
+      this.d.log.error({ err: e, planetId }, 'planet could not be hosted for a join');
+      return this.bye(CLOSE_CODES.forbidden, 'planet_unavailable');
+    }
     if (this.state === 'closed') return;
     if (!loc) return this.bye(CLOSE_CODES.forbidden, 'forbidden');
     this.state = 'joining';

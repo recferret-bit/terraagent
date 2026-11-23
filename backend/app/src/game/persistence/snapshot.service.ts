@@ -52,6 +52,8 @@ export class SnapshotService implements BeforeApplicationShutdown {
   private readonly total: Counter<'kind'>;
   /** Recent recovery times per planet (BE-11/BE-12), to stop restoring a planet that keeps failing. */
   private readonly recoveries = new Map<string, number[]>();
+  /** Restores in flight, by planet (see `restoreIfPersisted`). */
+  private readonly wakes = new Map<string, Promise<'loaded' | 'restored' | 'absent'>>();
   /** `SNAPSHOTS=on|off`; unset → on, except under NODE_ENV=test so unit tests never touch the dev database. */
   readonly enabled: boolean;
   /** Open away-digest bodies, flushed after a snapshot row is stored (CT-31). */
@@ -166,9 +168,22 @@ export class SnapshotService implements BeforeApplicationShutdown {
     return this.store.hasSnapshots(planetId);
   }
 
-  /** Restores a persisted planet from snapshots without generating a fresh world when no snapshot exists. */
-  async restoreIfPersisted(planetId: string): Promise<'loaded' | 'restored' | 'absent'> {
-    if (this.planets.isLoaded(planetId)) return 'loaded';
+  /**
+   * Restores a persisted planet from snapshots without generating a fresh world when no snapshot exists. Callers that
+   * arrive while a restore of the same planet is in flight (a home poll and a ws join of one returning player, or a
+   * reconnect burst) wait for it: a second restore would be refused as "already loading", and its error path
+   * released the lease of the planet that was just restored.
+   */
+  restoreIfPersisted(planetId: string): Promise<'loaded' | 'restored' | 'absent'> {
+    if (this.planets.isLoaded(planetId)) return Promise.resolve('loaded');
+    const inFlight = this.wakes.get(planetId);
+    if (inFlight) return inFlight.then((outcome) => (outcome === 'restored' ? 'loaded' : outcome));
+    const wake = this.restorePersisted(planetId).finally(() => this.wakes.delete(planetId));
+    this.wakes.set(planetId, wake);
+    return wake;
+  }
+
+  private async restorePersisted(planetId: string): Promise<'loaded' | 'restored' | 'absent'> {
     if (!this.enabled || !(await this.store.hasSnapshots(planetId))) return 'absent';
     if (this.simLease && !(await this.simLease.tryAcquire(planetId))) return 'loaded';
     let outcome: 'restored' | 'held' | 'wiped';
