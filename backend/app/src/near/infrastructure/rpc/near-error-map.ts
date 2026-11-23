@@ -40,6 +40,9 @@ export function isDeterministicChainError(err: unknown): boolean {
     text.includes('UNKNOWN_TRANSACTION') ||
     text.includes('UNKNOWN_ACCOUNT') ||
     text.includes('Contract panicked') ||
+    // A view that ran and failed inside the contract (`GuestPanic` on a bad argument, `MethodNotFound` on an older
+    // deployment) answers the same on every node: retrying it across endpoints only hides the real error.
+    text.includes('wasm execution failed') ||
     text.includes('FunctionCallError') ||
     text.includes('ActionError') ||
     text.includes('InvalidTxError') ||
