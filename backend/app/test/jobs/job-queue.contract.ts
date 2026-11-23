@@ -101,6 +101,10 @@ function deliveryCases(ctx: ContractCtx, opts: ContractOptions): void {
     await sleep(opts.pollMs * 2);
     expect(started).toBe(1);
   });
+  it('refuses a queue name outside [\\w.-/] (instance queues use `/`)', async () => {
+    await expect(ctx.port().createQueue({ name: 'bad@name' })).rejects.toThrow();
+    await expect(ctx.port().createQueue({ name: ctx.q('ok/instance-1') })).resolves.toBeUndefined();
+  });
   it('throttle: one job per key per slot, whoever enqueues', async () => {
     const name = ctx.q('throttle');
     await ctx.port().createQueue({ name });

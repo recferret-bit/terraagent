@@ -31,8 +31,19 @@ export const LOOP_RETRY: JobRetryOptions = { retryLimit: 2, retryDelayMs: 5_000,
 
 export const deadLetterOf = (queue: string) => `${queue}.dead`;
 
+/** Completed loop jobs are kept one hour (a 5 s planet tick would otherwise keep a week of rows). */
+export const LOOP_DELETE_AFTER_S = 3_600;
+
+/**
+ * A running loop job is failed after four intervals (2 to 15 min): a process killed mid-run frees the loop's
+ * singleton key within that time instead of pg-boss's 15 min default.
+ */
+export function loopExpireSeconds(everyMs: number): number {
+  return Math.min(900, Math.max(120, Math.ceil((everyMs * 4) / 1000)));
+}
+
 /** Queue of an `instance`-scoped job on this instance. */
-export const instanceQueue = (name: string, instanceKey: string) => `${name}@${instanceKey}`;
+export const instanceQueue = (name: string, instanceKey: string) => `${name}/${instanceKey}`;
 
 /**
  * Stable name of this process in queue names: `TA_WORKER_ID` when set, else host + port (stable across restarts, so

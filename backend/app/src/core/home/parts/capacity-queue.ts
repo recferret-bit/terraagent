@@ -9,6 +9,8 @@ import { PlanetCapReached } from './planet-capacity';
 
 /** A queued ticket not polled for this long does not hold its place (its player closed the tab). */
 export const QUEUE_LIVE_MS = 60_000;
+/** A queued ticket not polled for this long is EXPIRED (the client gives up after 10 minutes of polls anyway). */
+export const QUEUE_EXPIRE_MS = 15 * 60_000;
 /** A poll refreshes its ticket's `updatedAt` at most this often. */
 export const QUEUE_TOUCH_MS = 15_000;
 
@@ -30,21 +32,38 @@ export interface CapacityQueueDeps {
   readonly now?: () => number;
 }
 
-/** Runs `seat`; at the planet cap the player is queued instead (no planet is created). */
-export async function seatOrQueue(deps: CapacityQueueDeps, playerId: string, seat: () => Promise<HomeResponse>): Promise<HomeResponse> {
+/**
+ * Runs `seat`; at the planet cap the player is queued instead (no planet is created). A newcomer also queues while
+ * players are waiting for the same family, so a freed seat goes to the first in line (`admitted`: that player).
+ */
+export async function seatOrQueue(
+  deps: CapacityQueueDeps,
+  playerId: string,
+  type: DevPlanetType,
+  admitted: boolean,
+  seat: () => Promise<HomeResponse>,
+): Promise<HomeResponse> {
+  const now = (deps.now ?? Date.now)();
+  if (deps.lobby && !admitted && (await liveQueue(deps.lobby, devPlanetIdFor(type, 1), now)).length > 0) {
+    return enqueue(deps, deps.lobby, playerId, type, now);
+  }
   try {
     return await seat();
   } catch (e) {
     if (!(e instanceof PlanetCapReached)) throw e;
     if (!deps.lobby) throw capUnavailable(e);
-    const { ticket } = await deps.lobby.enqueueTicket({
-      playerId,
-      idempotencyKey: `planet-cap:${e.type}:${(deps.now ?? Date.now)()}`,
-      request: { mode: 'AUTO', planetId: devPlanetIdFor(e.type, 1), planetType: e.type },
-      priority: 0,
-    });
-    return buildQueuedHomeResponse(ticket, deps.lobby, deps.lifecycle);
+    return enqueue(deps, deps.lobby, playerId, e.type, now);
   }
+}
+
+async function enqueue(deps: CapacityQueueDeps, lobby: LobbyPersistenceService, playerId: string, type: DevPlanetType, now: number): Promise<HomeResponse> {
+  const { ticket } = await lobby.enqueueTicket({
+    playerId,
+    idempotencyKey: `planet-cap:${type}:${now}`,
+    request: { mode: 'AUTO', planetId: devPlanetIdFor(type, 1), planetType: type },
+    priority: 0,
+  });
+  return buildQueuedHomeResponse(ticket, lobby, deps.lifecycle);
 }
 
 /**
@@ -76,9 +95,18 @@ export async function admitFromQueue(
 
 /** First in line among the tickets of the same family that were polled recently (FIFO by priority, then age). */
 export async function isHeadOfQueue(lobby: LobbyPersistenceService, ticket: MatchTicketRecord, now: number): Promise<boolean> {
-  const queued = await lobby.listTickets({ planetId: ticket.planetId, state: 'QUEUED' });
-  const live = queued.filter((t) => t.id === ticket.id || now - Date.parse(t.updatedAt) <= QUEUE_LIVE_MS);
+  const live = await liveQueue(lobby, ticket.planetId, now, ticket.id);
   return live[0]?.id === ticket.id;
+}
+
+/** Queued capacity tickets of a family that were polled recently; long-abandoned ones are EXPIRED on the way. */
+async function liveQueue(lobby: LobbyPersistenceService, familyId: string, now: number, keepId?: string): Promise<MatchTicketRecord[]> {
+  const queued = (await lobby.listTickets({ planetId: familyId, state: 'QUEUED' })).filter(isCapacityTicket);
+  const age = (t: MatchTicketRecord) => now - Date.parse(t.updatedAt);
+  for (const t of queued) {
+    if (t.id !== keepId && age(t) > QUEUE_EXPIRE_MS) void lobby.updateTicketState({ ticketId: t.id, state: 'EXPIRED' }).catch(() => undefined);
+  }
+  return queued.filter((t) => t.id === keepId || age(t) <= QUEUE_LIVE_MS);
 }
 
 function capUnavailable(e: PlanetCapReached): CoreException {

@@ -27,8 +27,10 @@ export interface QueueDefinition extends JobRetryOptions {
   readonly policy?: JobQueuePolicy;
   /** Queue that receives a job's payload once it failed for good. Created by `createQueue` when missing. */
   readonly deadLetter?: string;
-  /** A job active longer than this is failed (and retried). Default 15 min. */
+  /** A job active longer than this is failed (and retried), which also frees its singleton key. Default 15 min. */
   readonly expireInSeconds?: number;
+  /** How long a completed job row is kept. Default 7 days (pg-boss). */
+  readonly deleteAfterSeconds?: number;
 }
 
 export interface EnqueueOptions extends JobRetryOptions {
@@ -96,8 +98,13 @@ export abstract class JobQueuePort {
   /** Creates jobs on a schedule. A second call with the same queue and key replaces the first. */
   abstract schedule<T extends object>(queue: string, spec: ScheduleSpec, data?: T, opts?: ScheduleOptions): Promise<void>;
   abstract unschedule(queue: string, key?: string): Promise<void>;
-  /** Depth and failures per known queue (`/v1/metrics`). */
+  /** Depth and failures of the queues this process defined or used (`/v1/metrics`). */
   abstract stats(): Promise<QueueStats[]>;
+}
+
+/** Queue names both adapters accept (pg-boss's rule): letters, digits, `_`, `-`, `.` and `/`. */
+export function assertQueueName(name: string): void {
+  if (!/^[\w.\-/]+$/.test(name)) throw new Error(`queue name "${name}" may only contain letters, digits, _ - . /`);
 }
 
 /** Throttle slot of `nowMs` for a slot width (shared by both adapters so they dedupe identically). */

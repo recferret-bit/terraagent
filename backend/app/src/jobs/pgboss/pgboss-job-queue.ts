@@ -79,12 +79,14 @@ export class PgBossJobQueue extends JobQueuePort {
   async createQueue(def: QueueDefinition): Promise<void> {
     if (this.created.has(def.name)) return;
     if (def.deadLetter) await this.createQueue({ name: def.deadLetter });
-    await this.boss.createQueue(def.name, {
-      policy: def.policy ?? 'standard',
+    const options = {
       ...retryOptions(def),
-      ...(def.deadLetter ? { deadLetter: def.deadLetter } : {}),
       ...(def.expireInSeconds ? { expireInSeconds: def.expireInSeconds } : {}),
-    });
+      ...(def.deleteAfterSeconds ? { deleteAfterSeconds: def.deleteAfterSeconds } : {}),
+    };
+    await this.boss.createQueue(def.name, { policy: def.policy ?? 'standard', ...options, ...(def.deadLetter ? { deadLetter: def.deadLetter } : {}) });
+    // `createQueue` keeps an existing row as it was: settings changed since the queue was first created apply here.
+    if (Object.keys(options).length) await this.boss.updateQueue(def.name, options);
     this.created.add(def.name);
   }
 
@@ -143,7 +145,9 @@ export class PgBossJobQueue extends JobQueuePort {
 
   async stats(): Promise<QueueStats[]> {
     if (!this.started) return [];
-    const queues = await this.boss.getQueues();
+    if (this.created.size === 0) return [];
+    // Only this process's queues: `instance` queues of replicas that are gone do not linger as metric series.
+    const queues = await this.boss.getQueues([...this.created]);
     return queues.map((q) => ({ queue: q.name, queued: q.queuedCount, active: q.activeCount, failed: q.failedCount }));
   }
 }

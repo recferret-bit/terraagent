@@ -3,6 +3,7 @@ import { SystemPresenceClock } from './clock';
 import { PrismaPlanetActivity } from '../lifecycle/planet-activity.store';
 import { PrismaLastSeen } from './last-seen';
 import { PlanetSeenWriter } from './planet-seen';
+import { liveTrackers } from './restored-away';
 import { PresenceTracker, type PresenceTrackerDeps } from './tracker';
 import { noopLastSeen, type PresenceCommandPort, type PresenceLog, type PresenceTransition } from './types';
 
@@ -27,6 +28,9 @@ export function createPresenceTracker(opts: {
     log: opts.log,
     onTransition: opts.onTransition,
     ...(opts.prisma ? { planetSeen: new PlanetSeenWriter(new PrismaPlanetActivity(opts.prisma), clock, opts.log) } : {}),
+    onStop: () => liveTrackers.delete(tracker),
   };
-  return new PresenceTracker(deps);
+  const tracker = new PresenceTracker(deps);
+  liveTrackers.add(tracker); // restored planets arm its away timers (`armRestoredPlanet`)
+  return tracker;
 }

@@ -1,6 +1,7 @@
 import { Inject, Injectable, Optional, type OnApplicationBootstrap, type OnModuleDestroy } from '@nestjs/common';
 import type { Logger } from 'pino';
 import { MetricsRegistry } from '../core/metrics.registry';
+import { ReadinessRegistry } from '../core/readiness.registry';
 import { JobQueuePort, type JobHandler, type QueueDefinition, type WorkOptions } from './job-queue.port';
 import { installJobMetrics, type JobRunCounter } from './jobs-metrics';
 import { MemoryJobQueue } from './memory/memory-job-queue';
@@ -8,7 +9,9 @@ import {
   canHostSim,
   deadLetterOf,
   instanceQueue,
+  LOOP_DELETE_AFTER_S,
   LOOP_RETRY,
+  loopExpireSeconds,
   type JobRegistration,
   type JobScope,
   type RecurringJobDef,
@@ -50,8 +53,14 @@ export class JobsService implements OnApplicationBootstrap, OnModuleDestroy {
     @Inject(JobQueuePort) readonly port: JobQueuePort,
     @Inject(JOBS_OPTIONS) private readonly opts: JobsServiceOptions,
     @Optional() metrics?: MetricsRegistry,
+    @Optional() private readonly readiness?: ReadinessRegistry,
   ) {
     this.runs = metrics ? installJobMetrics(metrics.registry, () => this.port) : undefined;
+    // `/readyz` names a job queue that never started (every background loop would be off).
+    readiness?.register('jobs', () => {
+      if (!this.started) throw new Error(`${this.port.kind} job queue not started`);
+      return this.port.kind;
+    });
   }
 
   get instanceKey(): string {
@@ -73,7 +82,11 @@ export class JobsService implements OnApplicationBootstrap, OnModuleDestroy {
     if (scope !== 'cluster' && !this.hostsSim) return { stop: async () => undefined };
     const queue = this.queueFor(def.name, scope);
     return this.register(async () => {
-      await this.define({ name: queue, policy: def.policy ?? 'exclusive', ...(def.retry ?? LOOP_RETRY), deadLetter: deadLetterOf(def.name) });
+      const everyMs = 'everyMs' in def.schedule ? def.schedule.everyMs : 60_000;
+      await this.define({
+        name: queue, policy: def.policy ?? 'exclusive', ...(def.retry ?? LOOP_RETRY), deadLetter: deadLetterOf(def.name),
+        expireInSeconds: loopExpireSeconds(everyMs), deleteAfterSeconds: LOOP_DELETE_AFTER_S,
+      });
       const worker = await this.work(queue, { concurrency: 1 }, () => def.run().then(() => undefined));
       await this.port.schedule(queue, def.schedule);
       return { stop: async () => { await this.port.unschedule(queue); await worker.stop(); } };
@@ -105,6 +118,7 @@ export class JobsService implements OnApplicationBootstrap, OnModuleDestroy {
     this.stopping = true;
     clearTimeout(this.retryTimer);
     await this.startup;
+    this.readiness?.unregister('jobs');
     for (const p of this.pending) await this.stopOne(p);
     await this.port.stop().catch((err: unknown) => this.opts.log?.warn({ err: errText(err) }, 'job queue stop failed'));
   }

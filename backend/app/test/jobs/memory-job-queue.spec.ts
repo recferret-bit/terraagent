@@ -98,7 +98,7 @@ describe('JobsService registrations', () => {
 
   it('instance jobs use a queue of their own per instance', () => {
     const jobs = memoryJobs({ instanceKey: 'node-a' });
-    expect(jobs.queueFor('market.director', 'instance')).toBe('market.director@node-a');
+    expect(jobs.queueFor('market.director', 'instance')).toBe('market.director/node-a');
     expect(jobs.queueFor('market.director', 'cluster')).toBe('market.director');
   });
 });

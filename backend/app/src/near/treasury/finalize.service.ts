@@ -146,6 +146,9 @@ export class TreasuryFinalizeService implements OnModuleInit, OnModuleDestroy {
   private async sendEffect(scope: DaoScope, row: ProposalRow, nowMs: number): Promise<boolean> {
     const parsed = readProposal(row);
     if (parsed.effectPosted || !this.prisma) return false;
+    // Only the planet's holder claims the effect (3.8, 4): elsewhere `post` cannot reach the sim and the claimed effect
+    // would be lost. The proposal stays Approved with the effect unposted until a pass runs where the planet is loaded.
+    if (this.planets?.isLoaded && !this.planets.isLoaded(scope.planetId)) return false;
     const project = treasuryProject(this.flags.flags, parsed.kind);
     if (!project) return false;
     const command = treasuryEffectCommand(project, effectUntilTick(await this.tickOf(scope.planetId), project.durationH));

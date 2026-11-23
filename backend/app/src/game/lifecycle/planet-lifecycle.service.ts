@@ -9,6 +9,7 @@ import type { JobRegistration } from '../../jobs/recurring';
 import { GamePlanets } from '../game-planets.service';
 import { SectorStateService } from '../persistence/sector-state.service';
 import { SnapshotService } from '../persistence/snapshot.service';
+import { armRestoredPlanet } from '../presence/restored-away';
 import { idleUnloadEligible, isIdle, lifecycleConfig, type LifecycleConfig } from './idle-policy';
 import { prismaUnloadDeps, unloadIdlePlanet, type IdleUnloadDeps, type IdleUnloadOutcome } from './idle-unloader';
 import { MemoryPlanetActivity, PrismaPlanetActivity, type PlanetActivityStore } from './planet-activity.store';
@@ -49,7 +50,7 @@ export class PlanetLifecycleService implements OnModuleInit, OnModuleDestroy {
 
   onModuleInit(): void {
     this.snapshots.setBootRestoreFilter((ids) => this.withoutDormant(ids));
-    this.offLoaded = this.planets.onPlanetLoaded((planetId) => void this.onLoaded(planetId));
+    this.offLoaded = this.planets.onPlanetLoaded((planetId, _tick, info) => void this.onLoaded(planetId, info.restored));
     if (this.config.idleMs <= 0) return;
     this.job = this.planetJobs.register({
       name: PLANET_LIFECYCLE_JOB,
@@ -105,12 +106,18 @@ export class PlanetLifecycleService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  /** A restored dormant planet is awake again; its clock starts now (the joining player's socket follows). */
-  private async onLoaded(planetId: string): Promise<void> {
-    try {
-      if (await this.store.wake(planetId, new Date(this.now()))) this.log.info({ planetId }, `woke ${planetId}`);
-    } catch (err) {
-      this.log.warn({ planetId, err: err instanceof Error ? err.message : String(err) }, 'planet wake not recorded');
-    }
+  /**
+   * A restored dormant planet is awake again; its clock starts now (the joining player's socket follows). Any restored
+   * planet's present human colonies get their away timer armed, so a player gone since before the restart is posted
+   * away instead of pinning the planet "human present".
+   */
+  private async onLoaded(planetId: string, restored: boolean): Promise<void> {
+    const warn = (what: string) => (err: unknown) =>
+      this.log.warn({ planetId, err: err instanceof Error ? err.message : String(err) }, what);
+    await this.store.wake(planetId, new Date(this.now())).then(
+      (woke) => { if (woke) this.log.info({ planetId }, `woke ${planetId}`); },
+      warn('planet wake not recorded'),
+    );
+    if (restored) await armRestoredPlanet(this.planets, planetId).catch(warn('away timers of a restored planet not armed'));
   }
 }

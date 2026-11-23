@@ -302,7 +302,7 @@ export class HomeService {
         return admitFromQueue(this.queueDeps(), activeTicket, () => this.withSeatLock(async () => {
           const again = await this.existingColony(player.id, player.handle);
           if (again?.colony.status === 'ACTIVE') return this.answerExisting(again.colony, again.planet, false);
-          return this.seatFresh(player, capacityTicketType(activeTicket), requestedSectorId);
+          return this.seatFresh(player, capacityTicketType(activeTicket), requestedSectorId, undefined, true);
         }));
       }
       return buildQueuedHomeResponse(activeTicket, this.lobbyPersistence, this.worldLifecycle);
@@ -346,11 +346,11 @@ export class HomeService {
     });
   }
 
-  /** Seats a NEW colony (caller holds the seat lock); at the planet cap the player is queued instead (3.4). */
-  private async seatFresh(player: { id: string; handle?: string }, type: DevPlanetType, sectorId?: string, planetId?: string): Promise<HomeResponse> {
+  /** Seats a NEW colony (caller holds the seat lock); at the planet cap, or behind a queue, the player is queued (3.4). */
+  private async seatFresh(player: { id: string; handle?: string }, type: DevPlanetType, sectorId?: string, planetId?: string, admitted = false): Promise<HomeResponse> {
     await assertNewHomeJoinSpace({ antiCheat: this.antiCheat, playerId: player.id, preferredType: type, requestedSectorId: sectorId, requestedPlanetId: planetId });
     const who = { id: player.id, handle: player.handle?.trim() || `Colonist-${player.id.slice(-4)}` };
-    return seatOrQueue(this.queueDeps(), player.id, () => seatNewColony(this.seatContext(), who, type, sectorId?.trim() || undefined, planetId?.trim() || undefined));
+    return seatOrQueue(this.queueDeps(), player.id, type, admitted, () => seatNewColony(this.seatContext(), who, type, sectorId?.trim() || undefined, planetId?.trim() || undefined));
   }
 
   private queueDeps() {

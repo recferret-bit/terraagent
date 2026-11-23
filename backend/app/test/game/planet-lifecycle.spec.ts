@@ -1,6 +1,6 @@
 import { CANONICAL_PLANETS } from '@terra/contracts';
 import { describe, expect, it } from 'vitest';
-import { idleUnloadEligible, isIdle, lifecycleConfig } from '../../src/game/lifecycle/idle-policy';
+import { idleUnloadEligible, isIdle, lifecycleConfig, MIN_IDLE_MS } from '../../src/game/lifecycle/idle-policy';
 import { unloadIdlePlanet, type IdleUnloadDeps } from '../../src/game/lifecycle/idle-unloader';
 import { MemoryPlanetActivity } from '../../src/game/lifecycle/planet-activity.store';
 import { planetCapacityGate } from '../../src/game/lifecycle/planet-cap';
@@ -80,6 +80,8 @@ describe('idle policy', () => {
   it('the cap defaults to 4 per sim thread; idle 24 h, checked every 5 min', () => {
     expect(lifecycleConfig({ SIM_THREADS: 3 })).toEqual({ cap: 12, idleMs: 24 * 3_600_000, checkMs: 300_000 });
     expect(lifecycleConfig({ SIM_THREADS: 3, TA_PLANET_CAP: 5, TA_PLANET_IDLE_UNLOAD_H: 0 })).toMatchObject({ cap: 5, idleMs: 0 });
+    // outside tests the idle time is never shorter than three presence heartbeats (a connected player is never idle)
+    expect(lifecycleConfig({ NODE_ENV: 'production', TA_PLANET_IDLE_UNLOAD_H: 0.001 }).idleMs).toBe(MIN_IDLE_MS);
   });
 });
 

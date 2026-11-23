@@ -1,7 +1,7 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import type { JobRetryOptions } from '../../jobs/job-queue.port';
 import { JobsService } from '../../jobs/jobs.service';
-import { deadLetterOf, LOOP_RETRY, type JobRegistration } from '../../jobs/recurring';
+import { deadLetterOf, LOOP_DELETE_AFTER_S, LOOP_RETRY, loopExpireSeconds, type JobRegistration } from '../../jobs/recurring';
 import { GamePlanets } from '../game-planets.service';
 
 export interface PlanetJobDef {
@@ -38,7 +38,10 @@ export class PlanetJobsService {
     if (!jobs || !jobs.hostsSim) return { stop: async () => undefined };
     const queue = jobs.queueFor(def.name, 'instance');
     const worker = jobs.worker<PlanetJobData>(
-      { name: queue, policy: 'stately', ...(def.retry ?? LOOP_RETRY), deadLetter: deadLetterOf(def.name) },
+      {
+        name: queue, policy: 'stately', ...(def.retry ?? LOOP_RETRY), deadLetter: deadLetterOf(def.name),
+        expireInSeconds: loopExpireSeconds(def.everyMs), deleteAfterSeconds: LOOP_DELETE_AFTER_S,
+      },
       { concurrency: def.concurrency ?? 2 },
       async ({ data }) => {
         if (this.planets.isLoaded(data.planetId)) await def.run(data.planetId);

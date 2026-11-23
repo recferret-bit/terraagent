@@ -1,4 +1,5 @@
 import {
+  assertQueueName,
   JobQueuePort,
   type EnqueueOptions,
   type JobHandler,
@@ -43,6 +44,7 @@ export class MemoryJobQueue extends JobQueuePort {
 
   async createQueue(def: QueueDefinition): Promise<void> {
     if (this.queues.has(def.name)) return;
+    assertQueueName(def.name);
     if (def.deadLetter && !this.queues.has(def.deadLetter)) await this.createQueue({ name: def.deadLetter });
     this.queues.set(def.name, new MemoryQueue(def, (dlq, data) => void this.enqueue(dlq, data), this.now));
   }
@@ -83,6 +85,7 @@ export class MemoryJobQueue extends JobQueuePort {
   private queue(name: string): MemoryQueue {
     let q = this.queues.get(name);
     if (!q) {
+      assertQueueName(name);
       q = new MemoryQueue({ name }, (dlq, data) => void this.enqueue(dlq, data), this.now);
       this.queues.set(name, q);
     }

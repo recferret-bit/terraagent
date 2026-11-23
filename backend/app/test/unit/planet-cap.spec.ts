@@ -3,7 +3,7 @@ import { DEV_PLANET_CAPACITY, MAX_COLONIES_PER_PLANET } from '@terra/sim';
 import { describe, expect, it } from 'vitest';
 import { HomeRepository, HomeService } from '../../src/core/home';
 import type { HomeLandingHost } from '../../src/core/home/home.service';
-import { isCapacityTicket, QUEUE_LIVE_MS } from '../../src/core/home/parts/capacity-queue';
+import { isCapacityTicket, QUEUE_EXPIRE_MS, QUEUE_LIVE_MS } from '../../src/core/home/parts/capacity-queue';
 import { LobbyPersistenceService } from '../../src/lobby/lobby-persistence.service';
 import { MemoryLobbyStore } from '../../src/lobby/memory-lobby.store';
 
@@ -102,6 +102,26 @@ describe('planet cap: the queue drains when a seat frees', () => {
     await r.repo.deleteColony((await r.repo.listColoniesByPlanetId('pl_dev'))[0]!.id);
     expect((await r.seat('q_2')).state).toBe('QUEUED');
     expect((await r.seat('q_1')).state).toBe('ACTIVE');
+  });
+
+  it('a newcomer does not take a freed seat ahead of the players already waiting', async () => {
+    const r = rig(1);
+    await r.fill('p_', SEATS);
+    expect((await r.seat('q_1')).state).toBe('QUEUED');
+    await new Promise((res) => setTimeout(res, 5)); // a later createdAt (same-millisecond tickets order by id)
+    await r.repo.deleteColony((await r.repo.listColoniesByPlanetId('pl_dev'))[0]!.id);
+    expect((await r.seat('newcomer')).state).toBe('QUEUED');
+    expect((await r.seat('q_1')).state).toBe('ACTIVE');
+  });
+
+  it('a ticket abandoned for longer than the expiry is EXPIRED', async () => {
+    const r = rig(1);
+    await r.fill('p_', SEATS);
+    expect((await r.seat('q_old')).state).toBe('QUEUED');
+    const old = (await r.lobby.findActiveTicketByPlayer('q_old'))!;
+    await r.lobby.updateTicket({ ticketId: old.id, now: new Date(Date.now() - QUEUE_EXPIRE_MS - 5_000) });
+    expect((await r.seat('q_new')).state).toBe('QUEUED');
+    await expect.poll(async () => (await r.lobby.getTicketById(old.id))?.state).toBe('EXPIRED');
   });
 
   it('a first-in-line ticket that stopped polling does not block the queue', async () => {

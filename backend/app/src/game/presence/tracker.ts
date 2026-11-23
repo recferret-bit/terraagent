@@ -12,6 +12,8 @@ interface ColonyRec {
   away: boolean;
   /** Set while the last socket is gone and the away timer has not fired. */
   disconnectedAt?: number;
+  /** Armed at boot for a colony nobody has seen on this process: its `away` does not stamp `last_seen_at`. */
+  unseen?: boolean;
   cancel?: () => void;
 }
 
@@ -26,6 +28,8 @@ export interface PresenceTrackerDeps {
   readonly awayAfterMs?: number;
   /** Persists the planet idle clock (3.5) while human sockets are on a planet. */
   readonly planetSeen?: PlanetSeenWriter;
+  /** Called once by `stop` (the process-wide tracker registry drops it). */
+  readonly onStop?: () => void;
 }
 
 /**
@@ -45,6 +49,7 @@ export class PresenceTracker {
     this.moveSocket(session.socketId, rec);
     this.flushIfDue(rec);
     rec.sockets.add(session.socketId);
+    rec.unseen = false;
     this.deps.planetSeen?.occupied(rec.planetId);
     this.cancelTimer(rec);
     rec.disconnectedAt = undefined;
@@ -62,6 +67,25 @@ export class PresenceTracker {
   stop(): void {
     for (const rec of this.colonies.values()) this.cancelTimer(rec);
     this.deps.planetSeen?.stop();
+    this.deps.onStop?.();
+  }
+
+  /**
+   * A restart loses every socket without an `away`: a player connected at shutdown who never returns stays `away:
+   * false` in the restored sim and pins the planet "human present". Arms the away timer of each such seated human
+   * colony that has no socket here; a join before `AWAY_AFTER_S` cancels it, as after any disconnect.
+   */
+  armSeated(colonies: readonly Omit<PresenceJoin, 'socketId'>[]): number {
+    let armed = 0;
+    for (const c of colonies) {
+      const rec = this.ensure({ ...c, socketId: '' });
+      if (rec.sockets.size > 0 || rec.away || rec.disconnectedAt !== undefined) continue;
+      rec.unseen = true;
+      rec.disconnectedAt = this.deps.clock.now();
+      this.arm(rec);
+      armed++;
+    }
+    return armed;
   }
 
   /** Resolves when queued presence posts have finished. Tests await this instead of sleeping. */
@@ -164,13 +188,10 @@ export class PresenceTracker {
   }
 
   private async apply(rec: ColonyRec, away: boolean, at: Date): Promise<void> {
-    const seen = await this.deps.lastSeen.touch({
-      colonyId: rec.colonyId,
-      playerId: rec.playerId,
-      at,
-      colonyIndex: rec.colonyIndex,
-    });
-    if (seen.colonyIndex !== undefined) rec.colonyIndex = seen.colonyIndex;
+    if (!(away && rec.unseen)) {
+      const seen = await this.deps.lastSeen.touch({ colonyId: rec.colonyId, playerId: rec.playerId, at, colonyIndex: rec.colonyIndex });
+      if (seen.colonyIndex !== undefined) rec.colonyIndex = seen.colonyIndex;
+    }
     const cmd = presenceCommand({ colonyId: rec.colonyId, away, colonyIndex: rec.colonyIndex });
     await postPresence(this.deps.commands, rec.planetId, cmd, this.deps.log);
   }
