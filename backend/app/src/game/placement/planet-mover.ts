@@ -16,7 +16,7 @@ interface Move {
   phase: 'handoff' | 'loading';
   /** Messages routed to the planet while it moves, replayed in order on the new thread. */
   readonly buffer: { msg: ToThread; transfer: ArrayBuffer[] }[];
-  /** Route state at the start (subscription, mode, warp): re-applied on the new thread before the buffer. */
+  /** Route state at the start (subscription, mode, warp): carried in the target `load` (`moved`), before its first step. */
   readonly subscribed: boolean;
   readonly mode?: 'active' | 'coarse';
   readonly warp?: number;
@@ -29,8 +29,8 @@ interface Move {
 /**
  * Moves one planet between sim threads (3.2) below `GamePlanets`, so the lease, ledger and snapshot listeners never see
  * an unload or a load: `unload { handoff }` on the source (snapshot + removal in one dispatch, no step in between),
- * `load` of that snapshot with the original flags / overrides on the target, then the subscription, mode and warp, the
- * commands it had queued, and everything sent to it meanwhile, in order. The delta stream continues from the handoff
+ * `load` of that snapshot with the original flags / overrides and its subscription, mode and warp on the target, then
+ * the commands it had queued and everything sent to it meanwhile, in order. The delta stream continues from the handoff
  * tick; the pool's listeners get `moved` (the WS layer resyncs its clients). A failed target load goes back to the source.
  */
 export class PlanetMover {
@@ -96,7 +96,10 @@ export class PlanetMover {
     const p = this.table.get(m.planetId);
     this.table.setThread(m.planetId, thread);
     m.to = thread;
-    const msg: ToThread = { t: 'load', planetId: m.planetId, snapshot: bytes, ...(p?.flags ? { flags: p.flags } : {}), ...(p?.overrides ? { overrides: p.overrides } : {}) };
+    const moved = { subscribed: m.subscribed, ...(m.mode ? { mode: m.mode } : {}), ...(m.warp !== undefined ? { warp: m.warp } : {}) };
+    const msg: ToThread = {
+      t: 'load', planetId: m.planetId, snapshot: bytes, moved, ...(p?.flags ? { flags: p.flags } : {}), ...(p?.overrides ? { overrides: p.overrides } : {}),
+    };
     return this.port.send(thread, msg, [bytes.buffer as ArrayBuffer]);
   }
 
@@ -116,9 +119,6 @@ export class PlanetMover {
     this.moves.delete(m.planetId);
     const send = (msg: ToThread, transfer: ArrayBuffer[] = []) => this.port.send(m.to, msg, transfer);
     const id = m.planetId;
-    if (m.subscribed) send({ t: 'subscribe', planetId: id });
-    if (m.mode) send({ t: 'ctl', op: 'mode', planetId: id, mode: m.mode });
-    if (m.warp !== undefined && m.warp !== 1) send({ t: 'ctl', op: 'warp', planetId: id, k: m.warp });
     for (const cmd of m.pending) send({ t: 'cmd', planetId: id, cmd });
     for (const b of m.buffer) send(b.msg, b.transfer);
     this.completed++;

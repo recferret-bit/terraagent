@@ -64,6 +64,11 @@ export interface LoadMsg {
    * The planet is not scheduled until they finish, then it joins as `active` (BE-57).
    */
   readonly catchUpTicks?: number;
+  /**
+   * Rebalancing move (pool-made): the route state the planet had on its old thread, applied before it is first
+   * scheduled here, so no step runs unsubscribed (the delta stream stays gapless from the handoff tick).
+   */
+  readonly moved?: { readonly subscribed: boolean; readonly mode?: 'active' | 'coarse'; readonly warp?: number };
 }
 
 /** Generator of a load without `params` or `snapshot`: the W00 empty flat planet (tests, `GAME_DEV_PLANETS` without W01). */

@@ -25,53 +25,60 @@ async function boot(opts: Partial<ConstructorParameters<typeof SimThreadPool>[0]
   return (games = new GamePlanets(pool));
 }
 
+/** Submits 16 commands to `planetId` ~100 ms apart and watches its deltas: ack latencies, delta gaps, ticks per second. */
+async function probe(g: GamePlanets, planetId: string) {
+  const deltaAt: number[] = [];
+  let firstTick = -1;
+  let lastTick = -1;
+  g.subscribe(planetId, { onDelta: (d) => { deltaAt.push(performance.now()); if (firstTick < 0) firstTick = d.fromTick; lastTick = d.toTick; } });
+  await sleep(2000); // the slow planet is measured (and demoted when nobody watches it)
+  deltaAt.length = 0;
+  firstTick = -1;
+  const t0 = performance.now();
+  const acks: number[] = [];
+  for (let i = 0; i < 16; i++) {
+    const sent = performance.now();
+    const out = await g.submit(planetId, cmd(`c${i}`));
+    expect(out.commandId).toBe(`c${i}`);
+    acks.push(performance.now() - sent);
+    await sleep(97);
+  }
+  const wall = (performance.now() - t0) / 1000;
+  return { maxAck: Math.max(...acks), maxGap: Math.max(...deltaAt.slice(1).map((t, i) => t - deltaAt[i]!)), tps: (lastTick - firstTick) / wall };
+}
+
 describe('scheduler fairness on a real sim thread (1.1-1.3)', () => {
-  it('a 300 ms planet does not delay a normal planet\'s commands or deltas beyond one tick plus the slow step', async () => {
+  it('a watched 300 ms planet delays a normal planet\'s steps by less than one tick (commands, deltas)', async () => {
     const g = await boot();
     await g.load('pl_fast_fair');
     await g.load('pl_slow_fair');
-    const deltaAt: number[] = [];
-    let firstTick = -1;
-    let lastTick = -1;
-    g.subscribe('pl_fast_fair', { onDelta: (d) => { deltaAt.push(performance.now()); if (firstTick < 0) firstTick = d.fromTick; lastTick = d.toTick; } });
-    await sleep(1500);
-    deltaAt.length = 0;
-    firstTick = -1;
-    const t0 = performance.now();
-    const acks: number[] = [];
-    for (let i = 0; i < 16; i++) {
-      const sent = performance.now();
-      const out = await g.submit('pl_fast_fair', cmd(`c${i}`));
-      expect(out.commandId).toBe(`c${i}`);
-      acks.push(performance.now() - sent);
-      await sleep(97);
-    }
-    const wall = (performance.now() - t0) / 1000;
-    const gaps = deltaAt.slice(1).map((t, i) => t - deltaAt[i]!);
-    expect(Math.max(...acks)).toBeLessThanOrEqual(TICK_MS + SLOW_MS + SLACK_MS);
-    expect(Math.max(...gaps)).toBeLessThanOrEqual(TICK_MS + SLOW_MS + SLACK_MS);
-    expect((lastTick - firstTick) / wall).toBeGreaterThan(4); // keeps ~5 TPS
+    g.subscribe('pl_slow_fair', {}); // players on it: it stays active at 300 ms per step
+    const r = await probe(g, 'pl_fast_fair');
+    // idle thread: an ack waits for the next slot (< 1 tick) and deltas come every tick; the slow planet adds < 1 tick
+    expect(r.maxAck).toBeLessThanOrEqual(2 * TICK_MS + SLACK_MS);
+    expect(r.maxGap).toBeLessThanOrEqual(2 * TICK_MS + SLACK_MS);
+    expect(r.tps).toBeGreaterThan(4.2); // ~5 (the delta window and the wall window differ by up to a tick)
     const [s] = await g.pool.stats();
     const fast = s!.planets.find((p) => p.planetId === 'pl_fast_fair')!;
-    const slow = s!.planets.find((p) => p.planetId === 'pl_slow_fair')!;
     expect(fast).toMatchObject({ droppedSlots: 0, demoted: false, mode: 'active' });
-    expect(slow).toMatchObject({ demoted: true, mode: 'coarse' }); // nobody watches it and it cannot keep a tick
-    expect(slow.avgStepMs).toBeGreaterThan(TICK_MS);
     expect(fast.avgStepMs).toBeLessThan(50);
-    expect(s!.busyRatio).toBeGreaterThan(0);
+    expect(s!.planets.find((p) => p.planetId === 'pl_slow_fair')).toMatchObject({ demoted: false, mode: 'active' });
+    expect(s!.busyRatio).toBeGreaterThan(0.5);
   }, 30_000);
 
-  it('a watched slow planet is not demoted and still shares the thread', async () => {
+  it('a slow planet nobody watches is demoted to coarse; its neighbour keeps 5 TPS and no slot is dropped', async () => {
     const g = await boot();
-    await g.load('pl_fast_w');
-    await g.load('pl_slow_w');
-    g.subscribe('pl_slow_w', {});
-    await sleep(3000);
-    const sent = performance.now();
-    await g.submit('pl_fast_w', cmd('w1'));
-    expect(performance.now() - sent).toBeLessThanOrEqual(TICK_MS + SLOW_MS + SLACK_MS);
+    await g.load('pl_fast_bg');
+    await g.load('pl_slow_bg');
+    const r = await probe(g, 'pl_fast_bg');
+    // a coarse slot (dt 5) is one longer block (600 ms in this fixture): it delays the neighbour by up to that, once a second
+    expect(r.maxAck).toBeLessThanOrEqual(TICK_MS + 2 * SLOW_MS + SLACK_MS);
+    expect(r.tps).toBeGreaterThan(4.2); // ~5 (the delta window and the wall window differ by up to a tick)
     const [s] = await g.pool.stats();
-    expect(s!.planets.find((p) => p.planetId === 'pl_slow_w')).toMatchObject({ demoted: false, mode: 'active' });
+    const slow = s!.planets.find((p) => p.planetId === 'pl_slow_bg')!;
+    expect(slow).toMatchObject({ demoted: true, mode: 'coarse' });
+    expect(slow.avgStepMs).toBeGreaterThan(TICK_MS);
+    expect(s!.planets.find((p) => p.planetId === 'pl_fast_bg')).toMatchObject({ droppedSlots: 0, demoted: false, mode: 'active' });
   }, 30_000);
 });
 

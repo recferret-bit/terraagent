@@ -135,6 +135,7 @@ export class PlanetHost {
       feedSeq: 0,
     };
     this.planets.set(msg.planetId, planet);
+    if (msg.moved?.subscribed) this.setSubscribed(msg.planetId, planet, true);
     const stocks = Array.from({ length: state.colonies?.length ?? 0 }, (_, i) => getColonyStock(state, i));
     this.post({ t: 'loaded', planetId: msg.planetId, tick: state.meta.tick, restored: !!msg.snapshot, genesis: !!msg.genesis, stocks });
     this.emitSectorSync(msg.planetId, planet);
@@ -283,9 +284,11 @@ export class PlanetHost {
   }
 
   private flushDue(id: string, p: Planet, now: number): void {
-    if (!p.subscribed || now < p.nextDeltaMs) return;
-    p.nextDeltaMs += this.deltaIntervalMs;
-    if (p.nextDeltaMs <= now) p.nextDeltaMs = now + this.deltaIntervalMs; // never queue a burst after a stall
+    // half an interval of slack: the planet's own steps (which flush here) run a little early or late, and a step that
+    // ran late must not push the next delta a whole step further. Never a burst after a stall.
+    const half = this.deltaIntervalMs / 2;
+    if (!p.subscribed || now < p.nextDeltaMs - half || p.state.meta.tick <= p.lastDeltaTick) return; // nothing new: keep the window
+    p.nextDeltaMs = Math.max(p.nextDeltaMs + this.deltaIntervalMs, now + half);
     try { this.sendDelta(id, p); } catch (e) {
       this.post({ t: 'error', thread: this.thread, planetId: id, message: e instanceof Error ? e.message : String(e) });
     }

@@ -1,6 +1,6 @@
 import { COARSE_DT, TICK_MS } from '../../src/kernel/constants';
 import { describe, expect, it } from 'vitest';
-import { COARSE_STEP_MS, MAX_CATCHUP, MAX_DEBT_SLOTS, PlanetScheduler, SINGLE_PLANET_SCHEDULE } from '../../src/host/scheduler';
+import { COARSE_STEP_MS, HEAVY_MAX_HOLD_MS, MAX_CATCHUP, MAX_DEBT_SLOTS, PlanetScheduler, SINGLE_PLANET_SCHEDULE } from '../../src/host/scheduler';
 
 /** Fake clock + timer: `advance(ms)` jumps time, firing due timers in order; `jump(ms)` models a blocked thread. */
 function rig() {
@@ -156,7 +156,7 @@ describe('fairness: a slow planet never stalls a fast one', () => {
   const SLOW = 300;
   const FAST = 2;
 
-  it('a 300 ms planet delays a 2 ms planet by at most one slow step, and the fast one keeps 5 TPS', () => {
+  it('a 300 ms planet delays a 2 ms planet by less than one tick, and the fast one keeps 5 TPS', () => {
     const r = costRig({ slow: SLOW, fast: FAST }, { demoteAfterSlowSteps: 0 }); // no demotion: the worst case
     r.s.add('slow');
     r.s.add('fast');
@@ -165,14 +165,14 @@ describe('fairness: a slow planet never stalls a fast one', () => {
     r.runUntil(20_000);
     const fast = r.log.filter((x) => x.id === 'fast' && x.startMs >= 2000);
     const lateness = fast.map((x) => x.startMs - x.dueMs);
-    expect(Math.max(...lateness)).toBeLessThanOrEqual(SLOW + FAST);
+    expect(Math.max(...lateness)).toBeLessThan(TICK_MS); // the slow slot starts right after the fast one stepped
     // no slot lost: 5 per second over [2 s, 20 s)
     expect(fast.length).toBeGreaterThanOrEqual(18 * 5 - 1);
     expect(r.s.info('fast')).toMatchObject({ droppedSlots: 0 });
     expect(r.s.info('slow')!.droppedSlots).toBeGreaterThan(0); // the slow one cannot keep up: its debt is capped
   });
 
-  it('a command for the fast planet is answered within one tick plus the slow step in flight', () => {
+  it('a command for the fast planet waits at most one tick longer than on an idle thread', () => {
     const r = costRig({ slow: SLOW, fast: FAST }, { demoteAfterSlowSteps: 0 });
     r.s.add('slow');
     r.s.add('fast');
@@ -185,7 +185,8 @@ describe('fairness: a slow planet never stalls a fast one', () => {
       const applied = fastStarts.find((s) => s >= t)!;
       worst = Math.max(worst, applied + FAST - t);
     }
-    expect(worst).toBeLessThanOrEqual(TICK_MS + SLOW + FAST);
+    // idle thread: the next slot, at most one tick away; here at most one more tick
+    expect(worst).toBeLessThanOrEqual(TICK_MS + TICK_MS + FAST);
   });
 
   it('two slow planets with players share the thread; a player-less fast planet still gets every slot', () => {
@@ -198,6 +199,26 @@ describe('fairness: a slow planet never stalls a fast one', () => {
     const count = (id: string) => r.log.filter((x) => x.id === id && x.startMs >= 5000).length;
     expect(Math.abs(count('p1') - count('p2'))).toBeLessThanOrEqual(2);
     expect(count('bg')).toBeGreaterThanOrEqual(25 * 5 - 2);
+    expect(Math.max(...r.log.filter((x) => x.id === 'bg' && x.startMs >= 5000).map((x) => x.startMs - x.dueMs))).toBeLessThanOrEqual(TICK_MS + FAST * 2);
+  });
+
+  it('a heavy planet is not starved when light planets leave no gap (staggered phases)', () => {
+    const cost: Record<string, number> = { heavy: SLOW, watched: SLOW };
+    for (let i = 0; i < 12; i++) cost[`l${i}`] = FAST;
+    const r = costRig(cost, { demoteAfterSlowSteps: 0 });
+    r.s.add('heavy');
+    r.s.add('watched');
+    r.s.setPlayers('watched', true);
+    for (let i = 0; i < 12; i++) { r.runUntil(r.now + 17); r.s.add(`l${i}`); } // due every 200 ms, 17 ms apart
+    r.s.start();
+    r.runUntil(30_000);
+    const starts = (id: string) => r.log.filter((x) => x.id === id && x.startMs >= 5000).map((x) => x.startMs);
+    const maxGap = (xs: number[]) => Math.max(...xs.slice(1).map((t, i) => t - xs[i]!));
+    // no gap ever: each waits out its hold, the watched one (one tick) far more often than the other (1 s)
+    expect(maxGap(starts('heavy'))).toBeLessThanOrEqual(2 * HEAVY_MAX_HOLD_MS);
+    expect(maxGap(starts('watched'))).toBeLessThanOrEqual(HEAVY_MAX_HOLD_MS);
+    expect(starts('watched').length).toBeGreaterThan(starts('heavy').length);
+    expect(starts('l0').length).toBeGreaterThanOrEqual(25 * 5 - 2);
   });
 });
 

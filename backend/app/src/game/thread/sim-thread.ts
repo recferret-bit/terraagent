@@ -115,6 +115,8 @@ port.on('message', (msg: ToThread) => {
       return;
     }
     schedule(msg.planetId);
+    if (msg.moved?.mode) scheduler.setMode(msg.planetId, msg.moved.mode);
+    if (msg.moved?.warp !== undefined && msg.moved.warp !== 1) scheduler.setWarp(msg.planetId, msg.moved.warp);
   } else if ('planetId' in msg && msg.planetId && !host.planets.has(msg.planetId)) { // unloaded, handed off or failed
     scheduler.remove(msg.planetId);
     meter.forget(msg.planetId);

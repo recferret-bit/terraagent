@@ -16,6 +16,18 @@ export const SLOW_STEP_MS = TICK_MS;
 export const DEMOTE_AFTER_SLOW_STEPS = 5;
 /** Fair-share weight of a planet with players (subscribed): it gets this many times the thread time of one without. */
 export const PLAYER_WEIGHT = 4;
+/**
+ * A planet whose slots average more than this is heavy: it starts a slot only when no light planet is due within
+ * {@link HEAVY_GAP_SHARE} of `min(its slot, one tick)`, i.e. right after the light planets stepped, so a 300 ms slot
+ * makes them at most ~120 ms late instead of up to 300 ms.
+ */
+export const HEAVY_STEP_MS = 20;
+export const HEAVY_GAP_SHARE = 0.9;
+/**
+ * Longest a heavy planet waits for such a gap while no heavy planet found one (staggered light planets may never leave
+ * one); one tick with players. While gaps do come, heavy planets share them in fair-share order instead.
+ */
+export const HEAVY_MAX_HOLD_MS = 1000;
 /** Cap of the time-warp multiplier. */
 export const MAX_WARP = 100;
 /**
@@ -118,6 +130,9 @@ interface Entry {
   slowStreak: number;
   droppedSlots: number;
   demoted: boolean;
+  /** Heavy planet waiting for a gap: not picked before this time; and since when it waits (-1 = not waiting). */
+  holdUntil: number;
+  heldSince: number;
 }
 
 const intervalOf = (mode: StepMode): number => (mode === 'active' ? TICK_MS : COARSE_STEP_MS);
@@ -131,7 +146,9 @@ const lagOf = (e: Entry, now: number): number => (e.nextDueMs <= now ? Math.floo
  * Fairness (one slow planet never stalls the others): a turn steps at most one due slot per planet, picking the due
  * planet with the least weighted thread time first (planets with players weigh {@link PLAYER_WEIGHT}x and win ties).
  * The turn ends once its budget is spent, or when the best due planet already stepped this turn; the thread then
- * yields to its message loop, so commands and stats are handled between any two planet steps. A planet that owes more
+ * yields to its message loop, so commands and stats are handled between any two planet steps. A heavy planet (slots
+ * over {@link HEAVY_STEP_MS}) starts a slot only in a gap after the light planets stepped, so it delays them by less
+ * than a tick (a slot cannot be pre-empted; moving neighbours off its thread is the rebalancer's job). A planet that owes more
  * than the debt cap skips the oldest slots; a player-less planet whose steps keep exceeding a tick is demoted to
  * `coarse`. Both are reported (`droppedSlots`, `demoted`), never hidden.
  *
@@ -145,6 +162,8 @@ export class PlanetScheduler {
   private turnNo = 0;
   /** Weighted-time floor: the least vruntime picked so far. New and idle planets start near it. */
   private floorVr = 0;
+  /** When a heavy planet last started in a gap (the hold time-box applies only when gaps stopped coming). */
+  private lastGapMs = -Infinity;
   private readonly budgetMs: number;
   private readonly maxDebt: number;
   private readonly demoteAfter: number;
@@ -187,6 +206,7 @@ export class PlanetScheduler {
     this.entries.set(planetId, {
       id: planetId, mode, warp: 1, warpRequested: 1, overloaded: 0, nextDueMs: this.o.now(), lagSteps: 0, stepsLastPass: 0,
       players: false, vruntime: this.floorVr, turn: 0, turnSlots: 0, lastStepMs: 0, avgStepMs: 0, slowStreak: 0, droppedSlots: 0, demoted: false,
+      holdUntil: 0, heldSince: -1,
     });
     if (this.running) this.arm();
   }
@@ -292,18 +312,42 @@ export class PlanetScheduler {
   /**
    * The due planet that steps next in this turn, or none (end of turn). A planet that used up its slots this turn is
    * not picked again; if it still goes first among the due ones, the turn ends so it steps again right after the yield
-   * instead of a heavier planet running in its place.
+   * instead of a heavier planet running in its place. A heavy planet that would make a light one late waits (`hold`).
    */
   private pick(now: number, turn: number): Entry | undefined {
-    let fresh: Entry | undefined;
-    let stepped: Entry | undefined;
-    for (const e of this.entries.values()) {
-      if (e.nextDueMs > now) continue;
-      const spent = e.turn === turn && e.turnSlots >= this.maxSlots;
-      if (spent) { if (!stepped || this.before(e, stepped)) stepped = e; } else if (!fresh || this.before(e, fresh)) fresh = e;
+    const held = new Set<Entry>();
+    for (;;) {
+      let fresh: Entry | undefined;
+      let stepped: Entry | undefined;
+      for (const e of this.entries.values()) {
+        if (e.nextDueMs > now || e.holdUntil > now || held.has(e)) continue;
+        const spent = e.turn === turn && e.turnSlots >= this.maxSlots;
+        if (spent) { if (!stepped || this.before(e, stepped)) stepped = e; } else if (!fresh || this.before(e, fresh)) fresh = e;
+      }
+      if (!fresh || (stepped && this.keyOf(stepped) < this.keyOf(fresh))) return undefined;
+      if (!this.hold(fresh, now)) return fresh;
+      held.add(fresh);
     }
-    if (!fresh || (stepped && this.keyOf(stepped) < this.keyOf(fresh))) return undefined;
-    return fresh;
+  }
+
+  /** True (and the planet waits until the next light planet's due time) when its slot would make a light planet late. */
+  private hold(e: Entry, now: number): boolean {
+    if (e.avgStepMs <= HEAVY_STEP_MS) return this.release(e);
+    const maxHold = e.players ? TICK_MS : HEAVY_MAX_HOLD_MS;
+    const since = e.heldSince >= 0 ? e.heldSince : now;
+    if (now - since >= maxHold && now - this.lastGapMs >= maxHold) return this.release(e); // no gaps at all: run anyway
+    let next = Infinity;
+    for (const o of this.entries.values()) if (o !== e && o.avgStepMs <= HEAVY_STEP_MS) next = Math.min(next, o.nextDueMs);
+    if (next - now >= HEAVY_GAP_SHARE * Math.min(e.avgStepMs, TICK_MS)) { this.lastGapMs = now; return this.release(e); }
+    e.holdUntil = Math.min(next, Math.max(since, this.lastGapMs) + maxHold);
+    if (e.heldSince < 0) e.heldSince = now;
+    return true;
+  }
+
+  private release(e: Entry): false {
+    e.holdUntil = 0;
+    e.heldSince = -1;
+    return false;
   }
 
   /** Runs one due slot (`warp` engine steps), measures it, and reports it before anything else steps. */
@@ -353,7 +397,7 @@ export class PlanetScheduler {
     this.cancel = undefined;
     if (!this.running || this.entries.size === 0) return;
     let next = Infinity;
-    for (const e of this.entries.values()) next = Math.min(next, e.nextDueMs);
+    for (const e of this.entries.values()) next = Math.min(next, Math.max(e.nextDueMs, e.holdUntil));
     // delay >= 0; even when still behind we go through the timer so messages are handled between turns
     this.cancel = this.o.schedule(() => { this.cancel = undefined; this.runPass(); this.arm(); }, Math.max(0, next - this.o.now()));
   }
