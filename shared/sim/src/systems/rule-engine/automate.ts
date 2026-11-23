@@ -2,6 +2,7 @@ import { ensureColonyRecord } from '../../kernel/colonies';
 import type { CompiledDataLike } from '../../kernel/config';
 import type { StepContext } from '../../kernel/context';
 import { setBlob, type PlanetState } from '../../kernel/state';
+import { powerZoneActive } from '../construction/powerZone';
 import {
   enqueueQueueTask,
   getAllQueueEntries,
@@ -11,7 +12,7 @@ import {
   type QueueTaskPayload,
 } from '../queue';
 import { evaluateColonyNeeds, type NeedKey } from './needs';
-import { selectDeterministicBuildSite, type BuildSiteSelection } from './site';
+import { selectDeterministicBuildSite, shouldExpandPowerZoneWithPylon, type BuildSiteSelection } from './site';
 import {
   readColonyPriorities,
   resolveColonyPriorities,
@@ -103,13 +104,25 @@ export function evaluateAutopilotDecision(
   const spec = getNeedAutomationSpec(top.need);
   const mode = resolveNeedMode(top.need, stage, actionable);
 
-  const site =
-    spec.taskKind === 'build'
-      ? (selectDeterministicBuildSite(state, colonyIndex, spec.target, { data: opts?.data }) ?? FALLBACK_BUILD_SITE)
-      : null;
+  let resolvedTarget = spec.target;
+  let resolvedTitle = spec.title;
+  let site: BuildSiteSelection | null = null;
+  if (spec.taskKind === 'build') {
+    site = selectDeterministicBuildSite(state, colonyIndex, spec.target, { data: opts?.data });
+    const isExtractor = spec.target.endsWith('Extractor');
+    if (!site && !isExtractor && spec.target !== 'pylon' && stage >= 2 && powerZoneActive(opts?.data)) {
+      const expansion = shouldExpandPowerZoneWithPylon(state, colonyIndex, opts?.data);
+      if (expansion.needed && expansion.site) {
+        site = expansion.site;
+        resolvedTarget = 'pylon';
+        resolvedTitle = 'Build Power Pylon';
+      }
+    }
+    site ??= FALLBACK_BUILD_SITE;
+  }
 
   const suggestionId =
-    mode === 'suggestion' ? `sug_auto_${colonyIndex}_s${stage}_${top.need}_${spec.target}` : undefined;
+    mode === 'suggestion' ? `sug_auto_${colonyIndex}_s${stage}_${top.need}_${resolvedTarget}` : undefined;
 
   return {
     colonyIndex,
@@ -126,11 +139,11 @@ export function evaluateAutopilotDecision(
     actionable,
     mode,
     lane: spec.lane,
-    target: spec.target,
-    ...(spec.taskKind === 'build' ? { building: spec.target } : {}),
+    target: resolvedTarget,
+    ...(spec.taskKind === 'build' ? { building: resolvedTarget } : {}),
     introducedStage: spec.introducedStage,
     autoStage: spec.autoStage,
-    title: spec.title,
+    title: resolvedTitle,
     reason: formatDecisionReason(spec, stage, top.weightedBp, top.priorityKey, top.priorityValue, mode),
     site,
     ...(site ? { q: site.q, r: site.r } : {}),

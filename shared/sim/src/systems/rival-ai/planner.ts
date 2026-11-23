@@ -9,7 +9,13 @@ import { checkCostAffordability } from '../economy/ledger';
 import { getColonyGoals, isGoalExecutable } from '../goals';
 import type { ColonyPowerSummary } from '../power-core/types';
 import { getColonyQueue } from '../queue';
-import { selectDeterministicBuildSite } from '../rule-engine/site';
+import { checkItemUnlockStage } from '../progression/validate';
+import { selectDeterministicBuildSite, shouldExpandPowerZoneWithPylon } from '../rule-engine/site';
+import {
+  findTerritoryObstacleToClear,
+  findTerritoryTileToCultivate,
+  hasAvailableTerraformBuilder,
+} from '../terraform-basic/aiTerritory';
 import { getRivalColonyMeta, isRivalAiColony, readRivalAiBlob } from './store';
 import {
   actorIdOfBot,
@@ -128,33 +134,53 @@ function pickBuildingOrder(
     candidates.push({ building: 'supplyDepot', reason: 'Expanding colony resource storage capacity' });
   }
 
-  for (const cand of candidates) {
-    if (queuedKinds.has(cand.building)) continue;
-    if (!checkCostAffordability(col, buildingCostOf(cand.building, data)).ok) continue;
-    const site = selectDeterministicBuildSite(state, col.index, cand.building, { data });
-    if (!site) continue;
+  const pylonExpand =
+    flags.has('W03') && !queuedKinds.has('pylon') && checkItemUnlockStage(state, col.index, 'pylon', flags, data).ok
+      ? shouldExpandPowerZoneWithPylon(state, col.index, data, flags)
+      : { needed: false, site: null };
+  if (pylonExpand.needed && pylonExpand.site) {
+    candidates.push({ building: 'pylon', reason: 'Extending power zone to keep spacious building corridors' });
+  }
 
+  const buildOrderAt = (building: string, q: number, r: number, reason: string) => {
     const cmdId = `bot_${tick}_${col.index}_${nextSeq()}`;
     return {
       cmd: {
         colonyIndex: col.index,
-        source: 'bot',
+        source: 'bot' as const,
         commandId: cmdId,
         kind: 'enqueueTask',
-        args: { build: { building: cand.building, q: site.q, r: site.r, tier: 1 } },
+        args: { build: { building, q, r, tier: 1 } },
       },
       decision: makeDecision(
         state,
         col,
         'build',
-        `Queue ${cand.building} at (${site.q}, ${site.r})`,
-        cand.reason,
+        `Queue ${building} at (${q}, ${r})`,
+        reason,
         cmdId,
         'enqueueTask',
-        { building: cand.building, q: site.q, r: site.r, persona },
+        { building, q, r, persona },
         tick,
       ),
     };
+  };
+
+  for (const cand of candidates) {
+    if (queuedKinds.has(cand.building)) continue;
+    if (!checkItemUnlockStage(state, col.index, cand.building, flags, data).ok) continue;
+    if (!checkCostAffordability(col, buildingCostOf(cand.building, data)).ok) continue;
+    const site = selectDeterministicBuildSite(state, col.index, cand.building, { data });
+    if (site) return buildOrderAt(cand.building, site.q, site.r, cand.reason);
+    if (
+      cand.building !== 'pylon' &&
+      pylonExpand.site &&
+      !queuedKinds.has('pylon') &&
+      checkItemUnlockStage(state, col.index, 'pylon', flags, data).ok &&
+      checkCostAffordability(col, buildingCostOf('pylon', data)).ok
+    ) {
+      return buildOrderAt('pylon', pylonExpand.site.q, pylonExpand.site.r, 'Extending power zone for spacious placement');
+    }
   }
   return null;
 }
@@ -191,6 +217,69 @@ function planUnitProductionInput(
   };
 }
 
+function planWorkerTerritoryTask(
+  state: PlanetState,
+  col: ColonyState,
+  data: CompiledDataLike,
+  flags: { has(w: string): boolean },
+  reserveHarvest: boolean,
+  tick: number,
+  nextSeq: () => number,
+): { cmd: SimCommandV1; decision: PlannedBotDecision } | null {
+  if (!flags.has('W01')) return null;
+  const tfBuilder = hasAvailableTerraformBuilder(state, col.index, { reserveHarvestWorker: reserveHarvest });
+  if (tfBuilder.ok && tfBuilder.workerId !== null) {
+    const obs = findTerritoryObstacleToClear(state, col.index, { data, workerId: tfBuilder.workerId });
+    if (obs) {
+      const cmdId = `bot_${tick}_${col.index}_${nextSeq()}`;
+      return {
+        cmd: {
+          colonyIndex: col.index,
+          source: 'bot',
+          commandId: cmdId,
+          kind: 'enqueueTask',
+          args: { terraform: { op: 'work', tiles: [{ q: obs.q, r: obs.r }], workerId: tfBuilder.workerId, intent: 'terraform' } },
+        },
+        decision: makeDecision(
+          state,
+          col,
+          'terraform',
+          `Clear ${obs.terrainKey} at (${obs.q}, ${obs.r})`,
+          'Clearing territory obstacles to expand buildable space and unit corridors',
+          cmdId,
+          'enqueueTask',
+          { op: 'work', q: obs.q, r: obs.r, workerId: tfBuilder.workerId },
+          tick,
+        ),
+      };
+    }
+  }
+  if (!flags.has('W05')) return null;
+  const cult = findTerritoryTileToCultivate(state, col.index, { data });
+  if (!cult || !checkItemUnlockStage(state, col.index, cult.op, flags, data).ok) return null;
+  const cmdId = `bot_${tick}_${col.index}_${nextSeq()}`;
+  return {
+    cmd: {
+      colonyIndex: col.index,
+      source: 'bot',
+      commandId: cmdId,
+      kind: 'enqueueTask',
+      args: { terraform: { op: cult.op, tiles: [{ q: cult.q, r: cult.r }] } },
+    },
+    decision: makeDecision(
+      state,
+      col,
+      'terraform',
+      `Cultivate (${cult.op}) at (${cult.q}, ${cult.r})`,
+      `Advancing colony territory (${cult.op})`,
+      cmdId,
+      'enqueueTask',
+      { op: cult.op, q: cult.q, r: cult.r },
+      tick,
+    ),
+  };
+}
+
 function planTacticalAndWorkerInput(
   state: PlanetState,
   col: ColonyState,
@@ -200,53 +289,87 @@ function planTacticalAndWorkerInput(
   flags: { has(w: string): boolean },
   tick: number,
   nextSeq: () => number,
-): { cmd: SimCommandV1; decision: PlannedBotDecision } | null {
+): Array<{ cmd: SimCommandV1; decision: PlannedBotDecision }> {
+  const out: Array<{ cmd: SimCommandV1; decision: PlannedBotDecision }> = [];
   const recon = scan.idleUnits.find((u) => u.kind === ENTITY_KIND.recon);
   if (recon && flags.has('W07')) {
     if (scan.nearestEnemy && (persona === 'warlord' || scan.nearestEnemy.dist <= 14)) {
       const t = scan.nearestEnemy;
       const cmdId = `bot_${tick}_${col.index}_${nextSeq()}`;
-      return {
+      out.push({
         cmd: { colonyIndex: col.index, source: 'bot', commandId: cmdId, kind: 'attackMove', args: { entityId: recon.id, q: t.q, r: t.r } },
         decision: makeDecision(state, col, 'combat', `Attack-move recon #${recon.id} -> (${t.q}, ${t.r})`, `Engaging colony ${t.colonyIndex} at range ${t.dist}`, cmdId, 'attackMove', { entityId: recon.id, q: t.q, r: t.r, targetColonyIndex: t.colonyIndex }, tick),
-      };
-    }
-
-    const hx = hexIndex(state.grid.radius);
-    const baseOffset = Math.floor(tick / PLAN_CADENCE_TICKS) + recon.id;
-    for (let attempt = 0; attempt < PATROL_OFFSETS.length; attempt++) {
-      const slot = PATROL_OFFSETS[(baseOffset + attempt) % PATROL_OFFSETS.length]!;
-      const pq = scan.anchorQ + slot[0];
-      const pr = scan.anchorR + slot[1];
-      const idx = hx.indexOf(pq, pr);
-      if (idx < 0 || !isGroundPassable(state, idx, data) || (recon.q === pq && recon.r === pr)) continue;
-      const cmdId = `bot_${tick}_${col.index}_${nextSeq()}`;
-      return {
-        cmd: { colonyIndex: col.index, source: 'bot', commandId: cmdId, kind: 'moveUnit', args: { entityId: recon.id, q: pq, r: pr } },
-        decision: makeDecision(state, col, 'patrol', `Patrol recon #${recon.id} -> (${pq}, ${pr})`, 'Sweeping walkable sector perimeter around colony anchor', cmdId, 'moveUnit', { entityId: recon.id, q: pq, r: pr }, tick),
-      };
+      });
+    } else {
+      const hx = hexIndex(state.grid.radius);
+      const baseOffset = Math.floor(tick / PLAN_CADENCE_TICKS) + recon.id;
+      for (let attempt = 0; attempt < PATROL_OFFSETS.length; attempt++) {
+        const slot = PATROL_OFFSETS[(baseOffset + attempt) % PATROL_OFFSETS.length]!;
+        const pq = scan.anchorQ + slot[0];
+        const pr = scan.anchorR + slot[1];
+        const idx = hx.indexOf(pq, pr);
+        if (idx < 0 || !isGroundPassable(state, idx, data) || (recon.q === pq && recon.r === pr)) continue;
+        const cmdId = `bot_${tick}_${col.index}_${nextSeq()}`;
+        out.push({
+          cmd: { colonyIndex: col.index, source: 'bot', commandId: cmdId, kind: 'moveUnit', args: { entityId: recon.id, q: pq, r: pr } },
+          decision: makeDecision(state, col, 'patrol', `Patrol recon #${recon.id} -> (${pq}, ${pr})`, 'Sweeping walkable sector perimeter around colony anchor', cmdId, 'moveUnit', { entityId: recon.id, q: pq, r: pr }, tick),
+        });
+        break;
+      }
     }
   }
 
   const worker = scan.idleUnits.find((u) => u.kind === ENTITY_KIND.worker);
-  if (!worker || !flags.has('W02')) return null;
-
-  if (scan.damagedBuilding) {
+  if (worker && flags.has('W02') && scan.damagedBuilding) {
     const b = scan.damagedBuilding;
     const cmdId = `bot_${tick}_${col.index}_${nextSeq()}`;
-    return {
+    out.push({
       cmd: { colonyIndex: col.index, source: 'bot', commandId: cmdId, kind: 'enqueueTask', args: { repair: { entityId: b.id, q: b.q, r: b.r } } },
       decision: makeDecision(state, col, 'repair', `Repair entity #${b.id}`, `Structure integrity at ${Math.round(b.hpRatio * 100)}%`, cmdId, 'enqueueTask', { entityId: b.id }, tick),
-    };
+    });
+    return out;
   }
 
+  const reserveHarvest = scan.harvestingWorkerCount === 0 && stockCount(col, 'metals.t1') < 120;
+  if (worker && reserveHarvest) {
+    const dep = findNearestPassableDeposit(state, worker.q, worker.r, 6, data);
+    if (dep && (dep.q !== worker.q || dep.r !== worker.r)) {
+      const cmdId = `bot_${tick}_${col.index}_${nextSeq()}`;
+      out.push({
+        cmd: { colonyIndex: col.index, source: 'bot', commandId: cmdId, kind: 'moveUnit', args: { entityId: worker.id, q: dep.q, r: dep.r } },
+        decision: makeDecision(state, col, 'harvest', `Dispatch worker #${worker.id} -> (${dep.q}, ${dep.r})`, 'Moving idle worker to nearest surface deposit', cmdId, 'moveUnit', { entityId: worker.id, q: dep.q, r: dep.r }, tick),
+      });
+      return out;
+    }
+  }
+
+  const tfTask = planWorkerTerritoryTask(state, col, data, flags, reserveHarvest, tick, nextSeq);
+  if (tfTask) {
+    out.push(tfTask);
+    return out;
+  }
+
+  if (!worker || !flags.has('W02')) return out;
+
   const dep = findNearestPassableDeposit(state, worker.q, worker.r, 6, data);
-  if (!dep || (dep.q === worker.q && dep.r === worker.r)) return null;
+  if (!dep || (dep.q === worker.q && dep.r === worker.r)) return out;
   const cmdId = `bot_${tick}_${col.index}_${nextSeq()}`;
-  return {
+  out.push({
     cmd: { colonyIndex: col.index, source: 'bot', commandId: cmdId, kind: 'moveUnit', args: { entityId: worker.id, q: dep.q, r: dep.r } },
     decision: makeDecision(state, col, 'harvest', `Dispatch worker #${worker.id} -> (${dep.q}, ${dep.r})`, 'Moving idle worker to nearest surface deposit', cmdId, 'moveUnit', { entityId: worker.id, q: dep.q, r: dep.r }, tick),
-  };
+  });
+  return out;
+}
+
+function colonyHasAliveHq(state: PlanetState, colonyIndex: number): boolean {
+  const { count, cols } = state.entities;
+  for (let row = 0; row < count; row++) {
+    if (cols.owner[row] !== colonyIndex) continue;
+    if (cols.kind[row] === ENTITY_KIND.hq && (cols.hp[row] > 0 || cols.hpMax[row] <= 0)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function planGoalAndDiplomacyInputs(
@@ -293,9 +416,10 @@ function planGoalAndDiplomacyInputs(
     return out;
   }
 
-  if (persona === 'trader' || avgBuildingHpRatio < 0.65) {
+  if ((persona === 'trader' || avgBuildingHpRatio < 0.65) && colonyHasAliveHq(state, col.index)) {
     const other = state.colonies.find((c) => {
-      if (!c || c.index === col.index || c.status === 'eliminated') return false;
+      if (!c || c.index === col.index || c.status !== 'active') return false;
+      if (!colonyHasAliveHq(state, c.index)) return false;
       if (hasActiveTruce(state, col.index, c.index, nextTick)) return false;
       return !Object.values(dip.offers).some((o) => o.status === 'pending' && o.fromColonyIndex === col.index && o.toColonyIndex === c.index);
     });
@@ -346,8 +470,7 @@ export function planBackendBotActions(
     if (buildAct) planned.push(buildAct);
     const unitAct = planUnitProductionInput(state, col, persona, scan, flags, nextTick, nextSeq);
     if (unitAct) planned.push(unitAct);
-    const tacAct = planTacticalAndWorkerInput(state, col, persona, scan, data, flags, nextTick, nextSeq);
-    if (tacAct) planned.push(tacAct);
+    planned.push(...planTacticalAndWorkerInput(state, col, persona, scan, data, flags, nextTick, nextSeq));
     planned.push(...planGoalAndDiplomacyInputs(state, col, persona, scan.avgBuildingHpRatio, flags, prevTick, nextTick, nextSeq));
 
     for (const item of planned) {

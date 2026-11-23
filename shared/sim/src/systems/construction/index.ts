@@ -21,6 +21,7 @@ export * from './placementWorld';
 export * from './powerZone';
 export * from './prep';
 export * from './site';
+export * from './siteSpacing';
 export * from './validate';
 
 /**

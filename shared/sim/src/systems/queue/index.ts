@@ -255,7 +255,8 @@ export const enqueueTaskHandler = defineCommandHandler({
     }
     if (norm.task.kind === 'terraform' && (norm.task.op === 'work' || norm.task.op === 'repair')) {
       const intent = norm.task.op === 'repair' ? 'repair' : (norm.task as Partial<WorkOrderArgs>).intent;
-      return enqueueWorkOrder(state, colIdx, { ...(norm.task as Partial<WorkOrderArgs>), intent, tiles: [norm.task] }, norm.taskId ?? cmd.commandId, ctx.tick, ctx.data);
+      const isAutomated = cmd.source === 'bot' || cmd.source === 'ai';
+      return enqueueWorkOrder(state, colIdx, { ...(norm.task as Partial<WorkOrderArgs>), intent, chain: !isAutomated, tiles: [norm.task] }, norm.taskId ?? cmd.commandId, ctx.tick, ctx.data);
     }
     if (norm.task.kind === 'buildUnit') { // the first unit must fit the supply cap now; the rest of a batch waits on `supply`
       const supply = checkUnitSupply(state, colIdx, norm.task.unit, unitSupplyData(norm.task.unit, ctx.data));

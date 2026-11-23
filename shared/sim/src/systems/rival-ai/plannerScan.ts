@@ -19,11 +19,13 @@ export interface ColonyScan {
   anchorQ: number;
   anchorR: number;
   workerCount: number;
+  harvestingWorkerCount: number;
   reconCount: number;
   extractorCount: number;
   turretCount: number;
   factoryCount: number;
   powerPlantCount: number;
+  pylonCount: number;
   depotCount: number;
   avgBuildingHpRatio: number;
   damagedBuilding: { id: number; q: number; r: number; hpRatio: number } | null;
@@ -125,11 +127,13 @@ export function scanColonyState(
   let anchorR = fallbackR;
   let anchorRank = 0;
   let workerCount = 0;
+  let harvestingWorkerCount = 0;
   let reconCount = 0;
   let extractorCount = 0;
   let turretCount = 0;
   let factoryCount = 0;
   let powerPlantCount = 0;
+  let pylonCount = 0;
   let depotCount = 0;
   let bHp = 0;
   let bHpMax = 0;
@@ -161,6 +165,7 @@ export function scanColonyState(
     }
     if (kind === ENTITY_KIND.worker) {
       workerCount++;
+      if (st === ENTITY_STATE.harvesting) harvestingWorkerCount++;
       if (st === ENTITY_STATE.idle) idleUnits.push({ id: cols.id[row]!, kind, q, r });
     } else if (kind === ENTITY_KIND.recon) {
       reconCount++;
@@ -177,6 +182,7 @@ export function scanColonyState(
       else if (kind === ENTITY_KIND.turret || kind === ENTITY_KIND.laserTower) turretCount++;
       else if (kind === ENTITY_KIND.roboticsFactory) factoryCount++;
       else if (kind === ENTITY_KIND.wind || kind === ENTITY_KIND.solar || kind === ENTITY_KIND.thermal) powerPlantCount++;
+      else if (kind === ENTITY_KIND.pylon) pylonCount++;
       else if (kind === ENTITY_KIND.supplyDepot) depotCount++;
     }
   }
@@ -191,11 +197,13 @@ export function scanColonyState(
     anchorQ,
     anchorR,
     workerCount,
+    harvestingWorkerCount,
     reconCount,
     extractorCount,
     turretCount,
     factoryCount,
     powerPlantCount,
+    pylonCount,
     depotCount,
     avgBuildingHpRatio: bHpMax > 0 ? bHp / bHpMax : 1,
     damagedBuilding,

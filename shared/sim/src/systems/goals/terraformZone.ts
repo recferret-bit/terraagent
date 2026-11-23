@@ -3,8 +3,11 @@ import type { StepContext } from '../../kernel/context';
 import type { PlanetState } from '../../kernel/state';
 import { getConstructionOrders } from '../construction/orders';
 import { entityFootprint, getBuildingFootprintTiles } from '../construction/placement';
+import { buildGapField } from '../construction/siteSpacing';
 import { ENTITY_KIND } from '../../ecs/columns';
 import { getColonyQueue } from '../queue';
+import { hasAvailableTerraformBuilder } from '../terraform-basic/aiTerritory';
+import { chainStandRule } from '../terraform-basic/chain';
 import { enqueueWorkAtTile } from '../terraform-basic/dismantleAndWork';
 import { evaluateGroundWorkTile } from '../terraform-basic/groundWorkRule';
 import { colonyTerraformOrders } from '../terraform-basic/orders';
@@ -81,6 +84,15 @@ function pickBestZoneCandidate(
   const world = terraformWorldFromState(state, colonyIndex, ctx?.data);
   const reserved = pendingConstructionTileSet(state, colonyIndex);
   const hx = hexIndex(state.grid.radius);
+  const reservedIndices = new Set<number>(world.occupied ?? []);
+  for (const key of reserved) {
+    const [sq, sr] = key.split(',').map(Number);
+    const ri = hx.indexOf(sq!, sr!);
+    if (ri >= 0) reservedIndices.add(ri);
+  }
+  const gaps = buildGapField(state.grid.radius, reservedIndices);
+  const availBuilder = hasAvailableTerraformBuilder(state, colonyIndex);
+  const stand = availBuilder.workerId !== null ? chainStandRule(state, availBuilder.workerId, ctx?.data) : null;
   const deposit = state.grid.layers.deposit;
   let best: ZoneCandidate | null;
   best = null;
@@ -116,13 +128,15 @@ function pickBestZoneCandidate(
       continue;
     }
 
+    if (stand && !stand(i)) continue;
     const ground = evaluateGroundWorkTile(world, colonyIndex, i, q, r, {
       deposit,
       occupied: world.occupied?.has(i),
       data: ctx?.data,
     });
     if (ground.ok) {
-      preferBetter({ q, r, rank: 3, dist, kind: 'work', affordable: true });
+      const rank = gaps[i]! <= 2 ? 0 : 3;
+      preferBetter({ q, r, rank, dist, kind: 'work', affordable: true });
     }
   }
   return { best, blockedByReserves };
