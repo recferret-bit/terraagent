@@ -33,8 +33,7 @@ export interface PlanetSubscriber {
   onDelta?(d: { fromTick: number; toTick: number; diff: Uint8Array; events: SimEvent[] }): void;
   onEvent?(events: SimEvent[]): void;
   onSnapshot?(s: { tick: number; bytes: Uint8Array }): void;
-  /** The planet moved to another sim thread (rebalancing): the stream is gapless, but clients resync to be safe. */
-  onResync?(): void;
+  onResync?(): void; // moved to another sim thread (rebalancing): gapless stream, clients resync to be safe
 }
 
 export interface FullState {
