@@ -8,6 +8,8 @@ import { APP_ENV, type AppEnv } from '../../core/tokens.js';
 import { PRISMA } from '../../db/db.module.js';
 import { GamePlanets } from '../../game/game-planets.service.js';
 import { FlagsService } from '../../flags/flags.service.js';
+import { JobsService } from '../../jobs/jobs.service.js';
+import type { JobRegistration } from '../../jobs/recurring.js';
 import { ChainOutboxRepository } from '../application/outbox/chain-outbox.repository.js';
 import { opId } from '../application/outbox/op-id.js';
 import { TreasuryDaoPort } from '../application/ports/treasury-dao.port.js';
@@ -49,8 +51,7 @@ interface DaoScope {
 @Injectable()
 export class TreasuryFinalizeService implements OnModuleInit, OnModuleDestroy {
   private readonly log = new Logger(TreasuryFinalizeService.name);
-  private timer?: ReturnType<typeof setInterval>;
-  private running?: Promise<unknown>;
+  private job?: JobRegistration;
 
   constructor(
     @Inject(FlagsService) private readonly flags: FlagsService,
@@ -62,23 +63,18 @@ export class TreasuryFinalizeService implements OnModuleInit, OnModuleDestroy {
     @Optional() @Inject(GamePlanets) private readonly planets?: TreasurySimPort,
     @Optional() @Inject(APP_ENV) private readonly env?: AppEnv,
     @Optional() @Inject(W22TelemetryService) private readonly telemetry?: W22TelemetryService,
+    @Optional() @Inject(JobsService) private readonly jobs?: JobsService,
   ) {}
 
+  /** One pass per poll across the cluster (3.8), on a sim-hosting replica: approved effects are posted to the sim. */
   onModuleInit(): void {
     if (!this.flags.has('W22') || !this.prisma || !databaseEnabled(this.env)) return;
-    this.timer = setInterval(() => {
-      if (this.running) return;
-      this.running = this.finalizeDue(Date.now())
-        .catch((err: unknown) => this.log.warn(`treasury finalize poll: ${errorText(err)}`))
-        .finally(() => { this.running = undefined; });
-    }, FINALIZE_POLL_MS);
-    this.timer.unref?.();
+    this.job = this.jobs?.recurring({ name: 'near.treasury-finalize', scope: 'sim-host', schedule: { everyMs: FINALIZE_POLL_MS }, run: () => this.finalizeDue(Date.now()) });
   }
 
   async onModuleDestroy(): Promise<void> {
-    if (this.timer) clearInterval(this.timer);
-    this.timer = undefined;
-    await this.running;
+    await this.job?.stop();
+    this.job = undefined;
   }
 
   /** Finalizes due proposals and posts each Approved effect once. `planetId` limits the scan (tests). */

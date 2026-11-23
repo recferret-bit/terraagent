@@ -1,5 +1,6 @@
 import { AWAY_AFTER_S } from '@terra/contracts';
 import type { LastSeenPort, PresenceClock, PresenceCommandPort, PresenceJoin, PresenceLog, PresenceTransition } from './types';
+import type { PlanetSeenWriter } from './planet-seen';
 import { postPresence, presenceCommand } from './post';
 
 interface ColonyRec {
@@ -23,6 +24,8 @@ export interface PresenceTrackerDeps {
   readonly onTransition?: (info: PresenceTransition) => void | Promise<void>;
   /** Override for tests. Production uses `AWAY_AFTER_S` (60s). The boundary is inclusive. */
   readonly awayAfterMs?: number;
+  /** Persists the planet idle clock (3.5) while human sockets are on a planet. */
+  readonly planetSeen?: PlanetSeenWriter;
 }
 
 /**
@@ -42,6 +45,7 @@ export class PresenceTracker {
     this.moveSocket(session.socketId, rec);
     this.flushIfDue(rec);
     rec.sockets.add(session.socketId);
+    this.deps.planetSeen?.occupied(rec.planetId);
     this.cancelTimer(rec);
     rec.disconnectedAt = undefined;
     if (rec.away) this.become(rec, false);
@@ -57,6 +61,7 @@ export class PresenceTracker {
   /** Cancels timers. Used on shutdown so a dying process does not post into a stopped sim. */
   stop(): void {
     for (const rec of this.colonies.values()) this.cancelTimer(rec);
+    this.deps.planetSeen?.stop();
   }
 
   /** Resolves when queued presence posts have finished. Tests await this instead of sleeping. */
@@ -108,6 +113,7 @@ export class PresenceTracker {
     const rec = this.colonies.get(colonyId);
     if (!rec) return;
     rec.sockets.delete(socketId);
+    if (this.socketsOn(rec.planetId) === 0) this.deps.planetSeen?.empty(rec.planetId);
     if (rec.sockets.size > 0 || rec.away || rec.disconnectedAt !== undefined) return;
     rec.disconnectedAt = this.deps.clock.now();
     this.arm(rec);

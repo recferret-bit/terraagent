@@ -56,6 +56,8 @@ export class SnapshotService implements BeforeApplicationShutdown {
   readonly enabled: boolean;
   /** Open away-digest bodies, flushed after a snapshot row is stored (CT-31). */
   private digestFlush?: (planetId: string, raw: Uint8Array) => Promise<void>;
+  /** Planets boot must leave unloaded (idle-unloaded: `PlanetLifecycleService`), applied to `livePlanetIds`. */
+  private bootFilter?: (ids: readonly string[]) => Promise<readonly string[]>;
   /** Wall ms for the restart gap (`now − savedAt`). Tests replace it; boot uses `Date.now`. */
   nowMs: () => number = () => Date.now();
 
@@ -105,6 +107,7 @@ export class SnapshotService implements BeforeApplicationShutdown {
       this.log.error({ err: errText(e) }, 'snapshot restore skipped: database unavailable (no planet is generated fresh)');
       return { ...report, dbUnavailable: true };
     }
+    if (this.bootFilter) ids = [...(await this.bootFilter(ids))];
     const outcomes = await Promise.all(
       ids.map(async (id) => {
         if (this.simLease && !(await this.simLease.tryAcquire(id))) return [id, 'skipped'] as const;
@@ -279,6 +282,10 @@ export class SnapshotService implements BeforeApplicationShutdown {
   /** Archive committed: one `END` row. `livePlanetIds` then skips the planet. */
   end(planetId: string): Promise<void> {
     return this.capture(planetId, 'END');
+  }
+
+  setBootRestoreFilter(filter: (ids: readonly string[]) => Promise<readonly string[]>): void {
+    this.bootFilter = filter;
   }
 
   /** Called by the game module. A failed flush is logged and does not fail the snapshot. */

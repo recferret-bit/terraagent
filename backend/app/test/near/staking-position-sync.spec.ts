@@ -9,6 +9,7 @@ import {
   yoctoToNear,
 } from '../../src/near/staking/staking-position-sync.service';
 import { InMemoryStaking } from '../../src/near/testing/in-memory-staking';
+import { memoryJobs } from '../../src/jobs/jobs.service';
 
 const makeEnv = (overrides: Partial<Record<string, unknown>> = {}): AppEnv =>
   ({ NODE_ENV: 'test', TA_WAVES: 'all', ...overrides }) as unknown as AppEnv;
@@ -142,21 +143,26 @@ describe('W20-20 StakingPositionSyncService — syncAll recovery, wave gating & 
     vi.useFakeTimers();
     try {
       const devEnv = makeEnv({ NODE_ENV: 'development', TA_WAVES: 'all' });
+      const jobs = memoryJobs();
       const devService = new StakingPositionSyncService(
         staking,
         devEnv,
         undefined,
         new FlagsService(devEnv),
+        jobs,
       );
       const spy = vi.spyOn(devService, 'syncAll').mockResolvedValue([]);
-      devService.onModuleInit();
+      devService.onModuleInit(); // registers the `near.staking-position-sync` job (3.8)
+      jobs.onApplicationBootstrap();
+      await jobs.whenStarted();
 
-      vi.advanceTimersByTime(STAKING_SYNC_INTERVAL_MS);
+      await vi.advanceTimersByTimeAsync(STAKING_SYNC_INTERVAL_MS);
       expect(spy).toHaveBeenCalledTimes(1);
 
-      devService.onModuleDestroy();
-      vi.advanceTimersByTime(STAKING_SYNC_INTERVAL_MS * 2);
+      await devService.onModuleDestroy();
+      await vi.advanceTimersByTimeAsync(STAKING_SYNC_INTERVAL_MS * 2);
       expect(spy).toHaveBeenCalledTimes(1);
+      await jobs.onModuleDestroy();
     } finally {
       vi.useRealTimers();
     }
