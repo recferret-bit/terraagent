@@ -1,4 +1,7 @@
 import type { MeAchievementsResponse, MeProfileResponse } from '@terra/contracts';
+import {
+  consentedAuthHeaders, failAuthHttp, failAuthThrown, rememberAuthProvider, succeedAuth,
+} from '../../../design/analytics/auth';
 import { noteProfileLoadFailed, noteProfileSection, noteProfileViewed } from '../../../design/analytics/profile';
 import { isLocalMockAuthEnabled } from '../../../design/pilot/localMockPilot';
 import { consumeNearWalletCallback } from '../../../design/pilot/mockToken';
@@ -142,15 +145,20 @@ export class MePage {
     const walletHit = consumeNearWalletCallback();
     if (!walletHit) return;
     const doFetch: MeFetchFn = this.effectiveFetch ?? ((input, init) => fetch(input, init));
+    const nep413 = decodeNep413SocialToken(walletHit.token);
+    rememberAuthProvider(walletHit.provider, nep413?.walletId);
     try {
-      const nep413 = decodeNep413SocialToken(walletHit.token);
       const res = await doFetch(nep413 ? '/v1/auth/near/verify' : '/v1/auth/social', {
         method: 'POST',
         credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...consentedAuthHeaders() },
         body: JSON.stringify(nep413 ?? walletHit),
       });
-      if (!res.ok) return;
+      if (!res.ok) {
+        failAuthHttp(res.status);
+        return;
+      }
+      succeedAuth();
       const body = (await res.json()) as PilotAccessSession;
       if (!body?.accessToken || !body.player || body.accessToken === 'local-mode-token' || this.localHost) return;
       const isGuest = body.player.isGuest !== false;
@@ -166,8 +174,8 @@ export class MePage {
         }),
       );
       if (!isGuest) localStorage.setItem('ta_trade_token', body.accessToken);
-    } catch {
-      /* ignore */
+    } catch (err) {
+      failAuthThrown(err);
     }
   }
 

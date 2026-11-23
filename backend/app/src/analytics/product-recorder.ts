@@ -8,7 +8,8 @@ import { z } from 'zod';
 import { APP_ENV, LOGGER, type AppEnv } from '../core/tokens';
 import { PRISMA } from '../db/db.module';
 import { AnalyticsCounters } from './analytics.counters';
-import { PostHogClient, redactAnalyticsText, type RelayEvent } from './posthog-client';
+import { extractGeoContext, type AnalyticsRelayContext } from './geo-context';
+import { PostHogClient, redactAnalyticsText, relayProperties, type RelayEvent } from './posthog-client';
 import { tradeFailReason } from './trade-reason';
 
 const ANON = z.uuid();
@@ -18,6 +19,7 @@ export interface ServerEvent {
   readonly props?: Readonly<Record<string, string | number | boolean | null | undefined>>;
   readonly anonId?: string;
   readonly playerId?: string;
+  readonly geo?: AnalyticsRelayContext;
 }
 
 function header(req: IncomingMessage, name: string): string | undefined {
@@ -108,6 +110,7 @@ export class ProductRecorder {
       playerId,
       anonId: anonIdOf(header(req, 'x-terra-anon')),
       props: { method, wallet_kind: walletKind(header(req, 'x-terra-wallet'), whenMissing) },
+      geo: extractGeoContext(req),
     });
   }
 
@@ -115,17 +118,19 @@ export class ProductRecorder {
   async recordTradePlace(req: IncomingMessage, order: PlaceTradeOrderRequest, outcome: unknown): Promise<void> {
     try {
       const anonId = anonIdOf(header(req, 'x-terra-anon'));
+      const geo = extractGeoContext(req);
       const props = tradeProps(order);
       const status = placeStatus(outcome);
       if (status === 'pending') return;
       if (status === 'accepted') {
-        await this.recordServerEvent({ name: 'trade_order_accepted', anonId, props });
+        await this.recordServerEvent({ name: 'trade_order_accepted', anonId, props, geo });
         return;
       }
       await this.recordServerEvent({
         name: 'trade_order_failed',
         anonId,
         props: { ...props, source: 'server', reason: tradeFailReason(codeOf(outcome)) },
+        geo,
       });
     } catch (error) {
       this.warn(error);
@@ -170,7 +175,7 @@ export class ProductRecorder {
       event: input.name,
       distinctId: anonId,
       timestamp: new Date().toISOString(),
-      properties: { ...props, $process_person_profile: false, $lib: 'terra-relay' },
+      properties: relayProperties(input.name, props, input.geo),
     });
     return this.posthog.send(events);
   }

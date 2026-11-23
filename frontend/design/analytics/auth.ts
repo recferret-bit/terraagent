@@ -94,14 +94,17 @@ export function beginNearWalletAuth(walletId: string): number {
   return beginAuth('near-wallet', walletKindOf(walletId));
 }
 
-export function rememberAuthProvider(provider: string): void {
+export function rememberAuthProvider(provider: string, walletId?: string): void {
   const method = authMethodOf(provider);
   if (!method) return;
+  const wallet: WalletKind = method === 'near-wallet'
+    ? (walletId ? walletKindOf(walletId) : pending?.wallet ?? 'other')
+    : 'none';
   if (!pending || settled) {
-    beginAuth(method, method === 'near-wallet' ? pending?.wallet ?? 'other' : 'none');
+    beginAuth(method, wallet);
     return;
   }
-  pending = { ...pending, method, wallet: method === 'near-wallet' ? pending.wallet : 'none' };
+  pending = { ...pending, method, wallet };
 }
 
 export function failAuth(gen: number, input: AuthFailureInput): void {

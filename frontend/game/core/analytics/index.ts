@@ -9,6 +9,11 @@ const get = (): AnalyticsClient => {
   if (!client) {
     client = new AnalyticsClient(browserDeps());
     if (typeof addEventListener === 'function') addEventListener('pagehide', () => client?.onPageHide());
+    if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') client?.onPageHide();
+      });
+    }
   }
   return client;
 };

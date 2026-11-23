@@ -2,6 +2,7 @@ import { Inject, Injectable, Optional } from '@nestjs/common';
 import { analyticsEvent, sanitizeAnalyticsProps } from '@terra/contracts';
 import type { Logger } from 'pino';
 import { APP_ENV, LOGGER, type AppEnv } from '../core/tokens';
+import { countryNameForCode, type AnalyticsRelayContext } from './geo-context';
 
 export interface RelayEvent {
   readonly event: string;
@@ -16,12 +17,24 @@ export interface ClientForward {
   readonly props: Readonly<Record<string, string | number | boolean | null | undefined>>;
 }
 
-/** Sanitized catalog props plus the relay flags. Person profiles stay off unless `$identify` says otherwise. */
+/** Sanitized catalog props plus relay flags and transient GeoIP hints. Person profiles stay off unless `$identify` says otherwise. */
 export function relayProperties(
   name: string,
   props: Readonly<Record<string, string | number | boolean | null | undefined>>,
+  geo?: AnalyticsRelayContext,
 ): Record<string, string | number | boolean> {
-  return { ...sanitizeAnalyticsProps(name, props), $process_person_profile: false, $lib: 'terra-relay' };
+  const out: Record<string, string | number | boolean> = {
+    ...sanitizeAnalyticsProps(name, props),
+    $process_person_profile: false,
+    $lib: 'terra-relay',
+  };
+  if (geo?.clientIp) out.$ip = geo.clientIp;
+  if (geo?.countryCode) {
+    out.$geoip_country_code = geo.countryCode;
+    const countryName = countryNameForCode(geo.countryCode);
+    if (countryName) out.$geoip_country_name = countryName;
+  }
+  return out;
 }
 
 /** Redacts project (`phc_`) and personal (`phx_`) tokens so a log line cannot carry the key. */
@@ -45,7 +58,7 @@ export class PostHogClient {
   }
 
   /** Catalog client events only. Unknown names are the caller's to keep in Postgres. */
-  async forwardClient(anonId: string, events: readonly ClientForward[]): Promise<void> {
+  async forwardClient(anonId: string, events: readonly ClientForward[], geo?: AnalyticsRelayContext): Promise<void> {
     const batch: RelayEvent[] = [];
     for (const event of events) {
       const spec = analyticsEvent(event.name);
@@ -54,7 +67,7 @@ export class PostHogClient {
         event: event.name,
         distinctId: anonId,
         timestamp: new Date(event.ts).toISOString(),
-        properties: relayProperties(event.name, event.props),
+        properties: relayProperties(event.name, event.props, geo),
       });
     }
     await this.send(batch);

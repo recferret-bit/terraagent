@@ -77,7 +77,8 @@ export function renderTierBar(
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'ta-tierbar__tab';
-    btn.setAttribute('data-testid', `${prefix}-tier-t${tier}`);
+    const tierPrefix = prefix === 'build' ? 'build-tier-t' : 'prod-tier-t';
+    btn.setAttribute('data-testid', `${tierPrefix}${tier}`);
     btn.setAttribute('aria-selected', tier === selected ? 'true' : 'false');
     btn.textContent = `T${tier}`;
     btn.onclick = () => onPick(tier);

@@ -44,15 +44,28 @@ Every `*-fail` funnel excludes the success event and breaks down by `reason`. A 
 
 No `posthog-js` in the browser, and no `posthog.com` script URL. The server relays to `{POSTHOG_HOST}/batch/` (default `https://eu.i.posthog.com`) only when `POSTHOG_ENABLED` is the exact string `true`, `POSTHOG_KEY` is a project token, and `POSTHOG_DISABLED` is not `true`. The string `1` does not enable the flag. Never print the key. Anonymous captures set `$process_person_profile` false.
 
+On HTTP requests behind `terra-nginx` (`TA_TRUST_PROXY=1`), `backend/app/src/analytics/geo-context.ts` extracts transient public client IP (`$ip`) and optional edge country header (`$geoip_country_code` / `$geoip_country_name`) in memory ONLY for PostHog GeoIP resolution — never stored in Postgres and never logged.
+
 Probe traffic uses `surface=probe` or `runtime=local`. Pinned insights filter `runtime=prod`.
 
-Do not create or edit a PostHog dashboard unless the user says to apply. The harness does not call PostHog.
+Do not create or edit a PostHog dashboard unless the user says to apply (`npm run analytics:sync -- --apply` or `npm run analytics:loop -- --apply`). The base validator harness does not call PostHog.
+
+## Superset of Analytics Skills
+
+- `product-analytics` — catalog, emitters, closed failure reasons, public page & vhost coverage (`npm run validate:analytics`, `npm run test:analytics`)
+- `posthog-surface-scanner` — AST + HTML scanner mapping every page, button, CTA, and in-game HUD tab into a UI graph and auto-generated insights (`npm run analytics:scan`)
+- `posthog-dashboard-sync` — PostHog REST API compiler & idempotent dashboard/funnel sync (`npm run analytics:sync`, `npm run analytics:deploy-check`)
+- `posthog-mcp-auditor` — Graph -> Loop verification & reconciliation engine backed by PostHog MCP tools (`npm run analytics:loop`)
 
 ## Check
 
 ```bash
-npm run validate:analytics   # catalog wiring, emitters, reason literals, no browser PostHog
+npm run validate:analytics   # catalog wiring, emitters, reason literals, page/vhost coverage, no browser PostHog
 npm run test:analytics       # harness self-test on fixtures
+npm run analytics:scan       # build UI & button graph and verify button/surface coverage
+npm run analytics:sync       # dry-run PostHog dashboard/funnel compilation (add --apply for live)
+npm run analytics:loop       # Graph -> Loop + PostHog MCP verification pass
+npm run analytics:deploy-check # verify secrets hidden from git/dist, nginx proxies, and server env readiness
 ```
 
 `validate:analytics` is the check. Exit 1 prints one failure per line. Do not weaken it so a half-wired tree passes. Server steps may omit `runtime`. Legacy names must still be quoted somewhere in non-test `frontend/` or `backend/app/src`.

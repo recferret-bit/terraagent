@@ -435,9 +435,9 @@ export class PilotAccess {
   };
 
   private async login(hit: { provider: string; token: string }): Promise<void> {
-    rememberAuthProvider(hit.provider);
+    const nep413Payload = decodeNep413SocialToken(hit.token);
+    rememberAuthProvider(hit.provider, nep413Payload?.walletId);
     try {
-      const nep413Payload = decodeNep413SocialToken(hit.token);
       const endpoint = nep413Payload ? '/v1/auth/near/verify' : '/v1/auth/social';
       const reqBody = nep413Payload ?? hit;
       const upgradeBearer = this.resolveUpgradeBearer();

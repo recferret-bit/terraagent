@@ -1,4 +1,5 @@
 import type { Disposable, FeatureContext, GameView } from '../../core/registry/types';
+import { noteUiAction } from '../../../design/analytics/ui';
 import { isGameInputBlocked } from '../../core/input/gameInputBlock';
 import { releaseArchetypeThumbs, retainArchetypeThumbs } from '../shared/archetypeThumb';
 import { type MenuTier, presentTiers, rememberTier, renderTierBar, setTierVisible } from '../shared/menuCards';
@@ -277,6 +278,7 @@ export class UnitsMenu implements Disposable {
 
   private queueUnit(card: UnitCardModel): void {
     if (this.isReadOnly()) return;
+    noteUiAction('units', 'queue_unit', card.unit);
     if (card.section === 'army' || card.unit === 'recon') {
       const task = { kind: 'buildUnit' as const, unit: card.unit, count: this.count, repeat: this.repeat };
       this.ctx.services.sendCommand?.('enqueueTask', { task });

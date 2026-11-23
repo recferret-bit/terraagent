@@ -1,9 +1,9 @@
 import { getCookie } from '../../game/core/analytics/browser';
 
-export const ANALYTICS_SURFACES = ['landing', 'play', 'trade', 'me', 'whitepaper', 'pitchdeck', 'deed', 'hub', 'playground', 'probe'] as const;
+export const ANALYTICS_SURFACES = ['landing', 'play', 'trade', 'me', 'whitepaper', 'pitchdeck', 'deed', 'hub', 'playground', 'design', 'not_found', 'probe'] as const;
 export type AnalyticsSurface = (typeof ANALYTICS_SURFACES)[number];
 
-const PATH_GROUPS = ['landing', 'play', 'trade', 'me', 'whitepaper', 'pitchdeck', 'deed', 'hub', 'playground', 'design'] as const;
+const PATH_GROUPS = ['landing', 'play', 'trade', 'me', 'whitepaper', 'pitchdeck', 'deed', 'hub', 'playground', 'design', 'not_found'] as const;
 const UTM_TOKEN = /^[A-Za-z0-9._-]{1,64}$/;
 const DAY = 86_400;
 const FT_COOKIE = 'ta_ft';
@@ -66,10 +66,13 @@ function isBrandHost(host: string, brands: readonly string[]): boolean {
 
 export function pathGroup(pathname: string, surface: string): string {
   const path = pathname.replace(/\/index\.html$/, '/').replace(/\.html$/, '').replace(/\/+$/, '') || '/';
-  if (path === '/') return surface === 'landing' || surface === 'hub' ? surface : 'hub';
+  const knownSurface = (PATH_GROUPS as readonly string[]).includes(surface) ? surface : 'hub';
+  if (path === '/') return knownSurface;
+  if (surface === 'not_found') return 'not_found';
   for (const group of PATH_GROUPS) {
     if (path === `/${group}` || path.startsWith(`/${group}/`)) return group;
   }
+  if (surface === 'design' && (path === '/foundations' || path === '/storybook' || path === '/motion')) return 'design';
   return 'other';
 }
 

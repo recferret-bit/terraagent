@@ -160,6 +160,31 @@ check('a legacy name missing from both trees fails', () => {
   assert.match(text, /legacy event 'deed_viewed'/);
 });
 
+check('GeoIP system breakdown passes and raw PostHog token in source fails', () => {
+  const geoOk = validateAnalytics({
+    events: [client('surface_viewed', [{ key: 'surface' }])],
+    trends: [{ id: 'geo', event: 'surface_viewed', breakdown: '$geoip_country_name' }],
+    retention: [{ id: 'ret', targetEvent: 'surface_viewed', returningEvent: 'surface_viewed' }],
+    files: [file('frontend/game/a.ts', "track('surface_viewed')")],
+  });
+  assert.equal(geoOk.ok, true, geoOk.failures.join('\n'));
+
+  const badToken = blob({
+    events: [client('surface_viewed')],
+    files: [file('frontend/game/a.ts', `track('surface_viewed'); const k = '${'phc'}_1234567890abcdef';`)],
+  });
+  assert.match(badToken, /raw PostHog token/);
+});
+
+check('unknown retention event fails', () => {
+  const text = blob({
+    events: [client('surface_viewed')],
+    retention: [{ id: 'ret', targetEvent: 'surface_viewed', returningEvent: 'missing_ret' }],
+    files: [file('frontend/game/a.ts', "track('surface_viewed')")],
+  });
+  assert.match(text, /unknown returningEvent 'missing_ret'/);
+});
+
 if (failed) {
   console.error(`analytics self-test failed (${failed})`);
   process.exit(1);

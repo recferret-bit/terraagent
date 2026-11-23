@@ -1,7 +1,7 @@
 import { runtimeLabel } from './context';
 import { trackProduct } from './trackSafe';
 
-const SECTIONS = ['pilot', 'progress', 'planets', 'history', 'achievements', 'play'] as const;
+const SECTIONS = ['pilot', 'progress', 'planets', 'history', 'achievements', 'staking', 'play'] as const;
 export type ProfileSection = (typeof SECTIONS)[number];
 export type ProfileReason = 'unauthorized' | 'network' | 'invalid' | 'unknown';
 

@@ -2,6 +2,7 @@ import type { PlanetSummaryV1 } from '@terra/contracts';
 import type { PlanetKind } from '@terra/render/planets/PlanetSpec';
 import type { OrbitalGlobeMarkerInput, OrbitalProjectedFrame } from '@terra/render/orbit/types';
 import type { ActiveHomeColony } from '../../../design/pilot/activeHomeColony';
+import { noteUiAction } from '../../../design/analytics/ui';
 import type { SectorIntentV1 } from '../lobby/orbitalPickerModel';
 import { bindSectorChooserEvents, renderSectorChooserHtml } from '../lobby/sectorChooser';
 import {
@@ -186,6 +187,7 @@ export class OrbitalArHud {
     this.errEl = this.launchCard.querySelector('#menu-err')!;
     this.deployBtn.onclick = () => {
       if (this.deployBtn.disabled || this.isForeignSectorSelected()) return;
+      noteUiAction('orbit_lobby', this.latestState.activeColony ? 'enter_colony' : 'deploy_colony', this.latestState.kind);
       this.deployBtn.disabled = true;
       this.cb.onDeploy();
     };
@@ -303,7 +305,10 @@ export class OrbitalArHud {
       this.lastSectorHtml = sectorHtml;
       bindSectorChooserEvents(
         this.sectorHostEl,
-        (intent) => this.cb.onSectorSelect(intent),
+        (intent) => {
+          noteUiAction('orbit_lobby', 'select_sector', intent.mode === 'chosen' ? intent.sectorId : 'auto');
+          this.cb.onSectorSelect(intent);
+        },
         (sectorId) => this.previewSector(sectorId),
       );
       this.rebindingSectors = false;

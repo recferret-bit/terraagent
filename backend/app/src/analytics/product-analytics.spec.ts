@@ -7,6 +7,7 @@ import { AnalyticsController } from './analytics.controller';
 import { AnalyticsCounters } from './analytics.counters';
 import { AnalyticsService } from './analytics.service';
 import { env } from './analytics.module';
+import { extractGeoContext, isPublicIp } from './geo-context';
 import { PostHogClient } from './posthog-client';
 import { ProductRecorder } from './product-recorder';
 import { tradeFailReason } from './trade-reason';
@@ -203,5 +204,44 @@ describe('tradeFailReason', () => {
     expect(tradeFailReason('etimedout')).toBe('timeout');
     expect(tradeFailReason('not-a-real-code')).toBe('unknown');
     expect(tradeFailReason(undefined)).toBe('unknown');
+  });
+});
+
+describe('geo context relay', () => {
+  it('forwards public IP and country code to PostHog only, never storing IP in Postgres rows', async () => {
+    const { svc, rows, sent } = harness(on);
+    const geo = extractGeoContext({
+      headers: { 'x-forwarded-for': '127.0.0.1, 8.8.8.8', 'cf-ipcountry': 'de' },
+      ip: '172.18.0.5',
+    });
+    expect(geo).toEqual({ clientIp: '8.8.8.8', countryCode: 'DE' });
+    await svc.ingest({
+      anonId: ANON,
+      sessionId: 's1',
+      events: [{ name: 'surface_viewed', ts: TS, props: { surface: 'landing' } }],
+    }, geo);
+    expect(JSON.stringify(rows)).not.toContain('8.8.8.8');
+    expect(rows[0]?.props).toEqual({ surface: 'landing' });
+    expect(sent[0]?.body.batch[0]?.properties).toMatchObject({
+      surface: 'landing',
+      $ip: '8.8.8.8',
+      $geoip_country_code: 'DE',
+      $geoip_country_name: 'Germany',
+      $process_person_profile: false,
+    });
+  });
+
+  it('rejects private/loopback IPs and invalid country headers', () => {
+    expect(isPublicIp('127.0.0.1')).toBe(false);
+    expect(isPublicIp('10.20.0.1')).toBe(false);
+    expect(isPublicIp('172.18.0.2')).toBe(false);
+    expect(isPublicIp('192.168.1.5')).toBe(false);
+    expect(isPublicIp('::ffff:127.0.0.1')).toBe(false);
+    expect(isPublicIp('::1')).toBe(false);
+    expect(isPublicIp('1.1.1.1')).toBe(true);
+    expect(extractGeoContext({
+      headers: { 'x-forwarded-for': '192.168.0.1', 'cf-ipcountry': 'XX' },
+      ip: '127.0.0.1',
+    })).toEqual({});
   });
 });

@@ -1,3 +1,4 @@
+import { noteHudPanelOpened } from '../../../design/analytics/ui';
 import { isGameInputBlocked } from '../input/gameInputBlock';
 import type { FeatureContext } from '../registry/types';
 import { TabBook, type BookTabDef } from './TabBook';
@@ -69,7 +70,12 @@ export class CommandDock {
       tabTestIdPrefix: 'dock-tab-',
       toggleTestId: 'command-dock-toggle',
       ariaLabel: 'Commands',
-      onSpineClick,
+      onSpineClick: (tab) => {
+        if (this.book.isCollapsed() || this.book.getActiveTab() !== tab) {
+          noteHudPanelOpened('dock', tab);
+        }
+        onSpineClick?.(tab);
+      },
     });
     this.el = this.book.el;
     if (this.book.has('queue')) this.book.containerFor('queue').classList.add('ta-command-dock__queue');
@@ -110,6 +116,9 @@ export class CommandDock {
     const tab = HOTKEYS[(e.key ?? '').toLowerCase()];
     if (!tab || !this.book.has(tab)) return;
     e.stopImmediatePropagation?.();
+    if (this.book.isCollapsed() || this.book.getActiveTab() !== tab) {
+      noteHudPanelOpened('dock', tab);
+    }
     this.onSpineClick?.(tab);
     this.book.selectOrToggleTab(tab);
   }

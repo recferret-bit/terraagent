@@ -9,6 +9,7 @@ infra/.env
 infra/.env.*
 *-E
 !infra/.env.example
+!infra/.env.posthog.example
 !infra/hosts/.env.example
 test-results/
 playwright-report/

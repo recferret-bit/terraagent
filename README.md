@@ -367,13 +367,32 @@ npm run contract:real -- --port <Port>   # live NEAR Testnet contract verificati
 npm run test:parity                      # browser worker vs server thread bit-determinism gate
 npm run e2e -- --waves ..28              # Playwright headless-Chromium end-to-end suite
 npm run validate:models -- --all         # 3D procedural geometry, connectivity & palette validator
-npm run validate:analytics               # product funnels: emitters, failure reasons, no browser PostHog
+npm run validate:analytics               # product funnels: emitters, failure reasons, page/vhost coverage, no browser PostHog
 npm run test:analytics                   # self-test of that harness
+npm run analytics:scan -- --check        # UI & button graph across all pages & HUD tabs
+npm run analytics:sync                   # compile & sync PostHog dashboards/funnels (--apply / --verify for live)
+npm run analytics:loop -- --mock         # Graph -> Loop + PostHog MCP double-check (--apply / --verify [--mcp-mode remote] for live)
+npm run analytics:mcp                    # official PostHog remote MCP bridge (--print-wizard / --wizard for @posthog/wizard mcp add)
+npm run analytics:deploy-check           # verify git/dist credential isolation & nginx analytics proxy readiness
 npm run near:test-contracts              # 172/172 Rust unit tests across the 7 near-contracts crates (6 deployed + verifier)
 npm run near:build-contracts             # Build release wasm32-unknown-unknown binaries (--cfg near)
 npm run near:health                      # Inspect Testnet liquid headroom & storage lock (--apply --faucet for top-up)
 npm run shade:worker                     # Run Shade Agent autonomous swarm/treasury worker (`v1.signer` MPC)
 ```
+
+### Product Analytics & PostHog Dashboards
+
+- **Full-Surface & In-Game Instrumentation:** All 14 public HTML entries (11 booted surfaces: `landing`, `whitepaper`, `pitchdeck`, `play`, `me`, `trade`, `deed`, `playground`, `hub`, `design/*`, and `404`) boot consent-gated analytics (`ta_consent=analytics:1`, Global Privacy Control respected, zero `posthog-js` in the browser). In-game HUD tabs (`CommandDock` + `ColonyBook`) and site/game buttons emit cataloged events via `frontend/design/analytics/ui.ts` + `uiRules.ts` and feature hooks.
+- **Privacy-Preserving Backend Relay:** `POST /v1/analytics/surface` increments the cookieless Prometheus counter (`ta_surface_views_total`), while `POST /v1/analytics/events` stores sanitized props in Postgres (zero IP, GeoIP, or user-agent columns) and forwards consented events + transient `$ip` / `$geoip_country_*` hints to PostHog `/batch/` when `POSTHOG_ENABLED=true`. All public Nginx vhosts (`apex`, `play`, `whitepaper`, `pitchdeck`, `playground`, `design`) proxy `/v1/analytics/` to `app:3000`.
+- **4 Provisioned PostHog Dashboards (57 Insights):**
+  - `TerraAgent · Executive, Views & Countries`: DAU/WAU visitors, pageviews by surface, GeoIP country bar + `WorldMap`, visitor-to-colony country funnel, referrer/UTM sources, viewport & first-touch splits, consent rate, D1–D7 retention, and landing/whitepaper/pitchdeck funnels.
+  - `TerraAgent · Gameplay, Planets & In-Game Buttons`: planet drop funnel, colony HUD-to-command funnel, D1–D7 colony retention, HUD panel opens, and auto-generated Build / Production / Terraform / Pause button funnels.
+  - `TerraAgent · Trading, Web3 & Profile`: `/trade.html` ticket-to-fill funnel, in-game market & Colony Trade button funnels, sign-in methods, NEAR wallet kinds, and `/me.html` profile/staking sections.
+  - `TerraAgent · Errors & Broken Steps`: step-attributed failure funnels (`acquisition-fail`, `planet-fail`, `trade-fail`, `gameplay-fail`, `profile-fail`) and error breakdowns.
+- **Credentials & MCP Setup (Never Committed):**
+  - Copy `infra/.env.posthog.example` to `infra/.env.posthog` (gitignored) with `project_token` (`phc_...`), `project_id`, `region`, and `personal_api_key` (`phx_...`) to run `npm run analytics:sync -- --apply` and `npm run analytics:loop -- --mcp-mode remote --verify`.
+  - To register PostHog's official MCP server (`https://mcp.posthog.com/mcp`) in your local IDE via `@posthog/wizard mcp add` using `POSTHOG_WIZARD_API_KEY` from env (user-scoped outside git per `D-41`), run `npm run analytics:mcp -- --wizard` (or `--print-wizard`).
+  - On the deploy host (`/srv/terraagent/.env`), set `POSTHOG_ENABLED=true`, `POSTHOG_DISABLED=false`, `POSTHOG_HOST=https://eu.i.posthog.com`, `POSTHOG_KEY=<project_token>`, `POSTHOG_PERSON_SALT=<32-byte hex>`, and `TA_TRUST_PROXY=1`; verify zero leaks with `npm run analytics:deploy-check`.
 
 ### Repository Layout
 

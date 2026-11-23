@@ -71,6 +71,7 @@ function ensureServerEnv() {
     `grep -q '^DATABASE_URL=' ${SERVER_ENV} || echo '${urlLine}' >> ${SERVER_ENV}`,
     `grep -q '^NODE_ENV=' ${SERVER_ENV} || echo 'NODE_ENV=production' >> ${SERVER_ENV}`,
     `grep -q '^NEAR_MODE=' ${SERVER_ENV} || echo 'NEAR_MODE=testnet' >> ${SERVER_ENV}`,
+    `grep -q '^TA_TRUST_PROXY=' ${SERVER_ENV} || echo 'TA_TRUST_PROXY=1' >> ${SERVER_ENV}`,
   ].join(' && ');
 }
 

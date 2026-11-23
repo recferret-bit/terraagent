@@ -27,9 +27,9 @@ export const ANALYTICS_DENY_PROPS = [
   'signature', 'colonyid', 'colony_id', 'playerid', 'player_id', 'anonid', 'distinct_id',
 ] as const;
 
-const SURFACE = ['landing', 'play', 'trade', 'me', 'whitepaper', 'pitchdeck', 'deed', 'hub', 'playground', 'probe'] as const;
+const SURFACE = ['landing', 'play', 'trade', 'me', 'whitepaper', 'pitchdeck', 'deed', 'hub', 'playground', 'design', 'not_found', 'probe'] as const;
 const REFERRER = ['direct', 'terraagent', 'search', 'social', 'other'] as const;
-const PATH_GROUP = ['landing', 'play', 'trade', 'me', 'whitepaper', 'pitchdeck', 'deed', 'hub', 'playground', 'design', 'other'] as const;
+const PATH_GROUP = ['landing', 'play', 'trade', 'me', 'whitepaper', 'pitchdeck', 'deed', 'hub', 'playground', 'design', 'not_found', 'other'] as const;
 const VIEWPORT = ['desktop', 'mobile'] as const;
 const RUNTIME = ['local', 'prod'] as const;
 const BIT = ['0', '1'] as const;
@@ -43,11 +43,33 @@ const BOOT_REASON = ['boot', 'socket', 'auth', 'timeout', 'rejected', 'webgl', '
 const SIDE = ['buy', 'sell'] as const;
 const TRADE_REASON = ['validation', 'rejected', 'network', 'insufficient', 'expired', 'timeout', 'unknown'] as const;
 const SOURCE = ['client', 'server'] as const;
-const SECTION = ['pilot', 'progress', 'planets', 'history', 'achievements', 'play'] as const;
+const SECTION = ['pilot', 'progress', 'planets', 'history', 'achievements', 'staking', 'play'] as const;
 const PROFILE_REASON = ['unauthorized', 'network', 'invalid', 'unknown'] as const;
 const COMMAND = ['move', 'build', 'terraform', 'attack', 'stop', 'other'] as const;
 const ERROR_KIND = ['error', 'rejection'] as const;
 const ERROR_REASON = ['script', 'resource', 'socket', 'unknown'] as const;
+export const ANALYTICS_UI_AREAS = [
+  'nav', 'hero', 'planets', 'resources', 'economics', 'protocol', 'director', 'rail', 'slides',
+  'orbit_lobby', 'hud_dock', 'hud_colony', 'build', 'units', 'terraform', 'queue', 'army', 'goals',
+  'map', 'notifications', 'hq_ai', 'market', 'trade_ticket', 'orders', 'keys', 'ramp', 'staking',
+  'profile', 'deed', 'diplomacy', 'bounty', 'wallet', 'playground', 'settings', 'hub', 'design', 'cta',
+] as const;
+export type AnalyticsUiArea = (typeof ANALYTICS_UI_AREAS)[number];
+export const ANALYTICS_HUD_BOOKS = ['dock', 'colony', 'modal'] as const;
+export type AnalyticsHudBook = (typeof ANALYTICS_HUD_BOOKS)[number];
+export const ANALYTICS_HUD_PANELS = [
+  'build', 'production', 'terraform', 'queue', 'player', 'away', 'deed', 'goals',
+  'hq', 'director', 'combat', 'supply', 'trade', 'notifications', 'settings', 'map',
+] as const;
+export type AnalyticsHudPanel = (typeof ANALYTICS_HUD_PANELS)[number];
+const UI_AREA = ANALYTICS_UI_AREAS;
+const HUD_BOOK = ANALYTICS_HUD_BOOKS;
+const HUD_PANEL = ANALYTICS_HUD_PANELS;
+
+/** Server-enriched PostHog GeoIP properties (never sent by the browser or stored in Postgres). */
+export const POSTHOG_GEOIP_PROPS = [
+  '$geoip_country_name', '$geoip_country_code', '$geoip_continent_name', '$geoip_city_name',
+] as const;
 
 const prop = (key: string, values?: readonly string[]): AnalyticsPropSpec => (values ? { key, values } : { key });
 
@@ -87,6 +109,8 @@ export const ANALYTICS_EVENTS: readonly AnalyticsEventSpec[] = [
   { name: 'profile_viewed', plane: 'client', surface: 'profile', props: [prop('runtime', RUNTIME)] },
   { name: 'profile_section_opened', plane: 'client', surface: 'profile', props: [prop('section', SECTION), prop('runtime', RUNTIME)] },
   { name: 'profile_load_failed', plane: 'client', surface: 'profile', props: [prop('reason', PROFILE_REASON), prop('runtime', RUNTIME)] },
+  { name: 'ui_action_clicked', plane: 'client', surface: 'ui', props: [prop('surface', SURFACE), prop('area', UI_AREA), prop('action'), prop('target'), prop('runtime', RUNTIME)] },
+  { name: 'hud_panel_opened', plane: 'client', surface: 'play', props: [prop('book', HUD_BOOK), prop('panel', HUD_PANEL), prop('runtime', RUNTIME)] },
   { name: 'client_error', plane: 'client', surface: 'diagnostics', props: [prop('surface', SURFACE), prop('kind', ERROR_KIND), prop('reason', ERROR_REASON), prop('runtime', RUNTIME)] },
   legacy('deed_viewed'), legacy('deed_shared'), legacy('stake_started'), legacy('stake_completed'),
   legacy('stake_cancelled'), legacy('unstake_started'), legacy('withdraw_completed'),

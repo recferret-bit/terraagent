@@ -1,3 +1,4 @@
+import { noteHudPanelOpened } from '../../../design/analytics/ui';
 import { TabBook, type BookTabDef } from './TabBook';
 
 export type ColonyTabId =
@@ -67,7 +68,12 @@ export class ColonyBook {
       tabTestIdPrefix: 'colony-tab-',
       toggleTestId: 'colony-book-toggle',
       ariaLabel: 'Colony',
-      onSpineClick,
+      onSpineClick: (tab) => {
+        if (this.book.isDialogOnlyTab(tab) || this.book.isCollapsed() || this.book.getActiveTab() !== tab) {
+          noteHudPanelOpened('colony', tab);
+        }
+        onSpineClick?.(tab);
+      },
     });
   }
 

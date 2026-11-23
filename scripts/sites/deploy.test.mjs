@@ -110,7 +110,10 @@ test('each stack reloads nginx after its vhosts and the server env points at pos
   assert.match(full.stdout, /DATABASE_URL=postgresql:\/\/terra:terra@postgres:5432\/terraagent/);
   assert.match(full.stdout, /NODE_ENV=production/);
   assert.match(full.stdout, /NEAR_MODE=testnet/);
+  assert.match(full.stdout, /TA_TRUST_PROXY=1/);
   assert.match(full.stdout, /chmod 600 \/srv\/terraagent\/\.env/);
+  assert.equal(full.stdout.includes('phc_'), false);
+  assert.equal(full.stdout.includes('phx_'), false);
   const sections = stackSections(full.stdout);
   for (const name of ['frontend', 'backend', 'chain']) {
     const text = sections[name];

@@ -25,7 +25,7 @@ export type AnalyticsBatchV1 = z.infer<typeof AnalyticsBatchV1>;
 /** `POST /v1/analytics/surface`. Cookieless load counter. No id, no IP, no body beyond these two labels. */
 export const AnalyticsSurfacePingV1 = z
   .object({
-    surface: z.enum(['landing', 'play', 'trade', 'me', 'whitepaper', 'pitchdeck', 'deed', 'hub', 'playground', 'probe']),
+    surface: z.enum(['landing', 'play', 'trade', 'me', 'whitepaper', 'pitchdeck', 'deed', 'hub', 'playground', 'design', 'not_found', 'probe']),
     consent: z.enum(['unknown', 'allow', 'decline']),
   })
   .strict();

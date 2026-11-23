@@ -1,4 +1,4 @@
-import { setConsent } from '../../game/core/analytics';
+import { flush, setConsent } from '../../game/core/analytics';
 import {
   currentSurface, firstTouchBit, globalPrivacyControl, noteFirstTouchSession, pathGroup, pingConsent,
   referrerClass, rememberSurface, runtimeLabel, type AnalyticsSurface, utmProps, viewportClass,
@@ -6,6 +6,7 @@ import {
 import { mountConsentPlate } from './consentPlate';
 import { installClientErrorTracking } from './errors';
 import { trackProduct } from './trackSafe';
+import { installUiActionDelegation } from './ui';
 
 let surfaceViewed = false;
 
@@ -15,6 +16,7 @@ export function bootProductAnalytics(surface: AnalyticsSurface): void {
   const consent = pingConsent();
   void postSurfacePing(surface, consent);
   installClientErrorTracking(surface);
+  installUiActionDelegation(surface);
   if (consent === 'allow') {
     emitSurfaceViewed();
     return;
@@ -25,6 +27,7 @@ export function bootProductAnalytics(surface: AnalyticsSurface): void {
         setConsent(true);
         trackProduct('consent_granted', { surface, runtime: runtimeLabel() });
         emitSurfaceViewed();
+        void flush();
       },
       onDecline() {
         setConsent(false);

@@ -5,9 +5,10 @@ import { ZodPipe } from '../core/errors/zod.pipe';
 import { IpThrottleGuard } from '../core/ip-throttle.guard';
 import { APP_ENV, type AppEnv } from '../core/tokens';
 import { AnalyticsService } from './analytics.service';
+import { extractGeoContext, type GeoRequestLike } from './geo-context';
 
 /** The slice of the Express request we use (express types are not a direct dependency). */
-interface RawRequest extends AsyncIterable<Buffer> {
+interface RawRequest extends AsyncIterable<Buffer>, GeoRequestLike {
   is(type: string): string | false | null;
 }
 
@@ -43,7 +44,7 @@ export class AnalyticsController {
         throw new CoreException('VALIDATION_ERROR', { status: 400, message: 'body is not valid JSON' });
       }
     }
-    await this.svc.ingest(this.pipe.transform(raw));
+    await this.svc.ingest(this.pipe.transform(raw), extractGeoContext(req));
   }
 
   /** Cookieless load counter. No id, no row. Same per-IP throttle as the auth routes. */

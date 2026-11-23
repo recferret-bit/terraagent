@@ -73,3 +73,10 @@ test('public vhosts wire 404.html without soft-404s, redirect /index.html (excep
     assert.doesNotMatch(text, /\bindex\s+\//, name);
   }
 });
+
+test('every public vhost proxies /v1/ or /v1/analytics/ to app:3000', () => {
+  for (const name of ['apex.conf', 'play.conf', 'whitepaper.conf', 'pitchdeck.conf', 'playground.conf', 'design.conf']) {
+    const text = readFileSync(resolve(nginxHosts, name), 'utf8');
+    assert.match(text, /location (?:\^~ )?\/v1\/(?:analytics\/)?\s*\{[\s\S]*?set \$terra_app app:3000;[\s\S]*?proxy-app\.conf;/, name);
+  }
+});
