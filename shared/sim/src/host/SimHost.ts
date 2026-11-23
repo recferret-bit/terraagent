@@ -120,9 +120,9 @@ export class SimHost {
   clientDeltaFrames(tick: number, opts: Omit<DiffChunkOptions, 'forClient'> = {}): DeltaFrame[] {
     return clientDeltaFrames(this.state, tick, opts);
   }
-  /** Throws `DiffGapError` when this host is not at the diff's `fromTick`. */
-  applyDiff(diff: Uint8Array | EngineDiff | { diff: Uint8Array }): void {
-    applyDiff(this.state, diff);
+  /** Throws `DiffGapError` when this host is not at the diff's `fromTick`. `own`: the window's own colony frames. */
+  applyDiff(diff: Uint8Array | EngineDiff | { diff: Uint8Array }, own?: readonly Uint8Array[]): void {
+    applyDiff(this.state, diff, own);
   }
   view(): SimView { return view(this.state); }
 

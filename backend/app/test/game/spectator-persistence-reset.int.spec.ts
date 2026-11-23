@@ -140,7 +140,7 @@ describe('Server spectator Postgres persistence across stack restarts & reset=tr
 
     const ws2 = await WsClient.open(`${run2.url.replace('http://', 'ws://')}/ws`);
     sockets.push(ws2.ws);
-    ws2.send({ t: 'hello', d: { accessToken: 'dev:return-viewer', proto: [1], client: { app: 'game', version: 'int' } } });
+    ws2.send({ t: 'hello', d: { accessToken: 'dev:return-viewer', proto: [2], client: { app: 'game', version: 'int' } } });
     await ws2.next('ready');
     ws2.send({ t: 'join', d: { planetId, mode: 'spectator' } });
     const w2 = Welcome.parse(await ws2.next('welcome'));
@@ -206,7 +206,7 @@ describe('Split sim-worker + api cluster spectator provisioning & reset', () => 
 
     const wsTabA = await WsClient.open(`${apiUrl.replace('http://', 'ws://')}/ws`);
     sockets.push(wsTabA.ws);
-    wsTabA.send({ t: 'hello', d: { accessToken: 'dev:cluster-tab-a', proto: [1], client: { app: 'game', version: 'int' } } });
+    wsTabA.send({ t: 'hello', d: { accessToken: 'dev:cluster-tab-a', proto: [2], client: { app: 'game', version: 'int' } } });
     await wsTabA.next('ready');
     wsTabA.send({ t: 'join', d: { planetId: initJson.planetId, mode: 'spectator' } });
     const w = Welcome.parse(await wsTabA.next('welcome'));
@@ -242,7 +242,7 @@ describe('Split sim-worker + api cluster spectator provisioning & reset', () => 
 
     const wsTabARejoined = await WsClient.open(`${apiUrl.replace('http://', 'ws://')}/ws`);
     sockets.push(wsTabARejoined.ws);
-    wsTabARejoined.send({ t: 'hello', d: { accessToken: 'dev:cluster-tab-a', proto: [1], client: { app: 'game', version: 'int' } } });
+    wsTabARejoined.send({ t: 'hello', d: { accessToken: 'dev:cluster-tab-a', proto: [2], client: { app: 'game', version: 'int' } } });
     await wsTabARejoined.next('ready');
     wsTabARejoined.send({ t: 'join', d: { planetId: initJson.planetId, mode: 'spectator' } });
     const wAfterReset = Welcome.parse(await wsTabARejoined.next('welcome'));
@@ -286,7 +286,7 @@ describe('Split sim-worker + api staggered restart persistence', () => {
 
     const ws1 = await WsClient.open(`${api1Url.replace('http://', 'ws://')}/ws`);
     sockets.push(ws1.ws);
-    ws1.send({ t: 'hello', d: { accessToken: 'dev:stagger', proto: [1], client: { app: 'game', version: 'int' } } });
+    ws1.send({ t: 'hello', d: { accessToken: 'dev:stagger', proto: [2], client: { app: 'game', version: 'int' } } });
     await ws1.next('ready');
     ws1.send({ t: 'join', d: { planetId: initJson.planetId, mode: 'spectator' } });
     await ws1.next('welcome');
