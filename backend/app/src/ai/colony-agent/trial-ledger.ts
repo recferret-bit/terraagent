@@ -31,3 +31,13 @@ export async function consumeTrialTurn(db: DbClient, playerId: string | null | u
   if (count !== 1) return null;
   return trialTurnsLeft(db, playerId);
 }
+
+/** Gives back one free turn spent by {@link consumeTrialTurn} whose provider call failed (never below zero). */
+export async function refundTrialTurn(db: DbClient, playerId: string): Promise<boolean> {
+  if (typeof db.aiFreeTrial?.updateMany !== 'function') return false;
+  const { count } = await db.aiFreeTrial.updateMany({
+    where: { playerId, turnsUsed: { gt: 0 } },
+    data: { turnsUsed: { decrement: 1 }, updatedAt: new Date() },
+  });
+  return count === 1;
+}

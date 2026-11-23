@@ -6,6 +6,7 @@ import { databaseEnabled } from '../../core/persistence.js';
 import { APP_ENV, type AppEnv } from '../../core/tokens.js';
 import { PRISMA } from '../../db/db.module.js';
 import { FlagsService } from '../../flags/flags.service.js';
+import { openPlayerApiKey } from '../../profile/player-ai-settings.store.js';
 import { ManagedAiGate } from './managed-ai-gate.js';
 
 export interface AiAccessResponse {
@@ -44,8 +45,8 @@ export class AiAccessController {
     const simId = colonyIdRaw?.trim();
     if (!simId) throw new CoreException('INVALID_REQUEST', { status: 400, message: 'colonyId is required' });
     const colonyId = await this.rowId(simId, planetIdRaw?.trim(), colonyIndexRaw);
-    const byok = await this.hasByokKey(colonyId);
-    return { colonyId: simId, aiBudget: await this.gate.view({ id: colonyId }, { byok }) };
+    const byokKey = await this.byokKey(colonyId);
+    return { colonyId: simId, aiBudget: await this.gate.view({ id: colonyId }, { byok: byokKey !== null, byokKey }) };
   }
 
   /**
@@ -61,13 +62,22 @@ export class AiAccessController {
     return row?.id ?? simId;
   }
 
-  /** The colony owner saved a `/me.html` NEAR.AI key: their Director runs on it for `$0` protocol cost. */
-  private async hasByokKey(colonyId: string): Promise<boolean> {
+  /**
+   * The colony owner's saved `/me.html` NEAR.AI key (their Director runs on it for `$0` protocol cost), decrypted so
+   * the card can read that key's provider circuit; `null` = no key. A key that no longer decrypts still counts as BYOK.
+   */
+  private async byokKey(colonyId: string): Promise<string | null> {
     const db = this.db();
-    if (!db || typeof db.colony?.findUnique !== 'function') return false;
+    if (!db || typeof db.colony?.findUnique !== 'function') return null;
     const colony = await db.colony.findUnique({ where: { id: colonyId }, select: { playerId: true } });
-    if (!colony) return false;
+    if (!colony) return null;
     const player = await db.player.findUnique({ where: { id: colony.playerId }, select: { nearAiApiKey: true } });
-    return Boolean(player?.nearAiApiKey?.trim());
+    const stored = player?.nearAiApiKey?.trim();
+    if (!stored) return null;
+    try {
+      return openPlayerApiKey(stored, this.env) ?? stored;
+    } catch {
+      return stored;
+    }
   }
 }

@@ -3,6 +3,7 @@ import { Inject, Injectable, Optional } from '@nestjs/common';
 import { APP_ENV, type AppEnv } from '../../core/tokens.js';
 import { adapterOf } from '../../ports/adapters.js';
 import {
+  LlmProviderError,
   LlmProviderPort,
   type LlmAttestation,
   type LlmRequest,
@@ -20,6 +21,7 @@ import {
   verifySignatureHashes,
   type RawSignaturePayload,
 } from './nearai-signature.js';
+import { classifyNearAiFailure, classifyTransportError } from './nearai-errors.js';
 
 export {
   DEFAULT_NEAR_AI_BASE,
@@ -30,12 +32,14 @@ export {
   verifySignatureHashes,
 };
 export const NEAR_AI_KEY_MISSING = 'NEAR_AI_API_KEY is not set';
+/** Whole request budget (completion + attestation signature) unless the request names its own `timeoutMs`. */
+export const NEAR_AI_TIMEOUT_MS = 30_000;
 
 export type FetchLike = typeof globalThis.fetch;
 
 export function nearAiKey(env: Readonly<Record<string, string | undefined>>): string {
   const key = env.NEAR_AI_API_KEY || env.NEARAI_API_KEY || env.NEARAI_CLOUD_API_KEY;
-  if (!key) throw new Error(NEAR_AI_KEY_MISSING);
+  if (!key) throw new LlmProviderError('unauthorized', NEAR_AI_KEY_MISSING);
   return key;
 }
 
@@ -45,7 +49,7 @@ export function usageFrom(
   const inputTokens = raw?.inputTokens;
   const outputTokens = raw?.outputTokens;
   if (typeof inputTokens !== 'number' || typeof outputTokens !== 'number') {
-    throw new Error('NEAR AI response usage missing numeric inputTokens/outputTokens');
+    throw new LlmProviderError('bad_response', 'NEAR AI response usage missing numeric inputTokens/outputTokens');
   }
   return { inputTokens, outputTokens };
 }
@@ -65,7 +69,7 @@ function parseCompletionJson(rawBody: string): RawChatCompletion {
   try {
     return JSON.parse(rawBody) as RawChatCompletion;
   } catch {
-    throw new Error('NEAR AI Cloud returned non-JSON response');
+    throw new LlmProviderError('bad_response', 'NEAR AI Cloud returned non-JSON response');
   }
 }
 
@@ -114,6 +118,34 @@ async function fetchAttestationSignature(params: {
   return { chatId, requestHash, responseHash, verified: false };
 }
 
+interface RequestTimer {
+  readonly signal: AbortSignal;
+  timedOut(): boolean;
+  clear(): void;
+}
+
+/** One abort signal for the whole call: fires on the caller's signal or after `ms`. */
+function requestTimer(caller: AbortSignal | undefined, ms: number): RequestTimer {
+  const ctl = new AbortController();
+  let fired = false;
+  const timer = setTimeout(() => {
+    fired = true;
+    ctl.abort(new Error('timeout'));
+  }, ms);
+  timer.unref?.();
+  const onCaller = (): void => ctl.abort(caller?.reason);
+  if (caller?.aborted) onCaller();
+  else caller?.addEventListener('abort', onCaller, { once: true });
+  return {
+    signal: ctl.signal,
+    timedOut: () => fired,
+    clear: () => {
+      clearTimeout(timer);
+      caller?.removeEventListener('abort', onCaller);
+    },
+  };
+}
+
 function glmReasoningControl(modelId: string, env: Readonly<Record<string, string | undefined>>): Record<string, unknown> {
   if (env.NEAR_AI_THINKING === '1') return {};
   if (modelId.startsWith('z-ai/glm-5')) return { reasoning_effort: 'low' };
@@ -141,6 +173,22 @@ export class NearAiLlmAdapter extends LlmProviderPort {
         Record<string, string | undefined>
       >);
     const key = req.apiKey?.trim() || nearAiKey(resolvedEnv);
+    const timer = requestTimer(req.signal, req.timeoutMs ?? NEAR_AI_TIMEOUT_MS);
+    try {
+      return await this.send(req, resolvedEnv, key, timer.signal);
+    } catch (err) {
+      throw classifyTransportError(err, timer.timedOut(), Boolean(req.signal?.aborted));
+    } finally {
+      timer.clear();
+    }
+  }
+
+  private async send(
+    req: LlmRequest,
+    resolvedEnv: Readonly<Record<string, string | undefined>>,
+    key: string,
+    signal: AbortSignal,
+  ): Promise<LlmResponse> {
     const baseUrl = (
       resolvedEnv.NEAR_AI_BASE_URL ||
       resolvedEnv.NEARAI_BASE_URL ||
@@ -150,20 +198,7 @@ export class NearAiLlmAdapter extends LlmProviderPort {
     const modelId = normalizeNearAiModel(
       req.model || resolvedEnv.NEAR_AI_MODEL || resolvedEnv.NEARAI_MODEL || resolvedEnv.AI_MODEL || DEFAULT_NEAR_AI_MODEL,
     );
-    const messages = [
-      ...(req.system ? [{ role: 'system' as const, content: req.system }] : []),
-      ...req.messages.map((m) => ({ role: m.role, content: m.content })),
-    ];
-    const bodyObj: Record<string, unknown> = {
-      model: modelId,
-      messages,
-      max_tokens: req.maxTokens,
-      stream: false,
-      ...(typeof req.temperature === 'number' ? { temperature: req.temperature } : {}),
-      ...(req.json ? { response_format: { type: 'json_object' } } : {}),
-      ...glmReasoningControl(modelId, resolvedEnv),
-    };
-    const requestBody = JSON.stringify(bodyObj);
+    const requestBody = JSON.stringify(requestBodyOf(req, modelId, resolvedEnv));
     const requestHash = sha256Hex(requestBody);
 
     const res = await this.fetchImpl(`${baseUrl}/chat/completions`, {
@@ -174,10 +209,10 @@ export class NearAiLlmAdapter extends LlmProviderPort {
         Accept: 'application/json',
       },
       body: requestBody,
-      signal: req.signal,
+      signal,
     });
     if (!res.ok) {
-      throw new Error(`NEAR AI Cloud HTTP ${res.status}`);
+      throw classifyNearAiFailure(res.status, await res.text().catch(() => ''));
     }
     const responseBody = await res.text();
     const responseHash = sha256Hex(responseBody);
@@ -200,7 +235,7 @@ export class NearAiLlmAdapter extends LlmProviderPort {
             requestHash,
             responseHash,
             env: resolvedEnv,
-            signal: req.signal,
+            signal,
           })
         : chatId
           ? { chatId, requestHash, responseHash, verified: false }
@@ -208,6 +243,26 @@ export class NearAiLlmAdapter extends LlmProviderPort {
 
     return { text, usage, model: parsed.model || modelId, ...(attestation ? { attestation } : {}) };
   }
+}
+
+function requestBodyOf(
+  req: LlmRequest,
+  modelId: string,
+  env: Readonly<Record<string, string | undefined>>,
+): Record<string, unknown> {
+  const messages = [
+    ...(req.system ? [{ role: 'system' as const, content: req.system }] : []),
+    ...req.messages.map((m) => ({ role: m.role, content: m.content })),
+  ];
+  return {
+    model: modelId,
+    messages,
+    max_tokens: req.maxTokens,
+    stream: false,
+    ...(typeof req.temperature === 'number' ? { temperature: req.temperature } : {}),
+    ...(req.json ? { response_format: { type: 'json_object' } } : {}),
+    ...glmReasoningControl(modelId, env),
+  };
 }
 
 export const adapter = adapterOf({ port: LlmProviderPort, kind: 'nearai', useClass: NearAiLlmAdapter });

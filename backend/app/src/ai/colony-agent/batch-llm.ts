@@ -1,5 +1,6 @@
-import type { LlmAttestation } from '../../ports/llm-provider.port.js';
-import type { LlmProviderPort } from '../../ports/llm-provider.port.js';
+import { SCRIPT_AI_MODEL } from '@terra/contracts';
+import type { LlmAttestation, LlmFailureKind, LlmProviderPort, LlmRequest, LlmResponse } from '../../ports/llm-provider.port.js';
+import { toProviderError } from '../provider/guarded-llm.js';
 import {
   deterministicDirective,
   parseBatchedDirectivesJson,
@@ -26,94 +27,104 @@ export interface ResolvedDecision {
   readonly cached?: boolean;
   /** W28-06: the access decision behind this turn (trial / tee / script / byok). */
   readonly aiAccess?: ManagedAiAccess;
+  /** Set when the provider call failed (or the circuit refused it): the directive is the rule-based fallback. */
+  readonly providerFailure?: LlmFailureKind;
+}
+
+interface BatchCreds {
+  readonly apiKey?: string;
+  readonly model: string;
+  readonly usedPlayerKey: boolean;
+}
+
+type Ask = (req: Omit<LlmRequest, 'system' | 'temperature' | 'json' | 'model' | 'apiKey'>) => Promise<LlmResponse>;
+
+function asker(llm: LlmProviderPort, creds: BatchCreds): Ask {
+  return (req) =>
+    llm.complete({
+      ...req,
+      system: BATCH_SYSTEM_PROMPT,
+      temperature: 0.2,
+      json: true,
+      model: creds.model,
+      ...(creds.apiKey ? { apiKey: creds.apiKey } : {}),
+    });
+}
+
+/** The rule-based decision for `obs` (`deterministic-policy`), tagged with the provider failure when there was one. */
+export function fallbackDecision(obs: ColonyObservation, usedPlayerKey: boolean, providerFailure?: LlmFailureKind): ResolvedDecision {
+  return {
+    directive: deterministicDirective(obs),
+    model: SCRIPT_AI_MODEL,
+    usedPlayerKey,
+    ...(providerFailure ? { providerFailure } : {}),
+  };
 }
 
 export async function evaluateBatchWithLlm(
   llm: LlmProviderPort,
   observations: readonly ColonyObservation[],
-  creds: { apiKey?: string; model: string; usedPlayerKey: boolean },
+  creds: BatchCreds,
 ): Promise<Map<number, ResolvedDecision>> {
   const out = new Map<number, ResolvedDecision>();
   if (observations.length === 0) return out;
+  const ask = asker(llm, creds);
+  let res: LlmResponse;
   try {
-    const res = await llm.complete({
-      system: BATCH_SYSTEM_PROMPT,
+    res = await ask({
       messages: [{ role: 'user', content: JSON.stringify({ colonies: observations.map(sanitizeObservationForPrompt) }) }],
       maxTokens: Math.min(1200, observations.length * 240 + 120),
-      temperature: 0.2,
-      json: true,
-      model: creds.model,
-      ...(creds.apiKey ? { apiKey: creds.apiKey } : {}),
     });
-    const parsed = parseBatchedDirectivesJson(res.text, observations);
-    if (parsed?.isBatchedPayload) {
-      for (const obs of observations) {
-        out.set(obs.colonyIndex, {
-          directive: parsed.map.get(obs.colonyIndex) ?? deterministicDirective(obs),
-          model: res.model,
-          attestation: res.attestation,
-          usedPlayerKey: creds.usedPlayerKey,
-        });
-      }
-      return out;
-    }
-    if (!parsed) {
-      for (const obs of observations) {
-        out.set(obs.colonyIndex, {
-          directive: deterministicDirective(obs),
-          model: 'deterministic-policy',
-          attestation: res.attestation,
-          usedPlayerKey: creds.usedPlayerKey,
-        });
-      }
-      return out;
-    }
-    const first = observations[0]!;
-    out.set(first.colonyIndex, {
-      directive: parsed.map.get(first.colonyIndex) ?? deterministicDirective(first),
-      model: res.model,
-      attestation: res.attestation,
-      usedPlayerKey: creds.usedPlayerKey,
-    });
-    for (const obs of observations.slice(1)) {
-      out.set(obs.colonyIndex, await askSingleDirective(llm, obs, creds));
-    }
+  } catch (err) {
+    const kind = toProviderError(err).kind;
+    for (const obs of observations) out.set(obs.colonyIndex, fallbackDecision(obs, creds.usedPlayerKey, kind));
     return out;
-  } catch {
-    for (const obs of observations) {
+  }
+  const parsed = parseBatchedDirectivesJson(res.text, observations);
+  const answered = (obs: ColonyObservation, directive: AgentDirective | undefined, model?: string): ResolvedDecision => ({
+    directive: directive ?? deterministicDirective(obs),
+    model: model ?? res.model,
+    attestation: res.attestation,
+    usedPlayerKey: creds.usedPlayerKey,
+  });
+  if (parsed?.isBatchedPayload) {
+    for (const obs of observations) out.set(obs.colonyIndex, answered(obs, parsed.map.get(obs.colonyIndex)));
+    return out;
+  }
+  if (!parsed) {
+    for (const obs of observations) out.set(obs.colonyIndex, answered(obs, undefined, SCRIPT_AI_MODEL));
+    return out;
+  }
+  const first = observations[0]!;
+  out.set(first.colonyIndex, answered(first, parsed.map.get(first.colonyIndex)));
+  await askRemainingSingly(ask, observations.slice(1), creds.usedPlayerKey, out);
+  return out;
+}
+
+/** One call per colony; after the first provider failure the rest fall back without calling again. */
+async function askRemainingSingly(
+  ask: Ask,
+  rest: readonly ColonyObservation[],
+  usedPlayerKey: boolean,
+  out: Map<number, ResolvedDecision>,
+): Promise<void> {
+  let failure: LlmFailureKind | undefined;
+  for (const obs of rest) {
+    if (failure) {
+      out.set(obs.colonyIndex, fallbackDecision(obs, usedPlayerKey, failure));
+      continue;
+    }
+    try {
+      const res = await ask({ messages: [{ role: 'user', content: JSON.stringify(sanitizeObservationForPrompt(obs)) }], maxTokens: 320 });
       out.set(obs.colonyIndex, {
-        directive: deterministicDirective(obs),
-        model: 'deterministic-policy',
-        usedPlayerKey: creds.usedPlayerKey,
+        directive: parseDirectiveJson(res.text) ?? deterministicDirective(obs),
+        model: res.model,
+        attestation: res.attestation,
+        usedPlayerKey,
       });
+    } catch (err) {
+      failure = toProviderError(err).kind;
+      out.set(obs.colonyIndex, fallbackDecision(obs, usedPlayerKey, failure));
     }
-    return out;
   }
 }
-
-async function askSingleDirective(
-  llm: LlmProviderPort,
-  obs: ColonyObservation,
-  creds: { apiKey?: string; model: string; usedPlayerKey: boolean },
-): Promise<ResolvedDecision> {
-  try {
-    const res = await llm.complete({
-      system: BATCH_SYSTEM_PROMPT,
-      messages: [{ role: 'user', content: JSON.stringify(sanitizeObservationForPrompt(obs)) }],
-      maxTokens: 320,
-      temperature: 0.2,
-      json: true,
-      model: creds.model,
-      ...(creds.apiKey ? { apiKey: creds.apiKey } : {}),
-    });
-    return {
-      directive: parseDirectiveJson(res.text) ?? deterministicDirective(obs),
-      model: res.model,
-      attestation: res.attestation,
-      usedPlayerKey: creds.usedPlayerKey,
-    };
-  } catch {
-    return { directive: deterministicDirective(obs), model: 'deterministic-policy', usedPlayerKey: creds.usedPlayerKey };
-  }
-}
-

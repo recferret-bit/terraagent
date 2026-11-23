@@ -22,9 +22,17 @@ import { databaseEnabled } from '../core/persistence.js';
 import { APP_ENV, type AppEnv } from '../core/tokens.js';
 import { FlagsService } from '../flags/flags.service.js';
 import { DEFAULT_NEAR_AI_MODEL } from '../ai/nearai-models.js';
+import { providerNotice } from '../ai/provider/fallback-reason.js';
 import { isLocalStakingFastTimings } from '../near/staking/local-staking-timings.js';
 import { resolveDbStakerPerks } from '../near/staking/staker-perks.js';
-import { isTeeAttestationRejected, LlmProviderPort, type LlmAttestation } from '../ports/llm-provider.port.js';
+import {
+  isTeeAttestationRejected,
+  llmFailureOf,
+  LlmProviderPort,
+  type LlmAttestation,
+  type LlmFailureKind,
+  type LlmResponse,
+} from '../ports/llm-provider.port.js';
 import { FactsStore } from '../progression/facts.store.js';
 import { W12SeedService } from '../progression/w12-seed.service.js';
 import { XpStore } from '../progression/xp.store.js';
@@ -161,6 +169,9 @@ export class MeProfileService {
     readonly managedStaker: boolean;
     readonly usedPlayerKey: boolean;
     readonly attestation: LlmAttestation | null;
+    /** Set when the provider refused the probe (`unfunded`, `unauthorized`, …): `message` tells the player. */
+    readonly providerFailure?: LlmFailureKind;
+    readonly message?: string;
   }> {
     const [creds, staker] = await Promise.all([
       this.aiSettings.getCredentials(playerId),
@@ -177,15 +188,23 @@ export class MeProfileService {
       return { ok: false, model: creds.model, managedStaker: staker.stakerAutopilotActive, usedPlayerKey: hasKey, attestation: null };
     }
     const model = hasKey ? creds.model : DEFAULT_NEAR_AI_MODEL;
-    const res = await this.llm.complete({
-      system: 'Reply strictly with JSON {"ok":true} for a TEE attestation probe.',
-      messages: [{ role: 'user', content: 'ping' }],
-      maxTokens: 24,
-      temperature: 0,
-      json: true,
-      model,
-      ...(hasKey && creds.apiKey ? { apiKey: creds.apiKey } : {}),
-    });
+    let res: LlmResponse;
+    try {
+      res = await this.llm.complete({
+        system: 'Reply strictly with JSON {"ok":true} for a TEE attestation probe.',
+        messages: [{ role: 'user', content: 'ping' }],
+        maxTokens: 24,
+        temperature: 0,
+        json: true,
+        model,
+        ...(hasKey && creds.apiKey ? { apiKey: creds.apiKey } : {}),
+      });
+    } catch (err) {
+      const failure = llmFailureOf(err);
+      if (!failure) throw err;
+      const base = { ok: false, model, managedStaker: !hasKey && staker.stakerAutopilotActive, usedPlayerKey: hasKey, attestation: null };
+      return { ...base, providerFailure: failure.kind, message: providerNotice(failure.kind, hasKey) };
+    }
     const envMap = (this.env ?? process.env) as Record<string, string | undefined>;
     const ok = res.attestation
       ? Boolean(res.attestation.verified) && !isTeeAttestationRejected(res.attestation)
