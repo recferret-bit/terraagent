@@ -5,8 +5,9 @@ import { commandColony, parseArgs } from '../command';
 import { defineSimModule } from '../define';
 import { resolveColonyIndex } from '../diplomacy/store';
 import { registerGoalExecutor } from '../goals/executors';
+import { healActiveRaids } from './parts/raidLedger';
 import { stepActiveRaids } from './raidPathing';
-import { launchColonyRaid, stepRaidTargetGoal } from './raidTask';
+import { automatedRaidRelaunchReject, launchColonyRaid, stepRaidTargetGoal } from './raidTask';
 import { setColonyShieldHours, syncAllColonyShields } from './shield';
 import { stepRaidSiphon } from './siphon';
 
@@ -17,6 +18,14 @@ export * from './raidFlowMarch';
 export * from './raidPathing';
 export * from './raidTask';
 export * from './siphon';
+export {
+  dropRaidsSharingUnits,
+  findOpenRaidOf,
+  findOpenRaidWithUnits,
+  findStaleRaidIds,
+  healActiveRaids,
+  raidLaunchSeq,
+} from './parts/raidLedger';
 
 registerGoalExecutor('raid_target', stepRaidTargetGoal, { wave: 'W18' });
 
@@ -32,8 +41,11 @@ export const raidHandler = defineCommandHandler({
     if (!parsed) return 'invalid_args';
     const targetRef = parsed.targetColonyId ?? parsed.targetColonyIndex ?? parsed.targetColony;
     const toColony = resolveColonyIndex(state, targetRef);
+    const unitIds = parsed.unitIds ?? parsed.entityIds;
+    const busy = automatedRaidRelaunchReject(state, colIdx, cmd.source, { unitIds, data: ctx.data });
+    if (busy) return busy;
     const res = launchColonyRaid(state, colIdx, toColony, ctx, {
-      unitIds: parsed.unitIds ?? parsed.entityIds,
+      unitIds,
       q: parsed.q,
       r: parsed.r,
       data: ctx.data,
@@ -67,6 +79,7 @@ export const pvpSystem = defineSystem({
   wave: 'W18',
   run(state, ctx) {
     syncAllColonyShields(state, ctx.tick, ctx.data);
+    healActiveRaids(state, ctx.tick);
     stepActiveRaids(state, ctx);
     stepRaidSiphon(state, ctx);
   },

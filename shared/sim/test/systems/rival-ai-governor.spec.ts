@@ -7,6 +7,7 @@ import {
   hasActiveTruce,
   isColonyRaidProtected,
   isRivalAiColony,
+  isTruceReofferCoolingDown,
   proposeTruce,
   readDiplomacyBlob,
   respondTruce,
@@ -14,6 +15,7 @@ import {
   shouldAiGovernColony,
   SimHost,
   stepColonyAutonomousGovernor,
+  TRUCE_REOFFER_COOLDOWN_TICKS,
 } from '../../src';
 import { awayPolicyRejectionCount, resetAwayPolicyRejections } from '../../src/systems/away';
 
@@ -105,8 +107,11 @@ describe('Rival AI diplomacy, raids, terraforming, slot yielding & AW-13 block',
     });
     host.step(1);
 
-    // Trader (col 4) proposes peace truce; Warlord (col 5) responds or raids unshielded Trader once truce cleared
-    const traderTurn = stepColonyAutonomousGovernor(host.state, 4, host.tick);
+    // The seeding step already ran one governor round: Trader (col 4) offered, Warlord (col 5) declined. The Trader
+    // does not re-offer to the Warlord for 10 game minutes (no AI offer spam), then proposes again.
+    expect(isTruceReofferCoolingDown(host.state, 4, 5, host.tick)).toBe(true);
+    expect(stepColonyAutonomousGovernor(host.state, 4, host.tick).action).not.toBe('propose_truce');
+    const traderTurn = stepColonyAutonomousGovernor(host.state, 4, host.tick + TRUCE_REOFFER_COOLDOWN_TICKS);
     expect(traderTurn.action).toBe('propose_truce');
 
     // Clear pending offers to test Warlord raiding unshielded Trader (col 4), never shielded Human (col 0)

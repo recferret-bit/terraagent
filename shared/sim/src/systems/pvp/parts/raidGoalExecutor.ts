@@ -12,6 +12,7 @@ import {
   savePvpState,
   type ActiveRaidGroupState,
 } from '../store';
+import { dropRaidsSharingUnits, findOpenRaidOf } from './raidLedger';
 
 export function recordLaunchedRaid(
   state: PlanetState,
@@ -25,6 +26,8 @@ export function recordLaunchedRaid(
 ): ActiveRaidGroupState {
   ensureColonyPvpRecord(state, attackerColony, tick, ctx?.data);
   const pvpState = getPvpState(state);
+  // One open raid per raider unit: this launch silently supersedes any open raid sharing a unit.
+  dropRaidsSharingUnits(pvpState.activeRaids, unitIds);
   const raidId = `raid_${attackerColony}_${targetColony}_${pvpState.nextRaidSeq++}`;
   const raid: ActiveRaidGroupState = {
     raidId,
@@ -96,12 +99,19 @@ export function stepRaidTargetGoal(
     return;
   }
 
-  const pvpState = getPvpState(state);
-  const colRec = pvpState.byColony[String(colonyIndex)];
-  const activeRaid =
-    colRec?.activeRaidId ? pvpState.activeRaids[colRec.activeRaidId] : undefined;
+  // Any open raid of this colony counts: re-launching while its raiders are already out would only
+  // re-route the same units (and, before the ledger invariant, leaked one raid record per launch).
+  const activeRaid = findOpenRaidOf(state, colonyIndex);
+  if (activeRaid && activeRaid.targetColony !== targetColony) {
+    const detail = `Raiders busy raiding colony #${activeRaid.targetColony}.`;
+    if (goal.detail !== detail) {
+      goal.detail = detail;
+      saveColonyGoals(state, colonyIndex, goals, tick);
+    }
+    return;
+  }
 
-  if (!activeRaid || activeRaid.targetColony !== targetColony || activeRaid.repelled) {
+  if (!activeRaid) {
     const launched = launchColonyRaid(state, colonyIndex, targetColony, ctx, {
       q: goal.params.q,
       r: goal.params.r,
