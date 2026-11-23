@@ -45,3 +45,20 @@ describe('pg-boss: a converted loop runs once per interval across two app instan
     expect(new Set(slots).size).toBe(slots.length); // never two sweeps in one slot, although both replicas fired
   }, 30_000);
 });
+
+describe('pg-boss: a queue that already exists takes its new definition', () => {
+  it('re-defining a loop queue turns its retries off and clears a dead-letter queue it no longer names', async () => {
+    const settings = async (name: string) =>
+      (await db.prisma.$queryRawUnsafe<{ retry_limit: number; dead_letter: string | null }[]>(`SELECT retry_limit, dead_letter FROM pgboss.queue WHERE name = '${name}'`))[0];
+    const first = pgboss(); // the build that created the queue: two retries, then `<name>.dead`
+    await first.start();
+    await first.createQueue({ name: 'test.redefine', policy: 'exclusive', retryLimit: 2, deadLetter: 'test.redefine.dead', deleteAfterSeconds: 3600 });
+    expect(await settings('test.redefine')).toEqual({ retry_limit: 2, dead_letter: 'test.redefine.dead' });
+    await first.stop();
+    const next = pgboss(); // the next deploy defines the same queue without retries or a dead-letter queue
+    await next.start();
+    await next.createQueue({ name: 'test.redefine', policy: 'exclusive', retryLimit: 0, deleteAfterSeconds: 3600 });
+    expect(await settings('test.redefine')).toEqual({ retry_limit: 0, dead_letter: null });
+    await next.stop();
+  }, 30_000);
+});

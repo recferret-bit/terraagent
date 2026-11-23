@@ -89,8 +89,9 @@ export class PgBossJobQueue extends JobQueuePort {
       ...(def.deleteAfterSeconds ? { deleteAfterSeconds: def.deleteAfterSeconds } : {}),
     };
     await this.boss.createQueue(def.name, { policy: def.policy ?? 'standard', ...options, ...(def.deadLetter ? { deadLetter: def.deadLetter } : {}) });
-    // `createQueue` keeps an existing row as it was: settings changed since the queue was first created apply here.
-    if (Object.keys(options).length) await this.boss.updateQueue(def.name, options);
+    // `createQueue` keeps an existing row as it was: settings changed since the queue was first created apply here,
+    // including a dead-letter queue the definition no longer names (null clears it).
+    if (Object.keys(options).length) await this.boss.updateQueue(def.name, { ...options, deadLetter: def.deadLetter ?? null });
     this.created.add(def.name);
   }
 
