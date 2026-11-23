@@ -1,18 +1,18 @@
-// `/me.html#staking` tab: thin orchestrator. Parts live in `./parts/` (one per block); W28-10 mounts the logged-in
-// Wealth Dashboard into `staking-dashboard-slot` without touching the preview parts.
+// `/me.html#staking` tab: thin orchestrator. Renders the always-visible 4-pillar Staking banner, mounts the logged-in
+// Wealth Dashboard (with Portfolio Metrics + Projected Income extension) or the signed-out Projected Income preview,
+// followed by Ecosystem TVL and bottom AI Compute Budget.
 import type { StakingOverviewResponse } from '@terra/contracts';
 import type { MeFetchFn } from '../../api';
 import { el } from '../../dom';
-import { buildBlockHeaderWithTip, getActiveHelpTipKeyIn, reopenHelpTipIn } from '../../parts/helpTip';
+import { getActiveHelpTipKeyIn, reopenHelpTipIn } from '../../parts/helpTip';
 import './staking.css';
 import { renderStakingDashboard, type StakingDashboardHandle } from './dashboard/StakingDashboard';
-import { renderConnectCta } from './parts/connectCta';
 import { renderEcosystem } from './parts/ecosystem';
-import { renderProjection } from './parts/projection';
-import { renderTierMatrix } from './parts/tierMatrix';
+import { renderStakingIntroBanner } from './parts/introBanner';
+import { renderPublicProjectionPreview } from './parts/projection';
 import { fetchStakingOverview } from './stakingApi';
-import { fallbackOverview, formatPct, projectionFor } from './stakingMath';
-import { MAX_PREVIEW_NEAR, sanitizeStakeAmount, stakingHash } from './stakingRoute';
+import { fallbackOverview, formatPct } from './stakingMath';
+import { sanitizeStakeAmount, stakingHash } from './stakingRoute';
 
 export interface StakingSectionOptions {
   readonly amount: number;
@@ -48,45 +48,24 @@ class StakingPreview {
   private ov: StakingOverviewResponse;
   private live = false;
   private readonly hosts = {
-    badge: el('div', { className: 'ta-stk-badges' }),
-    matrix: el('div'),
     projection: el('div'),
     ecosystem: el('div'),
-    cta: el('div', { className: 'ta-stk-cta-row' }),
+    ai: el('div', { className: 'ta-stk-ai-slot', dataset: { testid: 'staking-ai-slot' } }),
   };
   readonly el: HTMLElement;
   dashboard: StakingDashboardHandle | null = null;
-  private readonly input: HTMLInputElement;
 
   constructor(private readonly opts: StakingSectionOptions) {
     this.amount = sanitizeStakeAmount(opts.amount);
     this.ov = fallbackOverview(this.amount);
-    this.input = this.buildInput();
-    const calcHeader = buildBlockHeaderWithTip(
-      {
-        id: 'staking-calculator',
-        title: 'STAKE CALCULATOR & APY',
-        description:
-          'Enter any NEAR amount to preview net staking yield and Patronage Tier unlocks. Principal stays 100% yours; 80% of validator yield goes to you and 20% funds gasless meta-transactions and Managed NEAR.AI TEE.',
-      },
-      el('span', { className: 'label c-orange' }, 'STAKE CALCULATOR & YIELD PREVIEW'),
-    );
-    const calcBlock = el(
-      'div',
-      { className: 'ta-stk-block plate-sm ta-stk-pad', dataset: { testid: 'staking-calculator-block' } },
-      calcHeader.head,
-      calcHeader.panel,
-      el('div', { className: 'ta-stk-top' }, this.buildAmountField(), this.hosts.badge),
-      this.hosts.cta,
-    );
     this.el = el(
       'div',
       { className: 'ta-stk', dataset: { testid: 'staking-preview' } },
+      renderStakingIntroBanner(),
       opts.connected ? el('div', { className: 'ta-stk-dash', dataset: { testid: 'staking-dashboard-slot' } }) : null,
-      calcBlock,
-      this.hosts.projection,
-      this.hosts.matrix,
+      opts.connected ? null : this.hosts.projection,
       this.hosts.ecosystem,
+      opts.connected ? this.hosts.ai : null,
     );
     this.renderAll();
     this.mountDashboard();
@@ -101,10 +80,12 @@ class StakingPreview {
       defaultPlanetId: this.opts.defaultPlanetId,
       fetch: this.opts.fetch,
       search: this.opts.search,
+      aiHost: this.hosts.ai,
+      onPreviewAmountChange: (next) => this.syncHashAmount(next),
       onStakingChange: this.opts.onStakingChange,
       onPerformanceChange: (perf) => {
         this.ov = { ...this.ov, ecosystem: perf.ecosystem, price: perf.price, apy: perf.apy };
-        this.renderAll();
+        this.renderEcosystemOnly();
       },
     });
     slot.appendChild(this.dashboard.el);
@@ -117,35 +98,14 @@ class StakingPreview {
       if (res.live) {
         this.dashboard?.setNetwork(res.overview.network);
         this.dashboard?.setRewardMultiplier(res.overview.rules.rewardRateMultiplier ?? 1);
+        this.dashboard?.setFeeWarmupMs(res.overview.rules.feeWarmupMs);
       }
       this.renderAll();
       if (res.off) this.opts.onOff?.();
     });
   }
 
-  private buildInput(): HTMLInputElement {
-    const input = el('input', {
-      className: 'input ta-stk-input',
-      type: 'number',
-      id: 'staking-amount',
-      dataset: { testid: 'staking-amount-input' },
-    });
-    input.min = '1';
-    input.max = String(MAX_PREVIEW_NEAR);
-    input.step = 'any';
-    input.inputMode = 'decimal';
-    input.value = String(this.amount);
-    input.addEventListener('input', () => this.setAmount(sanitizeStakeAmount(input.value)));
-    return input;
-  }
-
-  private buildAmountField(): HTMLElement {
-    const label = el('label', { className: 'label', dataset: { testid: 'staking-amount-label' } }, 'STAKE AMOUNT (NEAR)');
-    label.htmlFor = 'staking-amount';
-    return el('div', { className: 'ta-stk-field' }, label, this.input);
-  }
-
-  private setAmount(next: number): void {
+  private syncHashAmount(next: number): void {
     if (next === this.amount) return;
     this.amount = next;
     try {
@@ -153,28 +113,36 @@ class StakingPreview {
     } catch {
       /* non-browser host */
     }
+  }
+
+  private setAmount(next: number): void {
+    if (next === this.amount) return;
+    this.syncHashAmount(next);
     this.renderAll();
   }
 
-  private swap(host: HTMLElement, child: HTMLElement): void {
-    host.replaceChildren(child);
+  private renderEcosystemOnly(): void {
+    const openTipKey = getActiveHelpTipKeyIn(this.hosts.ecosystem);
+    this.hosts.ecosystem.replaceChildren(renderEcosystem(this.ov.ecosystem));
+    reopenHelpTipIn(this.hosts.ecosystem, openTipKey);
   }
 
   private renderAll(): void {
     const { ov, amount } = this;
-    const openTipKey =
-      getActiveHelpTipKeyIn(this.hosts.matrix) ??
-      getActiveHelpTipKeyIn(this.hosts.projection) ??
-      getActiveHelpTipKeyIn(this.hosts.ecosystem);
-    this.hosts.badge.replaceChildren(
-      el('span', { className: 'ta-stk-badge', dataset: { testid: 'staking-apy-badge', source: ov.apy.source, live: this.live ? '1' : '0' } }, apyBadgeText(ov)),
-      el('span', { className: 'ta-stk-sub' }, `Gross ${formatPct(ov.apy.grossApyBp)} · ${formatPct(ov.apy.protocolYieldShareBp)} to protocol`),
-    );
-    this.swap(this.hosts.matrix, renderTierMatrix(ov.tiers, amount, ov.rules.feeWarmupMs));
-    this.swap(this.hosts.projection, renderProjection(projectionFor(ov, amount), priceBadgeText(ov)));
-    this.swap(this.hosts.ecosystem, renderEcosystem(ov.ecosystem));
+    const openTipKey = getActiveHelpTipKeyIn(this.el);
+    if (!this.opts.connected) {
+      this.hosts.projection.replaceChildren(
+        renderPublicProjectionPreview({
+          ov,
+          amount,
+          live: this.live,
+          onAmountChange: (next) => this.setAmount(next),
+          onConnect: this.opts.onConnect,
+        }),
+      );
+    }
+    this.hosts.ecosystem.replaceChildren(renderEcosystem(ov.ecosystem));
     reopenHelpTipIn(this.el, openTipKey);
-    this.hosts.cta.replaceChildren(...(this.opts.connected ? [] : [renderConnectCta(amount, this.opts.onConnect)]));
   }
 }
 

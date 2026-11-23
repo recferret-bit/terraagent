@@ -1,3 +1,8 @@
+import {
+  formatPatronagePlanetLabel,
+  isPatronageEligiblePlanetId,
+  PATRONAGE_NON_ELIGIBLE_MESSAGE,
+} from '@terra/contracts';
 import type { RealNearNetwork } from '../realNearSignerModal';
 import type { OpenSignerModalHandle, SignerModalRequest } from '../signerModal';
 import { DEFAULT_STAKING_POOLS, extractStakingApiError } from './stakingPanelParts';
@@ -93,7 +98,11 @@ export async function runNominatePlanetFlow(deps: NominatePlanetFlowDeps): Promi
   const accountId = deps.accountId?.trim();
   const planetId = deps.planetId?.trim();
   if (!accountId || !planetId) {
-    deps.statusMsgEl.textContent = !accountId ? 'Connect or stake with a wallet first' : 'Join a public planet to nominate it';
+    deps.statusMsgEl.textContent = !accountId ? 'Connect or stake with a wallet first' : 'Join a canonical public planet to nominate it';
+    return false;
+  }
+  if (!isPatronageEligiblePlanetId(planetId)) {
+    deps.statusMsgEl.textContent = PATRONAGE_NON_ELIGIBLE_MESSAGE;
     return false;
   }
   try {
@@ -110,9 +119,10 @@ export async function runNominatePlanetFlow(deps: NominatePlanetFlowDeps): Promi
       deps.statusMsgEl.textContent = extractStakingApiError(body, `Nomination failed (${res.status})`);
       return false;
     }
+    const worldLabel = formatPatronagePlanetLabel(planetId);
     deps.statusMsgEl.textContent = body.isLeadPatron
-      ? `Lead Patron of ${planetId} (${body.leadPatron?.carrierName ?? 'ISS'})`
-      : `Backed ${planetId} in Lead Patron race`;
+      ? `Lead Patron of ${worldLabel} (${body.leadPatron?.carrierName ?? 'ISS'})`
+      : `Backed ${worldLabel} in Lead Patron race`;
     await deps.onNominated();
     return true;
   } catch {

@@ -1,9 +1,9 @@
 import type { MeAchievementsResponse, MeProfileResponse } from '@terra/contracts';
+import { resolveDefaultPatronagePlanetId } from '@terra/contracts';
 import {
   consentedAuthHeaders, failAuthHttp, failAuthThrown, rememberAuthProvider, succeedAuth,
 } from '../../../design/analytics/auth';
 import { noteProfileLoadFailed, noteProfileSection, noteProfileViewed } from '../../../design/analytics/profile';
-import { isLocalMockAuthEnabled } from '../../../design/pilot/localMockPilot';
 import { consumeNearWalletCallback } from '../../../design/pilot/mockToken';
 import { decodeNep413SocialToken } from '../../../design/pilot/nearAuthApi';
 import { PilotAccess, type PilotAccessOptions, type PilotAccessSession } from '../../../design/pilot/PilotAccess';
@@ -11,6 +11,7 @@ import { clearMeCachedToken, fetchMeData, resolveMeBearerToken, type MeFetchFn }
 import { clearChildren, el } from './dom';
 import { createLocalModeFetch, isBrowserLocalHost } from './localModeSim';
 import { createBlockHelpTip } from './parts/helpTip';
+import { attachMeTabNavigation, parseHashSectionId, type MeTabNavigationHandle } from './parts/tabScrollSpy';
 import { renderAchievementsSection } from './sections/AchievementsSection';
 import { renderAiSettingsSection, type AiSettingsController } from './sections/AiSettingsSection';
 import { renderPilotSection } from './sections/PilotSection';
@@ -48,6 +49,9 @@ export interface MountMePageOptions {
 export class MePage {
   private headerAuth: PilotAccess | null = null;
   private promptAuth: PilotAccess | null = null;
+  private tabNav: MeTabNavigationHandle | null = null;
+  private hashAlignPending = false;
+  private loadSeq = 0;
   private readonly waveStakingOn: boolean;
   private readonly localHost: boolean;
   private readonly effectiveFetch?: MeFetchFn;
@@ -76,21 +80,24 @@ export class MePage {
     this.hashListening = true;
     window.addEventListener('hashchange', () => {
       if (this.unauthMessage !== null) this.renderUnauthenticated(this.unauthMessage);
-      else this.scrollToStaking();
+      else this.scrollToHashSection('smooth');
     });
   }
 
-  private scrollToStaking(): void {
-    if (this.waveStakingOn && parseStakingHash(this.currentHash()).active) {
-      (this.root.querySelector('#staking') as HTMLElement | null)?.scrollIntoView?.();
-    }
+  private scrollToHashSection(behavior: ScrollBehavior = 'auto'): void {
+    const hash = this.currentHash();
+    const targetId = this.waveStakingOn && parseStakingHash(hash).active ? 'staking' : parseHashSectionId(hash);
+    if (!targetId) return;
+    if (this.tabNav?.scrollToSection(targetId, behavior)) return;
+    const section = this.root.querySelector(`#${CSS?.escape ? CSS.escape(targetId) : targetId}`) as HTMLElement | null;
+    section?.scrollIntoView?.({ behavior, block: 'start' });
   }
 
   private renderStakingPlate(
     accountId: string | null,
     defaultPlanetId?: string,
     onStakingChange?: (totalStakedNear: number) => void,
-  ): HTMLElement {
+  ): { readonly plate: HTMLElement; readonly ready: Promise<void> } {
     const handle = renderStakingSection({
       amount: parseStakingHash(this.currentHash()).amount,
       defaultPlanetId,
@@ -106,9 +113,8 @@ export class MePage {
       STAKING_TAB.id,
       STAKING_TAB.label,
       handle.el,
-      'Stake NEAR, stNEAR, or LiNEAR with 100% principal custody to earn net validator yield, unlock Managed NEAR.AI TEE slots, cut market taker fees, and compete for Planetary Patron seats.',
     );
-    return plate;
+    return { plate, ready: handle.ready };
   }
 
   /** Server-side fencing: the overview endpoint 404s with W28 off, so the staking tab and plate disappear. */
@@ -118,6 +124,7 @@ export class MePage {
     this.root.querySelector<HTMLElement>('[data-testid="me-tab-staking"]')?.remove();
     // signed out on `#staking`: the preview was the whole page, so fall back to the normal sign-in prompt
     if (this.unauthMessage !== null && main && main.childElementCount === 0) main.replaceWith(this.renderAuthPrompt(this.unauthMessage));
+    this.mountTabNavigation();
   }
 
   /** Signed-out: the staking tab renders the public preview with no auth wall; every other hash keeps the prompt. */
@@ -128,18 +135,34 @@ export class MePage {
     this.root.appendChild(this.renderStickyNav({ skipRestore: true }));
     if (this.waveStakingOn && parseStakingHash(this.currentHash()).active) {
       const main = el('main', { className: 'ta-me-main', dataset: { testid: 'me-main' } });
-      main.appendChild(this.renderStakingPlate(null));
+      main.appendChild(this.renderStakingPlate(null).plate);
       this.root.appendChild(main);
+      this.mountTabNavigation();
       return;
     }
     this.root.appendChild(this.renderAuthPrompt(message));
+    this.mountTabNavigation();
   }
 
   private disposeAuthControls(): void {
+    this.tabNav?.dispose();
+    this.tabNav = null;
     this.headerAuth?.dispose();
     this.headerAuth = null;
     this.promptAuth?.dispose();
     this.promptAuth = null;
+  }
+
+  private mountTabNavigation(): void {
+    this.tabNav?.dispose();
+    this.tabNav = attachMeTabNavigation({
+      root: this.root,
+      initialHash: this.currentHash(),
+      onSectionClick: (sectionId) => {
+        this.hashAlignPending = false;
+        noteProfileSection(sectionId);
+      },
+    });
   }
 
   private async consumeRedirectLoginIfPresent(): Promise<void> {
@@ -281,8 +304,7 @@ export class MePage {
     this.root.appendChild(this.renderStickyNav({ initialSession, skipRestore: true }));
 
     const main = el('main', { className: 'ta-me-main', dataset: { testid: 'me-main' } });
-    const defaultPlanetId =
-      profile.currentColonies[0]?.planetId ?? (isLocalMockAuthEnabled() || this.localHost ? 'pl_local_prime' : undefined);
+    const defaultPlanetId = resolveDefaultPatronagePlanetId(profile.currentColonies[0]?.planetId);
     let aiCtrl: AiSettingsController | null = null;
 
     main.appendChild(
@@ -306,12 +328,16 @@ export class MePage {
         'Your Pilot identity, progression XP, and NEAR.AI Bot Decision Manager settings.',
       ),
     );
+    const seq = ++this.loadSeq;
+    const initialTarget = parseStakingHash(this.currentHash()).active ? 'staking' : parseHashSectionId(this.currentHash());
+    this.hashAlignPending = Boolean(initialTarget && initialTarget !== 'pilot' && initialTarget !== 'staking');
+    let stakingReady: Promise<void> | null = null;
     if (this.waveStakingOn) {
-      main.appendChild(
-        this.renderStakingPlate(profile.identity.accountId ?? null, defaultPlanetId, (total) => {
-          aiCtrl?.syncStakerState(total);
-        }),
-      );
+      const stk = this.renderStakingPlate(profile.identity.accountId ?? null, defaultPlanetId, (total) => {
+        aiCtrl?.syncStakerState(total);
+      });
+      main.appendChild(stk.plate);
+      stakingReady = stk.ready;
     }
     main.appendChild(
       this.renderSectionPlate(
@@ -339,7 +365,21 @@ export class MePage {
 
     this.root.appendChild(main);
     noteProfileViewed();
-    this.scrollToStaking();
+    this.mountTabNavigation();
+    this.scrollToHashSection('auto');
+    if (stakingReady && this.hashAlignPending && typeof window !== 'undefined') {
+      const cancelAlign = (): void => { this.hashAlignPending = false; };
+      window.addEventListener('wheel', cancelAlign, { once: true, passive: true });
+      window.addEventListener('touchstart', cancelAlign, { once: true, passive: true });
+      void stakingReady.then(() => {
+        window.removeEventListener('wheel', cancelAlign);
+        window.removeEventListener('touchstart', cancelAlign);
+        if (seq === this.loadSeq && this.hashAlignPending) {
+          this.hashAlignPending = false;
+          this.scrollToHashSection('auto');
+        }
+      });
+    }
   }
 
   private renderStickyNav(
@@ -355,7 +395,6 @@ export class MePage {
           className: t.id === STAKING_SECTION_ID ? 'ta-me-tab ta-me-tab--staking' : 'ta-me-tab',
           href: `#${t.id}`,
           dataset: { testid: `me-tab-${t.id}`, section: t.id },
-          onClick: () => noteProfileSection(t.id),
         },
         t.label,
       ),
@@ -408,6 +447,7 @@ export class MePage {
       {
         id,
         className: 'plate ta-me-section',
+        tabIndex: -1,
         dataset: { testid: `me-section-${id}` },
       },
       el(

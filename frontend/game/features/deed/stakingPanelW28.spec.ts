@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import type { StakingPositionDto, StakingStatusResponse } from '@terra/contracts';
-import { STAKING_RULES, STAKING_TIERS } from '@terra/contracts';
+import { CANONICAL_PLANETS, STAKING_RULES, STAKING_TIERS } from '@terra/contracts';
 import { describe, expect, it, vi } from 'vitest';
 import type { FeatureContext } from '../../core/registry/types';
 import { realNearCopyW28, REAL_NEAR_COPY } from './parts/stakingCopy';
@@ -294,16 +294,17 @@ describe('W28-07 early-exit notice', () => {
     expect(panel.perksBannerEl.textContent).toContain(`Tier Commander: ${STAKING_TIERS[1]!.takerFeeBp} bp market fee now`);
   });
 
-  it('shows [★ Nominate Planet] only at Tier 4 (>= 500 NEAR) with W28 on and posts /v1/near/staking/patron/nominate', async () => {
+  it('shows [★ Nominate Planet] at Tier 4 only on canonical worlds, posts /v1/near/staking/patron/nominate, and hides on sovereign NFT worlds', async () => {
     const f = makeFetch({
       '/v1/near/staking/patron/nominate': (body) => ({
         json: { accountId: (body as { accountId: string }).accountId, planetId: (body as { planetId: string }).planetId, isLeadPatron: true, leadPatron: { accountId: 'pilot.mock', carrierName: 'ISS pilot.mock' } },
       }),
     });
+    const canonId = CANONICAL_PLANETS.temperate.id;
     const parent = document.createElement('div');
     const panel = new StakingPanel(
       parent,
-      { flags: new Set(['W28']), host: 'server', services: { track: () => {}, session: { planetId: () => 'pl_prime' } as never } },
+      { flags: new Set(['W28']), host: 'server', services: { track: () => {}, session: { planetId: () => canonId } as never } },
       { fetchFn: f.fn, openSigner: approvingSigner(), nowFn: () => NOW },
     );
     panel.applyStatusResponse(status([mockPos(NOW - 30 * DAY)], 'mock'));
@@ -311,7 +312,19 @@ describe('W28-07 early-exit notice', () => {
     panel.applyStatusResponse(status([pos({ accountId: 'pilot.mock', pool: 'astro-stakers.poolv1.near', staked: '500' })], 'mock'));
     expect(panel.nominateBtnEl.hidden).toBe(false);
     expect(await panel.nominatePlanetFlow()).toBe(true);
-    expect(panel.statusMsgEl.textContent).toContain('Lead Patron of pl_prime');
-    expect(f.calls.find((c) => c.url.endsWith('/patron/nominate'))!.body).toEqual({ accountId: 'pilot.mock', planetId: 'pl_prime' });
+    expect(panel.statusMsgEl.textContent).toContain(`Lead Patron of Granite Hollow (${canonId})`);
+    expect(f.calls.find((c) => c.url.endsWith('/patron/nominate'))!.body).toEqual({ accountId: 'pilot.mock', planetId: canonId });
+
+    // Sovereign NFT planets never expose Planetary Patronage button or submit nominations even at Tier 4
+    const sovereignParent = document.createElement('div');
+    const sovereignPanel = new StakingPanel(
+      sovereignParent,
+      { flags: new Set(['W28']), host: 'server', services: { track: () => {}, session: { planetId: () => 'pl_sovereign_nft_1' } as never } },
+      { fetchFn: f.fn, openSigner: approvingSigner(), nowFn: () => NOW },
+    );
+    sovereignPanel.applyStatusResponse(status([pos({ accountId: 'pilot.mock', pool: 'astro-stakers.poolv1.near', staked: '500' })], 'mock'));
+    expect(sovereignPanel.nominateBtnEl.hidden).toBe(true);
+    expect(await sovereignPanel.nominatePlanetFlow()).toBe(false);
+    expect(sovereignPanel.statusMsgEl.textContent).toContain('sovereign NFT planets');
   });
 });

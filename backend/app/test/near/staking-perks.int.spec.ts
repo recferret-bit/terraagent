@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { CANONICAL_PLANETS } from '@terra/contracts';
 import { createTestDatabase, type TestDatabase } from '@terra/db/testing';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { resolveWalletPerks } from '../../src/near/staking/perks/perks.resolver';
@@ -198,8 +199,10 @@ describe('W28-03 DB-backed perks resolver: fallbacks, wave fence and usage', () 
 
 describe('W28-03 PatronSeatService (King-of-the-Hill on Postgres)', () => {
   const seats = () => new PatronSeatService(db.prisma);
+  const planetX = CANONICAL_PLANETS.desert.id;
+  const planetY = CANONICAL_PLANETS.ocean.id;
 
-  async function whale(name: string, near: number, sinceMs: number, planetId: string | null = 'planet-x') {
+  async function whale(name: string, near: number, sinceMs: number, planetId: string | null = planetX) {
     await link(`col_${name}`, `${name}.near`, `${name}.near`, null, `player-${name}`);
     await position(`col_${name}`, `${name}.near`, near, sinceMs);
     if (planetId) await seats().nominate(`${name}.near`, planetId);
@@ -207,25 +210,25 @@ describe('W28-03 PatronSeatService (King-of-the-Hill on Postgres)', () => {
 
   it('upserts the seat for the highest >= 500 staker; below 500 nobody holds it', async () => {
     await whale('low', 499, NOW - 5 * DAY);
-    expect(await seats().refreshPlanet('planet-x', NOW)).toBeNull();
+    expect(await seats().refreshPlanet(planetX, NOW)).toBeNull();
     expect(await db.prisma.stakingPatronSeat.count()).toBe(0);
     await whale('a', 500, NOW - 4 * DAY);
-    const seat = await seats().refreshPlanet('planet-x', NOW);
+    const seat = await seats().refreshPlanet(planetX, NOW);
     expect(seat?.accountId).toBe('a.near');
-    const row = await db.prisma.stakingPatronSeat.findUnique({ where: { planetId: 'planet-x' } });
+    const row = await db.prisma.stakingPatronSeat.findUnique({ where: { planetId: planetX } });
     expect(row?.accountId).toBe('a.near');
     expect(row?.activeStaked.toFixed(0)).toBe(nearToYocto(500));
   });
 
   it('550 overtakes 500; a tie later keeps the incumbent; sinceAt only moves on a transfer', async () => {
     await whale('a', 500, NOW - 4 * DAY);
-    await seats().refreshPlanet('planet-x', NOW - 2 * DAY);
+    await seats().refreshPlanet(planetX, NOW - 2 * DAY);
     await whale('b', 550, NOW - DAY);
-    const moved = await seats().refreshPlanet('planet-x', NOW - DAY);
+    const moved = await seats().refreshPlanet(planetX, NOW - DAY);
     expect(moved?.accountId).toBe('b.near');
     expect(moved?.sinceMs).toBe(NOW - DAY);
     await db.prisma.stakingPosition.update({ where: { colonyId_poolId: { colonyId: 'col_a', poolId: POOL } }, data: { stakedSnapshot: nearToYocto(550) } });
-    const tie = await seats().refreshPlanet('planet-x', NOW);
+    const tie = await seats().refreshPlanet(planetX, NOW);
     expect(tie?.accountId).toBe('b.near');
     expect(tie?.sinceMs).toBe(NOW - DAY);
     expect(await db.prisma.stakingPatronSeat.count()).toBe(1);
@@ -235,27 +238,27 @@ describe('W28-03 PatronSeatService (King-of-the-Hill on Postgres)', () => {
     await whale('a', 600, NOW - 4 * DAY);
     await whale('b', 520, NOW - 4 * DAY);
     const first = await resolveDbStakerPerks(db.prisma, { accountId: 'a.near', w28: true, nowMs: NOW, full: true });
-    expect(first.leadPatronPlanetIds).toEqual(['planet-x']);
+    expect(first.leadPatronPlanetIds).toEqual([planetX]);
     await db.prisma.stakingPosition.update({ where: { colonyId_poolId: { colonyId: 'col_a', poolId: POOL } }, data: { stakedSnapshot: nearToYocto(510), unbondingSnapshot: nearToYocto(90) } });
     const lost = await resolveDbStakerPerks(db.prisma, { accountId: 'a.near', w28: true, nowMs: NOW, full: true });
     expect(lost.leadPatronPlanetIds).toEqual([]);
     expect(lost.tier).toBe(4);
     const heir = await resolveDbStakerPerks(db.prisma, { accountId: 'b.near', w28: true, nowMs: NOW, full: true });
-    expect(heir.leadPatronPlanetIds).toEqual(['planet-x']);
+    expect(heir.leadPatronPlanetIds).toEqual([planetX]);
     await db.prisma.stakingPosition.update({ where: { colonyId_poolId: { colonyId: 'col_b', poolId: POOL } }, data: { stakedSnapshot: nearToYocto(499) } });
-    expect(await seats().refreshPlanet('planet-x', NOW)?.then((s) => s?.accountId)).toBe('a.near');
+    expect(await seats().refreshPlanet(planetX, NOW)?.then((s) => s?.accountId)).toBe('a.near');
     await db.prisma.stakingPosition.update({ where: { colonyId_poolId: { colonyId: 'col_a', poolId: POOL } }, data: { stakedSnapshot: nearToYocto(499) } });
-    expect(await seats().refreshPlanet('planet-x', NOW)).toBeNull();
+    expect(await seats().refreshPlanet(planetX, NOW)).toBeNull();
     expect(await db.prisma.stakingPatronSeat.count()).toBe(0);
   });
 
   it('one wallet with several nominated accounts is a single candidate; seats on different planets are independent; W28 off exposes none', async () => {
-    await whale('a', 700, NOW - 4 * DAY, 'planet-x');
+    await whale('a', 700, NOW - 4 * DAY, planetX);
     await link('col_a2', 'a2.near', 'a.near', null, 'player-a');
-    await seats().nominate('a2.near', 'planet-x');
-    await whale('c', 800, NOW - 3 * DAY, 'planet-y');
-    expect((await seats().refreshPlanet('planet-x', NOW))?.accountId).toBe('a.near');
-    expect((await seats().refreshPlanet('planet-y', NOW))?.accountId).toBe('c.near');
+    await seats().nominate('a2.near', planetX);
+    await whale('c', 800, NOW - 3 * DAY, planetY);
+    expect((await seats().refreshPlanet(planetX, NOW))?.accountId).toBe('a.near');
+    expect((await seats().refreshPlanet(planetY, NOW))?.accountId).toBe('c.near');
     const off = await resolveDbStakerPerks(db.prisma, { accountId: 'a.near', env: { TA_WAVES: '..27' }, nowMs: NOW, full: true });
     expect(off.leadPatronPlanetIds).toEqual([]);
   });

@@ -1,5 +1,6 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import {
+  isPatronageEligiblePlanetId,
   StakerPerksResponse,
   StakingPrestigeResponse,
   STAKING_RULES,
@@ -86,7 +87,7 @@ export class StakingPerksService {
     if (!planet) throw new CoreException('INVALID_REQUEST', { status: 400, message: 'planetId is required' });
     const db = this.db();
     if (!db) return { planetId: planet, leadPatron: null, colonies: [] };
-    const seat = await new PatronSeatService(db).refreshPlanet(planet);
+    const seat = isPatronageEligiblePlanetId(planet) ? await new PatronSeatService(db).refreshPlanet(planet) : null;
     const rows = (await db.colony.findMany({
       where: { planetId: planet },
       orderBy: { colonyIndex: 'asc' },

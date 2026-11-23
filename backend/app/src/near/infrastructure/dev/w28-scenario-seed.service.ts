@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { Inject, Injectable, Logger, Optional, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
-import { MARKET_TOKENS } from '@terra/contracts';
+import { CANONICAL_PLANETS, CANONICAL_PLANET_LIST, isPatronageEligiblePlanetId, MARKET_TOKENS } from '@terra/contracts';
 import type { PrismaClient } from '@terra/db';
 import { EventBus } from '../../../bus/event-bus.js';
 import { databaseEnabled } from '../../../core/persistence.js';
@@ -19,6 +19,8 @@ import { StakingService } from '../../staking/staking.service.js';
 export const W28_RIVAL_ACCOUNT = 'w28-rival.terraagent.mock';
 export const W28_RIVAL_STAKE_NEAR = '500';
 export const W28_PILOT_FUND_NEAR = '1000';
+/** Only the three canonical worlds hold Planetary Patronage seats; dev `w28` seeds Granite Hollow by default. */
+export const W28_PATRON_PLANET_ID = CANONICAL_PLANETS.temperate.id;
 /** Bound on seats buffered before their planet's `created` event (dev only; never grows without limit). */
 const MAX_EARLY_PLANETS = 64;
 /** USDC "trade profits" for the Stake-Trade-Profits demo (step 7), in 6-decimal atomic units. */
@@ -105,16 +107,19 @@ export class W28ScenarioSeedService implements OnModuleInit, OnModuleDestroy {
   async seedRival(planetId: string): Promise<void> {
     const db = this.db();
     if (!db) return;
-    await db.planet.upsert({
-      where: { id: planetId },
-      create: { id: planetId, name: planetId, admission: 'OPEN' },
-      update: {},
-    });
+    for (const def of CANONICAL_PLANET_LIST) {
+      await db.planet.upsert({
+        where: { id: def.id },
+        create: { id: def.id, name: def.name, type: def.type, look: def.look, seed: def.seed, admission: 'OPEN' },
+        update: { admission: 'OPEN' },
+      });
+    }
+    const patronPlanetId = isPatronageEligiblePlanetId(planetId) ? planetId : W28_PATRON_PLANET_ID;
     await this.resetWallet(db, W28_RIVAL_ACCOUNT);
     const pool = await this.defaultPool();
     await this.staking.fundWalletNear(W28_RIVAL_ACCOUNT, '600');
     await this.staking.stake({ accountId: W28_RIVAL_ACCOUNT, pool, amount: W28_RIVAL_STAKE_NEAR, opId: `w28-rival-stake:${planetId}:${Date.now()}` }); // fresh op per seed: the wallet was just reset
-    await new PatronNominateService(() => db, stakingNowMs).nominate(W28_RIVAL_ACCOUNT, planetId);
+    await new PatronNominateService(() => db, stakingNowMs).nominate(W28_RIVAL_ACCOUNT, patronPlanetId);
   }
 
   async seedPilot(playerId: string): Promise<string | null> {

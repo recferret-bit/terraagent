@@ -56,6 +56,10 @@ describe('W28-09 staking projection math', () => {
     expect(formatTvl('abc')).toBe('—');
     expect(formatTvl('1234567.4')).toBe('1,234,567');
     expect(formatUsd(1234.5)).toBe('$1,234.50');
+    expect(formatNear(0)).toBe('0.00 NEAR');
+    expect(formatNear(1)).toBe('1.00 NEAR');
+    expect(formatNear(10)).toBe('10.00 NEAR');
+    expect(formatNear(100)).toBe('100.00 NEAR');
     expect(formatNear(0.5)).toBe('0.5000 NEAR');
   });
 });

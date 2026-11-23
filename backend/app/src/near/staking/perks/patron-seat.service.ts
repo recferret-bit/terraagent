@@ -1,4 +1,6 @@
+import { isPatronageEligiblePlanetId, PATRONAGE_NON_ELIGIBLE_MESSAGE, PATRONAGE_PLANET_IDS } from '@terra/contracts';
 import { withTransaction, type DbClient, type PrismaClient } from '@terra/db';
+import { CoreException } from '../../../core/errors/index.js';
 import { resolveLeadPatron, type PatronCandidate } from './patron-resolver.js';
 import { readStakeClock, resolveWallet, type WalletRef } from './stake-clock.reader.js';
 import { stakingNowMs } from './perks-deps.js';
@@ -60,17 +62,25 @@ export class PatronSeatService {
   }
 
   async getSeat(planetId: string): Promise<PatronSeatRow | null> {
-    if (!this.available) return null;
+    if (!this.available || !isPatronageEligiblePlanetId(planetId)) return null;
     const row = (await this.db.stakingPatronSeat.findUnique({ where: { planetId } })) as SeatDbRow | null;
     return row ? toSeat(row) : null;
   }
 
-  /** One nomination per wallet: a wallet's stake backs a single public planet. */
+  /** One nomination per wallet: a wallet's stake backs one of the three canonical public planets. */
   async nominate(accountId: string, planetId: string): Promise<void> {
+    const normalizedPlanetId = planetId.trim();
+    if (!isPatronageEligiblePlanetId(normalizedPlanetId)) {
+      throw new CoreException('INVALID_REQUEST', {
+        status: 400,
+        message: PATRONAGE_NON_ELIGIBLE_MESSAGE,
+        details: { planetId: normalizedPlanetId, eligiblePlanetIds: PATRONAGE_PLANET_IDS },
+      });
+    }
     await this.db.stakingPatronNomination.upsert({
       where: { accountId },
-      create: { accountId, planetId },
-      update: { planetId },
+      create: { accountId, planetId: normalizedPlanetId },
+      update: { planetId: normalizedPlanetId },
     });
   }
 
@@ -82,6 +92,10 @@ export class PatronSeatService {
 
   async refreshPlanetUnlocked(planetId: string, nowMs: number = stakingNowMs()): Promise<PatronSeatRow | null> {
     if (!this.available) return null;
+    if (!isPatronageEligiblePlanetId(planetId)) {
+      await this.db.stakingPatronSeat.deleteMany({ where: { planetId } });
+      return null;
+    }
     const noms = (await this.db.stakingPatronNomination.findMany({
       where: { planetId },
       orderBy: { createdAt: 'asc' },
@@ -123,7 +137,7 @@ export class PatronSeatService {
     ]);
     const planets = new Set<string>([...(noms as Array<{ planetId: string }>), ...(held as Array<{ planetId: string }>)].map((r) => r.planetId));
     const out: string[] = [];
-    for (const planetId of [...planets].sort()) {
+    for (const planetId of [...planets].filter((id) => isPatronageEligiblePlanetId(id)).sort()) {
       const seat = await this.refreshPlanet(planetId, nowMs);
       if (seat && accounts.includes(seat.accountId)) out.push(planetId);
     }

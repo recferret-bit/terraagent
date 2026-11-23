@@ -1,0 +1,255 @@
+.ta-stk-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 10px;
+}
+
+.ta-stk-kpi {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+  min-width: 0;
+  background: var(--ta-deep);
+  border: 1px solid var(--ta-seam-3);
+  border-top: 2px solid color-mix(in srgb, var(--ta-blue-hi) 45%, var(--ta-seam-3));
+}
+
+@media (min-width: 960px) {
+  .ta-stk-kpis {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-rows: auto auto 1fr auto;
+  }
+
+  .ta-stk-kpi {
+    grid-row: span 4;
+    display: grid;
+    grid-template-rows: subgrid;
+    row-gap: 10px;
+  }
+}
+
+.ta-stk-kpi-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--ta-seam);
+}
+
+.ta-stk-kpi-head .label {
+  font-size: 11px;
+  letter-spacing: 0.11em;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--ta-text-3);
+}
+
+.ta-stk-kpi-hero {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: nowrap;
+  min-width: 0;
+}
+
+.ta-stk-kpi-val {
+  font-family: var(--ta-font-mono);
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--ta-hull);
+}
+
+.ta-stk-kpi-val[data-testid='staking-yield-live'] {
+  font-size: 17px;
+  letter-spacing: -0.02em;
+}
+
+.ta-stk-kpi-unit {
+  font-family: var(--ta-font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--ta-steel);
+}
+
+.ta-stk-kpi-details {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.ta-stk-kpi-kv {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding-bottom: 4px;
+  border-bottom: 1px dashed color-mix(in srgb, var(--ta-seam-2) 65%, transparent);
+  font-size: 12px;
+  line-height: 1.3;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.ta-stk-kpi-kv:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.ta-stk-kpi-kv-k {
+  color: var(--ta-steel);
+  white-space: nowrap;
+}
+
+.ta-stk-kpi-kv-v {
+  font-family: var(--ta-font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--ta-text-2);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.ta-stk-kpi-kv-compact {
+  font-size: 11px;
+}
+
+.ta-stk-kpi-foot {
+  margin-top: auto;
+  padding-top: 8px;
+  border-top: 1px solid var(--ta-seam);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: nowrap;
+  min-width: 0;
+}
+
+.ta-stk-kpi-foot .ta-stk-badge {
+  padding: 3px 8px;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
+.ta-stk-kpi-tag {
+  color: var(--ta-steel);
+  border-color: var(--ta-seam-3);
+  background: color-mix(in srgb, var(--ta-plate-2) 85%, transparent);
+}
+
+.ta-stk-kpi-btn {
+  min-height: 30px;
+  padding: 5px 10px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.ta-stk-wallet-chip {
+  color: var(--ta-text-2);
+  border-color: var(--ta-seam-3);
+  background: var(--ta-deep);
+}
+
+/* ---- Extended Projected Income Simulator ---- */
+.ta-stk-income-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 14px;
+  border-top: 1px solid var(--ta-seam);
+}
+
+.ta-stk-income-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.ta-stk-income-basis[data-source='preview'] {
+  color: var(--ta-blue-hi);
+  border-color: var(--ta-blue);
+  background: color-mix(in srgb, var(--ta-blue) 12%, transparent);
+}
+
+.ta-stk-income-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ta-stk-income-sim-lbl {
+  white-space: nowrap;
+}
+
+.ta-stk-income-input {
+  width: 112px;
+  min-height: 34px;
+  padding: 6px 10px;
+  font-family: var(--ta-font-mono);
+  font-size: 14px;
+}
+
+.ta-stk-income-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.ta-stk-income-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  min-width: 0;
+  background: var(--ta-deep);
+  border: 1px solid var(--ta-seam-2);
+}
+
+.ta-stk-income-nums {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ta-stk-income-val {
+  font-family: var(--ta-font-mono);
+  font-size: 18px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--ta-hull);
+}
+
+.ta-stk-income-usd {
+  font-family: var(--ta-font-mono);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ta-text-2);
+}
+
+.ta-stk-income-meta {
+  font-size: 11.5px;
+  color: var(--ta-steel);
+}
+
+@media (max-width: 720px) {
+  .ta-stk-income-grid {
+    grid-template-columns: 1fr;
+  }
+}

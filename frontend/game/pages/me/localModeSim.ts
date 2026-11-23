@@ -1,11 +1,14 @@
 import {
+  CANONICAL_PLANETS,
   dailyAiBudgetUsd,
   dailyAiCallLimit,
   earlyExitFeeBp,
   effectiveTakerFee,
+  isPatronageEligiblePlanetId,
   MANAGED_AI_MODEL,
   NEAR_AI_AVAILABLE_MODELS,
   nextStakingTier,
+  PATRONAGE_NON_ELIGIBLE_MESSAGE,
   SCRIPT_AI_MODEL,
   STAKING_RULES,
   STAKING_TIERS,
@@ -36,7 +39,7 @@ const DEFAULT_HANDLE = 'Local Commander';
 const LOCAL_PLAYER_ID = 'pr_01ARZ3NDEKTSV4RRFFQ69G5FAV';
 const LOCAL_ACCOUNT = 'local-commander.terraagent.mock';
 const LOCAL_POOL = 'astro-stakers.pool.mock';
-const LOCAL_PLANET = 'pl_w12_forest';
+const LOCAL_PLANET = CANONICAL_PLANETS.temperate.id;
 
 const initialState = (nowMs: number): LocalSimState => ({
   signedOut: false,
@@ -97,7 +100,7 @@ function buildPerformance(s: LocalSimState, window: PerformanceWindow, nowMs: nu
   const callLimit = tier.aiColonySlots > 0 ? dailyAiCallLimit(budgetUsd) : 0;
   const aiMode = tier.aiColonySlots > 0 ? 'tee' : 'trial';
   const aiModel = tier.aiColonySlots > 0 || aiMode === 'trial' ? MANAGED_AI_MODEL : SCRIPT_AI_MODEL;
-  const leadPlanets = tier.id >= 4 && s.nominatedPlanet ? [s.nominatedPlanet] : [];
+  const leadPlanets = tier.id >= 4 && isPatronageEligiblePlanetId(s.nominatedPlanet) ? [s.nominatedPlanet] : [];
   const lst = [
     ...(s.stNear > 0 ? [{ asset: 'stNEAR' as const, amount: fmt6(s.stNear), nearValue: fmt6(s.stNear) }] : []),
     ...(s.liNear > 0 ? [{ asset: 'LiNEAR' as const, amount: fmt6(s.liNear), nearValue: fmt6(s.liNear) }] : []),
@@ -266,7 +269,8 @@ function handleLocalStakingPost(path: string, body: Record<string, unknown>, s: 
   }
   if (path.endsWith('/near/staking/patron/nominate')) {
     const planetId = String(body.planetId ?? '').trim();
-    if (!planetId) return { status: 400, payload: { message: 'Enter a public planet ID to nominate.' } };
+    if (!planetId) return { status: 400, payload: { message: 'Select one of the three canonical planets to nominate.' } };
+    if (!isPatronageEligiblePlanetId(planetId)) return { status: 400, payload: { message: PATRONAGE_NON_ELIGIBLE_MESSAGE } };
     s.nominatedPlanet = planetId;
     const isLead = s.nativeStaked + s.stNear + s.liNear >= 500;
     return { status: 200, payload: { accountId: s.accountId, planetId, isLeadPatron: isLead, leadPatron: isLead ? { planetId, accountId: s.accountId, carrierName: `ISS ${s.accountId}`, activeStakedNear: fmt6(s.nativeStaked + s.stNear + s.liNear), sinceMs: nowMs, protocolFeeShareBp: 1500 } : null } };

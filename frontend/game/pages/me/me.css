@@ -61,6 +61,7 @@
 }
 
 .ta-me-tab {
+  position: relative;
   font-family: var(--font-display);
   font-size: 12px;
   font-weight: 600;
@@ -68,23 +69,67 @@
   text-transform: uppercase;
   text-decoration: none;
   color: var(--ta-ash);
-  padding: 6px 10px;
+  padding: 6px 10px 8px;
   border: 1px solid transparent;
-  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+  background: transparent;
+  transition: color 0.15s ease, text-shadow 0.15s ease, border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
 }
 
-.ta-me-tab:hover,
-.ta-me-tab:focus-visible {
+.ta-me-tab::after {
+  content: '';
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 0;
+  height: 2px;
+  background: var(--ta-orange-hi);
+  box-shadow: 0 0 8px var(--ta-orange);
+  opacity: 0;
+  transform: scaleX(0.35);
+  transform-origin: center;
+  transition: opacity 0.16s ease, transform 0.18s ease;
+  pointer-events: none;
+}
+
+.ta-me-tab:not(.ta-me-tab--staking):hover,
+.ta-me-tab:not(.ta-me-tab--staking):focus-visible {
   color: var(--ta-bone);
-  border-color: var(--ta-orange);
-  background: color-mix(in srgb, var(--ta-orange) 8%, transparent);
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+  outline: none;
+  text-shadow: 0 0 10px color-mix(in srgb, var(--ta-orange) 55%, transparent);
+}
+
+.ta-me-tab:not(.ta-me-tab--staking):hover::after,
+.ta-me-tab:not(.ta-me-tab--staking):focus-visible::after {
+  opacity: 0.45;
+  transform: scaleX(0.75);
+}
+
+.ta-me-tab.is-active:not(.ta-me-tab--staking),
+.ta-me-tab[aria-current='true']:not(.ta-me-tab--staking) {
+  font-weight: 600;
+  color: var(--ta-hull);
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+  text-shadow:
+    0 0 10px var(--ta-orange),
+    0 1px 6px color-mix(in srgb, var(--ta-orange) 85%, transparent);
+}
+
+.ta-me-tab.is-active::after,
+.ta-me-tab[aria-current='true']::after {
+  opacity: 1;
+  transform: scaleX(1);
 }
 
 .ta-me-tab--staking {
   font-weight: 700;
   color: var(--ta-hull);
-  border-color: var(--ta-orange);
-  background: color-mix(in srgb, var(--ta-orange) 14%, var(--ta-plate));
+  border-color: color-mix(in srgb, var(--ta-orange) 55%, var(--ta-seam-3));
+  background: color-mix(in srgb, var(--ta-orange) 10%, var(--ta-plate));
   text-shadow:
     0 0 10px var(--ta-orange),
     0 1px 4px color-mix(in srgb, var(--ta-orange) 85%, transparent);
@@ -95,7 +140,15 @@
 .ta-me-tab--staking:focus-visible {
   color: var(--ta-hull);
   border-color: var(--ta-orange-hi);
-  background: color-mix(in srgb, var(--ta-orange) 22%, var(--ta-plate));
+  background: color-mix(in srgb, var(--ta-orange) 18%, var(--ta-plate));
+  box-shadow: var(--ta-glow-2);
+}
+
+.ta-me-tab--staking.is-active,
+.ta-me-tab--staking[aria-current='true'] {
+  color: var(--ta-hull);
+  border-color: var(--ta-orange-hi);
+  background: color-mix(in srgb, var(--ta-orange) 24%, var(--ta-plate));
   box-shadow: var(--ta-glow-3);
 }
 
@@ -117,6 +170,11 @@
   flex-direction: column;
   gap: 16px;
   scroll-margin-top: 112px;
+  outline: none;
+}
+
+.ta-me-section:first-child {
+  scroll-margin-top: 160px;
 }
 
 .ta-me-section-head {

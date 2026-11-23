@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
-import { MARKET_TOKENS, toChainUnits } from '@terra/contracts';
+import { isPatronageEligiblePlanetId, MARKET_TOKENS, toChainUnits } from '@terra/contracts';
 import { withTransaction, type PrismaClient } from '@terra/db';
 import { APP_ENV, type AppEnv } from '../../core/tokens.js';
 import { PRISMA } from '../../db/db.module.js';
@@ -39,7 +39,7 @@ export class PatronPayoutService {
   ) {}
 
   async record(plan: Pick<TradePlan, 'tradeId' | 'planetId' | 'quote' | 'treasuryFee'> & Partial<Pick<TradePlan, 'platformFee'>>): Promise<PatronPayoutResult | null> {
-    if (!this.flags.has('W28') || plan.quote !== 'USDC') return null;
+    if (!this.flags.has('W28') || plan.quote !== 'USDC' || !isPatronageEligiblePlanetId(plan.planetId)) return null;
     const gross = BigInt(plan.platformFee || '0');
     if (gross <= 0n) return null;
     const seat = await new PatronSeatService(this.prisma).getSeat(plan.planetId);

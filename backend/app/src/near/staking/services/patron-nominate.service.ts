@@ -1,4 +1,9 @@
-import type { PlanetPatronView } from '@terra/contracts';
+import {
+  isPatronageEligiblePlanetId,
+  PATRONAGE_NON_ELIGIBLE_MESSAGE,
+  PATRONAGE_PLANET_IDS,
+  type PlanetPatronView,
+} from '@terra/contracts';
 import { z } from 'zod';
 import { withTransaction, type DbClient, type PrismaClient } from '@terra/db';
 import { CoreException } from '../../../core/errors/index.js';
@@ -39,11 +44,19 @@ export class PatronNominateService {
     if (!db || !seats?.available) {
       throw new NearException('NEAR_UNAVAILABLE', { message: 'Patron nominations need the database.' });
     }
-    const planet = (await db.planet.findUnique({ where: { id: planetId }, select: { id: true, admission: true } })) as
+    const normalizedPlanetId = planetId.trim();
+    if (!isPatronageEligiblePlanetId(normalizedPlanetId)) {
+      throw new CoreException('INVALID_REQUEST', {
+        status: 400,
+        message: PATRONAGE_NON_ELIGIBLE_MESSAGE,
+        details: { planetId: normalizedPlanetId, eligiblePlanetIds: PATRONAGE_PLANET_IDS },
+      });
+    }
+    const planet = (await db.planet.findUnique({ where: { id: normalizedPlanetId }, select: { id: true, admission: true } })) as
       | { id: string; admission: string }
       | null;
     if (!planet || planet.admission === 'ARCHIVED') {
-      throw new CoreException('NOT_FOUND', { status: 404, message: 'Planet not found or not public.', details: { planetId } });
+      throw new CoreException('NOT_FOUND', { status: 404, message: 'Planet not found or not public.', details: { planetId: normalizedPlanetId } });
     }
     const runInTx = async (tx: DbClient) => {
       if (typeof (tx as { $executeRaw?: unknown }).$executeRaw === 'function') {

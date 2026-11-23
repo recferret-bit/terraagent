@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { CANONICAL_PLANETS } from '@terra/contracts';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { createLocalModeFetch } from './localModeSim';
 import { MePage } from './MePage';
@@ -57,9 +58,12 @@ describe('/me rework: standalone Top-Up card block', () => {
     const tierCard = q(dash.el, 'staking-kpi-tier')!;
     expect(topUpBlock.contains(tierCard)).toBe(true);
     expect(kpiStrip.contains(tierCard)).toBe(false);
-    expect(tierCard.classList.contains('is-clickable')).toBe(true);
+    expect(tierCard.classList.contains('is-clickable')).toBe(false);
 
     tierCard.click();
+    expect((q(dash.el, 'staking-console-amount') as HTMLInputElement).value).toBe('25');
+
+    q(dash.el, 'staking-topup-btn')!.click();
     expect((q(dash.el, 'staking-console-amount') as HTMLInputElement).value).toBe('10');
 
     q(dash.el, 'staking-topup-stake-btn')!.click();
@@ -84,11 +88,16 @@ describe('/me rework: top-left ? question icon tips on Staking & AI blocks', () 
     await page.load();
     await flush();
 
+    expect(q(root, 'help-tip-btn-section-staking')).toBeNull();
+    expect(q(root, 'staking-intro-banner')).not.toBeNull();
+    expect(q(root, 'staking-intro-banner')!.textContent).toContain('100% PRINCIPAL CUSTODY');
+    expect(q(root, 'staking-calculator-block')).toBeNull();
+
     const tipIds = [
-      'section-pilot', 'ai-settings', 'section-staking', 'staking-dashboard', 'staking-topup', 'staking-kpis',
-      'staking-total', 'staking-yield', 'staking-apy', 'staking-income',
-      'staking-ai-budget', 'staking-chart', 'staking-patron', 'staking-console', 'staking-txs',
-      'staking-calculator', 'staking-projection', 'staking-tiers', 'staking-ecosystem',
+      'section-pilot', 'ai-settings', 'staking-dashboard', 'staking-topup', 'staking-patronage',
+      'staking-kpis', 'staking-total', 'staking-yield', 'staking-apy', 'staking-income',
+      'staking-ai-budget', 'staking-chart', 'staking-console', 'staking-txs',
+      'staking-ecosystem',
     ];
     for (const id of tipIds) {
       expect(q(root, `help-tip-btn-${id}`), `missing ? button for ${id}`).not.toBeNull();
@@ -152,9 +161,21 @@ describe('/me rework: top-left ? question icon tips on Staking & AI blocks', () 
     await page.load();
     await flush();
 
-    for (const id of ['section-staking', 'staking-calculator', 'staking-projection', 'staking-tiers', 'staking-ecosystem']) {
+    expect(q(root, 'help-tip-btn-section-staking')).toBeNull();
+    expect(q(root, 'staking-intro-banner')).not.toBeNull();
+    expect(q(root, 'staking-calculator-block')).toBeNull();
+    for (const id of ['staking-income', 'staking-tiers', 'staking-ecosystem']) {
       expect(q(root, `help-tip-btn-${id}`), `missing signed-out ? tip for ${id}`).not.toBeNull();
     }
+    const tiersBtn = q(root, 'help-tip-btn-staking-tiers')!;
+    const tiersPanel = q(root, 'help-tip-panel-staking-tiers')!;
+    expect(tiersPanel.hidden).toBe(true);
+    tiersBtn.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+    expect(tiersPanel.hidden).toBe(false);
+    expect(q(tiersPanel, 'staking-tier-matrix')).not.toBeNull();
+    tiersBtn.dispatchEvent(new MouseEvent('mouseleave', { bubbles: true }));
+    await new Promise((r) => setTimeout(r, 200));
+    expect(tiersPanel.hidden).toBe(true);
   });
 });
 
@@ -164,7 +185,7 @@ describe('/me rework: local mode (?host=local) actions & 1-minute timings', () =
     const dash = renderStakingDashboard({
       accountId: 'local-commander.terraagent.mock',
       amount: 100,
-      defaultPlanetId: 'pl_w12_forest',
+      defaultPlanetId: CANONICAL_PLANETS.temperate.id,
       fetch: createLocalModeFetch(() => now),
       search: '?host=local',
       now: () => now,
@@ -216,8 +237,15 @@ describe('/me rework: local mode (?host=local) actions & 1-minute timings', () =
     await flush();
     q(dash.el, 'staking-nominate-btn')!.click();
     await flush();
-    expect(q(dash.el, 'staking-console-status')!.textContent).toContain('Lead Patron of pl_w12_forest');
-    expect(q(dash.el, 'staking-patron-status')!.textContent).toContain('Lead Patron of pl_w12_forest');
+    expect(q(dash.el, 'staking-console-status')!.textContent).toContain(`Lead Patron of Granite Hollow (${CANONICAL_PLANETS.temperate.id})`);
+    expect(q(dash.el, 'staking-patron-status')!.textContent).toContain(`Lead Patron of Granite Hollow (${CANONICAL_PLANETS.temperate.id})`);
+
+    // Local mode REST guard rejects paid sovereign NFT / non-canonical planets with 400
+    const badRes = await createLocalModeFetch(() => now)('/v1/near/staking/patron/nominate', {
+      method: 'POST',
+      body: JSON.stringify({ accountId: 'local-commander.terraagent.mock', planetId: 'pl_sovereign_nft_01' }),
+    });
+    expect(badRes.status).toBe(400);
     expect(q(dash.el, 'staking-share-social')!.classList.contains('btn-ghost')).toBe(true);
     expect(q(dash.el, 'staking-nominate-btn')!.classList.contains('btn-ghost')).toBe(true);
     expect(q(dash.el, 'staking-chart-window-90d')!.classList.contains('btn-ghost')).toBe(true);
@@ -254,18 +282,18 @@ describe('/me rework: open tip & nomination draft survive 60s maturity refetch a
     await new Promise((r) => setTimeout(r, 40));
     await flush();
     expect(stakePosts).toBe(1);
-    expect(q(dash.el, 'staking-kpi-total')!.textContent).toContain('10.000 NEAR');
+    expect(q(dash.el, 'staking-kpi-total')!.textContent).toContain('10.00 NEAR');
 
-    // Open Top-Up ? tip and type a custom planet draft before 60s maturity refetch fires
+    // Open Top-Up ? tip and switch canonical planet selection before 60s maturity refetch fires
     q(dash.el, 'help-tip-btn-staking-topup')!.click();
     expect(q(dash.el, 'help-tip-panel-staking-topup')!.hidden).toBe(false);
-    (q(dash.el, 'staking-nominate-planet') as HTMLInputElement).value = 'pl_custom_draft';
+    q(dash.el, 'staking-planet-chip-desert')!.click();
 
     now += 61_000;
     await new Promise((r) => setTimeout(r, 35));
     await flush();
     expect(q(dash.el, 'help-tip-panel-staking-topup')!.hidden).toBe(false);
-    expect((q(dash.el, 'staking-nominate-planet') as HTMLInputElement).value).toBe('pl_custom_draft');
+    expect((q(dash.el, 'staking-nominate-planet') as HTMLSelectElement).value).toBe(CANONICAL_PLANETS.desert.id);
     dash.dispose();
   });
 });

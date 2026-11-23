@@ -5,3 +5,4 @@ export * from './perks';
 export * from './responses';
 export * from './performance';
 export * from './actions';
+export * from './patronage';

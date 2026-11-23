@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { CANONICAL_PLANETS } from '@terra/contracts';
 import { describe, expect, it } from 'vitest';
 import { makePerformance, NOW } from './dashboardFixtures';
 import { click, fail, flush, makeMock, mount, ok, perfCalls, q } from './dashboardTestKit';
@@ -14,18 +15,81 @@ describe('Wealth Dashboard render', () => {
     expect(q(root, 'staking-kpi-total')!.textContent).toContain('$352.50');
     expect(q(root, 'staking-price-source')!.textContent).toBe('Live');
     expect(q(root, 'staking-exit-chip')!.textContent).toContain('<7d');
-    expect(q(root, 'staking-kpi-apy')!.textContent).toContain('7.20% Net / 9.00% Sim APY');
+    expect(q(root, 'staking-kpi-apy')!.textContent).toContain('7.20%');
+    expect(q(root, 'staking-kpi-apy')!.textContent).toContain('9.00%');
+    expect(q(root, 'staking-kpi-apy')!.textContent).toContain('20.00%');
+    expect(q(root, 'staking-apy-source')!.textContent).toBe('Sim APY');
     expect(q(root, 'staking-kpi-income')!.textContent).toContain('NEAR');
     expect(q(root, 'staking-kpi-effective')!.textContent).toContain('8.10%');
-    expect(q(root, 'staking-kpi-effective')!.textContent).toContain('(self-fills excluded)');
     expect(q(root, 'staking-self-fills')!.textContent).toBe('3 self-fills excluded');
     expect(q(root, 'staking-effective-tooltip')!.title).toContain('Effective APY =');
     expect(q(root, 'staking-kpi-tier')!.textContent).toContain('Commander');
     expect(q(root, 'staking-kpi-tier')!.textContent).toContain('1 / 3');
     expect((q(root, 'staking-console-amount') as HTMLInputElement).value).toBe('50');
     expect(root.querySelectorAll('[data-testid="staking-tx-row"]').length).toBe(2);
+
+    // Combined hero card, uniform 4-zone KPI cards, and AI Compute Budget ordered after main staking blocks
+    expect(q(root, 'staking-topup-block')!.contains(q(root, 'staking-patron-card'))).toBe(true);
+    expect(q(root, 'staking-topup-block')!.contains(q(root, 'staking-share-x'))).toBe(true);
+    const bodyChildren = [...root.querySelector('.ta-stk-dash-body')!.children];
+    const indexOf = (id: string) => bodyChildren.findIndex((c) => c === q(root, id) || c.contains(q(root, id)));
+    expect(indexOf('staking-topup-block')).toBe(0);
+    expect(indexOf('staking-kpi-block')).toBe(1);
+    expect(indexOf('staking-console')).toBe(2);
+    expect(indexOf('staking-chart')).toBe(3);
+    expect(indexOf('staking-tx-block')).toBe(4);
+    expect(indexOf('staking-ai-budget')).toBe(5);
+    const kpis = root.querySelectorAll('.ta-stk-kpi');
+    expect(kpis.length).toBe(4);
+    for (const kpi of kpis) {
+      expect(kpi.querySelector('.ta-stk-kpi-head')).not.toBeNull();
+      expect(kpi.querySelector('.ta-stk-kpi-hero')).not.toBeNull();
+      expect(kpi.querySelector('.ta-stk-kpi-details')).not.toBeNull();
+      expect(kpi.querySelector('.ta-stk-kpi-foot')).not.toBeNull();
+    }
+    expect(q(root, 'staking-kpi-block')!.contains(q(root, 'staking-kpi-income'))).toBe(true);
+    expect(q(root, 'staking-income-basis')!.textContent).toContain('ACTIVE STAKE · 70.50 NEAR');
+    expect(q(root, 'staking-patron-eligibility')!.textContent).toContain('LOCKED');
+    expect(q(root, 'staking-patron-card')!.textContent).toContain('KING-OF-THE-HILL');
+
+    // Simulating a custom amount inside PORTFOLIO METRICS updates Projected Income live
+    q(root, 'staking-preset-500')!.click();
+    expect(q(root, 'staking-income-basis')!.textContent).toContain('PREVIEW · 500.00 NEAR');
+    expect(q(root, 'staking-income-yearly')!.textContent).toContain('36.00 NEAR');
   });
 
+  it('hovering Patronage ? opens full 5-tier popup, clicking pins it, and interacting with Patron controls does not prefill Top-Up', async () => {
+    const root = await mount(makeMock());
+    const tipBtn = q(root, 'help-tip-btn-staking-patronage')!;
+    const tipPanel = q(root, 'help-tip-panel-staking-patronage')!;
+    expect(tipPanel.hidden).toBe(true);
+
+    tipBtn.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+    expect(tipPanel.hidden).toBe(false);
+    expect(q(tipPanel, 'staking-active-tier-matrix')!.dataset.reachedTier).toBe('2');
+    expect(tipPanel.querySelectorAll('[data-testid^="staking-active-tier-row-"]').length).toBe(5);
+    expect(tipPanel.textContent).toContain('Zero Pay-to-Win');
+
+    // Clicking after hover pins the popup instead of snapping it shut
+    tipBtn.click();
+    expect(tipPanel.hidden).toBe(false);
+
+    // Selecting canonical planet controls inside Patron zone does not overwrite console amount via Top-Up card click
+    (q(root, 'staking-console-amount') as HTMLInputElement).value = '77';
+    q(root, 'staking-planet-chip-ocean')!.click();
+    expect((q(root, 'staking-nominate-planet') as HTMLSelectElement).value).toBe(CANONICAL_PLANETS.ocean.id);
+    q(root, 'staking-nominate-planet')!.click();
+    expect((q(root, 'staking-console-amount') as HTMLInputElement).value).toBe('77');
+
+    // Quick-fill preset chips in Action Console populate amount
+    q(root, 'staking-console-preset-200')!.click();
+    expect((q(root, 'staking-console-amount') as HTMLInputElement).value).toBe('200');
+    q(root, 'staking-console-preset-max')!.click();
+    expect((q(root, 'staking-console-amount') as HTMLInputElement).value).toBe('12.5');
+  });
+});
+
+describe('Wealth Dashboard badges, tier warmup & AI budget', () => {
   it('Est. price badge and Free exit chip when the price is estimated and the 7 days elapsed', async () => {
     const p = makePerformance();
     const root = await mount(makeMock(() => ({ ...p, price: { ...p.price, source: 'est' }, timers: { ...p.timers, earlyExitFreeAtMs: NOW - 1, earlyExitFeeBp: 0 } })));
@@ -165,7 +229,7 @@ describe('patron card shares', () => {
     expect(u.searchParams.get('text')).toContain('8.10%');
     expect(u.searchParams.get('url')).toBe('https://terra.test/me.html#staking');
     expect(q(root, 'staking-share-text')!.textContent).toBe(u.searchParams.get('text'));
-    expect(q(root, 'staking-patron-planets')!.textContent).toContain('dune');
+    expect(q(root, 'staking-patron-planets')!.textContent).toContain('Kharon Dunes');
     click(root, 'staking-share-social');
     await flush();
     const tx = JSON.parse(q(root, 'staking-share-social')!.dataset.lastSocialTx!) as { contractId: string };
@@ -238,31 +302,51 @@ describe('graceful degradation', () => {
     expect(q(root, 'staking-compound-btn')).not.toBeNull();
     expect(q(root, 'staking-console-compound')!.hidden).toBe(false);
   });
+});
 
-  it('Patron Card nominates a public planet via POST /v1/near/staking/patron/nominate and rejects empty/missing planet IDs', async () => {
+describe('Patron Card canonical-only nomination', () => {
+  it('Patron Card lists only the 3 canonical worlds, rejects sovereign/archived planets, and nominates via POST', async () => {
     const m = makeMock();
     m.post = (path, body) => {
-      if (path === '/v1/near/staking/patron/nominate' && body.planetId === 'pl_dune_open') {
-        return ok({ accountId: 'pilot.mock', planetId: 'pl_dune_open', isLeadPatron: true, leadPatron: { accountId: 'pilot.mock', carrierName: 'ISS pilot.mock' } });
+      if (path === '/v1/near/staking/patron/nominate' && body.planetId === CANONICAL_PLANETS.ocean.id) {
+        return ok({
+          accountId: 'pilot.mock',
+          planetId: CANONICAL_PLANETS.ocean.id,
+          isLeadPatron: true,
+          leadPatron: { accountId: 'pilot.mock', carrierName: 'ISS pilot.mock' },
+        });
       }
       return fail(404, { error: { code: 'NOT_FOUND', message: 'Planet not found or not public.' } });
     };
     const root = await mount(m);
-    const input = q(root, 'staking-nominate-planet') as HTMLInputElement;
-    input.value = '   ';
+    const select = q(root, 'staking-nominate-planet') as HTMLSelectElement;
+    expect([...select.options].map((o) => o.value)).toEqual([
+      CANONICAL_PLANETS.desert.id,
+      CANONICAL_PLANETS.ocean.id,
+      CANONICAL_PLANETS.temperate.id,
+    ]);
+    // Selecting empty or sovereign NFT planet never posts
+    const callsBefore = m.calls.filter((c) => c.method === 'POST').length;
+    select.value = '';
     click(root, 'staking-nominate-btn');
     await flush();
-    expect(q(root, 'staking-console-status')!.textContent).toContain('Enter a public planet ID');
-    input.value = 'pl_missing';
+    expect(q(root, 'staking-console-status')!.textContent).toContain('three canonical planets');
+    expect(m.calls.filter((c) => c.method === 'POST').length).toBe(callsBefore);
+
+    // Valid canonical planet returning 404 surfaces server message
+    click(root, 'staking-planet-chip-desert');
     click(root, 'staking-nominate-btn');
     await flush();
     expect(q(root, 'staking-console-status')!.textContent).toBe('Planet not found or not public.');
-    input.value = 'pl_dune_open';
+
+    // Selecting Thalassa Verde chip syncs select and nominates cleanly
+    click(root, 'staking-planet-chip-ocean');
+    expect(select.value).toBe(CANONICAL_PLANETS.ocean.id);
     const before = perfCalls(m).length;
     click(root, 'staking-nominate-btn');
     await flush();
     await flush();
-    expect(q(root, 'staking-console-status')!.textContent).toContain('Lead Patron of pl_dune_open');
+    expect(q(root, 'staking-console-status')!.textContent).toContain('Lead Patron of Thalassa Verde');
     expect(perfCalls(m).length).toBe(before + 1);
   });
 });

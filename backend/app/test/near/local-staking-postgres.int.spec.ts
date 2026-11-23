@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { CANONICAL_PLANETS } from '@terra/contracts';
 import { createTestDatabase, type TestDatabase } from '@terra/db/testing';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { AppEnv } from '../../src/core/tokens';
@@ -80,7 +81,7 @@ describe('local staking & /me dev alias — real Postgres persistence (NEAR_MODE
       asset: 'stNEAR',
     });
     const faucet = await creditLocalMockFaucet(db.prisma, acct, envBag);
-    expect(faucet).toMatchObject({ ok: true, addedNear: '500', defaultPlanetId: 'pl_local_prime' });
+    expect(faucet).toMatchObject({ ok: true, addedNear: '500', defaultPlanetId: CANONICAL_PLANETS.temperate.id });
   });
 
   it('unlocks MeProfileService stakerAutopilotActive & TEE verify for linked and pr_dev_w12 wallets on Postgres', async () => {
@@ -92,10 +93,11 @@ describe('local staking & /me dev alias — real Postgres persistence (NEAR_MODE
     const adapter = new MockStakingAdapter(db.prisma, cfg(), { sleep, now: () => 1_700_000_000_000 }, localEnv);
     await adapter.stake({ opId: 'w12-stk:1', accountId: w12Acct, pool: 'astro-stakers.pool.mock', amount: nearToYocto(25) });
 
-    // Seeded extra planet (`pl_w12_forest`) is open and nominatable on Postgres
+    // Only canonical worlds are nominatable on Postgres; legacy/sovereign planets reject with 400
     const nominate = new PatronNominateService(() => db.prisma, () => 1_700_000_000_000);
-    const nomRes = await nominate.nominate(w12Acct, 'pl_w12_forest');
-    expect(nomRes).toMatchObject({ accountId: w12Acct, planetId: 'pl_w12_forest' });
+    const nomRes = await nominate.nominate(w12Acct, CANONICAL_PLANETS.temperate.id);
+    expect(nomRes).toMatchObject({ accountId: w12Acct, planetId: CANONICAL_PLANETS.temperate.id });
+    await expect(nominate.nominate(w12Acct, 'pl_w12_forest')).rejects.toMatchObject({ status: 400 });
 
     const facts = new FactsStore(db.prisma);
     const xp = new XpStore(db.prisma);
