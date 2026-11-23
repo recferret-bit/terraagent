@@ -5,6 +5,7 @@ import type { PlanetSpec } from '@terra/render/planets/PlanetSpec';
 import { RTSCamera } from './RTSCamera';
 import { GameHud } from '../ui/hud';
 import { groundPick } from './groundPick';
+import { notePlayerCommand } from '../../design/analytics/play';
 import { isDry, layoutColony } from './colonyLayout';
 
 interface Agent {
@@ -56,6 +57,7 @@ export class Gameplay {
       return;
     }
     this.hero.goal = p.clone();
+    notePlayerCommand('move');
     this.flashMarker(p, 0x00f0ff);
   }
   private flashMarker(p: THREE.Vector3, color: number) {

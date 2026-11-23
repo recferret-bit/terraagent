@@ -1,3 +1,4 @@
+import { noteBootFailure } from '../../../../design/analytics/play';
 import { COMMAND_TIMEOUT_MS, CommandBus } from '../../../net/commandBus';
 import { ConnectionBanner } from '../../../net/ConnectionBanner';
 import { LagTransport, withDevLag } from '../../../net/LagTransport';
@@ -80,6 +81,7 @@ export function createSessionBootRig(params: {
       },
       onError: (m) => {
         const bo = getBootOverlay();
+        if (!bo) noteBootFailure(m);
         return bo ? bo.showError(m) : Promise.reject(new Error(m));
       },
       onBooted,

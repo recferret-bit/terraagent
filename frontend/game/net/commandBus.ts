@@ -1,4 +1,5 @@
 import { newId, type ServerMessage } from '@terra/contracts';
+import { notePlayerCommand } from '../../design/analytics/play';
 import type { Transport } from './types';
 
 /** Outcome of one sim command: acked at a tick, or rejected (`code` is a `RejectCode`, `timeout`, `not_connected` or `host_unavailable`). */
@@ -51,6 +52,7 @@ export class CommandBus {
    * reconnecting) resolves `not_connected` at once and the command is neither pending nor predicted.
    */
   readonly send: SendCommand = (kind, args = {}, opts) => {
+    notePlayerCommand(kind, args);
     const id = newId('cm');
     return new Promise<CommandResult>((resolve) => {
       const timer = setTimeout(() => {

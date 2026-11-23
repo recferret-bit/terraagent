@@ -1,5 +1,8 @@
 import { SocialAuthResponseSchema } from '@terra/contracts';
-import { authenticateFastAuthEmailPopup, isFastAuthPopupCancelled } from './fastAuthSpa';
+import {
+  consentedAuthHeaders, failAuthHttp, failAuthThrown, failOAuthMessage, rememberAuthProvider, stopProviderWatch, succeedAuth, trackProviderPopup,
+} from '../analytics/auth';
+import { buildPilotEmailBox } from './pilotEmailBox';
 import {
   buildFastAuthLoginUrl,
   consumeNearWalletCallback,
@@ -38,8 +41,6 @@ const PILOT_DIALOG_CSS = `
 .pilot-email-box input{width:100%;box-sizing:border-box}
 .pilot-status{font-family:var(--ta-font-mono);font-size:var(--ta-fs-label);color:var(--ta-fault-text)}
 `;
-
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const PROVIDERS = [
   { id: 'google', label: 'Google', testId: 'continue-google' },
@@ -267,68 +268,23 @@ export class PilotAccess {
           });
           return;
         }
-        this.popup = window.open(
+        this.popup = trackProviderPopup(p.id, window.open(
           buildFastAuthLoginUrl(location.origin, returnPath, p.id, { mode }),
           'terra-fastauth-oauth',
           'popup,width=500,height=680',
-        );
+        ));
       };
       list.append(btn);
     }
 
-    list.append(this.buildEmailFastAuthBox(dialog, getMode));
+    list.append(buildPilotEmailBox({
+      busy: () => this.busy,
+      close: (d) => this.closeDialog(d),
+      login: (hit) => this.triggerLogin(hit),
+      showGuest: (message) => this.guest(message),
+      isDisposed: () => this.disposed,
+    }, dialog, getMode));
     return list;
-  }
-
-  private buildEmailFastAuthBox(dialog: HTMLDialogElement, getMode: () => 'signin' | 'signup'): HTMLElement {
-    const box = document.createElement('div');
-    box.className = 'pilot-email-box';
-    const emailInput = document.createElement('input');
-    emailInput.type = 'email';
-    emailInput.className = 'input';
-    emailInput.placeholder = 'pilot@terraagent.fun';
-    emailInput.dataset.testid = 'pilot-email-input';
-    const inlineErr = document.createElement('span');
-    inlineErr.className = 'pilot-status';
-    inlineErr.style.display = 'none';
-
-    const emailBtn = document.createElement('button');
-    emailBtn.type = 'button';
-    emailBtn.className = 'btn btn-ghost btn-sm';
-    emailBtn.dataset.testid = 'continue-email';
-    emailBtn.textContent = 'Email / Passkey (FastAuth)';
-
-    const startEmailAuth = (): void => {
-      if (this.busy) return;
-      const clean = emailInput.value.trim().toLowerCase();
-      if (!EMAIL_RE.test(clean)) {
-        inlineErr.textContent = 'Enter a valid email address.';
-        inlineErr.style.display = 'block';
-        return;
-      }
-      inlineErr.style.display = 'none';
-      const mode = getMode();
-      this.closeDialog(dialog);
-      void authenticateFastAuthEmailPopup({ email: clean, mode })
-        .then((res) => {
-          this.triggerLogin({ provider: 'email', token: res.idToken });
-        })
-        .catch((err: unknown) => {
-          if (this.disposed) return;
-          if (isFastAuthPopupCancelled(err)) {
-            this.guest('Sign-in was cancelled.');
-            return;
-          }
-          this.guest(err instanceof Error && err.message ? err.message : 'FastAuth Email sign-in could not be completed.');
-        });
-    };
-
-    emailInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') startEmailAuth();
-    });
-    emailBtn.onclick = startEmailAuth;
-    box.append(emailInput, inlineErr, emailBtn);
-    return box;
   }
 
   private closeDialog(dialog: HTMLDialogElement): void {
@@ -423,6 +379,7 @@ export class PilotAccess {
   }
 
   private triggerLogin(hit: { provider: string; token: string }): void {
+    stopProviderWatch();
     if (this.busy) return;
     this.busy = true;
     this.loginEpoch += 1;
@@ -440,6 +397,7 @@ export class PilotAccess {
     const err = readOAuthError(event, this.popup, location.origin);
     if (err && !this.disposed) {
       this.popup = null;
+      failOAuthMessage();
       this.guest(err.message);
     }
   };
@@ -454,11 +412,13 @@ export class PilotAccess {
     const err = readOAuthErrorStorageEvent(event, Boolean(this.popup));
     if (err && !this.disposed) {
       this.popup = null;
+      failOAuthMessage();
       this.guest(err.message);
     }
   };
 
   private async login(hit: { provider: string; token: string }): Promise<void> {
+    rememberAuthProvider(hit.provider);
     try {
       const nep413Payload = decodeNep413SocialToken(hit.token);
       const endpoint = nep413Payload ? '/v1/auth/near/verify' : '/v1/auth/social';
@@ -469,16 +429,21 @@ export class PilotAccess {
         credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
+          ...consentedAuthHeaders(),
           ...(upgradeBearer ? { Authorization: `Bearer ${upgradeBearer}` } : {}),
         },
         body: JSON.stringify(reqBody),
       });
       if (!response.ok) {
+        failAuthHttp(response.status);
         const errBody = await response.json().catch(() => null);
         throw new Error(extractAuthApiErrorMessage(errBody, 'Sign-in failed. Please try again.'));
       }
-      this.linked(SocialAuthResponseSchema.parse(await response.json()), true);
+      const body = SocialAuthResponseSchema.parse(await response.json());
+      succeedAuth();
+      this.linked(body, true);
     } catch (err) {
+      failAuthThrown(err);
       if (!this.disposed) {
         this.guest(err instanceof Error && err.message ? err.message : 'Sign-in failed. Please try again.');
       }

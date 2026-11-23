@@ -1,3 +1,4 @@
+import { bootProductAnalytics } from '../design/analytics/boot';
 import '../design/css/tokens.css';
 import '../design/css/base.css';
 import './playground.css';
@@ -10,6 +11,8 @@ import '@terra/render/kitbash';
 import { initCrt } from '@terra/render/ui/crt';
 import { mountDeedCardShowcase } from '../design/deed/deedCardArt';
 import { PlaygroundApp } from './PlaygroundApp';
+
+bootProductAnalytics('playground');
 
 const params = new URLSearchParams(location.search);
 if (params.get('deedcard') === '1') {

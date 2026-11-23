@@ -360,6 +360,8 @@ npm run contract:real -- --port <Port>   # live NEAR Testnet contract verificati
 npm run test:parity                      # browser worker vs server thread bit-determinism gate
 npm run e2e -- --waves ..22              # Playwright headless-Chromium end-to-end suite
 npm run validate:models -- --all         # 3D procedural geometry, connectivity & palette validator
+npm run validate:analytics               # product funnels: emitters, failure reasons, no browser PostHog
+npm run test:analytics                   # self-test of that harness
 npm run near:test-contracts              # 93/93 Rust unit tests across the 7 near-contracts crates (6 deployed + verifier)
 npm run near:build-contracts             # Build release wasm32-unknown-unknown binaries (--cfg near)
 npm run near:health                      # Inspect Testnet liquid headroom & storage lock (--apply --faucet for top-up)

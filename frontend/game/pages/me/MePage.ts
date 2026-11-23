@@ -1,4 +1,5 @@
 import type { MeAchievementsResponse, MeProfileResponse } from '@terra/contracts';
+import { noteProfileLoadFailed, noteProfileSection, noteProfileViewed } from '../../../design/analytics/profile';
 import { consumeNearWalletCallback } from '../../../design/pilot/mockToken';
 import { decodeNep413SocialToken } from '../../../design/pilot/nearAuthApi';
 import { PilotAccess, type PilotAccessOptions, type PilotAccessSession } from '../../../design/pilot/PilotAccess';
@@ -111,12 +112,14 @@ export class MePage {
     }
 
     if (res.kind === 'unauthenticated') {
+      noteProfileLoadFailed('unauthorized');
       this.root.appendChild(this.renderStickyNav({ skipRestore: true }));
       this.root.appendChild(this.renderAuthPrompt(res.message));
       return;
     }
 
     if (res.kind === 'error') {
+      noteProfileLoadFailed(res.reason);
       this.root.appendChild(this.renderStickyNav({ skipRestore: true }));
       this.root.appendChild(
         el(
@@ -210,6 +213,7 @@ export class MePage {
     );
 
     this.root.appendChild(main);
+    noteProfileViewed();
   }
 
   private renderStickyNav(
@@ -222,6 +226,7 @@ export class MePage {
           className: 'ta-me-tab',
           href: `#${t.id}`,
           dataset: { testid: `me-tab-${t.id}`, section: t.id },
+          onClick: () => noteProfileSection(t.id),
         },
         t.label,
       ),

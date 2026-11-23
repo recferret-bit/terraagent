@@ -7,6 +7,7 @@ import {
   type PlayerAiSettings,
   type UpdatePlayerAiSettings,
 } from '@terra/contracts';
+import { classifyProfileFailure, type ProfileReason } from '../../../design/analytics/profile';
 import { refreshPilotSession } from '../../../design/pilot/PilotAccess';
 import { readActivePilot } from '../../features/achievements/activePilot';
 
@@ -27,6 +28,7 @@ export type MeFetchResult =
   | {
       readonly kind: 'error';
       readonly message: string;
+      readonly reason: ProfileReason;
     };
 
 export type MeFetchFn = (input: string, init?: RequestInit) => Promise<{
@@ -146,6 +148,7 @@ export async function fetchMeData(
       return {
         kind: 'error',
         message: `Failed to load pilot profile (${profRes.status} / ${achRes.status})`,
+        reason: classifyProfileFailure({ status: profRes.ok ? achRes.status : profRes.status }),
       };
     }
 
@@ -162,6 +165,10 @@ export async function fetchMeData(
     return {
       kind: 'error',
       message: err instanceof Error ? err.message : 'Unable to load pilot profile',
+      reason: classifyProfileFailure({
+        network: err instanceof TypeError,
+        invalid: err instanceof Error && err.name === 'ZodError',
+      }),
     };
   }
 }

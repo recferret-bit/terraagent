@@ -15,6 +15,7 @@ import { resetDeviceSecret } from './online/bootOnline';
 import { clearPendingJoinIntent } from './online/joinQueueFlow';
 import { OnlineSession } from './online/OnlineSession';
 import { writeStoredPlanetKind } from './online/viewportHelper';
+import { noteBootFailure, noteColonyEntered, noteDescentStarted, notePlanetSelected, notePlayBooted } from '../../design/analytics/play';
 import { track } from '../core/analytics';
 import { MainMenu, type MenuSettings, type SectorIntentV1 } from '../ui/menu';
 import { normalizeSectorIntent } from '../ui/lobby/orbitalPickerModel';
@@ -216,10 +217,13 @@ export class Game {
     }
     clearTimeout(this.prepTimer);
     writeStoredPlanetKind(kind);
+    notePlanetSelected(kind, 'play');
+    notePlayBooted(kind, this.useOnlineGameplay && new URLSearchParams(location.search).get('host') !== 'local' ? 'online' : 'local');
     let p: Prepared;
     try { p = this.prepare(kind, seed); }
     catch (err) {
       console.error('deploy failed', err);
+      noteBootFailure(err instanceof Error ? err.message : 'deploy');
       this.discardPrepared();
       this.menu.setError('Deploy failed: ' + (err as Error).message);
       return;
@@ -286,6 +290,7 @@ export class Game {
     const vp = this.viewport;
     const st = this.stage; this.stage = null;
     vp.setView(vp.scene, vp.camera);
+    noteDescentStarted(this.spec?.kind);
     this.descent.start();
     this.phase = 'descent';
     this.deploySession = null;
@@ -351,6 +356,7 @@ export class Game {
     }
 
     const pose = d.finalPose;
+    noteColonyEntered(this.spec.kind, 'local');
     this.viewport.camera.fov = 28; this.viewport.camera.updateProjectionMatrix();
     this.play = new Gameplay(this.viewport.scene, this.viewport.camera, this.viewport.renderer.domElement, this.surface, this.spec, hero, this.gHud!, { position: pose.position.clone(), target: pose.target.clone() });
     this.gHud!.show();

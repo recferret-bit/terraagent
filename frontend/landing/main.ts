@@ -1,3 +1,5 @@
+import { bootProductAnalytics } from '../design/analytics/boot';
+import { bindLandingPlanets } from '../design/analytics/play';
 import { PilotAccess } from '../design/pilot/PilotAccess';
 // Landing page entry: boots every section (copy variant, live stats, 3D forest colony, roadmap first; then the heavy WebGL
 // sections: hero stage, planet cards, resource viewer) and the CRT treatment of the live pictures.
@@ -54,4 +56,6 @@ class LandingPage {
   }
 }
 
+bootProductAnalytics('landing');
+bindLandingPlanets();
 new LandingPage().boot();

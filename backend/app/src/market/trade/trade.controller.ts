@@ -17,6 +17,7 @@ import { TradeReadService } from './trade-read.service.js';
 import { TradeAgentService } from './trade-agent.service.js';
 import { TradeStallService } from './trade-stall.service.js';
 import { TradeStreamService } from './trade-stream.service.js';
+import { ProductRecorder } from '../../analytics/product-recorder.js';
 
 /** Strict zod parse of a body/query; failures are `invalid_request` with the issue list. */
 export function parseBody<T>(schema: ZodType<T>, raw: unknown): T {
@@ -46,6 +47,7 @@ export class TradeController {
     private readonly stream: TradeStreamService,
     private readonly agent: TradeAgentService,
     private readonly stall: TradeStallService,
+    private readonly product: ProductRecorder,
   ) {}
 
   private who(req: IncomingMessage, as?: string): Promise<TradePrincipal> {
@@ -98,7 +100,17 @@ export class TradeController {
   ): Promise<PlaceTradeOrderResponse> {
     const p = await this.who(req, as);
     const idem = req.headers['idempotency-key'];
-    return TradeController.reply(res, await this.orders.place(p, parseBody(PlaceTradeOrderRequest, body), Array.isArray(idem) ? idem[0] : idem));
+    const order = parseBody(PlaceTradeOrderRequest, body);
+    const key = Array.isArray(idem) ? idem[0] : idem;
+    let result: HttpResult<PlaceTradeOrderResponse>;
+    try {
+      result = await this.orders.place(p, order, key);
+    } catch (error) {
+      await this.product.recordTradePlace(req, order, error).catch(() => undefined);
+      throw error;
+    }
+    await this.product.recordTradePlace(req, order, result.body).catch(() => undefined);
+    return TradeController.reply(res, result);
   }
 
   @Delete('orders/:orderId')

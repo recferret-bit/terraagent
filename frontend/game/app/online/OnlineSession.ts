@@ -32,6 +32,7 @@ import type { PodLandingStateName } from './PodTouchdownFx';
 import { extractPodDescentStatus } from './podStatus';
 import type { PilotBridge } from './pilotBridge';
 import { createSessionHud } from './sessionHud';
+import { notePlayBooted, setPlayHost } from '../../../design/analytics/play';
 import { scenarioParam } from './sessionTarget';
 import { normalizeSectorIntent, type SectorIntentInput, type SectorIntentV1 } from '../../ui/lobby/orbitalPickerModel';
 import { bindStoreCombatEvents, ingestHostMessageCombatEvents } from './combatSync';
@@ -56,6 +57,13 @@ export interface OnlineSessionOptions {
   allowLocalFallback?: boolean;
   /** When false, skip `/v1/auth/refresh` on initial boot and log in with `deviceSecret` directly. */
   tryRefresh?: boolean;
+}
+
+function planetKindFromBoot(type: string): 'dune' | 'oceanForest' | 'forestRock' | null {
+  if (type === 'desert' || type === 'dune') return 'dune';
+  if (type === 'ocean' || type === 'oceanForest') return 'oceanForest';
+  if (type === 'temperate' || type === 'forestRock') return 'forestRock';
+  return null;
 }
 
 /** Online play flow (`/play.html` short landing or `/play.html?planet=<kind>` full space-to-surface landing). */
@@ -98,6 +106,8 @@ export class OnlineSession {
     this.allowLocalFallback = opts.allowLocalFallback ?? import.meta.env.DEV;
     this.planetKind = resolveSessionPlanetKind(q, opts.planetKind);
     this.sectorIntent = normalizeSectorIntent(opts.sectorIntent ?? q.get('sector'));
+    if (q.get('host') === 'local') setPlayHost('local');
+    notePlayBooted(this.planetKind, q.get('host') === 'local' ? 'local' : 'online');
 
     this.flags = createClientFlagsStore(this.search);
     const uiParent = opts.uiParent ?? (typeof document !== 'undefined' ? document.body : root);
@@ -288,6 +298,7 @@ export class OnlineSession {
     this.landfall.setOwnerColonyIndex(this.colonyIndex);
     this.bootOverlay?.hideQueueStatus();
     this.bootOverlay?.setColonyMeta(this.planetId, this.colonyId, this.colonyIndex);
+    notePlayBooted(planetKindFromBoot(boot.planet.type) ?? this.planetKind, boot.mode === 'local' ? 'local' : 'online');
     if (!this.skipDescent) {
       if (boot.wasQueued) this.bootOverlay?.showDescent({ progress: 0, q: this.spawn.q, r: this.spawn.r, landed: false });
       else this.bootOverlay?.setSplashStatus('Deploying drop pod…');
@@ -303,6 +314,7 @@ export class OnlineSession {
     lh.bindStore(this.store);
     if (autoStep) lh.start();
     if (!offline) return;
+    setPlayHost('local');
     this.bootOverlay?.setOffline(true);
     this.banner?.dispose();
     this.banner = null;

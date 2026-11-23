@@ -17,6 +17,7 @@ import { renderFills, renderOrders } from './view/ordersView';
 import { Pickers } from './view/pickers';
 import { RampView } from './view/rampView';
 import { StallEditor } from './view/stallView';
+import { noteTradePageViewed, noteTradeTicketOpened } from '../design/analytics/trade';
 import { OrderTicket } from './view/ticketView';
 
 const TABS = [['market', 'All orders'], ['pairs', 'All pairs'], ['orders', 'My orders'], ['fills', 'My fills'], ['keys', 'Bot / API keys']] as const;
@@ -82,8 +83,10 @@ export class TradePage {
   }
 
   async mount(): Promise<void> {
+    noteTradePageViewed();
     clear(this.root);
     this.root.append(this.shell());
+    noteTradeTicketOpened(this.store.get().pair);
     void this.loadNearModeBadge();
     this.pickers.setPlanets(await this.client.devPlanets());
     this.openStream();

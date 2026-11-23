@@ -1,6 +1,7 @@
 import type { PlanetListV1, PlanetSummaryV1, SectorId } from '@terra/contracts';
 import { getViewportPreset, isShaderOptimized, type ViewportPreset } from '@terra/render/core/perfConfig';
 import { PLANET_KINDS, PLANET_SPECS, type PlanetKind } from '@terra/render/planets/PlanetSpec';
+import { notePlanetPickerViewed, notePlanetSelected } from '../../design/analytics/play';
 import { PilotAccess } from '../../design/pilot/PilotAccess';
 import { probeActiveHomeColony, type ActiveHomeColony } from '../../design/pilot/activeHomeColony';
 import { applyActiveColonyToMenuDom } from './lobby/activeColonyLock';
@@ -204,6 +205,7 @@ export class MainMenu {
     if (this.autoProbeColony) {
       void this.probeActiveColony();
     }
+    notePlanetPickerViewed('play');
   }
 
   private bindControls(): void {
@@ -283,7 +285,10 @@ export class MainMenu {
       .querySelectorAll<HTMLElement>('.world-card')
       .forEach((c) => c.classList.toggle('sel', c.dataset.k === k));
     this.renderSectorChooser();
-    if (notify) this.cb.onPlanet(k);
+    if (notify) {
+      notePlanetSelected(k, 'play');
+      this.cb.onPlanet(k);
+    }
   }
 
   getActiveColony(): ActiveHomeColony | null {

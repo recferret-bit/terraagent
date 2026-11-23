@@ -1,3 +1,4 @@
+import { bootProductAnalytics } from '../design/analytics/boot';
 import { rewriteSubdomainLinks } from '../design/js/subdomainLinks';
 import { WhitepaperLiveStage3D } from './liveStage3D';
 import {
@@ -43,4 +44,5 @@ function bootWhitepaper(): void {
   window.addEventListener('beforeunload', () => stage3D.dispose());
 }
 
+bootProductAnalytics('whitepaper');
 bootWhitepaper();

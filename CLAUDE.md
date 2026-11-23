@@ -20,6 +20,8 @@ npm run validate:models -- <id|--category robot|--all>   # geometry validator fo
 npm run test:models                                    # self-test of that validator
 npm run validate:particles -- <--all|id|targetKind>    # validator for 3D interaction particle presets
 npm run test:particles                                 # self-test of the particle validator
+npm run validate:analytics                             # product analytics catalog, emitters, reasons, no browser PostHog
+npm run test:analytics                                 # self-test of the product analytics harness
 npm run near:deploy-contracts -- --network testnet       # build/deploy/verify all 6 Rust contracts (`res`, `deed`, `bounty`, `staking`, `dao`, `pilots`) + 4 protocol accounts (`--ensure-accounts`, `--redeploy`, or `--network mainnet --dry-run`)
 npm run near:build-contracts                             # build release wasm32-unknown-unknown binaries inside backend/near-contracts (--cfg near)
 npm run near:test-contracts                              # 85/85 Rust smart-contract unit tests across all 6 crates
