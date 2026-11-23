@@ -2,6 +2,7 @@ import 'reflect-metadata';
 import type { INestApplication } from '@nestjs/common';
 import {
   AuthResponseSchema,
+  CANONICAL_PLANETS,
   HomeResponseSchema,
   MeProfileResponseSchema,
   SocialAuthResponseSchema,
@@ -304,11 +305,14 @@ describe('localhost mock staking — faucet, profits, nomination & ?as= dev alia
       expect(faucetRes.status).toBe(200);
       const faucetBody = (await faucetRes.json()) as { addedNear: string; defaultPlanetId: string };
       expect(faucetBody.addedNear).toBe('500');
-      expect(faucetBody.defaultPlanetId).toBe('pl_local_prime');
+      expect(faucetBody.defaultPlanetId).toBe(CANONICAL_PLANETS.temperate.id);
 
       expect((await fetch(`${lUrl}/v1/near/staking/patron/nominate`, {
-        method: 'POST', headers: authHeaders, body: JSON.stringify({ accountId: acct, planetId: 'pl_local_prime' }),
+        method: 'POST', headers: authHeaders, body: JSON.stringify({ accountId: acct, planetId: CANONICAL_PLANETS.temperate.id }),
       })).status).toBe(200);
+      expect((await fetch(`${lUrl}/v1/near/staking/patron/nominate`, {
+        method: 'POST', headers: authHeaders, body: JSON.stringify({ accountId: acct, planetId: 'pl_sovereign_nft' }),
+      })).status).toBe(400);
 
       // Visiting /v1/me/profile?as=localdev in NEAR_MODE=local provisions localdev.terraagent.mock + starter funds + WalletControlGuard link
       const devProfRes = await fetch(`${lUrl}/v1/me/profile?as=localdev`);

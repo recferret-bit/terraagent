@@ -6,6 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '../../src/app';
 import { EventBus } from '../../src/bus/event-bus';
 import {
+  W28_PATRON_PLANET_ID,
   W28_PILOT_USDC_ATOMIC,
   W28_RIVAL_ACCOUNT,
   W28ScenarioSeedService,
@@ -72,9 +73,12 @@ describe('W28-16 scenario seed (w28)', () => {
     expect(rival.perks.tier).toBe(4);
     expect(rival.perks.activeStakedNear).toBe('500');
 
-    const prestige = StakingPrestigeResponse.parse((await json(`${url}/v1/near/staking/prestige?planetId=pl_w28_demo`)).body);
+    const prestige = StakingPrestigeResponse.parse((await json(`${url}/v1/near/staking/prestige?planetId=${W28_PATRON_PLANET_ID}`)).body);
     expect(prestige.leadPatron?.accountId).toBe(W28_RIVAL_ACCOUNT);
     expect(prestige.leadPatron?.carrierName).toContain('w28-rival');
+
+    const nonCanonicalPrestige = StakingPrestigeResponse.parse((await json(`${url}/v1/near/staking/prestige?planetId=pl_w28_demo`)).body);
+    expect(nonCanonicalPrestige.leadPatron).toBeNull();
   });
 
   it('a second seat event for the same pilot (page reload / reconnect) does not reset the wallet (corner)', async () => {

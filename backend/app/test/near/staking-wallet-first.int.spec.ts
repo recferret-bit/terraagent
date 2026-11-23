@@ -1,6 +1,6 @@
 import 'reflect-metadata';
 import type { INestApplication } from '@nestjs/common';
-import { MARKET_TOKENS, StakeProfitsResponse, StakingActionResponse, StakingStatusResponse } from '@terra/contracts';
+import { CANONICAL_PLANETS, MARKET_TOKENS, StakeProfitsResponse, StakingActionResponse, StakingStatusResponse } from '@terra/contracts';
 import { createTestDatabase, type TestDatabase } from '@terra/db/testing';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '../../src/app';
@@ -248,21 +248,25 @@ describe('W28-04 wallet-first staking: spoofing, W28 off', () => {
     expect(stake.body.errorCode).toBe('DEED_NOT_FOUND');
     expect((await post(url, '/v1/near/stake/compound', { accountId, pool: POOL }, auth)).status).toBe(404);
     expect((await post(url, '/v1/near/stake/profits', { accountId, amountUsdc: '1' }, auth)).status).toBe(404);
-    expect((await post(url, '/v1/near/staking/patron/nominate', { accountId, planetId: 'pl_w28_open' }, auth)).status).toBe(404);
+    expect((await post(url, '/v1/near/staking/patron/nominate', { accountId, planetId: CANONICAL_PLANETS.desert.id }, auth)).status).toBe(404);
     const status = await get<Record<string, unknown>>(url, '/v1/near/staking?colonyId=col_0');
     expect((status.perks as Record<string, unknown>).version).toBeUndefined();
   });
 });
 
 describe('W28-04 wallet-first staking: Lead Patron nomination', () => {
-  it('patron nomination: only public planets, only for the wallet owner, and the seat follows ACTIVE stake', async () => {
+  it('patron nomination: only the 3 canonical public worlds, refuses sovereign NFT planets (400), only for the wallet owner, and seat follows ACTIVE stake', async () => {
     const { url, staking } = await boot('all');
     const whale = await linkWallet('whale');
-    await db.prisma.planet.create({ data: { id: 'pl_w28_open', name: 'Open Planet' } });
-    await db.prisma.planet.create({ data: { id: 'pl_w28_gone', name: 'Archived Planet', admission: 'ARCHIVED' } });
+    const openId = CANONICAL_PLANETS.desert.id;
+    const archivedId = CANONICAL_PLANETS.ocean.id;
+    const missingCanonicalId = CANONICAL_PLANETS.temperate.id;
+    await db.prisma.planet.upsert({ where: { id: openId }, create: { id: openId, name: 'Kharon Dunes' }, update: { admission: 'OPEN' } });
+    await db.prisma.planet.upsert({ where: { id: archivedId }, create: { id: archivedId, name: 'Thalassa Verde', admission: 'ARCHIVED' }, update: { admission: 'ARCHIVED' } });
+    await db.prisma.planet.create({ data: { id: 'pl_sovereign_nft_01', name: 'Sovereign NFT World', admission: 'OPEN' } });
     await staking.fundWalletNear(whale.accountId, '600');
 
-    const small = await post<{ isLeadPatron: boolean }>(url, '/v1/near/staking/patron/nominate', { accountId: whale.accountId, planetId: 'pl_w28_open' }, whale.auth);
+    const small = await post<{ isLeadPatron: boolean }>(url, '/v1/near/staking/patron/nominate', { accountId: whale.accountId, planetId: openId }, whale.auth);
     expect(small.status).toBe(200);
     expect(small.body.isLeadPatron).toBe(false);
 
@@ -270,16 +274,18 @@ describe('W28-04 wallet-first staking: Lead Patron nomination', () => {
     const lead = await post<{ isLeadPatron: boolean; leadPatron: { accountId: string; carrierName: string } }>(
       url,
       '/v1/near/staking/patron/nominate',
-      { accountId: whale.accountId, planetId: 'pl_w28_open' },
+      { accountId: whale.accountId, planetId: openId },
       whale.auth,
     );
     expect(lead.body.isLeadPatron).toBe(true);
     expect(lead.body.leadPatron).toMatchObject({ accountId: whale.accountId, carrierName: 'ISS whale.near' });
 
-    const archived = await post(url, '/v1/near/staking/patron/nominate', { accountId: whale.accountId, planetId: 'pl_w28_gone' }, whale.auth);
+    const sovereign = await post(url, '/v1/near/staking/patron/nominate', { accountId: whale.accountId, planetId: 'pl_sovereign_nft_01' }, whale.auth);
+    expect(sovereign.status).toBe(400);
+    const archived = await post(url, '/v1/near/staking/patron/nominate', { accountId: whale.accountId, planetId: archivedId }, whale.auth);
     expect(archived.status).toBe(404);
-    const unknown = await post(url, '/v1/near/staking/patron/nominate', { accountId: whale.accountId, planetId: 'pl_missing' }, whale.auth);
-    expect(unknown.status).toBe(404);
+    const missing = await post(url, '/v1/near/staking/patron/nominate', { accountId: whale.accountId, planetId: missingCanonicalId }, whale.auth);
+    expect(missing.status).toBe(404);
 
     // Unstaking 520 to 120 NEAR (below the Tier 4 minimum) clears the seat at once and the same call shows Tier 2.
     const down = StakingActionResponse.parse((await post(url, '/v1/near/unstake', { accountId: whale.accountId, pool: POOL, amount: '400' }, whale.auth)).body);

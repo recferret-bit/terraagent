@@ -215,7 +215,7 @@ describe('/me Staking multi-minute live snapshots & preview ? tip persistence', 
     dash.dispose();
   });
 
-  it('preserves open ? tips inside StakingSection preview blocks (projection, tiers, ecosystem) when amount changes', async () => {
+  it('preserves open ? tips inside StakingSection (income simulator, ecosystem) when amount changes', async () => {
     const root = document.createElement('div');
     const page = new MePage(root, {
       search: '?host=local',
@@ -226,16 +226,16 @@ describe('/me Staking multi-minute live snapshots & preview ? tip persistence', 
     await flush();
 
     const amountInput = q(root, 'staking-amount-input') as HTMLInputElement;
-    for (const tipId of ['staking-projection', 'staking-tiers', 'staking-ecosystem']) {
+    for (const tipId of ['staking-income', 'staking-ecosystem']) {
       q(root, `help-tip-btn-${tipId}`)!.click();
       expect(q(root, `help-tip-panel-${tipId}`)!.hidden).toBe(false);
 
-      amountInput.value = tipId === 'staking-projection' ? '200' : tipId === 'staking-tiers' ? '500' : '100';
+      amountInput.value = tipId === 'staking-income' ? '200' : '100';
       amountInput.dispatchEvent(new Event('input', { bubbles: true }));
 
       const panelAfter = q(root, `help-tip-panel-${tipId}`)!;
       const btnAfter = q(root, `help-tip-btn-${tipId}`)!;
-      expect(panelAfter.hidden, `tip ${tipId} snapped shut on renderAll()`).toBe(false);
+      expect(panelAfter.hidden, `tip ${tipId} snapped shut on amount update`).toBe(false);
       expect(btnAfter.getAttribute('aria-expanded')).toBe('true');
     }
   });
@@ -365,7 +365,7 @@ describe('/me local mode regressions: per-persona ledgers, tricky email handles 
     await flush();
     await flush();
     expect(q(root, 'me-pilot-handle')!.textContent).toBe('a-tag');
-    expect(q(root, 'staking-kpi-total')!.textContent).toContain('0.0000 NEAR');
+    expect(q(root, 'staking-kpi-total')!.textContent).toContain('0.00 NEAR');
 
     // Sign back in as Local Commander -> 500 NEAR stake is restored intact
     q(root, 'pilot-sign-out')!.click();

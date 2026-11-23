@@ -1,4 +1,4 @@
-import { MARKET_TOKENS, toChainUnits } from '@terra/contracts';
+import { CANONICAL_PLANETS, CANONICAL_PLANET_LIST, MARKET_TOKENS, toChainUnits } from '@terra/contracts';
 import type { PrismaClient } from '@terra/db';
 import { devPlayerId } from '../../../ws/session-verifier.js';
 import { isLocalStakingFastTimings } from '../../staking/local-staking-timings.js';
@@ -12,7 +12,7 @@ export const LOCAL_MOCK_STARTER_NEAR = '1000';
 export const LOCAL_MOCK_STARTER_USDC_ATOMIC = 250_000_000n;
 export const LOCAL_MOCK_FAUCET_NEAR = '500';
 export const LOCAL_MOCK_FAUCET_USDC_ATOMIC = 100_000_000n;
-export const LOCAL_MOCK_DEFAULT_PLANET_ID = 'pl_local_prime';
+export const LOCAL_MOCK_DEFAULT_PLANET_ID = CANONICAL_PLANETS.temperate.id;
 
 function canSeedMockStaking(prisma: PrismaClient | null | undefined, env: EnvBag): prisma is PrismaClient {
   if (!prisma || env.NODE_ENV === 'production') return false;
@@ -27,13 +27,15 @@ export interface LocalSeedPlanetHint {
 
 async function ensureOpenLocalPlanet(prisma: PrismaClient, extraPlanet?: LocalSeedPlanetHint): Promise<string> {
   if (typeof prisma.planet?.upsert === 'function') {
-    await prisma.planet.upsert({
-      where: { id: LOCAL_MOCK_DEFAULT_PLANET_ID },
-      create: { id: LOCAL_MOCK_DEFAULT_PLANET_ID, name: 'Local Prime', admission: 'OPEN' },
-      update: { admission: 'OPEN' },
-    });
+    for (const def of CANONICAL_PLANET_LIST) {
+      await prisma.planet.upsert({
+        where: { id: def.id },
+        create: { id: def.id, name: def.name, type: def.type, look: def.look, seed: def.seed, admission: 'OPEN' },
+        update: { admission: 'OPEN' },
+      });
+    }
     const extraId = extraPlanet?.id?.trim();
-    if (extraId && extraId !== LOCAL_MOCK_DEFAULT_PLANET_ID) {
+    if (extraId && !CANONICAL_PLANET_LIST.some((d) => d.id === extraId)) {
       await prisma.planet.upsert({
         where: { id: extraId },
         create: { id: extraId, name: extraPlanet?.name?.trim() || extraId, admission: 'OPEN' },

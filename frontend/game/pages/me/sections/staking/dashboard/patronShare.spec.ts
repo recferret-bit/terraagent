@@ -10,7 +10,7 @@ describe('patron share', () => {
     expect(text).toContain('70.50');
     expect(text).toContain('8.10%');
     expect(text).toContain('self-fills excluded');
-    expect(text).toContain('Lead Patron of dune');
+    expect(text).toContain('Lead Patron of Kharon Dunes');
   });
   it('no lead planets: the planet clause is omitted (corner)', () => {
     expect(patronShareText({ ...facts, leadPlanets: [] })).not.toContain('Lead Patron');

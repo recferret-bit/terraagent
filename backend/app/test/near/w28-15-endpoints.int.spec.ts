@@ -1,6 +1,6 @@
 import 'reflect-metadata';
 import type { INestApplication } from '@nestjs/common';
-import { MARKET_TOKENS, StakingActionResponse, StakingStatusResponse } from '@terra/contracts';
+import { CANONICAL_PLANETS, MARKET_TOKENS, StakingActionResponse, StakingStatusResponse } from '@terra/contracts';
 import { createTestDatabase, type TestDatabase } from '@terra/db/testing';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '../../src/app';
@@ -99,43 +99,48 @@ describe('W28-15 King-of-the-Hill through POST /v1/near/staking/patron/nominate'
     post<{ isLeadPatron: boolean; leadPatron: { accountId: string } | null }>('/v1/near/staking/patron/nominate', { accountId: w.accountId, planetId }, w.auth);
 
   it('550 overtakes 500, a tie keeps the incumbent, unstaking below the runner-up hands the seat over, a switch vacates the old planet', async () => {
-    for (const id of ['pl_koth_a', 'pl_koth_b']) await db.prisma.planet.create({ data: { id, name: id } });
+    const kothA = CANONICAL_PLANETS.desert.id;
+    const kothB = CANONICAL_PLANETS.ocean.id;
+    for (const id of [kothA, kothB]) await db.prisma.planet.upsert({ where: { id }, create: { id, name: id }, update: { admission: 'OPEN' } });
     const a = await linkWallet('koth-a');
     const b = await linkWallet('koth-b');
     await staking.fundWalletNear(a.accountId, '700');
     await staking.fundWalletNear(b.accountId, '700');
     await post('/v1/near/stake', { accountId: a.accountId, pool: POOL, amount: '500' }, a.auth);
-    expect((await nominate(a, 'pl_koth_a')).body.isLeadPatron).toBe(true);
+    expect((await nominate(a, kothA)).body.isLeadPatron).toBe(true);
 
     await post('/v1/near/stake', { accountId: b.accountId, pool: POOL, amount: '500' }, b.auth);
-    const tie = await nominate(b, 'pl_koth_a');
+    const tie = await nominate(b, kothA);
     expect(tie.body).toMatchObject({ isLeadPatron: false, leadPatron: { accountId: a.accountId } }); // exact tie: incumbent keeps it
 
     await post('/v1/near/stake', { accountId: b.accountId, pool: POOL, amount: '50' }, b.auth); // 550 vs 500
-    const over = await nominate(b, 'pl_koth_a');
+    const over = await nominate(b, kothA);
     expect(over.body).toMatchObject({ isLeadPatron: true, leadPatron: { accountId: b.accountId } });
 
     // b unstakes to 499: the seat goes back to a at once, and b's own re-nomination to another planet finds no seat
     await post('/v1/near/unstake', { accountId: b.accountId, pool: POOL, amount: '51' }, b.auth);
-    const back = await nominate(a, 'pl_koth_a');
+    const back = await nominate(a, kothA);
     expect(back.body).toMatchObject({ isLeadPatron: true, leadPatron: { accountId: a.accountId } });
-    expect((await nominate(b, 'pl_koth_b')).body.isLeadPatron).toBe(false);
+    expect((await nominate(b, kothB)).body.isLeadPatron).toBe(false);
 
-    // a switches planets: pl_koth_a is vacated (b is below 500 everywhere), pl_koth_b becomes a's
-    expect((await nominate(a, 'pl_koth_b')).body).toMatchObject({ isLeadPatron: true, leadPatron: { accountId: a.accountId } });
-    expect(await db.prisma.stakingPatronSeat.findUnique({ where: { planetId: 'pl_koth_a' } })).toBeNull();
-    expect((await db.prisma.stakingPatronSeat.findUniqueOrThrow({ where: { planetId: 'pl_koth_b' } })).accountId).toBe(a.accountId);
+    // a switches planets: kothA is vacated (b is below 500 everywhere), kothB becomes a's
+    expect((await nominate(a, kothB)).body).toMatchObject({ isLeadPatron: true, leadPatron: { accountId: a.accountId } });
+    expect(await db.prisma.stakingPatronSeat.findUnique({ where: { planetId: kothA } })).toBeNull();
+    expect((await db.prisma.stakingPatronSeat.findUniqueOrThrow({ where: { planetId: kothB } })).accountId).toBe(a.accountId);
   });
 
-  it('nominating needs the wallet owner, and 499.999999 NEAR never takes the seat', async () => {
-    await db.prisma.planet.create({ data: { id: 'pl_koth_c', name: 'c' } });
+  it('nominating needs the wallet owner, 499.999999 NEAR never takes the seat, and sovereign NFT planets return 400', async () => {
+    const kothC = CANONICAL_PLANETS.temperate.id;
+    await db.prisma.planet.upsert({ where: { id: kothC }, create: { id: kothC, name: 'Granite Hollow' }, update: { admission: 'OPEN' } });
+    await db.prisma.planet.create({ data: { id: 'pl_sovereign_koth', name: 'Sovereign World', admission: 'OPEN' } });
     const w = await linkWallet('koth-c');
     const mallory = await linkWallet('koth-mallory');
     await staking.fundWalletNear(w.accountId, '500');
     await post('/v1/near/stake', { accountId: w.accountId, pool: POOL, amount: '499.999999' }, w.auth);
-    expect((await nominate(w, 'pl_koth_c')).body.isLeadPatron).toBe(false);
-    expect((await post('/v1/near/staking/patron/nominate', { accountId: w.accountId, planetId: 'pl_koth_c' }, mallory.auth)).status).toBe(403);
-    expect(await db.prisma.stakingPatronSeat.findUnique({ where: { planetId: 'pl_koth_c' } })).toBeNull();
+    expect((await nominate(w, kothC)).body.isLeadPatron).toBe(false);
+    expect((await post('/v1/near/staking/patron/nominate', { accountId: w.accountId, planetId: 'pl_sovereign_koth' }, w.auth)).status).toBe(400);
+    expect((await post('/v1/near/staking/patron/nominate', { accountId: w.accountId, planetId: kothC }, mallory.auth)).status).toBe(403);
+    expect(await db.prisma.stakingPatronSeat.findUnique({ where: { planetId: kothC } })).toBeNull();
   });
 });
 
@@ -275,7 +280,9 @@ describe('W28 multi-asset Native + stNEAR split & explorer wallet rows', () => {
 
 describe('W28 concurrent PatronSeatService multi-whale cross-planet safety', () => {
   it('survives concurrent cross-planet nominations and unstakes across 4 whales with zero deadlocks and exact final winners', async () => {
-    for (const id of ['pl_race_a', 'pl_race_b']) await db.prisma.planet.create({ data: { id, name: id } });
+    const raceA = CANONICAL_PLANETS.desert.id;
+    const raceB = CANONICAL_PLANETS.ocean.id;
+    for (const id of [raceA, raceB]) await db.prisma.planet.upsert({ where: { id }, create: { id, name: id }, update: { admission: 'OPEN' } });
     const whales = await Promise.all(
       [
         ['race-w1', '500'],
@@ -292,23 +299,23 @@ describe('W28 concurrent PatronSeatService multi-whale cross-planet safety', () 
     const [w1, w2, w3, w4] = whales as [typeof whales[0], typeof whales[0], typeof whales[0], typeof whales[0]];
 
     // Seed initial nominations on opposite planets so cross-switching tests alphabetical lock ordering!
-    await post('/v1/near/staking/patron/nominate', { accountId: w1.accountId, planetId: 'pl_race_a' }, w1.auth);
-    await post('/v1/near/staking/patron/nominate', { accountId: w2.accountId, planetId: 'pl_race_b' }, w2.auth);
-    await post('/v1/near/staking/patron/nominate', { accountId: w3.accountId, planetId: 'pl_race_a' }, w3.auth);
-    await post('/v1/near/staking/patron/nominate', { accountId: w4.accountId, planetId: 'pl_race_b' }, w4.auth);
+    await post('/v1/near/staking/patron/nominate', { accountId: w1.accountId, planetId: raceA }, w1.auth);
+    await post('/v1/near/staking/patron/nominate', { accountId: w2.accountId, planetId: raceB }, w2.auth);
+    await post('/v1/near/staking/patron/nominate', { accountId: w3.accountId, planetId: raceA }, w3.auth);
+    await post('/v1/near/staking/patron/nominate', { accountId: w4.accountId, planetId: raceB }, w4.auth);
 
     // Hammer concurrent cross-planet switches + w4 unstaking below 500!
     const responses = await Promise.all([
-      post('/v1/near/staking/patron/nominate', { accountId: w1.accountId, planetId: 'pl_race_b' }, w1.auth),
-      post('/v1/near/staking/patron/nominate', { accountId: w2.accountId, planetId: 'pl_race_a' }, w2.auth),
-      post('/v1/near/staking/patron/nominate', { accountId: w3.accountId, planetId: 'pl_race_b' }, w3.auth),
+      post('/v1/near/staking/patron/nominate', { accountId: w1.accountId, planetId: raceB }, w1.auth),
+      post('/v1/near/staking/patron/nominate', { accountId: w2.accountId, planetId: raceA }, w2.auth),
+      post('/v1/near/staking/patron/nominate', { accountId: w3.accountId, planetId: raceB }, w3.auth),
       post('/v1/near/unstake', { accountId: w4.accountId, pool: POOL, amount: '250' }, w4.auth), // w4 drops 700 -> 450 (< 500)
     ]);
     for (const r of responses) expect(r.status).toBe(200);
 
-    // Final active stakes: pl_race_a has w2 (550); pl_race_b has w1 (500), w3 (600), w4 (450 < 500) -> w3 wins pl_race_b!
-    const seatA = await db.prisma.stakingPatronSeat.findUnique({ where: { planetId: 'pl_race_a' } });
-    const seatB = await db.prisma.stakingPatronSeat.findUnique({ where: { planetId: 'pl_race_b' } });
+    // Final active stakes: raceA has w2 (550); raceB has w1 (500), w3 (600), w4 (450 < 500) -> w3 wins raceB!
+    const seatA = await db.prisma.stakingPatronSeat.findUnique({ where: { planetId: raceA } });
+    const seatB = await db.prisma.stakingPatronSeat.findUnique({ where: { planetId: raceB } });
     expect(seatA?.accountId).toBe(w2.accountId);
     expect(seatB?.accountId).toBe(w3.accountId);
   });

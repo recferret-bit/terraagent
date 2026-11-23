@@ -45,9 +45,10 @@ describe('W28-09 /me.html#staking public preview', () => {
     const root = await mountSignedOut('#staking?amount=50', serverDown);
     expect(q(root, 'me-auth-prompt')).toBeNull();
     expect(q(root, 'me-tab-staking')?.textContent).toBe('STAKING');
-    for (const id of ['staking-preview', 'staking-tier-matrix', 'staking-projection', 'staking-ecosystem', 'staking-connect-cta', 'staking-apy-badge']) {
+    for (const id of ['staking-preview', 'staking-intro-banner', 'staking-tier-matrix', 'staking-projection', 'staking-ecosystem', 'staking-connect-cta', 'staking-apy-badge']) {
       expect(q(root, id), id).not.toBeNull();
     }
+    expect(q(root, 'staking-calculator-block')).toBeNull();
     expect(q(root, 'staking-connect-cta')?.textContent).toBe('Connect NEAR Wallet to Stake 50 NEAR');
     expect(q(root, 'staking-apy-badge')?.textContent).toBe('7.20% Sim APY');
     expect(q(root, 'staking-price-badge')?.textContent).toContain('Est.');
@@ -70,13 +71,25 @@ describe('W28-09 /me.html#staking public preview', () => {
     expect(q(root, 'staking-apy-badge')?.textContent).toContain('Sim APY');
   });
 
-  it('highlights the tier the amount reaches and lists every tier row from the data table', async () => {
+  it('renders 100% Orbital Patronage tiers inside the Patronage ? hover popup instead of a dedicated block', async () => {
     const root = await mountSignedOut('#staking?amount=200', serverDown);
-    expect(q(root, 'staking-tier-matrix')?.dataset.reachedTier).toBe('3');
-    expect(q(root, 'staking-tier-row-3')?.classList.contains('is-reached')).toBe(true);
-    expect(q(root, 'staking-tier-row-2')?.classList.contains('is-reached')).toBe(false);
-    expect(root.querySelectorAll('[data-testid^="staking-tier-row-"]').length).toBe(5);
-    expect(q(root, 'staking-tier-row-2')?.textContent).toContain('24h warmup');
+    const previewDirect = [...q(root, 'staking-preview')!.children];
+    expect(previewDirect.map((c) => c.getAttribute('data-testid') ?? c.firstElementChild?.getAttribute('data-testid'))).toEqual([
+      'staking-intro-banner',
+      'staking-projection',
+      'staking-ecosystem',
+    ]);
+
+    const tiersPanel = q(root, 'help-tip-panel-staking-tiers')!;
+    expect(tiersPanel.hidden).toBe(true);
+    q(root, 'help-tip-btn-staking-tiers')!.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+    expect(tiersPanel.hidden).toBe(false);
+    expect(tiersPanel.textContent).toContain('Zero Pay-to-Win');
+    expect(q(tiersPanel, 'staking-tier-matrix')?.dataset.reachedTier).toBe('3');
+    expect(q(tiersPanel, 'staking-tier-row-3')?.classList.contains('is-reached')).toBe(true);
+    expect(q(tiersPanel, 'staking-tier-row-2')?.classList.contains('is-reached')).toBe(false);
+    expect(tiersPanel.querySelectorAll('[data-testid^="staking-tier-row-"]').length).toBe(5);
+    expect(q(tiersPanel, 'staking-tier-row-2')?.textContent).toContain('24h warmup');
   });
 
   it('typing an amount updates the CTA text, projections and highlighted tier live', async () => {
@@ -89,6 +102,9 @@ describe('W28-09 /me.html#staking public preview', () => {
     expect(q(root, 'staking-projection-yearly')?.textContent).not.toBe(yearly);
     expect(q(root, 'staking-projection-yearly')?.textContent).toContain('36.00');
     expect(q(root, 'staking-tier-matrix')?.dataset.reachedTier).toBe('4');
+    q(root, 'staking-preset-50')!.click();
+    expect(q(root, 'staking-connect-cta')?.textContent).toBe('Connect NEAR Wallet to Stake 50 NEAR');
+    expect(q(root, 'staking-tier-matrix')?.dataset.reachedTier).toBe('2');
     input.value = '-9';
     input.dispatchEvent(new Event('input', { bubbles: true }));
     expect(q(root, 'staking-connect-cta')?.textContent).toBe(`Connect NEAR Wallet to Stake ${STAKING_RULES.defaultPreviewNear} NEAR`);
@@ -113,7 +129,9 @@ describe('W28-09 /me.html#staking public preview', () => {
     expect(q(root, 'me-auth-prompt')).not.toBeNull();
     expect(q(root, 'staking-preview')).toBeNull();
   });
+});
 
+describe('W28-09 /me.html#staking logged-in preview integration', () => {
   it('logged in: preview stays visible next to the W28-10 dashboard slot; CTA hidden for a linked wallet', async () => {
     const root = document.createElement('div');
     const profile = makeW12ProfileFixture();
@@ -127,7 +145,12 @@ describe('W28-09 /me.html#staking public preview', () => {
     await page.load();
     await new Promise((r) => setTimeout(r, 0));
     expect(q(root, 'staking-dashboard-slot')).not.toBeNull();
-    expect(q(root, 'staking-tier-matrix')).not.toBeNull();
+    expect(q(root, 'staking-intro-banner')).not.toBeNull();
+    expect(q(root, 'staking-calculator-block')).toBeNull();
+    const previewChildren = [...q(root, 'staking-preview')!.children].map(
+      (c) => c.getAttribute('data-testid') ?? c.firstElementChild?.getAttribute('data-testid'),
+    );
+    expect(previewChildren).toEqual(['staking-intro-banner', 'staking-dashboard-slot', 'staking-ecosystem', 'staking-ai-slot']);
     expect(q(root, 'me-section-staking')).not.toBeNull();
     expect(q(root, 'me-section-pilot')).not.toBeNull();
     const hasWallet = Boolean(profile.identity.accountId);

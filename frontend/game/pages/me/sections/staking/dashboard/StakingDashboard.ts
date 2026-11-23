@@ -1,6 +1,6 @@
-// Logged-in Wealth Dashboard (`/me.html#staking`, W28-10): thin orchestrator over `./parts/` (Top-Up hero block, KPI strip,
-// AI budget, chart, patron card, action console, tx table). Server numbers are authoritative: every action refetches
-// `GET /v1/near/staking/performance`, so KPIs and tier update immediately (unstake = instant downgrade).
+// Logged-in Wealth Dashboard (`/me.html#staking`, W28-10): thin orchestrator over `./parts/` (Unified Active Tier &
+// Orbital Patron hero card, Portfolio Metrics + extended Projected Income, Action Console, Earnings Chart, Tx Table,
+// and AI Compute Budget). Server numbers are authoritative: every action refetches `GET /v1/near/staking/performance`.
 import { STAKING_RULES, type PerformanceWindow, type StakingPerformanceResponse } from '@terra/contracts';
 import { loadNearActionCreators, type StakingSelectorFactory } from '../../../../../features/deed/parts/stakingWalletTx';
 import { detectStakingNetwork } from '../../../../../features/deed/parts/stakingPanelParts';
@@ -18,13 +18,12 @@ import { renderAiBudget } from './parts/aiBudget';
 import { renderChart, type ChartPart } from './parts/chart';
 import { renderConsole, type ConsolePart } from './parts/console';
 import { renderKpiStrip, type KpiStrip } from './parts/kpiStrip';
-import { renderPatronCard } from './parts/patronCard';
 import { renderTopUpCard, type TopUpCardHandle } from './parts/topUpCard';
 import { renderTxTable } from './parts/txTable';
 
 export interface StakingDashboardOptions {
   readonly accountId: string;
-  /** Console amount pre-fill (the `?amount=` of the hash). */
+  /** Console & fallback projection amount pre-fill (the `?amount=` of the hash). */
   readonly amount: number;
   readonly defaultPlanetId?: string;
   readonly fetch?: MeFetchFn;
@@ -35,6 +34,8 @@ export interface StakingDashboardOptions {
   readonly selectorFactory?: StakingSelectorFactory;
   readonly openWindow?: (url: string) => void;
   readonly origin?: string;
+  readonly aiHost?: HTMLElement;
+  readonly onPreviewAmountChange?: (amountNear: number) => void;
   readonly onStakingChange?: (totalStakedNear: number) => void;
   readonly onPerformanceChange?: (perf: StakingPerformanceResponse) => void;
 }
@@ -46,6 +47,8 @@ export interface StakingDashboardHandle {
   setNetwork(network: StakingNetwork): void;
   /** Local dev mode reward multiplier (`10,080` = 1 real min accrues 1 simulated week). */
   setRewardMultiplier(multiplier: number): void;
+  /** Server's fee warmup duration (`overview.rules.feeWarmupMs`) for the hero card's Orbital Patronage popup. */
+  setFeeWarmupMs(ms: number): void;
   dispose(): void;
 }
 
@@ -60,6 +63,9 @@ class StakingDashboard {
   private timer: ReturnType<typeof setInterval> | null = null;
   private wasConnected = false;
   private rewardMultiplier = 1;
+  private feeWarmupMs: number = STAKING_RULES.feeWarmupMs;
+  private previewAmount: number;
+  private previewEdited = false;
   private maturedRefetchKey = '';
   private lastPeriodicAttemptAtMs = 0;
   private bgRefetchInFlight = false;
@@ -72,7 +78,7 @@ class StakingDashboard {
   private network: StakingNetwork;
   private pool: string | undefined;
   private readonly body = el('div', { className: 'ta-stk-dash-body' });
-  private readonly hosts = { topup: el('div'), kpi: el('div'), ai: el('div'), patron: el('div'), tx: el('div') };
+  private readonly hosts = { topup: el('div'), kpi: el('div'), ai: el('div'), tx: el('div') };
   private readonly status = el('p', { className: 'ta-stk-status', role: 'status', dataset: { testid: 'staking-dashboard-status' } });
   private readonly consolePart: ConsolePart;
 
@@ -80,7 +86,10 @@ class StakingDashboard {
     this.now = opts.now ?? Date.now;
     this.doFetch = opts.fetch ?? ((input, init) => fetch(input, init));
     this.network = detectStakingNetwork([opts.accountId], []);
-    this.rewardMultiplier = isBrowserLocalHost(opts.search) ? STAKING_RULES.localRewardMultiplier : 1;
+    this.previewAmount = opts.amount;
+    const isLocal = isBrowserLocalHost(opts.search);
+    this.rewardMultiplier = isLocal ? STAKING_RULES.localRewardMultiplier : 1;
+    this.feeWarmupMs = isLocal ? STAKING_RULES.localFeeWarmupMs : STAKING_RULES.feeWarmupMs;
     this.consolePart = renderConsole(String(opts.amount), {
       onStake: (amount, asset) => void this.act((c) => runStakeAction(c, amount, asset)),
       onCompound: () => void this.compound(),
@@ -95,7 +104,7 @@ class StakingDashboard {
         id: 'staking-dashboard',
         title: 'WEALTH DASHBOARD',
         description:
-          'Authoritative live telemetry for your linked wallet: tracks active NEAR & LST principal, real-time yield accrual, Orbital Patronage Tier, AI compute quota, and wallet-first actions.',
+          'Authoritative live telemetry for your linked wallet: tracks active NEAR & LST principal, real-time yield accrual, Orbital Patronage Tier, wallet-first actions, and AI compute quota.',
       },
       el('h3', { className: 'label ta-stk-h' }, `WEALTH DASHBOARD · ${opts.accountId}`),
     );
@@ -127,6 +136,13 @@ class StakingDashboard {
     if (next === this.rewardMultiplier) return;
     this.rewardMultiplier = next;
     this.tickYield();
+  }
+
+  setFeeWarmupMs(ms: number): void {
+    const next = Number.isFinite(ms) && ms > 0 ? ms : STAKING_RULES.feeWarmupMs;
+    if (next === this.feeWarmupMs) return;
+    this.feeWarmupMs = next;
+    if (this.perf) this.render(this.perf);
   }
 
   dispose(): void {
@@ -164,40 +180,59 @@ class StakingDashboard {
   }
 
   private render(p: StakingPerformanceResponse): void {
-    const openTipKey = getActiveHelpTipKeyIn(this.body);
-    const prevPlanetInput = this.hosts.patron.querySelector<HTMLInputElement>('[data-testid="staking-nominate-planet"]')?.value;
+    const aiHost = this.opts.aiHost ?? this.hosts.ai;
+    const openTipKey = getActiveHelpTipKeyIn(this.body) ?? (this.opts.aiHost ? getActiveHelpTipKeyIn(this.opts.aiHost) : null);
+    const prevPlanetInput = this.hosts.topup.querySelector<HTMLSelectElement | HTMLInputElement>('[data-testid="staking-nominate-planet"]')?.value;
     const nowMs = this.effectiveNowMs(p);
     this.opts.onStakingChange?.(totalStakedNear(p.balances));
     this.opts.onPerformanceChange?.(p);
     this.topUp = renderTopUpCard(p, nowMs, {
+      feeWarmupMs: this.feeWarmupMs,
       onTopUp: (amount) => {
-        this.consolePart.setAmount(String(amount), true);
+        this.consolePart.setAmount(String(amount), false);
         this.consolePart.setStatus(`Top-up amount (${amount} NEAR) pre-filled — click Stake to upgrade.`, 'info');
       },
       onTopUpStake: (amount) => void this.act((c) => runStakeAction(c, String(amount), this.consolePart.selectedAsset())),
+      patronOpts: {
+        accountId: this.opts.accountId,
+        network: this.network,
+        origin: this.opts.origin ?? location.origin,
+        defaultPlanetId: prevPlanetInput ?? this.opts.defaultPlanetId,
+        selectorFactory: this.opts.selectorFactory,
+        openWindow: this.opts.openWindow,
+        onNominate: (planetId) => void this.nominate(planetId),
+      },
     });
-    this.kpi = renderKpiStrip(p, nowMs, { onCompound: () => void this.compound() });
+    this.kpi = renderKpiStrip(p, nowMs, {
+      onCompound: () => void this.compound(),
+      projection: {
+        initialAmountNear: this.previewAmount,
+        edited: this.previewEdited,
+        onAmountChange: (next) => {
+          this.previewEdited = true;
+          this.previewAmount = next;
+          this.opts.onPreviewAmountChange?.(next);
+        },
+      },
+    });
     if (this.chart) this.chart.update(p.series);
     else this.chart = renderChart(p.series, (w) => void this.setWindow(w));
     this.consolePart.setLocalMode(this.network === 'mock');
     this.consolePart.update(p, nowMs);
     this.hosts.topup.replaceChildren(this.topUp.el);
     this.hosts.kpi.replaceChildren(this.kpi.el);
-    this.hosts.ai.replaceChildren(renderAiBudget(p.aiBudget, p.perks.tier));
-    this.hosts.patron.replaceChildren(
-      renderPatronCard(p, {
-        accountId: this.opts.accountId, network: this.network, origin: this.opts.origin ?? location.origin,
-        defaultPlanetId: prevPlanetInput ?? this.opts.defaultPlanetId,
-        selectorFactory: this.opts.selectorFactory, openWindow: this.opts.openWindow,
-        onNominate: (planetId) => void this.nominate(planetId),
-      }),
-    );
     this.hosts.tx.replaceChildren(renderTxTable(p.txs));
+    aiHost.replaceChildren(renderAiBudget(p.aiBudget, p.perks.tier));
     if (this.body.childElementCount === 0) {
-      this.body.replaceChildren(this.hosts.topup, this.hosts.kpi, this.hosts.ai, this.chart.el, this.hosts.patron, this.consolePart.el, this.hosts.tx);
+      if (this.opts.aiHost) {
+        this.body.replaceChildren(this.hosts.topup, this.hosts.kpi, this.consolePart.el, this.chart.el, this.hosts.tx);
+      } else {
+        this.body.replaceChildren(this.hosts.topup, this.hosts.kpi, this.consolePart.el, this.chart.el, this.hosts.tx, this.hosts.ai);
+      }
     }
     this.syncBusyUi();
     reopenHelpTipIn(this.body, openTipKey);
+    if (this.opts.aiHost) reopenHelpTipIn(this.opts.aiHost, openTipKey);
     this.tickYield();
   }
 
@@ -205,12 +240,10 @@ class StakingDashboard {
     this.consolePart.setBusy(this.inFlight);
     this.topUp?.setBusy(this.inFlight);
     this.kpi?.setBusy(this.inFlight);
-    const nomBtn = this.hosts.patron.querySelector<HTMLButtonElement>('[data-testid="staking-nominate-btn"]');
-    if (nomBtn) nomBtn.disabled = this.inFlight;
   }
 
   private setPatronStatus(message: string, tone: 'ok' | 'error' | 'info'): void {
-    const node = this.hosts.patron.querySelector<HTMLElement>('[data-testid="staking-patron-status"]');
+    const node = this.hosts.topup.querySelector<HTMLElement>('[data-testid="staking-patron-status"]');
     if (!node) return;
     node.hidden = !message;
     node.textContent = message;
@@ -234,7 +267,7 @@ class StakingDashboard {
 
   private async nominate(planetId: string): Promise<void> {
     if (!planetId.trim()) {
-      const msg = 'Enter a public planet ID to nominate.';
+      const msg = 'Select one of the three canonical planets to nominate.';
       this.consolePart.setStatus(msg, 'error');
       this.setPatronStatus(msg, 'error');
       return;
@@ -341,6 +374,7 @@ export function renderStakingDashboard(opts: StakingDashboardOptions): StakingDa
     ready: d.load(),
     setNetwork: (n) => d.setNetwork(n),
     setRewardMultiplier: (m) => d.setRewardMultiplier(m),
+    setFeeWarmupMs: (ms) => d.setFeeWarmupMs(ms),
     dispose: () => d.dispose(),
   };
 }

@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process';
+import { CANONICAL_PLANETS } from '@terra/contracts';
 import type { BrowserContext, Page } from '@playwright/test';
 import { devConsole, expect, expectNoPageErrors, hostMode, loadScenario, openColonyTab, test } from './harness';
 import { ROOT } from './harness/ports';
@@ -58,8 +59,12 @@ test('@hack 2. /me.html#staking?amount=50 logged out: public preview, Sim APY, 4
   await expect(p.getByTestId('staking-preview')).toBeVisible({ timeout: 30_000 });
   await expect(p.getByTestId('me-auth-prompt')).toHaveCount(0);
   await expect(p.getByTestId('staking-apy-badge')).toContainText(/APY/);
-  await expect(p.getByTestId('staking-tier-matrix')).toHaveAttribute('data-reached-tier', '2');
+  await expect(p.getByTestId('staking-intro-banner')).toBeVisible();
+  await expect(p.getByTestId('staking-calculator-block')).toHaveCount(0);
   await expect(p.getByTestId('staking-projection')).toBeVisible();
+  await p.getByTestId('help-tip-btn-staking-tiers').hover();
+  await expect(p.getByTestId('help-tip-panel-staking-tiers')).toBeVisible();
+  await expect(p.getByTestId('staking-tier-matrix')).toHaveAttribute('data-reached-tier', '2');
   await expect(p.getByTestId('staking-ecosystem')).toBeVisible();
   await expect(p.getByTestId('staking-connect-cta')).toHaveText(/Connect NEAR Wallet to Stake 50 NEAR/);
   await p.getByTestId('staking-amount-input').fill('500');
@@ -160,27 +165,33 @@ test('5. unstake 45 within 7 days: 25 bp exit fee, instant downgrade to Tier 0; 
   expect(Number(done.body.position.unbonding)).toBe(0);
 });
 
-test('6. scale to 550 NEAR on the public planet: overtakes the 500 NEAR rival as King-of-the-Hill Lead Patron; Tier 4 HUD; slots 12', async () => {
+test('6. scale to 550 NEAR on a canonical public planet: overtakes the 500 NEAR rival; sovereign NFT planets rejected (400); Tier 4 HUD; slots 12', async () => {
   test.setTimeout(120_000);
   serverOnly();
   const api = page.request;
-  const before = await getJson<{ leadPatron: { accountId: string } | null }>(api, `/v1/near/staking/prestige?planetId=${planetId}`);
+  const canonPlanetId = CANONICAL_PLANETS.temperate.id;
+  const before = await getJson<{ leadPatron: { accountId: string } | null }>(api, `/v1/near/staking/prestige?planetId=${canonPlanetId}`);
   expect(before.body.leadPatron?.accountId).toBe(RIVAL);
   expect((await postJson(api, '/v1/near/stake', { accountId: wallet, pool: POOL, amount: '545' })).status).toBe(200);
+  // Paid sovereign NFT / non-canonical planets are rejected from Planetary Patronage (400)
+  expect((await postJson(api, '/v1/near/staking/patron/nominate', { accountId: wallet, planetId: 'pl_sovereign_nft_01' })).status).toBe(400);
+
   const me = await context.newPage();
   await me.goto('/me.html?as=w28#staking');
   await expect(me.getByTestId('staking-dashboard')).toBeVisible({ timeout: 30_000 });
-  await me.getByTestId('staking-nominate-planet').fill(planetId);
+  const options = await me.getByTestId('staking-nominate-planet').locator('option').evaluateAll((els) => els.map((o) => (o as HTMLOptionElement).value));
+  expect(options).toEqual([CANONICAL_PLANETS.desert.id, CANONICAL_PLANETS.ocean.id, CANONICAL_PLANETS.temperate.id]);
+  await me.getByTestId('staking-nominate-planet').selectOption(canonPlanetId);
   await me.getByTestId('staking-nominate-btn').click();
-  await expect(me.getByTestId('staking-console-status')).toContainText(`Lead Patron of ${planetId}`, { timeout: 15_000 });
-  await expect(me.getByTestId('staking-patron-planets')).toContainText(planetId, { timeout: 15_000 });
+  await expect(me.getByTestId('staking-console-status')).toContainText(`Lead Patron of Granite Hollow (${canonPlanetId})`, { timeout: 15_000 });
+  await expect(me.getByTestId('staking-patron-planets')).toContainText(canonPlanetId, { timeout: 15_000 });
   await me.close();
-  const after = await getJson<{ leadPatron: { accountId: string; carrierName: string; protocolFeeShareBp: number } }>(api, `/v1/near/staking/prestige?planetId=${planetId}`);
+  const after = await getJson<{ leadPatron: { accountId: string; carrierName: string; protocolFeeShareBp: number } }>(api, `/v1/near/staking/prestige?planetId=${canonPlanetId}`);
   expect(after.body.leadPatron).toMatchObject({ accountId: wallet, protocolFeeShareBp: 1500 });
   expect(after.body.leadPatron.carrierName).toMatch(/^ISS /);
   const perks = await walletPerks(api, wallet);
   expect(perks.tier).toBe(4);
-  expect(perks.leadPatronPlanetIds).toContain(planetId);
+  expect(perks.leadPatronPlanetIds).toContain(canonPlanetId);
   const full = await getJson<{ perks: { maxAiColonySlots: number } }>(api, `/v1/near/staking/perks?accountId=${wallet}`);
   expect(full.body.perks.maxAiColonySlots).toBe(12);
   await page.reload();
@@ -261,6 +272,8 @@ test('/me.html?host=local rework: bold white+orange STAKING tab, standalone Top-
   await expect(me.getByTestId('staking-dashboard')).toBeVisible({ timeout: 30_000 });
 
   await expect(me.locator('.ta-me-tab')).toHaveText(['PILOT', 'STAKING', 'PROGRESS', 'PLANETS', 'HISTORY', 'ACHIEVEMENTS', 'PLAY']);
+  await expect(me.getByTestId('me-tab-pilot')).toHaveAttribute('aria-current', 'true');
+  await expect(me.getByTestId('me-tab-pilot')).toHaveClass(/is-active/);
   const stakingTabStyle = await me.getByTestId('me-tab-staking').evaluate((node) => {
     const cs = getComputedStyle(node);
     return { weight: Number(cs.fontWeight), color: cs.color, shadow: cs.textShadow };
@@ -268,6 +281,19 @@ test('/me.html?host=local rework: bold white+orange STAKING tab, standalone Top-
   expect(stakingTabStyle.weight).toBeGreaterThanOrEqual(700);
   expect(stakingTabStyle.color).toBe('rgb(242, 244, 247)');
   expect(stakingTabStyle.shadow).not.toBe('none');
+
+  // Clicking a nav tab activates it immediately, updates hash, and scrolls smoothly instead of teleporting
+  await me.getByTestId('me-tab-planets').click();
+  await expect(me.getByTestId('me-tab-planets')).toHaveAttribute('aria-current', 'true');
+  await expect(me.getByTestId('me-tab-planets')).toHaveClass(/is-active/);
+  await expect.poll(() => new URL(me.url()).hash).toBe('#planets');
+  await expect.poll(async () => (await me.getByTestId('me-section-planets').boundingBox())?.y ?? 9999).toBeLessThan(260);
+  await me.getByTestId('me-tab-staking').click();
+  await expect(me.getByTestId('me-tab-staking')).toHaveAttribute('aria-current', 'true');
+
+  // Patron selector restricts nominations exclusively to the 3 canonical worlds
+  await me.getByTestId('staking-planet-chip-desert').click();
+  await expect(me.getByTestId('staking-nominate-planet')).toHaveValue(CANONICAL_PLANETS.desert.id);
 
   // Standalone clickable Top-Up block outside KPI strip + 1-click stake + live Ecosystem TVL sync
   await expect(me.getByTestId('staking-ecosystem-total')).toHaveText('125,000 NEAR');
@@ -278,14 +304,18 @@ test('/me.html?host=local rework: bold white+orange STAKING tab, standalone Top-
   await expect(me.getByTestId('staking-ecosystem-total')).toHaveText('125,010 NEAR');
   await expect(me.getByTestId('me-ai-badge')).toHaveText('MANAGED STAKER AI ACTIVE');
 
-  // Top-left ? tips on Staking & AI blocks + persistence across preview amount edits
+  // Top-left ? tips on Staking & AI blocks + hover Orbital Patronage popup + persistence across preview amount edits
+  await me.getByTestId('help-tip-btn-staking-patronage').hover();
+  await expect(me.getByTestId('help-tip-panel-staking-patronage')).toBeVisible();
+  await expect(me.getByTestId('staking-active-tier-matrix')).toBeVisible();
+
   await me.getByTestId('help-tip-btn-ai-settings').click();
   await expect(me.getByTestId('help-tip-panel-ai-settings')).toBeVisible();
-  await me.getByTestId('help-tip-btn-staking-projection').click();
+  await me.getByTestId('help-tip-btn-staking-income').click();
   await expect(me.getByTestId('help-tip-panel-ai-settings')).toBeHidden();
-  await expect(me.getByTestId('help-tip-panel-staking-projection')).toBeVisible();
+  await expect(me.getByTestId('help-tip-panel-staking-income')).toBeVisible();
   await me.getByTestId('staking-amount-input').fill('200');
-  await expect(me.getByTestId('help-tip-panel-staking-projection')).toBeVisible();
+  await expect(me.getByTestId('help-tip-panel-staking-income')).toBeVisible();
 
   // Unstake, faucet, profits, inline rename, sign-out, and local sign-in all work without a backend
   await me.getByTestId('staking-console-amount').fill('5');
@@ -306,7 +336,7 @@ test('/me.html?host=local rework: bold white+orange STAKING tab, standalone Top-
   await me.getByTestId('pilot-provider-dialog').getByTestId('continue-near').click();
   await me.getByTestId('near-wallet-modal').getByTestId('near-wallet-meteor').click();
   await expect(me.getByTestId('me-pilot-handle')).toHaveText('Meteor Wallet');
-  await expect(me.getByTestId('staking-kpi-total')).toContainText('0.0000 NEAR');
+  await expect(me.getByTestId('staking-kpi-total')).toContainText('0.00 NEAR');
 
   await me.getByTestId('pilot-sign-out').click();
   await me.getByTestId('me-tab-pilot').click();

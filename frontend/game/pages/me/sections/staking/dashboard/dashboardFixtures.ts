@@ -1,5 +1,5 @@
 // Schema-valid `StakingPerformanceResponse` fixtures shared by the dashboard specs (and mirrored by the Playwright mock).
-import type { StakingPerformanceResponse } from '@terra/contracts';
+import { CANONICAL_PLANETS, type StakingPerformanceResponse } from '@terra/contracts';
 import { STAKING_TIERS } from '@terra/contracts/staking/tiers';
 
 export const NOW = 1_800_000_000_000;
@@ -28,7 +28,7 @@ export function makePerformance(over: Partial<StakingPerformanceResponse> = {}, 
       dailyAiCallsUsed: 10, dailyAiBudgetUsd: 0.5, freeTrialTurnsRemaining: 0, feeWarmupReadyAtMs: null, earlyExitFeeBp: 25,
       earlyExitFreeAtMs: NOW + 5 * DAY, stakedSinceMs: NOW - 2 * DAY, gasMultiplier: tier.gasMultiplier, sweepSeconds: tier.sweepSeconds,
       botKeys: tier.botKeys, guildRadarLeadMs: tier.guildRadarLeadMs, daoVoteWeightBp: tier.daoVoteWeightBp,
-      stallRoyaltyBonusBp: tier.stallRoyaltyBonusBp, leadPatronPlanetIds: ['dune'], nextTierMinNear: STAKING_TIERS[3]!.minStakeNear,
+      stallRoyaltyBonusBp: tier.stallRoyaltyBonusBp, leadPatronPlanetIds: [CANONICAL_PLANETS.desert.id], nextTierMinNear: STAKING_TIERS[3]!.minStakeNear,
     },
     aiBudget: {
       model: 'z-ai/glm-5.3-flash', mode: 'tee', dailyBudgetUsd: 0.5, dailyBudgetUsedUsd: 0.1, dailyCallLimit: 90, dailyCallsUsed: 10,

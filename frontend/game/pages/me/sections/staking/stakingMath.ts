@@ -64,7 +64,7 @@ export const formatPct = (bp: number): string => `${(bp / 100).toFixed(2)}%`;
 
 export function formatNear(n: number): string {
   if (!Number.isFinite(n)) return '—';
-  const digits = n >= 100 ? 2 : n >= 1 ? 3 : 4;
+  const digits = n === 0 || Math.abs(n) >= 1 ? 2 : 4;
   return `${n.toFixed(digits)} NEAR`;
 }
 

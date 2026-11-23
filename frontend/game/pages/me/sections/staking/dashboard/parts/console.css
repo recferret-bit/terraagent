@@ -1,0 +1,119 @@
+.ta-stk-console-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  align-items: stretch;
+}
+
+.ta-stk-console-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.ta-stk-console-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  min-width: 0;
+  background: var(--ta-deep);
+  border: 1px solid var(--ta-seam-2);
+}
+
+.ta-stk-console-pane-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ta-stk-console-fields {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) minmax(130px, 1fr);
+  gap: 10px;
+}
+
+.ta-stk-console-field {
+  min-width: 0;
+}
+
+.ta-stk-console-control {
+  width: 100%;
+  min-width: 0;
+  min-height: 40px;
+  padding: 8px 12px;
+  font-family: var(--ta-font-mono);
+  font-size: 14px;
+}
+
+.ta-stk-console-free {
+  font-size: 10px;
+  padding: 2px 8px;
+  color: var(--ta-terra);
+  border-color: color-mix(in srgb, var(--ta-terra) 55%, var(--ta-seam-3));
+  background: color-mix(in srgb, var(--ta-terra) 10%, transparent);
+}
+
+.ta-stk-console-meta {
+  margin: 0;
+}
+
+.ta-stk-console-profit-row {
+  display: grid;
+  grid-template-columns: minmax(115px, 140px) minmax(0, 1fr);
+  gap: 10px;
+  align-items: end;
+}
+
+.ta-stk-console-profit-row .ta-stk-console-field {
+  min-width: 0;
+}
+
+@media (max-width: 560px) {
+  .ta-stk-console-profit-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+.ta-stk-console-quote {
+  margin: 0;
+}
+
+.ta-stk-console-quote:empty {
+  display: none;
+}
+
+.ta-stk-console-status {
+  padding: 8px 12px;
+  background: color-mix(in srgb, var(--ta-blue) 8%, var(--ta-deep));
+  border-left: 3px solid var(--ta-blue-hi);
+}
+
+.ta-stk-console-status[data-tone='ok'] {
+  background: color-mix(in srgb, var(--ta-terra) 10%, var(--ta-deep));
+  border-left-color: var(--ta-terra);
+  color: var(--ta-hull);
+}
+
+.ta-stk-console-status[data-tone='error'] {
+  background: color-mix(in srgb, var(--ta-fault) 12%, var(--ta-deep));
+  border-left-color: var(--ta-fault);
+  color: var(--ta-fault-text);
+}
+
+.ta-stk-dash-body span[hidden] {
+  display: none;
+}
+
+@media (max-width: 820px) {
+  .ta-stk-console-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .ta-stk-console-fields {
+    grid-template-columns: 1fr;
+  }
+}

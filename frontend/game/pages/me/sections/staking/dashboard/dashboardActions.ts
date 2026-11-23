@@ -1,7 +1,13 @@
 // Dashboard actions (stake / unstake / withdraw / compound / stake-profits). `mock`: wallet-first REST. Real network:
 // the in-game one-tx wallet flows (`stakingWalletTx`, active `selector.wallet()`); specs inject a recording
 // `selectorFactory`, nothing here signs or sends by itself.
-import type { StakingAsset, StakingPerformanceResponse } from '@terra/contracts';
+import {
+  formatPatronagePlanetLabel,
+  isPatronageEligiblePlanetId,
+  PATRONAGE_NON_ELIGIBLE_MESSAGE,
+  type StakingAsset,
+  type StakingPerformanceResponse,
+} from '@terra/contracts';
 import type { MeFetchFn } from '../../../api';
 import { DEFAULT_STAKING_POOLS } from '../../../../../features/deed/parts/stakingPanelParts';
 import { LST_CONTRACTS, sendStakingWalletTx, type StakingSelectorFactory, type StakingWalletAction } from '../../../../../features/deed/parts/stakingWalletTx';
@@ -97,7 +103,8 @@ export function runCompoundAction(
 /** King-of-the-Hill Lead Patron nomination (`POST /v1/near/staking/patron/nominate`). */
 export async function runNominatePlanetAction(c: ActionContext, rawPlanetId: string): Promise<ActionResult> {
   const planetId = rawPlanetId.trim();
-  if (!planetId) return { ok: false, message: 'Enter a public planet ID to nominate.' };
+  if (!planetId) return { ok: false, message: 'Select one of the three canonical planets to nominate.' };
+  if (!isPatronageEligiblePlanetId(planetId)) return { ok: false, message: PATRONAGE_NON_ELIGIBLE_MESSAGE };
   const res = await postJson(c.doFetch, c.auth, '/v1/near/staking/patron/nominate', { accountId: c.accountId, planetId });
   if (res.status === 404) {
     const errMsg = apiErrorMessage(res.body, '');
@@ -106,11 +113,12 @@ export async function runNominatePlanetAction(c: ActionContext, rawPlanetId: str
   }
   if (!res.ok) return { ok: false, message: apiErrorMessage(res.body, `Nomination failed (${res.status || 'network'}).`) };
   const body = (res.body ?? {}) as { isLeadPatron?: boolean; leadPatron?: { accountId?: string; carrierName?: string } | null };
+  const worldLabel = formatPatronagePlanetLabel(planetId);
   return {
     ok: true,
     message: body.isLeadPatron
-      ? `You are now Lead Patron of ${planetId} (${body.leadPatron?.carrierName ?? 'ISS'}).`
-      : `Backed ${planetId} in the Lead Patron race (seat requires highest active ≥ 500 NEAR stake).`,
+      ? `You are now Lead Patron of ${worldLabel} (${body.leadPatron?.carrierName ?? 'ISS'}).`
+      : `Backed ${worldLabel} in the Lead Patron race (seat requires highest active ≥ 500 NEAR stake).`,
   };
 }
 

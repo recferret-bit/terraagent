@@ -1,10 +1,11 @@
-import type {
-  DeedView,
-  StakerPerksInfo,
-  StakingAsset,
-  StakingPoolInfo,
-  StakingPositionDto,
-  StakingStatusResponse,
+import {
+  isPatronageEligiblePlanetId,
+  type DeedView,
+  type StakerPerksInfo,
+  type StakingAsset,
+  type StakingPoolInfo,
+  type StakingPositionDto,
+  type StakingStatusResponse,
 } from '@terra/contracts';
 import type { Disposable, FeatureContext } from '../../core/registry/types';
 import { createDeedTracker } from './deedTracker';
@@ -239,10 +240,14 @@ export class StakingPanel implements Disposable {
       w28: this.w28,
       fetchFn: this.fetchFn,
       accountId: this.serverAccountId ?? this.claimedByAccountId ?? this.currentDeed?.ownerAccountId,
-      planetId: this.currentDeed?.planetId ?? this.ctx.services?.session?.planetId?.(),
+      planetId: this.targetPlanetId(),
       statusMsgEl: this.statusMsgEl,
       onNominated: () => this.refreshFromServer(),
     });
+  }
+
+  private targetPlanetId(): string | undefined {
+    return this.currentDeed?.planetId ?? this.ctx.services?.session?.planetId?.() ?? undefined;
   }
 
   dispose(): void {
@@ -304,7 +309,10 @@ export class StakingPanel implements Disposable {
       ? 'Compound is not available on this server yet'
       : 'Roll accrued yield into principal. 0 % fee, keeps your 7-day maturity clock.';
     const perksTier = this.perks && 'tier' in this.perks ? Number(this.perks.tier) : 0;
-    const tier4Eligible = this.w28 && (perksTier >= 4 || totalStakedNear >= 500);
+    const tier4Eligible =
+      this.w28
+      && isPatronageEligiblePlanetId(this.targetPlanetId())
+      && (perksTier >= 4 || totalStakedNear >= 500);
     this.nominateBtnEl.hidden = !tier4Eligible;
     const now = this.nowFn();
     const feeBp = this.w28 ? pendingEarlyExitBp(pos, this.perks, now) : 0;
