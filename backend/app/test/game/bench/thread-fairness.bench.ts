@@ -3,7 +3,9 @@
  * normal planet. Reports command -> ack latency and the delta cadence of the normal (subscribed) planet.
  *
  *   SWC_NODE_PROJECT=shared/tsconfig.base.json node --import @swc-node/register/esm-register \
- *     backend/app/test/game/bench/thread-fairness.bench.ts [seconds]
+ *     backend/app/test/game/bench/thread-fairness.bench.ts [seconds] [watched]
+ *
+ * `watched` also subscribes to the slow planet (players on it: never demoted, the worst case for its neighbour).
  */
 import 'reflect-metadata';
 import { GamePlanets } from '../../../src/game/game-planets.service';
@@ -11,6 +13,7 @@ import { SimThreadPool } from '../../../src/game/sim-thread-pool';
 
 const SLOW = new URL('../fixtures/slow-module.ts', import.meta.url).href;
 const seconds = Number(process.argv[2] ?? 10);
+const watched = process.argv[3] === 'watched';
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 function pct(xs: number[], p: number): number {
@@ -30,6 +33,7 @@ async function main(): Promise<void> {
   let firstTick = -1;
   let lastTick = -1;
   g.subscribe('pl_fast_bench', { onDelta: (d) => { deltaAt.push(performance.now()); if (firstTick < 0) firstTick = d.fromTick; lastTick = d.toTick; } });
+  if (watched) g.subscribe('pl_slow_bench', {});
   await sleep(1500); // settle
   deltaAt.length = 0;
   firstTick = -1;
@@ -46,6 +50,7 @@ async function main(): Promise<void> {
   const gaps = deltaAt.slice(1).map((t, i) => t - deltaAt[i]!);
   console.log(JSON.stringify({
     seconds: Math.round(wall * 10) / 10,
+    slowPlanetWatched: watched,
     ackMs: summary(acks),
     unanswered: n - acks.length,
     deltaGapMs: summary(gaps),
