@@ -1,3 +1,4 @@
+import { notePlayerCommand } from '../../../design/analytics/play';
 import type { PlanetState, SimCommand } from '@terra/sim';
 import type { GameView } from '../../core/registry/types';
 
@@ -45,6 +46,7 @@ let commandSeq = 0;
  * never mutates world state itself and never sends the same command twice (FF-02).
  */
 export function dispatchCommand(sink: CommandSink, kind: string, args: unknown, colonyIndex: number): DispatchedCommand {
+  notePlayerCommand(kind, args);
   const commandId = `${kind}_${++commandSeq}`;
   let out: unknown;
   if (sink.sendCommand) out = sink.sendCommand(kind, args);

@@ -1,4 +1,5 @@
 import type { Disposable, FeatureContext, GameView } from '../../core/registry/types';
+import { noteUiAction } from '../../../design/analytics/ui';
 import { isGameInputBlocked } from '../../core/input/gameInputBlock';
 import { releaseArchetypeThumbs, retainArchetypeThumbs } from '../shared/archetypeThumb';
 import { type MenuTier, presentTiers, rememberTier, renderTierBar, setTierVisible } from '../shared/menuCards';
@@ -168,6 +169,7 @@ export class ConstructionMenu implements Disposable {
 
   private activateCard(building: BuildingKind): void {
     if (this.isReadOnly()) return;
+    noteUiAction('build', 'select_building', building);
     this.startPlacement(building);
     if (this.externalStartPlacement && this.externalStartPlacement !== this.ctx.services.startPlacement) {
       this.externalStartPlacement(building);

@@ -52,7 +52,10 @@ export class GameHud {
       });
     };
     this.pause.querySelectorAll<HTMLButtonElement>('[data-fps-cap]').forEach((b) => {
-      b.onclick = () => { setFpsCap(Number(b.dataset.fpsCap) as typeof FPS_LIMITS[number]); syncFps(); };
+      b.onclick = () => {
+        setFpsCap(Number(b.dataset.fpsCap) as typeof FPS_LIMITS[number]);
+        syncFps();
+      };
     });
     this.offFpsCap = onFpsCapChange((cap) => syncFps(cap));
     (this.pause.querySelector('#p-resume') as HTMLElement).onclick = cb.onResume;

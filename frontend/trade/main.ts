@@ -1,3 +1,4 @@
+import { bootProductAnalytics } from '../design/analytics/boot';
 import '../design/css/tokens.css';
 import '../design/css/base.css';
 import './trade.css';
@@ -105,4 +106,5 @@ async function boot(): Promise<void> {
   (window as unknown as { __trade: unknown }).__trade = page;
 }
 
+bootProductAnalytics('trade');
 void boot();

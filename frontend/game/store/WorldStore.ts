@@ -1,4 +1,5 @@
 import { flagsFromList, newId, type AgentDecisionFeedItemV1, type AwayDigestV1, type BuildingCatalogEntry, type CargoStatusPayload, type DeedUpdatedPayload, type DirectorKeyStatusPayload, type GuildArrivedPayload, type GuildDepartedPayload, type MarketBookPayload, type MarketTradePayload, type ServerMessage, type SimEventWire, type SimInputFeedItemV1, type TreasuryProposalPush } from '@terra/contracts';
+import { notePlayerCommand } from '../../design/analytics/play';
 import { compileData, TICK_MS, type BalanceOverrides } from '@terra/sim';
 import { digestFromWelcome } from './awayWelcome';
 import { ownBytes } from './bytes';
@@ -178,6 +179,7 @@ export class WorldStore {
    */
   sendCommand(input: CommandInput | unknown, maybeArgs?: unknown): string {
     const { kind, args } = normalizeWorldCommand(input, maybeArgs);
+    notePlayerCommand(kind, args);
     const id = newId('cm');
     this.transport.send({ t: 'cmd', id, d: { kind, args } });
     this.notifySent(id, kind, args);

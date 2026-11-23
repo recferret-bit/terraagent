@@ -1,4 +1,5 @@
 import type { NearAuthChallengeResponse, NearAuthVerifyRequest } from '@terra/contracts';
+import { failNearWalletAuth } from '../analytics/auth';
 import { requestNearAuthChallenge } from './nearAuthApi';
 
 const TESTNET_ACCOUNT_RE = /^(([a-z\d]+[-_])*[a-z\d]+\.)+testnet$/;
@@ -182,6 +183,7 @@ export function renderNearCliPanel(panelHost: HTMLElement, opts: NearCliPanelOpt
       updateCmdText();
     })
     .catch((e: unknown) => {
+      failNearWalletAuth(e);
       dom.cmdCode.textContent = 'Challenge unavailable.';
       showError(e instanceof Error ? e.message : 'Could not fetch NEP-413 challenge.');
     });

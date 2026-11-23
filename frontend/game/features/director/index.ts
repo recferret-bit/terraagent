@@ -40,7 +40,7 @@ let activeDirectorPanel: DirectorPanel | null = null;
 export default defineFeature({
   id: 'director',
   wave: 'W16',
-  analytics: ['director.policy_changed'],
+  analytics: ['director_policy_changed'],
   hud: [{
     id: 'director-status',
     slot: 'top-right',
@@ -58,7 +58,7 @@ export default defineFeature({
           if (isReadOnlySpectator(ctx.services)) return;
           const send = ctx.services.sendCommand ?? ctx.services.store?.sendCommand;
           if (send) void send('setDirectorPolicy', patch);
-          ctx.services.track?.('director.policy_changed', {
+          ctx.services.track?.('director_policy_changed', {
             risk: patch.risk ?? 'conservative',
             preset: patch.preset ?? 'resources',
           });

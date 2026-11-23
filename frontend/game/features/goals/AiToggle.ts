@@ -1,4 +1,5 @@
 import type { FeatureContext } from '../../core/registry/types';
+import { noteUiAction } from '../../../design/analytics/ui';
 import { patchSharedAutopilotState, subscribeSharedAutopilotState } from '../shared/aiAutopilotState';
 import { isReadOnlySpectator, ownColonyIndex, viewColony } from '../shared/colony';
 
@@ -39,6 +40,7 @@ export class AiToggle {
     if (isReadOnlySpectator(this.ctx.services)) return;
     const send = this.ctx.services.sendCommand ?? this.ctx.services.store?.sendCommand;
     if (!send) return;
+    noteUiAction('hq_ai', next ? 'ai_enable' : 'ai_disable');
     void send('setAiEnabled', { enabled: next });
   }
 

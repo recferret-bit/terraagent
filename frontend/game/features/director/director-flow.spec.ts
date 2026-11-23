@@ -103,7 +103,7 @@ describe('W16-45 director UI flow — live policy sync & superseding', () => {
     riskSelect!.dispatchEvent(new Event('change'));
     expect(sent).toHaveLength(1);
     expect(sent[0]).toMatchObject({ kind: 'setDirectorPolicy', args: { risk: 'risky' } });
-    expect(tracked[0]?.name).toBe('director.policy_changed');
+    expect(tracked[0]?.name).toBe('director_policy_changed');
 
     inst?.update?.(viewWithPolicy('risky', 3, 2));
     expect(summary?.textContent).toContain('risky · resources · 35% commit / 15% reserve');

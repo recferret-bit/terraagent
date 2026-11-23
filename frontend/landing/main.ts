@@ -1,6 +1,8 @@
 // Landing page entry: synchronizes lightweight copy, stats, resource technical sheet, scenarios, economics,
 // protocol schematic, contracts board, and roadmap first; then defers header auth and loads all 3D/WebGL stages
 // with Faction-Plate preloaders after initial main-content paint.
+import { bootProductAnalytics } from '../design/analytics/boot';
+import { bindLandingPlanets } from '../design/analytics/play';
 import { initHeroCopy } from './sections/heroCopy';
 import { initLiveStats } from './sections/liveStats';
 import { initResourceSheet } from './resources';
@@ -50,4 +52,6 @@ class LandingPage {
   }
 }
 
+bootProductAnalytics('landing');
+bindLandingPlanets();
 new LandingPage().boot();

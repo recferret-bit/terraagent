@@ -1,3 +1,4 @@
+import { noteBootFailure, noteColonyEntered, noteDescentStarted } from '../../../design/analytics/play';
 import './bootOnline.css';
 import { formatQueueStatusMessage, type QueuedHomeStatus } from './joinQueueFlow';
 import {
@@ -145,6 +146,7 @@ export class BootOverlay {
    * message with a Retry button; resolves true when the player clicks Retry, false when disposed first.
    */
   showError(message: string): Promise<boolean> {
+    noteBootFailure(message);
     this.showSplash(message);
     this.splashEl.dataset.error = 'true';
     this.settleRetry?.(false);
@@ -233,6 +235,7 @@ export class BootOverlay {
   showDescent(update: DescentTelemetryUpdate): void {
     if (this.currentPhase !== 'descent') {
       this.descentCount++;
+      noteDescentStarted();
     }
     this.currentPhase = 'descent';
     this.hideQueueStatus();
@@ -255,6 +258,7 @@ export class BootOverlay {
       this.colonyEl.setAttribute('data-planet-id', planetId);
       this.colonyEl.dataset.planetId = planetId;
     }
+    noteColonyEntered();
     this.currentPhase = 'colony';
     this.hideQueueStatus();
     this.splashEl.hidden = true;

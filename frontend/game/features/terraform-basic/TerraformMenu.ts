@@ -1,4 +1,5 @@
 import { DISMANTLE_REFUND_RATE, REPAIR_COST_RATE } from '@terra/sim';
+import { noteUiAction } from '../../../design/analytics/ui';
 import { isDockPaneShown } from '../../core/hud/CommandDock';
 import { makeBtn, makeDiv, makeSpan } from '../shared/dom';
 import { isHotkeyPress } from '../shared/hotkeys';
@@ -90,8 +91,13 @@ export class TerraformMenu {
   /** Clicking the armed op again disarms the brush. */
   private toggleOp(op: TerraformPrimaryOp): void {
     if (this.opts.isReadOnly?.()) return;
-    if (this.brush.isArmed() && this.brush.getSelectedOp() === op) this.brush.disarm();
-    else this.brush.selectOp(op);
+    if (this.brush.isArmed() && this.brush.getSelectedOp() === op) {
+      noteUiAction('terraform', 'disarm_op', op);
+      this.brush.disarm();
+    } else {
+      noteUiAction('terraform', 'select_op', op);
+      this.brush.selectOp(op);
+    }
     this.render();
   }
 

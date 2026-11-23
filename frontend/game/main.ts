@@ -1,7 +1,11 @@
+import { bootProductAnalytics } from '../design/analytics/boot';
+import { noteBootFailure } from '../design/analytics/play';
 import { initCrt } from '@terra/render/ui/crt';
 import { lazyStart } from './app/lazyStart';
 import { onlineMode, type OnlineMode } from './app/online/onlineMode';
 import { isProductionBuild } from './core/buildEnv';
+
+bootProductAnalytics('play');
 
 const app = document.getElementById('app')!;
 let activeDispose: (() => void) | null = null;
@@ -23,22 +27,32 @@ if (import.meta.hot) {
 
 function startOnline(el: HTMLElement, m: OnlineMode): () => void {
   return lazyStart(() => import('./app/online/OnlineSession'), ({ OnlineSession }) => {
-    const s = new OnlineSession(el, m, {
-      onReturnToOrbit: (kind) => {
-        history.replaceState(null, '', `${location.pathname}?planet=${kind}`);
-        mountFromCurrentUrl();
-      },
-    });
-    (window as unknown as { __online?: unknown; __game?: unknown }).__online = s;
-    (window as unknown as { __online?: unknown; __game?: unknown }).__game = s;
-    return s;
+    try {
+      const s = new OnlineSession(el, m, {
+        onReturnToOrbit: (kind) => {
+          history.replaceState(null, '', `${location.pathname}?planet=${kind}`);
+          mountFromCurrentUrl();
+        },
+      });
+      (window as unknown as { __online?: unknown; __game?: unknown }).__online = s;
+      (window as unknown as { __online?: unknown; __game?: unknown }).__game = s;
+      return s;
+    } catch (err) {
+      noteBootFailure(err instanceof Error ? err.message : 'boot');
+      throw err;
+    }
   });
 }
 
 function startPrototype(el: HTMLElement): () => void {
   return lazyStart(() => import('./app/Game'), ({ Game }) => {
-    const g = new Game(el);
-    (window as unknown as { __game?: unknown }).__game = g;
-    return g;
+    try {
+      const g = new Game(el);
+      (window as unknown as { __game?: unknown }).__game = g;
+      return g;
+    } catch (err) {
+      noteBootFailure(err instanceof Error ? err.message : 'boot');
+      throw err;
+    }
   });
 }

@@ -3,6 +3,7 @@ import type {
   RevokeTradeKeyResponse, TradeAllowanceUpdate, TradeBalancesResponse, TradeBoardResponse, TradeBookResponse, TradeFillsResponse, TradeKeyListResponse,
   TradeKeyView, TradeOrdersResponse, TradeOverviewResponse, TradePairsResponse, TradePolicyResponse,
 } from '@terra/contracts';
+import { consentedAnonHeader } from '../../design/analytics/auth';
 
 /** Stable error of the trade API (`{ error: { code, message, details? } }`) or a transport failure (`network`). */
 export class TradeApiFailure extends Error {
@@ -25,14 +26,15 @@ export class TradeClient {
   authHeaders(): Record<string, string> { return this.token ? { authorization: `Bearer ${this.token}` } : {}; }
 
   private async call<T>(method: string, path: string, body?: unknown, idempotent = false): Promise<T> {
-    const headers: Record<string, string> = { accept: 'application/json', ...this.authHeaders() };
+    const headers: Record<string, string> = { accept: 'application/json', ...consentedAnonHeader(), ...this.authHeaders() };
     if (body !== undefined) headers['content-type'] = 'application/json';
     if (idempotent) headers['idempotency-key'] = newKey();
     let res: Response;
     try {
       res = await this.doFetch(`/v1/trade${path}`, { method, headers, credentials: 'include', ...(body !== undefined ? { body: JSON.stringify(body) } : {}) });
     } catch (err) {
-      throw new TradeApiFailure(0, 'network', err instanceof Error ? err.message : 'Network error');
+      const timedOut = err instanceof Error && (err.name === 'TimeoutError' || /timeout|timed out/i.test(err.message));
+      throw new TradeApiFailure(0, timedOut ? 'timeout' : 'network', err instanceof Error ? err.message : 'Network error');
     }
     const json = (await res.json().catch(() => null)) as { error?: { code?: string; message?: string; details?: Record<string, unknown> } } | null;
     // placement answers 422 with a body that still carries `status: rejected`: surface it as data, not as a throw

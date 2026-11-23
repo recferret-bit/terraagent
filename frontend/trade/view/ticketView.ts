@@ -1,6 +1,7 @@
 import { formatAtomic, parsePairId, type BookLevel, type MarketPolicyView, type Nep413Signature, type OrderSide, type PlaceTradeOrderRequest } from '@terra/contracts';
 import { ensureBrowserPolyfills } from '../../design/pilot/browserPolyfills';
 import { getNearWalletSelector, signWithSelectorWallet, type WalletSelectorModuleId } from '../../design/pilot/walletSelectorRuntime';
+import { noteTradeClientFailure, noteTradeSubmitClicked } from '../../design/analytics/trade';
 import { TradeApiFailure, type TradeClient } from '../api/client';
 import { previewTicket, type TicketPreview } from '../model/preview';
 import { freeOf, type TradeState } from '../model/state';
@@ -210,6 +211,7 @@ export class OrderTicket {
       ttlS: Number(this.ttl.value),
       ...(this.side === 'buy' ? { maxStallFeeBp: this.stallBp(st) } : {}),
     };
+    noteTradeSubmitClicked(st.pair, this.side);
     this.busy = true;
     this.update();
     this.result.replaceChildren();
@@ -226,6 +228,7 @@ export class OrderTicket {
         this.result.appendChild(signBtn);
       }
     } catch (err) {
+      noteTradeClientFailure(st.pair, this.side, err);
       this.result.replaceChildren(note(err instanceof TradeApiFailure ? `${err.code}: ${err.message}` : 'Could not send the order.', 'err'));
     } finally {
       this.busy = false;
@@ -258,6 +261,7 @@ export class OrderTicket {
   }
 
   private async signAndResubmit(baseReq: PlaceTradeOrderRequest, totalStr: string): Promise<void> {
+    noteTradeSubmitClicked(this.d.state().pair, baseReq.side);
     this.busy = true;
     this.update();
     try {
@@ -300,6 +304,7 @@ export class OrderTicket {
         : `Wallet-signed order accepted (${res.order?.state ?? 'OPEN'}).`;
       this.result.replaceChildren(note(text, res.status === 'rejected' ? 'err' : 'info'));
     } catch (err) {
+      noteTradeClientFailure(this.d.state().pair, baseReq.side, err);
       this.result.replaceChildren(note(err instanceof Error ? err.message : 'Wallet signing cancelled or failed.', 'err'));
     } finally {
       this.busy = false;

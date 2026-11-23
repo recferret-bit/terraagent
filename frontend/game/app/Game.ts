@@ -2,8 +2,8 @@ import * as THREE from 'three';
 import { createColonyViewport, type ColonyViewport } from '@terra/render/core/createColonyViewport';
 import { enqueueDeferredDispose, flushDeferredDispose } from '@terra/render/core/deferredDispose';
 import { createFramePacer } from '@terra/render/core/framePacer';
-import { getFpsCap, getPresetDimensions, getViewportPreset, isShaderOptimized, onPerfConfigChange, setFpsCap, setShaderOptimized, setViewportPreset } from '@terra/render/core/perfConfig';
-import { getShadowQuality, setShadowQuality } from '@terra/render/core/shadowQuality';
+import { getFpsCap, getViewportPreset, isShaderOptimized, onPerfConfigChange } from '@terra/render/core/perfConfig';
+import { getShadowQuality } from '@terra/render/core/shadowQuality';
 import { LANDING_PREWARM_ARCHETYPES } from '@terra/render/kitbash';
 import { stepMenuStageFrame } from './menuStageStep';
 import { MenuPrestige } from './prestige/OrbitPrestige';
@@ -15,30 +15,17 @@ import type { DescentSequence, DescentTelemetry } from '@terra/render/descent/ty
 import { createOrbitalStage } from '@terra/render/orbit/OrbitalStage';
 import { Gameplay } from './Gameplay';
 import {
-  buildForwardedOnlineSearch,
-  finishReturningColonyEntry,
-  mountBootOnlineSession,
-  mountPrototypeHudRig,
-  prepareOnlineGuestState,
-  resetOrbitalScene,
-  resolveAutoDeployPlanetKind,
-  resolveColonyLoadMode,
-  startReturningColonyEntry,
-  stepEntryBloomFlash,
-  stepReturningColonyEntry,
-  syncOrbitSelectorUrl,
-  type ColonyLoadMode,
+  applyColonyViewportSettings, buildForwardedOnlineSearch, finishReturningColonyEntry, mountBootOnlineSession,
+  mountPrototypeHudRig, prepareOnlineGuestState, resetOrbitalScene, resolveAutoDeployPlanetKind,
+  resolveColonyLoadMode, startReturningColonyEntry, stepEntryBloomFlash, stepReturningColonyEntry,
+  syncOrbitSelectorUrl, type ColonyLoadMode,
 } from './colonyEntryBridge';
 import { OnlineSession } from './online/OnlineSession';
 import { parseGroundSeedInput, writeStoredPlanetKind } from './online/viewportHelper';
+import { noteBootFailure, noteColonyEntered, noteDescentStarted, notePlanetSelected, notePlayBooted } from '../../design/analytics/play';
 import {
-  buildPreparedDescentSession,
-  disposePreparedDescentSession,
-  preloadDescentSurfaceInWorker,
-  retireDescentAndSurfaceDeferred,
-  stepDeployingStageFrame,
-  stepOnlineRetroHud,
-  syncOnlineSpaceDescentFrame,
+  buildPreparedDescentSession, disposePreparedDescentSession, preloadDescentSurfaceInWorker,
+  retireDescentAndSurfaceDeferred, stepDeployingStageFrame, stepOnlineRetroHud, syncOnlineSpaceDescentFrame,
   type PreparedDescentSession,
 } from './descentBridge';
 import { MainMenu, type MenuSettings, type SectorIntentV1 } from '../ui/menu';
@@ -145,13 +132,7 @@ export class Game {
   private makeSpec(kind: PlanetKind, seed: number): PlanetSpec { return { ...PLANET_SPECS[kind], seed }; }
 
   private applySettings() {
-    setShaderOptimized(this.settings.optimized);
-    setViewportPreset(this.settings.resolution);
-    setFpsCap(this.settings.fpsCap);
-    if (this.settings.shadows) setShadowQuality(this.settings.shadows);
-    this.viewport.bloom.enabled = this.settings.bloom;
-    const dpr = this.settings.quality === 'low' ? 1 : Math.min(window.devicePixelRatio, 2);
-    this.viewport.setResolution(getPresetDimensions(this.settings.resolution), dpr);
+    applyColonyViewportSettings(this.viewport, this.settings);
   }
 
   private mountStage(spec: PlanetSpec) {
@@ -221,10 +202,13 @@ export class Game {
     this.loadMode = resolveColonyLoadMode({ isReturning: this.useOnlineGameplay && activeColony !== null, instant, skipCinematic: this.settings.skipCinematic });
     if (this.useOnlineGameplay && activeColony !== null) { this.enterExistingColony(kind, seed, instant); return; }
     writeStoredPlanetKind(kind);
+    notePlanetSelected(kind, 'play');
+    notePlayBooted(kind, this.useOnlineGameplay && !this.isLocalHost ? 'online' : 'local');
     let p: PreparedDescentSession;
     try { p = this.prepare(kind, seed); }
     catch (err) {
       console.error('deploy failed', err);
+      noteBootFailure(err instanceof Error ? err.message : 'deploy');
       this.discardPrepared();
       this.menu.setError('Deploy failed: ' + (err as Error).message);
       return;
@@ -315,6 +299,7 @@ export class Game {
     const vp = this.viewport;
     const st = this.stage; this.stage = null;
     vp.setView(vp.scene, vp.camera);
+    noteDescentStarted(this.spec?.kind);
     this.descent.start();
     this.phase = 'descent';
     this.deploySession = null;
@@ -377,6 +362,7 @@ export class Game {
     this.dHud?.hide();
     const dh = this.dHud; this.dHud = null;
     const pose = d.finalPose;
+    noteColonyEntered(this.spec.kind, 'local');
     this.viewport.camera.fov = 28; this.viewport.camera.updateProjectionMatrix();
     this.play = new Gameplay(this.viewport.scene, this.viewport.camera, this.viewport.renderer.domElement, this.surface, this.spec, hero, this.gHud!, { position: pose.position.clone(), target: pose.target.clone() });
     this.gHud!.show();

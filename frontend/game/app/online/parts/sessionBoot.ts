@@ -1,4 +1,5 @@
 import type { ServerMessage } from '@terra/contracts';
+import { noteBootFailure, notePlayBooted, setPlayHost } from '../../../../design/analytics/play';
 import { COMMAND_TIMEOUT_MS, CommandBus } from '../../../net/commandBus';
 import { ConnectionBanner } from '../../../net/ConnectionBanner';
 import { LagTransport, withDevLag } from '../../../net/LagTransport';
@@ -33,18 +34,26 @@ export interface BootResultSummary {
   loadMode: ColonyLoadMode;
 }
 
+function planetKindFromBoot(type: string): 'dune' | 'oceanForest' | 'forestRock' | null {
+  if (type === 'desert' || type === 'dune') return 'dune';
+  if (type === 'ocean' || type === 'oceanForest') return 'oceanForest';
+  if (type === 'temperate' || type === 'forestRock') return 'forestRock';
+  return null;
+}
+
 export function applySessionBootResult(params: {
   boot: BootAuthResult;
   pilot: PilotBridge;
   entities: EntityMeshes;
   landfall: LandfallController;
   bootOverlay: BootOverlay | null;
+  planetKind?: PlanetKind | null;
   skipDescent: boolean;
   fromSpaceDescent: boolean;
   freshDeployment: boolean;
   loadMode: ColonyLoadMode;
 }): BootResultSummary {
-  const { boot, pilot, entities, landfall, bootOverlay, skipDescent, fromSpaceDescent } = params;
+  const { boot, pilot, entities, landfall, bootOverlay, planetKind, skipDescent, fromSpaceDescent } = params;
   pilot.note(boot);
   const planetId = boot.planet.id;
   const colonyId = boot.colony.id;
@@ -55,6 +64,7 @@ export function applySessionBootResult(params: {
   landfall.setOwnerColonyIndex(colonyIndex);
   bootOverlay?.hideQueueStatus();
   bootOverlay?.setColonyMeta(planetId, colonyId, colonyIndex);
+  notePlayBooted(planetKindFromBoot(boot.planet.type) ?? planetKind, boot.mode === 'local' ? 'local' : 'online');
   let { freshDeployment, loadMode } = params;
   if (boot.wasQueued && loadMode !== 'direct') {
     freshDeployment = true;
@@ -90,6 +100,7 @@ export function attachSessionLocalHost(params: {
   lh.bindStore(store);
   if (autoStep) lh.start();
   if (!offline) return { cleanup, banner: params.banner };
+  setPlayHost('local');
   bootOverlay?.setOffline(true);
   params.banner?.dispose();
   return { cleanup, banner: null };
@@ -260,6 +271,7 @@ export function createSessionBootRig(params: {
       },
       onError: (m) => {
         const bo = getBootOverlay();
+        if (!bo) noteBootFailure(m);
         return bo ? bo.showError(m) : Promise.reject(new Error(m));
       },
       onBooted,

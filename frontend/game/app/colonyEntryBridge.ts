@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import type { ColonyViewport } from '@terra/render/core/createColonyViewport';
 import { enqueueDeferredDispose } from '@terra/render/core/deferredDispose';
+import { getPresetDimensions, setFpsCap, setShaderOptimized, setViewportPreset } from '@terra/render/core/perfConfig';
+import { setShadowQuality } from '@terra/render/core/shadowQuality';
 import { clearTransientWeather } from '@terra/render/core/weatherConfig';
 import type { PlanetKind } from '@terra/render/planets/PlanetSpec';
 import { getSharedTerrainPrep } from '@terra/render/planets/prep';
@@ -13,7 +15,7 @@ import type { FeatureContext } from '../core/registry/types';
 import { mountDevConsole } from '../dev/console';
 import { notConnectedSend } from '../net/commandBus';
 import { httpDevServer } from '../net/devServer';
-import type { SectorIntentV1 } from '../ui/menu';
+import type { MenuSettings, SectorIntentV1 } from '../ui/menu';
 import { OnlineSession } from './online/OnlineSession';
 import type { ColonyLoadMode } from './online/PodTouchdownFx';
 import { resetDeviceSecret } from './online/bootOnline';
@@ -227,6 +229,16 @@ export function finishReturningColonyEntry(opts: {
     baseBloom: opts.viewport.bloom.strength,
     cutFlash: opts.skipDrop ? 0 : 0.55,
   };
+}
+
+export function applyColonyViewportSettings(viewport: ColonyViewport, settings: MenuSettings): void {
+  setShaderOptimized(settings.optimized);
+  setViewportPreset(settings.resolution);
+  setFpsCap(settings.fpsCap);
+  if (settings.shadows) setShadowQuality(settings.shadows);
+  viewport.bloom.enabled = settings.bloom;
+  const dpr = settings.quality === 'low' ? 1 : Math.min(window.devicePixelRatio, 2);
+  viewport.setResolution(getPresetDimensions(settings.resolution), dpr);
 }
 
 /** Keeps `?planet=<kind>` in the URL while the orbital planet selector is open so F5 refreshes back to orbit. */

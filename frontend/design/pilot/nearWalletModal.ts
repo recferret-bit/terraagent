@@ -23,6 +23,7 @@ import {
   type SavedNearWallet,
   type SelectorWalletDef,
 } from './nearWalletModalParts';
+import { beginNearWalletAuth, failNearWalletAuth } from '../analytics/auth';
 import {
   getNearWalletSelector,
   isPopupBlockedError,
@@ -199,6 +200,7 @@ async function executeSelectorWalletFlow(params: {
     if (!panelHost.isConnected) return;
     onSigned(def.name, signedPayload);
   } catch (err) {
+    failNearWalletAuth(err);
     restoreTopLayer?.();
     if (!panelHost.isConnected) return;
     setBusy(false);
@@ -452,6 +454,7 @@ export function openNearWalletSelectorModal(callbacks: NearWalletSelectorCallbac
   const startFlow = (def: SelectorWalletDef): void => {
     if (signingBusy) return;
     if (offlineFetch) { finishOffline(def.name); return; }
+    beginNearWalletAuth(def.moduleId);
     void executeSelectorWalletFlow({
       def, mode, initialNetwork, panelHost, challengeStore, setBusy, suspendTopLayer, onSigned: finishVerified,
     });
@@ -459,6 +462,7 @@ export function openNearWalletSelectorModal(callbacks: NearWalletSelectorCallbac
   const openCli = (): void => {
     if (signingBusy) return;
     if (offlineFetch) { finishOffline('NEAR CLI'); return; }
+    beginNearWalletAuth('other');
     renderNearCliPanel(panelHost, { mode, network: initialNetwork, savedAccountId: saved?.accountId, onVerifiedPayload: (p) => finishVerified('NEAR CLI', p) });
   };
 

@@ -1,3 +1,4 @@
+import type {} from '../registry/types';
 import { browserDeps } from './browser';
 import { AnalyticsClient, type Props } from './client';
 
@@ -8,6 +9,11 @@ const get = (): AnalyticsClient => {
   if (!client) {
     client = new AnalyticsClient(browserDeps());
     if (typeof addEventListener === 'function') addEventListener('pagehide', () => client?.onPageHide());
+    if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') client?.onPageHide();
+      });
+    }
   }
   return client;
 };
@@ -28,6 +34,6 @@ declare module '../registry/types' {
 }
 
 /** Dev helper: `window.__track.setConsent(true); __track.track('x'); await __track.flush()`. */
-if (import.meta.env?.DEV && typeof window !== 'undefined') {
+if ((import.meta as { env?: { DEV?: boolean } }).env?.DEV && typeof window !== 'undefined') {
   (window as unknown as { __track: unknown }).__track = { track, setConsent, getConsent, flush };
 }

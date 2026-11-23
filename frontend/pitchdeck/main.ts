@@ -1,5 +1,6 @@
 // Interactive keyboard & button controller for the TerraAgent Pitch Deck (/pitchdeck/).
 // Supports single-slide presentation mode (ArrowLeft/ArrowRight, 1..8) and full-scroll overview mode.
+import { bootProductAnalytics } from '../design/analytics/boot';
 import { rewriteSubdomainLinks } from '../design/js/subdomainLinks';
 
 function bootPitchDeck(): void {
@@ -64,4 +65,5 @@ function bootPitchDeck(): void {
   sync();
 }
 
+bootProductAnalytics('pitchdeck');
 bootPitchDeck();

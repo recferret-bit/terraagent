@@ -1,4 +1,7 @@
 import { SocialAuthResponseSchema } from '@terra/contracts';
+import {
+  consentedAuthHeaders, failAuthHttp, failAuthThrown, failOAuthMessage, rememberAuthProvider, stopProviderWatch, succeedAuth, trackProviderPopup,
+} from '../analytics/auth';
 import { buildLocalMockPilotBox, isLocalMockAuthEnabled, type LocalMockFetchFn } from './localMockPilot';
 import { ensurePilotDialogStyles } from './pilotDialogCss';
 import { buildPilotEmailFastAuthBox } from './pilotEmailBox';
@@ -19,6 +22,7 @@ import {
   extractAuthApiErrorMessage,
   jwtStillValid,
   PENDING_NEP413_STORAGE_KEY,
+  persistActivePilotSession,
   readStoredGuestUpgradeBearer,
   RECENT_NEP413_POPUP_KEY,
 } from './nearAuthApi';
@@ -288,11 +292,11 @@ export class PilotAccess {
           this.triggerLogin({ provider: p.id, token: `local-${p.id}` });
           return;
         }
-        this.popup = window.open(
+        this.popup = trackProviderPopup(p.id, window.open(
           buildFastAuthLoginUrl(location.origin, returnPath, p.id, { mode }),
           'terra-fastauth-oauth',
           'popup,width=500,height=680',
-        );
+        ));
       };
       list.append(btn);
     }
@@ -321,34 +325,7 @@ export class PilotAccess {
     this.bearer = body.accessToken;
     const isGuest = body.player.isGuest !== false;
     this.session = isGuest ? null : body;
-    const isLocalSimToken = body.accessToken === 'local-mode-token' || Boolean(this.opts.allowOfflineLocalAuth);
-    if (
-      body.accessToken &&
-      !isLocalSimToken &&
-      !body.accessToken.startsWith('dev:') &&
-      !body.accessToken.startsWith('player:')
-    ) {
-      try {
-        localStorage.setItem(
-          'ta_active_pilot',
-          JSON.stringify({
-            playerId: body.player.id,
-            accessToken: body.accessToken,
-            updatedAt: Date.now(),
-            isGuest,
-            handle: body.player.handle,
-            ...(body.accountId ? { accountId: body.accountId } : {}),
-          }),
-        );
-        if (!isGuest) {
-          localStorage.setItem('ta_trade_token', body.accessToken);
-        } else {
-          localStorage.removeItem('ta_trade_token');
-        }
-      } catch {
-        /* Refresh cookie remains usable when storage is unavailable. */
-      }
-    }
+    persistActivePilotSession(body, this.opts.allowOfflineLocalAuth);
     if (isGuest) return;
     const link = document.createElement('a');
     link.className = 'btn btn-primary btn-sm';
@@ -419,6 +396,7 @@ export class PilotAccess {
   }
 
   private triggerLogin(hit: { provider: string; token: string }): void {
+    stopProviderWatch();
     if (this.busy) return;
     this.busy = true;
     this.loginEpoch += 1;
@@ -436,6 +414,7 @@ export class PilotAccess {
     const err = readOAuthError(event, this.popup, location.origin);
     if (err && !this.disposed) {
       this.popup = null;
+      failOAuthMessage();
       this.guest(err.message);
     }
   };
@@ -450,13 +429,15 @@ export class PilotAccess {
     const err = readOAuthErrorStorageEvent(event, Boolean(this.popup));
     if (err && !this.disposed) {
       this.popup = null;
+      failOAuthMessage();
       this.guest(err.message);
     }
   };
 
   private async login(hit: { provider: string; token: string }): Promise<void> {
+    const nep413Payload = decodeNep413SocialToken(hit.token);
+    rememberAuthProvider(hit.provider, nep413Payload?.walletId);
     try {
-      const nep413Payload = decodeNep413SocialToken(hit.token);
       const endpoint = nep413Payload ? '/v1/auth/near/verify' : '/v1/auth/social';
       const reqBody = nep413Payload ?? hit;
       const upgradeBearer = this.resolveUpgradeBearer();
@@ -465,16 +446,21 @@ export class PilotAccess {
         credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
+          ...consentedAuthHeaders(),
           ...(upgradeBearer ? { Authorization: `Bearer ${upgradeBearer}` } : {}),
         },
         body: JSON.stringify(reqBody),
       });
       if (!response.ok) {
+        failAuthHttp(response.status);
         const errBody = await response.json().catch(() => null);
         throw new Error(extractAuthApiErrorMessage(errBody, 'Sign-in failed. Please try again.'));
       }
-      this.linked(SocialAuthResponseSchema.parse(await response.json()), true);
+      const body = SocialAuthResponseSchema.parse(await response.json());
+      succeedAuth();
+      this.linked(body, true);
     } catch (err) {
+      failAuthThrown(err);
       if (!this.disposed) {
         this.guest(err instanceof Error && err.message ? err.message : 'Sign-in failed. Please try again.');
       }

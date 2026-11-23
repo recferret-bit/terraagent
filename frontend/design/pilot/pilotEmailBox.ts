@@ -1,3 +1,4 @@
+import { beginEmailAuth, failEmailAuth } from '../analytics/auth';
 import { authenticateFastAuthEmailPopup, isFastAuthPopupCancelled } from './fastAuthSpa';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -41,6 +42,7 @@ export function buildPilotEmailFastAuthBox(cb: PilotEmailBoxCallbacks): HTMLElem
     inlineErr.style.display = 'none';
     const mode = cb.getMode();
     cb.onCloseDialog();
+    beginEmailAuth();
     if (cb.allowOfflineLocalAuth) {
       cb.onToken({ provider: 'email', token: clean });
       return;
@@ -51,6 +53,7 @@ export function buildPilotEmailFastAuthBox(cb: PilotEmailBoxCallbacks): HTMLElem
       })
       .catch((err: unknown) => {
         if (cb.isDisposed()) return;
+        failEmailAuth(err);
         if (isFastAuthPopupCancelled(err)) {
           cb.onGuestError('Sign-in was cancelled.');
           return;

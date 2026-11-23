@@ -15,6 +15,7 @@ import { ZodPipe } from '../../core/errors/zod.pipe.js';
 import { IpThrottleGuard } from '../../core/ip-throttle.guard.js';
 import { APP_ENV, type AppEnv } from '../../core/tokens.js';
 import { devBearerPlayer } from '../../ws/session-verifier.js';
+import { ProductRecorder } from '../../analytics/product-recorder.js';
 import { SocialAuthService } from './social-auth.service.js';
 
 interface ReplyLike extends Partial<ServerResponse> {
@@ -60,6 +61,7 @@ export class SocialAuthController {
   constructor(
     private readonly social: SocialAuthService,
     private readonly tokens: AuthTokenService,
+    private readonly product: ProductRecorder,
     @Optional() @Inject(APP_ENV) env?: AppEnv,
   ) {
     this.isProduction = env?.NODE_ENV === 'production';
@@ -75,6 +77,7 @@ export class SocialAuthController {
   ): Promise<SocialAuthResponse> {
     const { response, refreshToken } = await this.social.login(body, optionalBearer(req, this.tokens, !this.isProduction));
     setSetCookie(res, formatRefreshCookie(refreshToken, this.isProduction, resolveCookieDomain(req?.headers?.host)));
+    await this.product.recordAuthCompleted(req, body.provider, response.player.id).catch(() => undefined);
     return response;
   }
 
@@ -100,6 +103,7 @@ export class SocialAuthController {
       optionalBearer(req, this.tokens, !this.isProduction),
     );
     setSetCookie(res, formatRefreshCookie(refreshToken, this.isProduction, resolveCookieDomain(req?.headers?.host)));
+    await this.product.recordAuthCompleted(req, 'near-wallet', response.player.id).catch(() => undefined);
     return response;
   }
 }

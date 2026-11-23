@@ -78,6 +78,8 @@ export { RaidRepelledDataSchema, event as raidRepelled, type RaidRepelledData } 
 export { NestDestroyedDataSchema, event as nestDestroyed, type NestDestroyedData } from './events/nest-destroyed';
 export { FaunaKilledDataSchema, event as faunaKilled, type FaunaKilledData } from './events/fauna-killed';
 export * from './rest';
+export * from './analytics/catalog';
+export * from './analytics/funnels';
 export * from './precheck';
 export * from './progression';
 export * from './profile';

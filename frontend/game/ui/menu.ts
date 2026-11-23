@@ -4,6 +4,7 @@ import { onShadowQualityChange } from '@terra/render/core/shadowQuality';
 import type { OrbitalGlobeMarkerInput, OrbitalProjectedFrame } from '@terra/render/orbit/types';
 import { PLANET_KINDS, PLANET_SPECS, type PlanetKind } from '@terra/render/planets/PlanetSpec';
 import { mountPlanetThumbnails, type PlanetThumbnailsHandle } from '@terra/render/planets/PlanetThumbnails';
+import { notePlanetPickerViewed, notePlanetSelected } from '../../design/analytics/play';
 import { PilotAccess } from '../../design/pilot/PilotAccess';
 import { probeActiveHomeColony, type ActiveHomeColony } from '../../design/pilot/activeHomeColony';
 import { applyActiveColonyToMenuDom } from './lobby/activeColonyLock';
@@ -180,6 +181,7 @@ export class MainMenu {
     if (this.autoProbeColony) {
       void this.probeActiveColony();
     }
+    notePlanetPickerViewed('play');
   }
 
   private mountCardThumbnails(): void {
@@ -250,7 +252,10 @@ export class MainMenu {
       .querySelectorAll<HTMLElement>('.world-card')
       .forEach((c) => c.classList.toggle('sel', c.dataset.k === k));
     this.renderArHud();
-    if (notify) this.cb.onPlanet(k);
+    if (notify) {
+      notePlanetSelected(k, 'play');
+      this.cb.onPlanet(k);
+    }
   }
 
   /** Id of the planet selected in the menu (the orbit stage shows its prestige), or null when unknown. */

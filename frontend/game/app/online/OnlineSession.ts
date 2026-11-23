@@ -36,6 +36,7 @@ import { prewarmSimWorker } from '../../store/worker/simWorkerPrewarm';
 import type { ColonyLoadMode, PodLandingStateName } from './PodTouchdownFx';
 import { extractPodDescentStatus, isUnplayedFreshColonyLanding } from './podStatus';
 import type { PilotBridge } from './pilotBridge'; import { createSessionHud } from './sessionHud';
+import { notePlayBooted, setPlayHost } from '../../../design/analytics/play';
 import { scenarioParam } from './sessionTarget';
 import { normalizeSectorIntent, type SectorIntentInput, type SectorIntentV1 } from '../../ui/lobby/orbitalPickerModel';
 import { bindStoreCombatEvents, ingestHostMessageCombatEvents } from './combatSync';
@@ -124,6 +125,8 @@ export class OnlineSession {
     this.allowLocalFallback = opts.allowLocalFallback ?? import.meta.env.DEV;
     this.planetKind = resolveSessionPlanetKind(q, opts.planetKind);
     this.sectorIntent = normalizeSectorIntent(opts.sectorIntent ?? q.get('sector'));
+    if (q.get('host') === 'local') setPlayHost('local');
+    notePlayBooted(this.planetKind, q.get('host') === 'local' ? 'local' : 'online');
 
     this.flags = createClientFlagsStore(this.search);
     const uiParent = opts.uiParent ?? (typeof document !== 'undefined' ? document.body : root);
@@ -330,7 +333,8 @@ export class OnlineSession {
     this.bootResult = boot;
     const s = applySessionBootResult({
       boot, pilot: this.pilot, entities: this.entities, landfall: this.landfall, bootOverlay: this.bootOverlay,
-      skipDescent: this.skipDescent, fromSpaceDescent: this.fromSpaceDescent, freshDeployment: this.freshDeployment, loadMode: this.loadMode,
+      planetKind: this.planetKind, skipDescent: this.skipDescent, fromSpaceDescent: this.fromSpaceDescent,
+      freshDeployment: this.freshDeployment, loadMode: this.loadMode,
     });
     this.planetId = s.planetId; this.colonyId = s.colonyId; this.colonyIndex = s.colonyIndex; this.foundingSectorId = s.foundingSectorId;
     this.spawn = s.spawn; this.cameraTargetTile = { q: s.spawn.q, r: s.spawn.r }; this.freshDeployment = s.freshDeployment; this.loadMode = s.loadMode;

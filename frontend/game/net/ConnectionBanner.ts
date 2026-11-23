@@ -1,7 +1,9 @@
-export { bannerText } from './bannerText';
+import { noteGameplayError } from '../../design/analytics/play';
 import { bannerText } from './bannerText';
 import type { Transport } from './types';
 import './banner.css';
+
+export { bannerText };
 
 /** Top-centre plate that shows "Connecting…", "Reconnecting…", "still trying" or a terminal message. */
 export class ConnectionBanner {
@@ -22,6 +24,7 @@ export class ConnectionBanner {
     const s = this.transport.state;
     const text = bannerText(s, Date.now());
     this.el.hidden = text === null;
+    if (text && (s.phase === 'terminal' || s.phase === 'reconnecting')) noteGameplayError('socket');
     this.el.dataset.phase = s.phase;
     this.el.replaceChildren(document.createTextNode(text ?? ''));
     if (s.phase === 'terminal' && this.onRetry) {
