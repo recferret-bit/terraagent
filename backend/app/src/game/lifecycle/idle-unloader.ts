@@ -39,6 +39,13 @@ export async function unloadIdlePlanet(deps: IdleUnloadDeps, planetId: string): 
   if (row && !isIdle(row, deps.now(), deps.idleMs)) return 'human_returned';
   await deps.store.markDormant(planetId, new Date(deps.now()));
   await deps.sectorState?.flushPlanet(planetId).catch(() => undefined);
+  // Last look before the planet goes down: a player who joined while the snapshot and the flush were written (their
+  // socket stamped the clock) keeps the planet, instead of being dropped and rolled back to the snapshot.
+  const latest = await deps.store.get(planetId);
+  if (latest && row && latest.lastHumanSeenAt.getTime() > row.lastHumanSeenAt.getTime()) {
+    await deps.store.wake(planetId, latest.lastHumanSeenAt);
+    return 'human_returned';
+  }
   await deps.planets.unload(planetId);
   await deps.quietLease(planetId);
   deps.log?.info({ planetId, lastHumanSeenAt: row?.lastHumanSeenAt }, `idle-unloaded ${planetId}`);

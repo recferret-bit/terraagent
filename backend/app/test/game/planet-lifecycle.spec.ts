@@ -63,6 +63,19 @@ describe('idle unload part', () => {
   });
 });
 
+describe('idle unload: a player who joins while the planet is being put to sleep', () => {
+  it('keeps the planet loaded and awake when their socket stamped the clock during the sector flush', async () => {
+    const r = unloadRig();
+    await r.store.touch('pl_dev_2', new Date(0));
+    // the join lands while the sector state is written, after the idle check and the dormant mark
+    r.deps.sectorState!.flushPlanet = async (id) => { r.calls.push(`flush:${id}`); await r.store.touch(id, new Date(1_000_500)); };
+    expect(await unloadIdlePlanet(r.deps, 'pl_dev_2')).toBe('human_returned');
+    expect(r.loaded.has('pl_dev_2')).toBe(true);
+    expect(r.calls).not.toContain('unload:pl_dev_2');
+    expect(await r.store.dormantIds()).toEqual([]); // not left marked dormant: boot restore and reclaim still see it
+  });
+});
+
 describe('idle policy', () => {
   it('player planets are eligible; canonical, scenario and spectator planets are not', () => {
     expect(idleUnloadEligible('pl_dev_ocean_3', () => false)).toBe(true);
