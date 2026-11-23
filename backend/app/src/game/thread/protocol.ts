@@ -68,7 +68,19 @@ export interface LoadMsg {
    * Rebalancing move (pool-made): the route state the planet had on its old thread, applied before it is first
    * scheduled here, so no step runs unsubscribed (the delta stream stays gapless from the handoff tick).
    */
-  readonly moved?: { readonly subscribed: boolean; readonly mode?: 'active' | 'coarse'; readonly warp?: number };
+  readonly moved?: { readonly subscribed: boolean; readonly mode?: 'active' | 'coarse'; readonly warp?: number; readonly carry?: PlanetCarry };
+}
+
+/** Thread-side planet state that is not in the snapshot, carried by a move (`handedOff` -> `load { moved }`). */
+export interface PlanetCarry {
+  readonly feedSeq: number;
+  readonly lastSectorSyncTick: number;
+  readonly lastInputTickByColony: readonly (readonly [number, number])[];
+  readonly seenAutopilotTickByColony: readonly (readonly [number, number])[];
+  /** Dev live tunes (D-35). */
+  readonly live?: BalanceOverrides;
+  /** Economy profile waiting for its effective tick (W13-39). */
+  readonly pendingProfile?: { readonly overrides: BalanceOverrides; readonly effectiveTick: number; readonly profileHash: string };
 }
 
 /** Generator of a load without `params` or `snapshot`: the W00 empty flat planet (tests, `GAME_DEV_PLANETS` without W01). */
@@ -207,7 +219,7 @@ export type FromThread =
    * Answer to `unload { handoff }`: the planet's full snapshot at `tick` (after its last delta), plus the commands it had
    * queued and not applied. No `bytes` = the planet was not loaded here (the move is off).
    */
-  | { readonly t: 'handedOff'; readonly planetId: string; readonly tick: number; readonly bytes?: Uint8Array; readonly pending: readonly SimCommandV1[] }
+  | { readonly t: 'handedOff'; readonly planetId: string; readonly tick: number; readonly bytes?: Uint8Array; readonly pending: readonly SimCommandV1[]; readonly carry?: PlanetCarry }
   /**
    * Not from a thread: the pool tells its listeners that a planet moved between threads (rebalancing), seamlessly from
    * `tick`; clients resync to be safe. Delivered as if from `to`.

@@ -1,5 +1,5 @@
 import type { SimCommandV1 } from '@terra/contracts';
-import type { FromThread, ToThread } from '../thread/protocol';
+import type { FromThread, PlanetCarry, ToThread } from '../thread/protocol';
 import type { PlacementTable } from './placement-table';
 
 /** What the mover needs from the pool. */
@@ -21,6 +21,7 @@ interface Move {
   readonly mode?: 'active' | 'coarse';
   readonly warp?: number;
   pending: readonly SimCommandV1[];
+  carry?: PlanetCarry;
   /** Copy of the handoff snapshot, so a failed load on the target can go back to the source. */
   fallback?: Uint8Array;
   tick: number;
@@ -86,6 +87,7 @@ export class PlanetMover {
     if (!m || thread !== m.from) return;
     if (!msg.bytes) return this.abort(m); // it was not on the source after all
     m.pending = msg.pending;
+    m.carry = msg.carry;
     m.tick = msg.tick;
     m.fallback = msg.bytes.slice();
     m.phase = 'loading';
@@ -96,7 +98,7 @@ export class PlanetMover {
     const p = this.table.get(m.planetId);
     this.table.setThread(m.planetId, thread);
     m.to = thread;
-    const moved = { subscribed: m.subscribed, ...(m.mode ? { mode: m.mode } : {}), ...(m.warp !== undefined ? { warp: m.warp } : {}) };
+    const moved = { subscribed: m.subscribed, ...(m.mode ? { mode: m.mode } : {}), ...(m.warp !== undefined ? { warp: m.warp } : {}), ...(m.carry ? { carry: m.carry } : {}) };
     const msg: ToThread = {
       t: 'load', planetId: m.planetId, snapshot: bytes, moved, ...(p?.flags ? { flags: p.flags } : {}), ...(p?.overrides ? { overrides: p.overrides } : {}),
     };

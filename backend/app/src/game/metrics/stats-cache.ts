@@ -29,9 +29,14 @@ export const emptyThreadStats = (thread: number): ThreadStats => ({
  * placement read it synchronously, so a scrape never waits on a busy thread (0.6).
  */
 export class ThreadStatsCache {
-  private readonly last = new Map<number, { msg: StatsMsg; atMs: number }>();
+  private readonly last = new Map<number, { msg?: StatsMsg; atMs: number }>();
 
   constructor(private readonly now: () => number = () => performance.now()) {}
+
+  /** A thread (re)started: its age counts from now until its first push. */
+  spawned(thread: number): void {
+    this.last.set(thread, { atMs: this.now() });
+  }
 
   put(msg: StatsMsg): void {
     this.last.set(msg.thread, { msg, atMs: this.now() });
@@ -41,10 +46,11 @@ export class ThreadStatsCache {
     this.last.delete(thread);
   }
 
-  /** The thread's last figures with their age; an empty entry (age `Infinity`) before the first message. */
+  /** The thread's last figures with their age (since its last push, or its start); age `Infinity` = unknown thread. */
   get(thread: number): ThreadStats {
     const e = this.last.get(thread);
     if (!e) return emptyThreadStats(thread);
+    if (!e.msg) return { ...emptyThreadStats(thread), ageMs: this.now() - e.atMs };
     const m = e.msg;
     return {
       thread, planets: m.planets, steps: m.steps, maxLag: m.maxLag, recentPasses: m.recentPasses,

@@ -21,6 +21,7 @@ import {
   type TuneRequest,
 } from '@terra/sim';
 import { extractSectorSyncPayload } from '../persistence/sector-extract';
+import { applyCarry, carryOf } from './parts/planet-carry';
 import { buildHostStepFeeds } from './parts/planet-host-feed';
 import {
   applyDueProfile,
@@ -135,6 +136,7 @@ export class PlanetHost {
       feedSeq: 0,
     };
     this.planets.set(msg.planetId, planet);
+    if (msg.moved?.carry) applyCarry(planet, msg.moved.carry, this.opts.modules);
     if (msg.moved?.subscribed) this.setSubscribed(msg.planetId, planet, true);
     const stocks = Array.from({ length: state.colonies?.length ?? 0 }, (_, i) => getColonyStock(state, i));
     this.post({ t: 'loaded', planetId: msg.planetId, tick: state.meta.tick, restored: !!msg.snapshot, genesis: !!msg.genesis, stocks });
@@ -329,7 +331,7 @@ export class PlanetHost {
     this.flushEvents(planetId, p);
     const bytes = owned(snapshot(p.state));
     this.planets.delete(planetId);
-    this.post({ t: 'handedOff', planetId, tick: p.state.meta.tick, bytes, pending: p.pending.splice(0) }, [bytes.buffer as ArrayBuffer]);
+    this.post({ t: 'handedOff', planetId, tick: p.state.meta.tick, bytes, pending: p.pending.splice(0), carry: carryOf(p) }, [bytes.buffer as ArrayBuffer]);
   }
 
   private snapshotNow(planetId?: string): void {

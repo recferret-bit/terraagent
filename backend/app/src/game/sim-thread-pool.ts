@@ -56,7 +56,7 @@ export class SimThreadPool {
   constructor(private readonly opts: SimThreadPoolOptions) {
     this.baseOverrides = opts.overrides;
     if (!Number.isInteger(opts.threads) || opts.threads < 1) throw new Error(`SIM_THREADS must be a positive integer, got ${opts.threads}`);
-    this.placement = new PlacementTable(opts.threads, (t) => !this.started || !!this.workers[t]);
+    this.placement = new PlacementTable(opts.threads, (t) => !this.started || this.usable(t));
     this.mover = new PlanetMover(this.placement, { send: (t, m, tr) => this.send(t, m, tr), emit: (t, m) => this.fan(t, m) });
     this.rebalancer = opts.rebalance === false ? undefined : new Rebalancer(this.placement, opts.rebalance ?? {});
   }
@@ -100,6 +100,7 @@ export class SimThreadPool {
     };
     const w = new Worker(entry, { workerData: init, ...(execArgv ? { execArgv } : {}) });
     this.workers[thread] = w;
+    this.cache.spawned(thread);
     return new Promise<void>((resolve, reject) => {
       w.on('message', (msg: FromThread) => {
         if (msg.t === 'ready') return resolve();
@@ -139,7 +140,7 @@ export class SimThreadPool {
     if (!this.rebalancer || this.stopping) return;
     const now = performance.now();
     this.rebalancer.observe(thread, msg.busyRatio, now);
-    const live = this.workers.flatMap((w, t) => (w ? [t] : []));
+    const live = this.workers.flatMap((_w, t) => (this.usable(t) ? [t] : []));
     const move = this.rebalancer.decide(now, live, (id) => {
       const p = this.placement.get(id);
       return !!p && p.confirmed && !p.catchingUp && !this.mover.isMoving(id);
@@ -188,9 +189,14 @@ export class SimThreadPool {
     return Array.from({ length: this.opts.threads }, (_, t) => (this.workers[t] ? this.cache.get(t) : emptyThreadStats(t)));
   }
 
-  /** A thread that is dead or has not posted stats for {@link UNRESPONSIVE_AFTER_MS}. */
+  /** A thread that is dead or has not posted stats for {@link UNRESPONSIVE_AFTER_MS} (since its last push or its start). */
   unresponsive(thread: number): boolean {
-    return !this.workers[thread] || (this.started && this.cache.get(thread).ageMs > UNRESPONSIVE_AFTER_MS);
+    return !this.workers[thread] || this.cache.get(thread).ageMs > UNRESPONSIVE_AFTER_MS;
+  }
+
+  /** Alive and responsive: may receive new or moved planets. */
+  private usable(thread: number): boolean {
+    return !!this.workers[thread] && (this.opts.statsEveryMs === 0 || !this.unresponsive(thread));
   }
 
   private statsOf(thread: number, timeoutMs: number): Promise<ThreadStats> {

@@ -41,13 +41,15 @@ export function installThreadMetrics(pool: Pool, reg: Registry, log: Logger): ()
 }
 
 function onThreadMessage(thread: number, msg: FromThread, stepMs: Histogram, moves: Counter, log: Logger): void {
-  if (msg.t === 'stats') {
+  if (msg.t === 'unloaded' || msg.t === 'planetFailed') stepMs.remove({ thread: String(thread), planet: msg.planetId });
+  else if (msg.t === 'stats') {
     for (const s of msg.stepSamples ?? []) for (const ms of s.ms) stepMs.observe({ thread: String(thread), planet: s.planetId }, ms);
   } else if (msg.t === 'slowStep') {
     log.warn({ thread, planetId: msg.planetId, ms: msg.ms, mode: msg.mode, suppressed: msg.suppressed }, 'slow sim step (over one tick)');
   } else if (msg.t === 'demoted') {
     log.warn({ thread, planetId: msg.planetId, avgStepMs: msg.avgStepMs }, 'slow planet without players demoted to coarse');
   } else if (msg.t === 'moved') {
+    stepMs.remove({ thread: String(msg.from), planet: msg.planetId });
     moves.inc();
     log.info({ planetId: msg.planetId, from: msg.from, to: msg.to, tick: msg.tick }, 'planet moved to a less loaded sim thread');
   }

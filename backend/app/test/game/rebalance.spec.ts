@@ -94,7 +94,7 @@ describe('planet move between threads (3.2)', () => {
     expect(stats[1 - from]!.planets.map((p) => p.planetId)).toContain(id);
   }, 30_000);
 
-  it('a subscribed planet keeps its delta stream across the move (gapless from the handoff tick)', async () => {
+  it('a subscribed planet keeps its delta stream (gapless from the handoff tick) and its live tunes across the move', async () => {
     const pool = new SimThreadPool({ threads: 2, flags: ['W00'], rebalance: false });
     await pool.start();
     const g = (games = new GamePlanets(pool));
@@ -102,10 +102,13 @@ describe('planet move between threads (3.2)', () => {
     await g.load(id);
     const deltas: { fromTick: number; toTick: number }[] = [];
     g.subscribe(id, { onDelta: (d) => deltas.push({ fromTick: d.fromTick, toTick: d.toTick }) });
+    const tuned = await g.tune(id, { op: 'set', path: 'dev.probe.nudgeTiles', value: '3' });
+    expect(tuned.ok).toBe(true);
     await sleep(800);
     const moved = movedEvent(g, id);
     expect(pool.movePlanet(id, 1 - pool.threadOf(id))).toBe(true);
     await moved;
+    expect((await g.fullState(id)).dataHash).toBe(tuned.dataHash); // the dev tune went along (not in the snapshot)
     await sleep(800);
     for (let i = 1; i < deltas.length; i++) expect(deltas[i]!.fromTick).toBe(deltas[i - 1]!.toTick);
     const ack = await g.submit(id, cmd('after-move', 'definitely.not.a.kind'));
