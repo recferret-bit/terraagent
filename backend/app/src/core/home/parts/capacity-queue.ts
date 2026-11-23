@@ -63,7 +63,7 @@ async function enqueue(deps: CapacityQueueDeps, lobby: LobbyPersistenceService, 
     request: { mode: 'AUTO', planetId: devPlanetIdFor(type, 1), planetType: type },
     priority: 0,
   });
-  return buildQueuedHomeResponse(ticket, lobby, deps.lifecycle);
+  return queuedAtCap(ticket, lobby, deps.lifecycle);
 }
 
 /**
@@ -90,7 +90,16 @@ export async function admitFromQueue(
   if (now - Date.parse(ticket.updatedAt) >= QUEUE_TOUCH_MS) {
     await lobby.updateTicket({ ticketId: ticket.id, position: ticket.position ?? 0 }).catch(() => undefined);
   }
-  return buildQueuedHomeResponse(ticket, lobby, deps.lifecycle);
+  return queuedAtCap(ticket, lobby, deps.lifecycle);
+}
+
+/**
+ * The QUEUED home of a capacity ticket. A seat only frees when a planet unloads or a colony ends, so there is no
+ * honest estimate: `etaS` is null (the lobby's per-position estimate is for canonical sector assignment).
+ */
+async function queuedAtCap(ticket: MatchTicketRecord, lobby: LobbyPersistenceService, lifecycle: WorldLifecycleService | undefined): Promise<HomeResponse> {
+  const home = await buildQueuedHomeResponse(ticket, lobby, lifecycle);
+  return home.state === 'QUEUED' ? { ...home, etaS: null } : home;
 }
 
 /** First in line among the tickets of the same family that were polled recently (FIFO by priority, then age). */

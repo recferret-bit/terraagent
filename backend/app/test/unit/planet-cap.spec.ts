@@ -33,13 +33,15 @@ describe('planet cap (3.4): at the cap no planet is created', () => {
     await r.fill('p_', SEATS);
     const out = await r.seat('p_late');
     expect(out.state).toBe('QUEUED');
+    // no seat frees on a schedule (a planet must unload or a colony end), so the queue promises no ETA
+    expect(out).toMatchObject({ state: 'QUEUED', etaS: null });
     expect(await r.repo.findPlanetById('pl_dev_2')).toBeNull();
     expect((await r.repo.listPlanets()).map((p) => p.id)).toEqual(['pl_dev']);
     const ticket = await r.lobby.findActiveTicketByPlayer('p_late');
     expect(ticket && isCapacityTicket(ticket)).toBe(true);
     expect(ticket).toMatchObject({ mode: 'AUTO', planetId: 'pl_dev', planetType: 'desert', state: 'QUEUED' });
     // polling while still full keeps the player queued and creates nothing
-    expect((await r.seat('p_late')).state).toBe('QUEUED');
+    expect(await r.seat('p_late')).toMatchObject({ state: 'QUEUED', etaS: null });
     expect(await r.repo.findPlanetById('pl_dev_2')).toBeNull();
   });
 
