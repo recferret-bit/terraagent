@@ -22,7 +22,8 @@ export function toProviderError(err: unknown): LlmProviderError {
  */
 export class GuardedLlmProvider extends LlmProviderPort {
   constructor(
-    private readonly inner: LlmProviderPort,
+    /** The selected adapter (`mock` / `nearai`) behind the circuits. */
+    readonly inner: LlmProviderPort,
     readonly health: ProviderHealth = providerHealth,
   ) {
     super();
