@@ -321,3 +321,59 @@ describe('time warp thread budget cap', () => {
     expect(r.s.info('a')).toMatchObject({ warp: 10, warpRequested: 10 });
   });
 });
+
+/** Deterministic thread model: a step advances the clock by its cost; timers fire in order; scripted calls are timers too. */
+function threadModel(costs: Record<string, number>, script: Array<[number, (s: PlanetScheduler) => void]>, runMs: number) {
+  let now = 0;
+  let seq = 0;
+  const timers: { at: number; seq: number; fn: () => void; dead: boolean }[] = [];
+  const stepsAt: Record<string, number[]> = {};
+  const s = new PlanetScheduler({
+    now: () => now,
+    schedule: (fn, delay) => { const t = { at: now + Math.max(0, delay), seq: seq++, fn, dead: false }; timers.push(t); return () => { t.dead = true; }; },
+    step: (id) => { (stepsAt[id] ??= []).push(now); now += costs[id]!; },
+  });
+  s.start();
+  for (const [at, fn] of script) timers.push({ at, seq: seq++, fn: () => fn(s), dead: false });
+  while (now < runMs) {
+    const t = timers.filter((x) => !x.dead).sort((a, b) => a.at - b.at || a.seq - b.seq)[0];
+    if (!t) break;
+    timers.splice(timers.indexOf(t), 1);
+    now = t.at > now ? t.at : now + 0.01;
+    t.fn();
+  }
+  const rate = (id: string, from: number, to: number) => (stepsAt[id] ?? []).filter((x) => x >= from && x < to).length / ((to - from) / 1000);
+  return { s, rate };
+}
+
+describe('PlanetScheduler: a heavy planet always keeps stepping (hold time-box is per planet)', () => {
+  const watched = (id: string) => (s: PlanetScheduler) => { s.add(id); s.setPlayers(id, true); };
+
+  it('an unwatched coarse 150 ms planet next to a 60 ms heavy planet that keeps finding gaps is not starved', () => {
+    // W0/W1: light watched planets half a tick apart. M fits the ~90 ms gaps between them every tick; C needs 135 ms.
+    const r = threadModel({ W0: 10, W1: 10, M: 60, C: 150 }, [
+      [0, watched('W0')], [100, watched('W1')],
+      [1000, (s) => { s.add('C'); s.setMode('C', 'coarse'); }], [1003, watched('M')],
+    ], 300_000);
+    expect(r.rate('C', 20_000, 300_000)).toBeGreaterThan(0.5); // one coarse slot a second is its full rate
+    expect(r.rate('M', 20_000, 300_000)).toBeGreaterThan(4);
+    expect(r.rate('W0', 20_000, 300_000)).toBeGreaterThan(4.9);
+  });
+
+  it('a watched 100 ms planet next to two watched 60 ms planets and three light ones is not starved', () => {
+    const r = threadModel({ L0: 5, L1: 5, L2: 5, M0: 60, M1: 60, H: 100 }, [
+      [0, (s) => s.add('L0')], [70, (s) => s.add('L1')], [140, (s) => s.add('L2')],
+      [1000, watched('M0')], [1001, watched('M1')], [1002, watched('H')],
+    ], 300_000);
+    expect(r.rate('H', 20_000, 300_000)).toBeGreaterThan(1); // the thread is over capacity: H is slow, never stopped
+    expect(r.s.info('H')!.lagSteps).toBeLessThanOrEqual(25);
+  });
+
+  it('planets under a quarter tick are never held back for each other', () => {
+    const r = threadModel({ A: 30, B: 35, C: 15, D: 15 }, [
+      [0, watched('A')], [50, watched('B')], [100, watched('C')], [150, watched('D')],
+    ], 60_000);
+    for (const id of ['A', 'B', 'C', 'D']) expect(r.rate(id, 5_000, 60_000)).toBeGreaterThan(4.95);
+    expect(r.s.info('A')!.droppedSlots + r.s.info('B')!.droppedSlots).toBe(0);
+  });
+});

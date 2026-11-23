@@ -19,13 +19,14 @@ export const PLAYER_WEIGHT = 4;
 /**
  * A planet whose slots average more than this is heavy: it starts a slot only when no light planet is due within
  * {@link HEAVY_GAP_SHARE} of `min(its slot, one tick)`, i.e. right after the light planets stepped, so a 300 ms slot
- * makes them at most ~120 ms late instead of up to 300 ms.
+ * makes them at most ~120 ms late instead of up to 300 ms. A quarter of a tick: a healthy planet on the production
+ * box steps in 20-35 ms, and holding those back for each other costs more than the few ms of lateness it saves.
  */
-export const HEAVY_STEP_MS = 20;
+export const HEAVY_STEP_MS = TICK_MS / 4;
 export const HEAVY_GAP_SHARE = 0.9;
 /**
- * Longest a heavy planet waits for such a gap while no heavy planet found one (staggered light planets may never leave
- * one); one tick with players. While gaps do come, heavy planets share them in fair-share order instead.
+ * Longest a heavy planet waits for such a gap (staggered light planets may never leave one big enough for it); one
+ * tick with players. After that it steps anyway: every planet keeps stepping, however heavy.
  */
 export const HEAVY_MAX_HOLD_MS = 1000;
 /** Cap of the time-warp multiplier. */
@@ -163,7 +164,6 @@ export class PlanetScheduler {
   /** Weighted-time floor: the least vruntime picked so far. New and idle planets start near it. */
   private floorVr = 0;
   /** When a heavy planet last started in a gap (the hold time-box applies only when gaps stopped coming). */
-  private lastGapMs = -Infinity;
   private readonly budgetMs: number;
   private readonly maxDebt: number;
   private readonly demoteAfter: number;
@@ -335,11 +335,13 @@ export class PlanetScheduler {
     if (e.avgStepMs <= HEAVY_STEP_MS) return this.release(e);
     const maxHold = e.players ? TICK_MS : HEAVY_MAX_HOLD_MS;
     const since = e.heldSince >= 0 ? e.heldSince : now;
-    if (now - since >= maxHold && now - this.lastGapMs >= maxHold) return this.release(e); // no gaps at all: run anyway
+    // The time-box is this planet's own. (It used to be extended while ANY heavy planet found a gap: a planet that
+    // needed a bigger gap than its neighbours kept finding then waited forever and never stepped again.)
+    if (now - since >= maxHold) return this.release(e);
     let next = Infinity;
     for (const o of this.entries.values()) if (o !== e && o.avgStepMs <= HEAVY_STEP_MS) next = Math.min(next, o.nextDueMs);
-    if (next - now >= HEAVY_GAP_SHARE * Math.min(e.avgStepMs, TICK_MS)) { this.lastGapMs = now; return this.release(e); }
-    e.holdUntil = Math.min(next, Math.max(since, this.lastGapMs) + maxHold);
+    if (next - now >= HEAVY_GAP_SHARE * Math.min(e.avgStepMs, TICK_MS)) return this.release(e);
+    e.holdUntil = Math.min(next, since + maxHold);
     if (e.heldSince < 0) e.heldSince = now;
     return true;
   }
