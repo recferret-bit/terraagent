@@ -9,6 +9,7 @@ import {
   decodeNep413SocialToken,
   extractAuthApiErrorMessage,
   PENDING_NEP413_STORAGE_KEY,
+  persistActivePilotSession,
   RECENT_NEP413_POPUP_KEY,
 } from '../../../design/pilot/nearAuthApi';
 import { signOutNearWalletSelector } from '../../../design/pilot/walletSelectorRuntime';
@@ -17,6 +18,7 @@ import type { GuestBootTarget } from './guestBoot';
 import { createRelayWatch, type RelayWatch } from './relayWatch';
 
 interface PilotState {
+  playerId?: string;
   isGuest: boolean;
   handle: string;
   accountId: string | null;
@@ -24,6 +26,7 @@ interface PilotState {
 }
 
 export interface PilotView extends PilotState {
+  readonly playerId?: string;
   /** Bumps only when `loginSocial` links a pilot. The orbit chip starts a poll on the increase. */
   saveEpoch: number;
 }
@@ -65,11 +68,28 @@ export class PilotBridge {
   /** Boot (and a later re-boot) seeds the chip. Omitted `isGuest` is already normalised to true on the result. */
   note(boot: BootAuthResult): void {
     this.state = {
+      ...(boot.playerId ? { playerId: boot.playerId } : {}),
       isGuest: boot.isGuest,
       handle: boot.handle,
       accountId: boot.accountId ?? null,
       accessToken: boot.accessToken,
     };
+    if (
+      boot.mode === 'online' &&
+      boot.playerId &&
+      boot.accessToken &&
+      !boot.accessToken.startsWith('dev:')
+    ) {
+      persistActivePilotSession({
+        accessToken: boot.accessToken,
+        ...(boot.accountId ? { accountId: boot.accountId } : {}),
+        player: {
+          id: boot.playerId,
+          isGuest: boot.isGuest,
+          handle: boot.handle || 'Guest Commander',
+        },
+      });
+    }
     this.emit();
   }
 
@@ -107,6 +127,7 @@ export class PilotBridge {
   /** Applies an already-verified `SocialAuthResponse` (e.g. from localhost mock login) to the pilot session. */
   applyLinkedAuth(body: SocialAuthResponse): void {
     const next: PilotState = {
+      playerId: body.player.id,
       isGuest: body.player.isGuest,
       handle: body.player.handle,
       accountId: body.accountId,

@@ -12,9 +12,7 @@ export function renderPlanetsSection(
   const currentCards = profile.currentColonies.map((c) => {
     const diveHref = opts.localHost
       ? '/play.html?host=local&skip=1'
-      : c.colonyId.startsWith('co_w12_')
-        ? '/play.html?scenario=w12&as=w12'
-        : `/play.html?skip=1&colonyId=${encodeURIComponent(c.colonyId)}`;
+      : `/play.html?skip=1&colonyId=${encodeURIComponent(c.colonyId)}`;
     return el(
       'div',
       { className: 'plate-sm ta-colony-card', dataset: { testid: 'me-current-colony', colonyId: c.colonyId } },

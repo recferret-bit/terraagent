@@ -113,7 +113,7 @@ export class Game {
     this.mountStage(this.makeSpec(kind, this.menu.seed));
     this.applySettings();
     this.loop();
-    if (q.has('planet') && (q.get('skip') === '1' || (devBuild && q.has('t')) || q.get('deploy') === '1')) {
+    if ((q.has('planet') || this.isLocalHost) && (q.get('skip') === '1' || (devBuild && q.has('t')) || q.get('deploy') === '1')) {
       this.settings.skipCinematic = q.get('skip') === '1';
       this.fastForward = devBuild ? Math.max(0, parseFloat(q.get('t') ?? '0') || 0) : 0;
       void this.autoDeploy(kind);

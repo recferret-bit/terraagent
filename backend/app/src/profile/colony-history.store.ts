@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import type { CurrentColonySummary, PastColonyOutcome, PastColonySummary } from '@terra/contracts';
 import type { PrismaClient } from '@terra/db';
+import { devPlanetTypeOf } from '@terra/sim';
 import { databaseEnabled } from '../core/persistence.js';
 import { APP_ENV, type AppEnv } from '../core/tokens.js';
 import { PRISMA } from '../db/db.module.js';
@@ -109,10 +110,18 @@ export class ColonyHistoryStore {
     if (!this.useDb || !this.prisma) return this.mem.getCurrent(playerId);
     const colonies = await this.prisma.colony.findMany({ where: { playerId, status: 'ACTIVE' }, orderBy: { createdAt: 'desc' } });
     const planets = await this.prisma.planet.findMany({ where: { id: { in: colonies.map(c => c.planetId) } } });
-    return colonies.flatMap(c => {
-      const planet = planets.find(p => p.id === c.planetId);
-      return planet ? [{ colonyId: c.id, name: c.name, planetId: planet.id, planetName: planet.name,
-        planetType: planet.type, stage: c.stage, status: 'active', foundedAt: c.createdAt.toISOString() }] : [];
+    return colonies.map((c) => {
+      const planet = planets.find((p) => p.id === c.planetId);
+      return {
+        colonyId: c.id,
+        name: c.name,
+        planetId: c.planetId,
+        planetName: planet?.name ?? (c.planetId === 'pl_w12_forest' ? 'Sylva Reach' : c.planetId),
+        planetType: planet?.type ?? (c.planetId === 'pl_w12_forest' ? 'temperate' : (devPlanetTypeOf(c.planetId) ?? 'temperate')),
+        stage: c.stage,
+        status: 'active',
+        foundedAt: c.createdAt.toISOString(),
+      };
     });
   }
 

@@ -153,4 +153,21 @@ describe('PilotBridge loginSocial (W06-15)', () => {
     expect(sessionMap.has(RECENT_NEP413_POPUP_KEY)).toBe(false);
     expect(bridge.view().isGuest).toBe(true);
   });
+
+  it('persists ta_active_pilot and exposes playerId in PilotBridge.note for deferred ActivePilotTracker pickup', async () => {
+    const localMap = new Map<string, string>();
+    vi.stubGlobal('localStorage', {
+      getItem: (k: string) => localMap.get(k) ?? null,
+      setItem: (k: string, v: string) => void localMap.set(k, v),
+      removeItem: (k: string) => void localMap.delete(k),
+    });
+
+    const { target, boot } = await booted();
+    const bridge = new PilotBridge({ target: () => target });
+    bridge.note(boot);
+
+    expect(bridge.view()).toMatchObject({ playerId: PLAYER, isGuest: true, accessToken: 'jwt-guest' });
+    const stored = JSON.parse(localMap.get('ta_active_pilot') ?? '{}') as { playerId?: string; accessToken?: string; isGuest?: boolean };
+    expect(stored).toMatchObject({ playerId: PLAYER, accessToken: 'jwt-guest', isGuest: true });
+  });
 });

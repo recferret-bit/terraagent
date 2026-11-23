@@ -2,6 +2,8 @@ import { Inject, Injectable, Optional } from '@nestjs/common';
 import type { ColonySummary, HomeResponse, PlanetSummary } from '@terra/contracts';
 import { DEV_PLANET_TYPE, type DevPlanetType } from '@terra/sim';
 import { WorldLifecycleService } from '../../lobby/lifecycle.service';
+import { devPlayerId } from '../../ws/session-verifier';
+import { APP_ENV, type AppEnv } from '../tokens';
 import { LobbyPersistenceService } from '../../lobby/lobby-persistence.service';
 import type { CanonicalWorldRecord } from '../../lobby/lobby-persistence.types';
 import { normalizeColonyStatus, SectorAntiCheatService } from '../anticheat';
@@ -27,7 +29,9 @@ import type { AwayHeadline } from './away-headline';
 import type { HardModeHomeClock } from './hard-mode-home';
 import { type ColonyRecord, HomeRepository, type PlanetRecord } from './home.repository';
 import {
+  askHostLandingSite,
   assertNewHomeJoinSpace,
+  notifyColonySeated,
   assertRequestedHomeLocation,
   buildHomeResponseForColony,
   errText,
@@ -78,6 +82,7 @@ export class HomeService {
     @Optional() @Inject(LobbyPersistenceService) private lobbyPersistence?: LobbyPersistenceService,
     @Optional() @Inject(WorldLifecycleService) private worldLifecycle?: WorldLifecycleService,
     @Optional() @Inject(SectorAntiCheatService) private readonly antiCheat?: SectorAntiCheatService,
+    @Optional() @Inject(APP_ENV) private readonly env?: AppEnv,
   ) {
     this.antiCheat?.setLobbyPersistence(this.lobbyPersistence);
   }
@@ -179,7 +184,19 @@ export class HomeService {
     requestedPlanetId?: string,
   ): Promise<HomeResponse> {
     let colony = await this.repo.findColonyById(colonyId);
-    let rawPlanet = colony && colony.playerId === playerId ? await this.repo.findPlanetById(colony.planetId) : null;
+    if (!colony && this.isNonProduction() && colonyId === 'co_w12_live_1') {
+      colony = await this.materializeW12LiveColony(playerId, colonyId, requestedSectorId);
+    }
+    if (
+      colony &&
+      colony.playerId !== playerId &&
+      this.isNonProduction() &&
+      (colony.id === 'co_w12_live_1' || colony.playerId.startsWith('pr_dev_') || colony.playerId === devPlayerId('w12'))
+    ) {
+      this.antiCheat?.recordColonyRemoved(colony.id);
+      colony = (await this.repo.reassignColonyPlayer(colony.id, playerId)) ?? colony;
+    }
+    let rawPlanet: PlanetRecord | null = null;
     if (!colony) {
       const committed = await findCommittedReservationColony(this.lobbyPersistence, playerId, { colonyId });
       if (committed && committed.colony.playerId === playerId) {
@@ -188,6 +205,16 @@ export class HomeService {
       }
     } else {
       colony = await enrichColonyWithReservation(this.applyOverrides(colony), this.lobbyPersistence);
+      if (colony.playerId === playerId) {
+        rawPlanet =
+          (await this.repo.findPlanetById(colony.planetId)) ??
+          (await this.repo.upsertDevPlanet(
+            colony.planetId,
+            colony.planetId === 'pl_w12_forest'
+              ? { name: 'Sylva Reach', type: 'temperate', seed: 'w12-profile-achievements', state: 'ACTIVE' }
+              : {},
+          ));
+      }
     }
     const planet = rawPlanet ? this.applyPlanetOverrides(rawPlanet) : null;
 
@@ -469,6 +496,77 @@ export class HomeService {
       hardMode: this.hardMode,
       awayHeadline: this.awayHeadline,
     });
+  }
+
+  private isNonProduction(): boolean {
+    return (this.env?.NODE_ENV ?? process.env.NODE_ENV) !== 'production';
+  }
+
+  private async materializeW12LiveColony(
+    playerId: string,
+    colonyId: string,
+    requestedSectorId?: string,
+  ): Promise<ColonyRecord | null> {
+    const w12Planet = await this.repo.upsertDevPlanet('pl_w12_forest', {
+      name: 'Sylva Reach',
+      type: 'temperate',
+      seed: 'w12-profile-achievements',
+      state: 'ACTIVE',
+    });
+    const slot = await this.repo.findFreeSlotOnPlanet(w12Planet.id);
+    const colonyIndex = slot?.colonyIndex ?? 0;
+    let spawnQ = 0;
+    let spawnR = 0;
+    let landingSlotId: string | null = null;
+    let foundingSectorId = requestedSectorId?.trim() || 'sec_0_0';
+    if (this.landingHost) {
+      const site = await askHostLandingSite(this.landingHost, w12Planet, colonyIndex, requestedSectorId);
+      if (site.ok) {
+        spawnQ = site.q;
+        spawnR = site.r;
+        landingSlotId = site.landingSlotId ?? null;
+        if (!requestedSectorId?.trim() && site.sectorId) foundingSectorId = site.sectorId;
+      }
+    }
+    try {
+      const created = await this.repo.createColony({
+        id: colonyId,
+        playerId,
+        planetId: w12Planet.id,
+        colonyIndex,
+        name: 'Aegis Basin',
+        color: colonyIndex,
+        status: 'ACTIVE',
+        foundingSectorId,
+        landingSlotId,
+        spawnQ,
+        spawnR,
+      });
+      this.antiCheat?.recordColonyBase(created.colony, created.planet, true);
+      await notifyColonySeated(
+        this.repo,
+        this.notifier,
+        this.seatListeners,
+        {
+          player: { id: playerId, handle: 'Aegis' },
+          colony: created.colony,
+          planet: created.planet,
+          slot: {
+            index: colonyIndex,
+            q: spawnQ,
+            r: spawnR,
+            ...(foundingSectorId ? { sectorId: foundingSectorId } : {}),
+            ...(landingSlotId ? { landingSlotId } : {}),
+          },
+        },
+        this.antiCheat,
+      );
+      return created.colony;
+    } catch (err) {
+      const existing = await this.repo.findColonyById(colonyId);
+      if (existing) return existing;
+      throw err;
+    }
   }
 
   private withSeatLock<T>(fn: () => Promise<T>): Promise<T> {

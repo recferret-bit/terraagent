@@ -338,8 +338,8 @@ export class SimClusterService {
     if (existing?.kind === 'remote') {
       try {
         const ans = await this.postJson<LandingSiteAnswer>(existing.internalUrl, path, body, timeoutMs + 2_000);
-        if (!ans.ok) throw new Error(`Remote landing site failed on ${planetId}: ${ans.code}`);
-        return ans;
+        if (ans.ok || ans.code !== 'planet_not_loaded') return ans;
+        await this.simLease.evictPlanetLease?.(planetId, existing.workerId);
       } catch (err) {
         if (!isClusterTransportError(err)) throw err;
         await this.simLease.evictWorker?.(existing.workerId);
@@ -347,7 +347,9 @@ export class SimClusterService {
     }
     const out = await this.postToHealthyWorker<LandingSiteAnswer>(path, body, this.workerWaitMs, timeoutMs + 2_000);
     if (!out) throw new Error(`No simulation worker available for landing site on ${planetId}`);
-    if (!out.data.ok) throw new Error(`Remote landing site failed on ${planetId}: ${out.data.code}`);
+    if (!out.data.ok && out.data.code === 'planet_not_loaded') {
+      throw new Error(`Remote landing site failed on ${planetId}: ${out.data.code}`);
+    }
     return out.data;
   }
 

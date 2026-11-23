@@ -379,4 +379,58 @@ describe('InternalSimController & SimClusterService phantom/lease behavior', () 
     expect(loc).toBeNull();
     expect(fakeSnapshots.loadNew).not.toHaveBeenCalled();
   });
+
+  it('acquires lease in InternalSimController.landingSite and returns non-loaded landing rejections from SimClusterService.forwardLandingSite without throwing', async () => {
+    const acquired: string[] = [];
+    const loaded = new Set<string>();
+    const fakePlanets = {
+      isLoaded: (id: string) => loaded.has(id),
+      landingSite: vi.fn(async () => ({ ok: true, q: 2, r: -1, slotIndex: 0 })),
+    };
+    const fakeLease = {
+      workerId: 'worker-api',
+      internalUrl: 'http://127.0.0.1:4100',
+      canHostSim: () => false,
+      tryAcquire: vi.fn(async (id: string) => { acquired.push(id); return true; }),
+      releasePlanet: vi.fn(async () => undefined),
+      getOwnerLease: vi.fn(async (id: string) =>
+        id === 'pl_dev_2' ? { planetId: 'pl_dev_2', workerId: 'worker-1', internalUrl: 'http://127.0.0.1:4101' } : null,
+      ),
+      pickHealthyWorker: vi.fn(async () => ({ workerId: 'worker-1', internalUrl: 'http://127.0.0.1:4101' })),
+      evictPlanetLease: vi.fn(async () => undefined),
+      evictWorker: vi.fn(async () => undefined),
+    };
+    const fakeSnapshots = {
+      loadNew: vi.fn(async (id: string) => { loaded.add(id); }),
+    };
+    const ctrl = new InternalSimController(
+      { NODE_ENV: 'test', TA_INTERNAL_SECRET: 'sec' } as unknown as AppEnv,
+      fakePlanets as never,
+      fakeSnapshots as never,
+      fakeLease as never,
+    );
+    const hdrs = { headers: { 'x-terra-internal-token': 'sec' } } as never;
+    const site = await ctrl.landingSite('pl_dev_lease', { colonyIndex: 0 }, hdrs);
+    expect(site).toEqual({ ok: true, q: 2, r: -1, slotIndex: 0 });
+    expect(acquired).toContain('pl_dev_lease');
+
+    const cluster = new SimClusterService(
+      { NODE_ENV: 'test', TA_INTERNAL_SECRET: 'sec' } as unknown as AppEnv,
+      log,
+      fakePlanets as never,
+      fakeLease as never,
+      fakeSnapshots as never,
+    );
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ ok: false, code: 'landing_site_taken' }),
+    })));
+    try {
+      const ans = await cluster.forwardLandingSite('pl_dev_2', {}, 0, 5_000);
+      expect(ans).toEqual({ ok: false, code: 'landing_site_taken' });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });

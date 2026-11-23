@@ -14,7 +14,7 @@ declare module '../../core/registry/types' {
      * The chip reads this; the online session supplies it.
      */
     pilot?: {
-      view(): { isGuest: boolean; handle: string; accountId: string | null; accessToken: string; saveEpoch?: number };
+      view(): { playerId?: string; isGuest: boolean; handle: string; accountId: string | null; accessToken: string; saveEpoch?: number };
       subscribe(fn: () => void): () => void;
       loginSocial(
         provider: 'google' | 'x' | 'fastauth' | 'email' | 'near-wallet',

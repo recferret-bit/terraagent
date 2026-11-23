@@ -8,4 +8,4 @@ import { ColonyId } from '../ids';
  * Lives outside `home.ts` so digest schemas can use it without a cycle back into `HomeResponse`.
  */
 export const HomePlanetId = z.string().regex(/^pl_[A-Za-z0-9_-]{1,64}$/);
-export const HomeColonyId = z.union([ColonyId, z.string().regex(/^col_[A-Za-z0-9_-]{1,64}$/)]);
+export const HomeColonyId = z.union([ColonyId, z.string().regex(/^col?_[A-Za-z0-9_-]{1,64}$/)]);

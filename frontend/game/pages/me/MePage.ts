@@ -267,6 +267,7 @@ export class MePage {
       allowOfflineLocalAuth: this.localHost,
       profileHref: this.localHost ? '/me.html?host=local' : undefined,
       onAuthChange: () => {
+        this.clearDevQueryParamsOnAuthChange();
         void this.load();
       },
     });
@@ -410,6 +411,7 @@ export class MePage {
         profileHref: this.localHost ? '/me.html?host=local' : undefined,
         onAuthChange: (session) => {
           if (!session) clearMeCachedToken();
+          this.clearDevQueryParamsOnAuthChange();
           void this.load();
         },
       });
@@ -430,6 +432,17 @@ export class MePage {
         authHost,
       ),
     );
+  }
+
+  private clearDevQueryParamsOnAuthChange(): void {
+    if (this.opts.search !== undefined || typeof window === 'undefined' || !window.location) return;
+    const params = new URLSearchParams(window.location.search);
+    if (!params.has('as') && !params.has('playerId')) return;
+    params.delete('as');
+    params.delete('playerId');
+    const qs = params.toString();
+    const nextUrl = `${window.location.pathname}${qs ? `?${qs}` : ''}${window.location.hash}`;
+    window.history?.replaceState?.(null, '', nextUrl);
   }
 
   private renderSectionPlate(

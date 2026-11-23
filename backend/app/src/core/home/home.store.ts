@@ -72,12 +72,15 @@ export interface HomeStore {
   findColony(id: string): Promise<ColonyRecord | null>;
   /** The player's newest colony, optionally on one planet. */
   findLatestColony(playerId: string, planetId?: string): Promise<ColonyRecord | null>;
+  /** All colonies owned by `playerId` (optionally on `planetId`), newest first. */
+  listPlayerColonies(playerId: string, planetId?: string): Promise<ColonyRecord[]>;
   listColonies(planetId?: string): Promise<ColonyRecord[]>;
   /** Inserts the colony and recounts its planet's seats. */
   createColony(row: NewColonyRow): Promise<{ colony: ColonyRecord; planet: PlanetRecord | null }>;
   /** Deletes the colony (if any) and recounts its planet's seats; returns the planet id it was on. */
   deleteColony(id: string): Promise<string | null>;
   setColonyStatus(id: string, status: string): Promise<ColonyRecord | null>;
+  setColonyPlayer(id: string, playerId: string): Promise<ColonyRecord | null>;
   setColonyRecapSeen(id: string, recapSeen?: boolean): Promise<ColonyRecord | null>;
   /** Deletes every colony row of the planet and resets its seat count (dev wipe); returns how many colonies. */
   deleteColoniesOfPlanet(planetId: string): Promise<number>;
@@ -135,6 +138,12 @@ export class MemoryHomeStore implements HomeStore {
     return latest;
   }
 
+  async listPlayerColonies(playerId: string, planetId?: string): Promise<ColonyRecord[]> {
+    return [...this.colonies.values()]
+      .filter((c) => c.playerId === playerId && (planetId === undefined || c.planetId === planetId))
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime() || b.colonyIndex - a.colonyIndex);
+  }
+
   async listColonies(planetId?: string): Promise<ColonyRecord[]> {
     return [...this.colonies.values()].filter((c) => planetId === undefined || c.planetId === planetId).sort((a, b) => a.colonyIndex - b.colonyIndex);
   }
@@ -161,6 +170,14 @@ export class MemoryHomeStore implements HomeStore {
     if (!c) return null;
     const recapSeen = status === 'ELIMINATED' && c.status !== 'ELIMINATED' ? false : c.recapSeen;
     const next = { ...c, status, state: status, recapSeen };
+    this.colonies.set(id, next);
+    return next;
+  }
+
+  async setColonyPlayer(id: string, playerId: string): Promise<ColonyRecord | null> {
+    const c = this.colonies.get(id);
+    if (!c) return null;
+    const next = { ...c, playerId };
     this.colonies.set(id, next);
     return next;
   }

@@ -9,6 +9,7 @@ import {
   type UpdatePlayerAiSettings,
 } from '@terra/contracts';
 import { classifyProfileFailure, type ProfileReason } from '../../../design/analytics/profile';
+import { persistActivePilotSession } from '../../../design/pilot/nearAuthApi';
 import { jwtStillValid, refreshPilotSession } from '../../../design/pilot/PilotAccess';
 import { isProductionBuild } from '../../core/buildEnv';
 import { readActivePilot } from '../../features/achievements/activePilot';
@@ -47,8 +48,17 @@ export function clearMeCachedToken(): void {
   cachedRefreshedToken = '';
 }
 
-function isUsableServerBearer(token: string): boolean {
-  if (!token || token === 'local-mode-token' || token.startsWith('player:')) return false;
+function isUsableServerBearer(token: string | undefined): token is string {
+  if (
+    !token ||
+    token === 'local-mode-token' ||
+    token.startsWith('ta_mock_') ||
+    token.startsWith('near:') ||
+    token.startsWith('dev:') ||
+    token.startsWith('player:')
+  ) {
+    return false;
+  }
   return token.split('.').length === 3 ? jwtStillValid(token) : true;
 }
 
@@ -122,6 +132,13 @@ export async function fetchMeData(
     if (refreshed) {
       if (refreshed.player?.isGuest === true) {
         cachedRefreshedToken = '';
+        if (refreshed.accessToken) {
+          persistActivePilotSession({
+            accessToken: refreshed.accessToken,
+            ...(refreshed.accountId ? { accountId: refreshed.accountId } : {}),
+            player: refreshed.player,
+          });
+        }
         return {
           kind: 'unauthenticated',
           message: 'Sign in or create a pilot account to view your profile, achievements, and NEAR.AI settings.',

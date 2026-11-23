@@ -71,4 +71,28 @@ describe('owned colony resume', () => {
       errorCode: 'COLONY_SECTOR_LOCKED',
     });
   });
+
+  it('materializes and resumes co_w12_live_1 on Sylva Reach (pl_w12_forest) and reassigns dev-seeded ownership in non-production', async () => {
+    const repo = new HomeRepository();
+    const home = new HomeService(repo);
+    const seated: string[] = [];
+    home.setLandingHost(freeLandingHost);
+    home.onColonySeated(({ colony }) => {
+      seated.push(colony.id);
+    });
+
+    const first = await home.resumeColony('pr_browser_1', 'co_w12_live_1');
+    expect(first).toMatchObject({
+      state: 'ACTIVE',
+      colony: { id: 'co_w12_live_1', name: 'Aegis Basin', playerId: 'pr_browser_1', planetId: 'pl_w12_forest' },
+      planet: { id: 'pl_w12_forest', name: 'Sylva Reach', type: 'temperate' },
+    });
+    expect(seated).toEqual(['co_w12_live_1']);
+
+    const reassigned = await home.resumeColony('pr_browser_2', 'co_w12_live_1');
+    expect(reassigned).toMatchObject({
+      state: 'ACTIVE',
+      colony: { id: 'co_w12_live_1', playerId: 'pr_browser_2', planetId: 'pl_w12_forest' },
+    });
+  });
 });
