@@ -2,10 +2,17 @@ import { describe, expect, it } from 'vitest';
 import { isDeterministicChainError } from '../../src/near/infrastructure/rpc/near-error-map.js';
 import { NearRpcClient } from '../../src/near/infrastructure/rpc/near-rpc.client.js';
 import { resolveNearNetworkConfig } from '../../src/near/infrastructure/network/near-network.config.js';
+import { isMethodNotFoundRpcError } from '../../src/near/staking/lst-pools.js';
 
+/** As near-api-js 7.5 throws it (`RpcError`) for a view whose argument the contract rejects (seen on testnet). */
 const GUEST_PANIC =
   'wasm execution failed with error: HostError(GuestPanic { panic_msg: "Failed to deserialize input from JSON. Error: `invalid value: \\"pl_dev--col_7.terraagent.testnet\\", the Account ID has a redundant separator \'-\' at index 7`" })';
-const METHOD_NOT_FOUND = 'wasm execution failed with error: MethodResolveError(MethodNotFound)';
+/** As near-api-js 7.5 throws it for a view of a method the deployed contract does not have (seen on testnet). */
+function methodNotFound(): Error {
+  const err = new Error('Contract method is not found at block height 279015818');
+  err.name = 'ContractMethodNotFoundError';
+  return err;
+}
 const DEAD_FALLBACK = '{"jsonrpc": "2.0", "error": {"code": -429, "message": "WARNING! THIS ENDPOINT IS DEPRECATED!"}, "id": "1"} 429';
 
 interface FakeProvider { query: (req: unknown) => Promise<unknown>; calls: number }
@@ -24,7 +31,9 @@ function clientWith(primary: FakeProvider, fallback: FakeProvider): NearRpcClien
 describe('NEAR view errors raised inside the contract are deterministic', () => {
   it('classifies a guest panic and a missing method as deterministic, and a dead endpoint as not', () => {
     expect(isDeterministicChainError(new Error(`Querying failed: ${GUEST_PANIC}`))).toBe(true);
-    expect(isDeterministicChainError(new Error(`[-32000] Server error: ${METHOD_NOT_FOUND}`))).toBe(true);
+    expect(isDeterministicChainError(methodNotFound())).toBe(true);
+    expect(isDeterministicChainError(new Error('wasm execution failed with error: MethodResolveError(MethodNotFound)'))).toBe(true);
+    expect(isMethodNotFoundRpcError(methodNotFound())).toBe(true); // the staking sync's own check recognises it
     expect(isDeterministicChainError(new Error(DEAD_FALLBACK))).toBe(false);
   });
 
@@ -40,9 +49,10 @@ describe('NEAR view errors raised inside the contract are deterministic', () => 
   });
 
   it('a missing contract method keeps its text, so callers can recognise it', async () => {
-    const primary = provider(() => Promise.reject(new Error(`Querying failed: ${METHOD_NOT_FOUND}`)));
+    const primary = provider(() => Promise.reject(methodNotFound()));
     const fallback = provider(() => Promise.reject(new Error(DEAD_FALLBACK)));
-    await expect(clientWith(primary, fallback).view('staking.terraagent.testnet', 'get_account_positions', {})).rejects.toThrow(/MethodNotFound/);
+    await expect(clientWith(primary, fallback).view('staking.terraagent.testnet', 'get_account_positions', {})).rejects.toThrow(/method is not found/);
+    expect(primary.calls).toBe(1);
     expect(fallback.calls).toBe(0);
   });
 
