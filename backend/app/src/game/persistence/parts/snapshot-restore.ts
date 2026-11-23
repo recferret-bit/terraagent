@@ -50,6 +50,8 @@ export interface RestoreOneDeps {
   readonly env: AppEnv;
   readonly flags: Pick<FlagsService, 'list' | 'has'> | undefined;
   readonly nowMs: () => number;
+  /** True for a planet whose time away is not replayed (an idle-unloaded planet stood still on purpose). */
+  readonly skipCatchUp?: (planetId: string) => Promise<boolean>;
 }
 
 /** One live planet: restored, held (snapshots kept, not loaded) or wiped (an old dev planet: generated fresh later). */
@@ -97,7 +99,9 @@ export async function restoreOnePlanet(
     if (!isDev && hasLiveColony(state) && !(await deps.homes?.listColoniesByPlanetId(id))?.length) {
       deps.planets.markScenarioColonyPlanet(id, liveColonyIndices(state));
     }
-    const catchUpTicks = missedRestartTicks(deps.nowMs(), snap.savedAt.getTime(), resolveMaxCatchUpTicks(deps.env)).ticks;
+    // A lookup failure keeps the catch-up: replaying a gap is the safe default.
+    const frozen = (await deps.skipCatchUp?.(id).catch(() => false)) ?? false;
+    const catchUpTicks = frozen ? 0 : missedRestartTicks(deps.nowMs(), snap.savedAt.getTime(), resolveMaxCatchUpTicks(deps.env)).ticks;
     const tick = await deps.planets.load(id, {
       snapshot: snap.raw,
       ...(catchUpTicks > 0 ? { catchUpTicks } : {}),

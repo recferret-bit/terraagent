@@ -50,6 +50,9 @@ export class PlanetLifecycleService implements OnModuleInit, OnModuleDestroy {
 
   onModuleInit(): void {
     this.snapshots.setBootRestoreFilter((ids) => this.withoutDormant(ids));
+    // An idle-unloaded planet stood still on purpose: it wakes at its saved tick instead of replaying the gap
+    // (the catch-up pegs a sim thread for up to 10 s and keeps the returning player waiting for it).
+    this.snapshots.setCatchUpSkip((planetId) => this.isDormant(planetId));
     this.offLoaded = this.planets.onPlanetLoaded((planetId, _tick, info) => void this.onLoaded(planetId, info.restored));
     if (this.config.idleMs <= 0) return;
     this.job = this.planetJobs.register({

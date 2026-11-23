@@ -58,6 +58,7 @@ export class SnapshotService implements BeforeApplicationShutdown {
   private digestFlush?: (planetId: string, raw: Uint8Array) => Promise<void>;
   /** Planets boot must leave unloaded (idle-unloaded: `PlanetLifecycleService`), applied to `livePlanetIds`. */
   private bootFilter?: (ids: readonly string[]) => Promise<readonly string[]>;
+  private catchUpSkip?: (planetId: string) => Promise<boolean>;
   /** Wall ms for the restart gap (`now − savedAt`). Tests replace it; boot uses `Date.now`. */
   nowMs: () => number = () => Date.now();
 
@@ -259,6 +260,7 @@ export class SnapshotService implements BeforeApplicationShutdown {
         env: this.env,
         flags: this.flags,
         nowMs: () => this.nowMs(),
+        skipCatchUp: this.catchUpSkip,
       },
       id,
       options,
@@ -286,6 +288,11 @@ export class SnapshotService implements BeforeApplicationShutdown {
 
   setBootRestoreFilter(filter: (ids: readonly string[]) => Promise<readonly string[]>): void {
     this.bootFilter = filter;
+  }
+
+  /** Planets restored at the tick they were saved at, with no catch-up (the lifecycle names its dormant planets). */
+  setCatchUpSkip(skip: (planetId: string) => Promise<boolean>): void {
+    this.catchUpSkip = skip;
   }
 
   /** Called by the game module. A failed flush is logged and does not fail the snapshot. */

@@ -18,10 +18,10 @@ afterAll(async () => { await db?.drop(); });
 
 const PLANET = 'pl_dev';
 const params = { type: DEV_PLANET_TYPE, seed: DEV_PLANET_SEED, radius: DEV_PLANET_RADIUS, capacity: DEV_PLANET_CAPACITY };
-/** Idle after ~3.6 s without a human, checked every second; no catch-up on restore, so the restored tick is the saved one. */
+/** Idle after ~3.6 s without a human, checked every second. Restart catch-up stays on (24 h cap), as in production. */
 const source = () => ({
   NODE_ENV: 'test', LOG_LEVEL: 'silent', DATABASE_URL: db.url, SIM_THREADS: '1', SNAPSHOTS: 'on', SNAPSHOT_EVERY_S: '600',
-  TA_PLANET_IDLE_UNLOAD_H: '0.001', TA_PLANET_IDLE_CHECK_S: '1', RESTART_FASTRUN_MAX_S: '0',
+  TA_PLANET_IDLE_UNLOAD_H: '0.001', TA_PLANET_IDLE_CHECK_S: '1',
 });
 
 const dormantSince = async () =>
@@ -54,6 +54,9 @@ describe('idle unload (3.5): idle → snapshotted and unloaded → restored at t
       await a.close();
     }
 
+    // The planet slept for two hours. A woken planet stood still on purpose: it must not replay that gap.
+    await db.prisma.$executeRaw`UPDATE world.planet_snapshot SET saved_at = now() - interval '2 hours' WHERE planet_id = ${PLANET}`;
+
     const b = await boot(); // restart: the dormant planet is not restored at boot
     try {
       const planets = b.get(GamePlanets);
@@ -63,6 +66,11 @@ describe('idle unload (3.5): idle → snapshotted and unloaded → restored at t
       expect(await loadedAt).toBe(sealTick);
       const full = await planets.fullState(PLANET);
       expect(full.tick).toBeGreaterThanOrEqual(sealTick);
+      // No catch-up: 1.5 s later the planet is a few live ticks on (a replay of 2 h would be thousands of ticks ahead).
+      await new Promise((r) => setTimeout(r, 1_500));
+      const later = await planets.fullState(PLANET);
+      expect(later.tick).toBeGreaterThan(sealTick);
+      expect(later.tick - sealTick).toBeLessThan(100);
       await expect.poll(dormantSince, { timeout: 5_000, interval: 100 }).toBeNull();
     } finally {
       await b.close();
