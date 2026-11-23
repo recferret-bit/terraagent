@@ -1,0 +1,28 @@
+import { defineSimModule, defineSystem } from '@terra/sim';
+
+/** Planet ids starting with this prefix are slow: each engine step busy-waits {@link slowStepMs} ms. */
+export const SLOW_PLANET_PREFIX = 'pl_slow';
+
+/** Busy-wait per step of a slow planet (`TA_TEST_SLOW_STEP_MS`, default 300 ms: the prod worst case). */
+const slowStepMs = Number(process.env.TA_TEST_SLOW_STEP_MS ?? 300);
+
+/**
+ * Test/bench-only sim module (scheduler fairness, placement, rebalancing): a system that makes every step of a
+ * `pl_slow*` planet cost `TA_TEST_SLOW_STEP_MS` of wall time, standing in for a planet whose systems are slow. A coarse
+ * step (`dt` 5) costs twice that. That factor is an assumption: on the scenario planets (0.4-3 ms per step) one `dt 5`
+ * step costs 0.6-3.3x one `dt 1` step (0.12-0.65x five of them); how 100-300 ms planets scale is not measured.
+ */
+export default defineSimModule({
+  id: 'test-slow',
+  wave: 'W00',
+  systems: [
+    defineSystem({
+      id: 'test-slow', slot: 14, wave: 'W00',
+      run(state, ctx) {
+        if (!state.meta.planetId.startsWith(SLOW_PLANET_PREFIX)) return;
+        const end = performance.now() + slowStepMs * (1 + (ctx.dt - 1) / 4);
+        while (performance.now() < end) { /* busy-wait: a slow planet step */ }
+      },
+    }),
+  ],
+});

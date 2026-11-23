@@ -10,7 +10,7 @@ afterEach(async () => { await games?.shutdown(); games = undefined; });
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 describe('scheduler lag on a real sim thread', () => {
-  it('2 s block: at most 5 catch-up steps per pass, lag rises then returns to 0', async () => {
+  it('2 s block: one catch-up slot per planet per turn, lag rises then returns to 0', async () => {
     const pool = new SimThreadPool({ threads: 1, flags: ['W00'] });
     await pool.start();
     games = new GamePlanets(pool);

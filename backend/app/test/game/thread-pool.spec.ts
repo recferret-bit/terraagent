@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { devPlanetIds } from '../../src/game/dev-planets';
 import { GamePlanets } from '../../src/game/game-planets.service';
 import { SimThreadPool } from '../../src/game/sim-thread-pool';
-import { threadOf } from '../../src/game/thread/assign';
+import { hashThread } from '../../src/game/thread/assign';
 
 const ALL_WAVES = Array.from({ length: 21 }, (_, i) => `W${String(i).padStart(2, '0')}`);
 let games: GamePlanets | undefined;
@@ -24,13 +24,13 @@ describe('SimThreadPool', () => {
     await Promise.all(ids.map((id) => g.load(id)));
     const stats = await g.pool.stats();
     expect(stats.map((s) => s.planets.length)).toEqual([2, 2, 2]);
-    for (const id of ids) expect(stats[threadOf(id, 3)]!.planets.map((p) => p.planetId)).toContain(id);
+    for (const id of ids) expect(stats[g.pool.threadOf(id)]!.planets.map((p) => p.planetId)).toContain(id);
   });
 
-  it('assignment is deterministic and within range', () => {
+  it('the dev-id hash is deterministic and within range', () => {
     const id = newId('pl');
-    expect(threadOf(id, 5)).toBe(threadOf(id, 5));
-    expect(threadOf(id, 5)).toBeLessThan(5);
+    expect(hashThread(id, 5)).toBe(hashThread(id, 5));
+    expect(hashThread(id, 5)).toBeLessThan(5);
   });
 
   it('round-trips a command to an ack with appliedAtTick, and rejects unknown kinds', async () => {

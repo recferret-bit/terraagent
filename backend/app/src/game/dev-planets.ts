@@ -1,4 +1,4 @@
-import { threadOf } from './thread/assign';
+import { hashThread } from './thread/assign';
 
 const ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'; // Crockford base32, as ULIDs
 
@@ -10,8 +10,9 @@ function candidate(k: number): string {
 }
 
 /**
- * Deterministic ids for `count` dev planets, spread evenly over `threads`: planet i is the first candidate hashing to
- * thread `i % threads`, so 6 planets on 3 threads are exactly 2 per thread (and any count differs by at most one).
+ * Deterministic ids for `count` dev planets: planet i is the first candidate whose id hashes to `i % threads`. The hash
+ * no longer routes anything (the placement table spreads loads by measured load); it only keeps the ids that existing
+ * databases already hold for a given `GAME_DEV_PLANETS` / `SIM_THREADS`.
  */
 export function devPlanetIds(count: number, threads: number): string[] {
   const ids: string[] = [];
@@ -20,7 +21,7 @@ export function devPlanetIds(count: number, threads: number): string[] {
   for (let i = 0; i < count; i++) {
     const want = i % threads;
     let id: string;
-    do id = candidate(k++); while (threadOf(id, threads) !== want || used.has(id));
+    do id = candidate(k++); while (hashThread(id, threads) !== want || used.has(id));
     used.add(id);
     ids.push(id);
   }
