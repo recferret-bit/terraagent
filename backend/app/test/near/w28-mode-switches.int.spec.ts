@@ -7,6 +7,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '../../src/app.js';
 import { MockLlmAdapter } from '../../src/ai/adapters/mock-llm.adapter.js';
 import { NearAiLlmAdapter } from '../../src/ai/adapters/nearai-llm.adapter.js';
+import { GuardedLlmProvider } from '../../src/ai/provider/guarded-llm.js';
 import { MockStakingAdapter } from '../../src/near/infrastructure/adapters/mock/staking.adapter.js';
 import { TestnetStakingAdapter } from '../../src/near/infrastructure/adapters/real/testnet-staking.adapter.js';
 import { StakingPort } from '../../src/near/application/ports/staking.port.js';
@@ -49,7 +50,8 @@ afterAll(async () => {
 async function verifyLocalMockIntegration(): Promise<void> {
   const { app, url } = await boot({ NEAR_MODE: 'local', AI_PROVIDER: 'local' });
   expect(app.get(StakingPort)).toBeInstanceOf(MockStakingAdapter);
-  expect(app.get(LlmProviderPort)).toBeInstanceOf(MockLlmAdapter);
+  expect(app.get(LlmProviderPort)).toBeInstanceOf(GuardedLlmProvider);
+  expect((app.get(LlmProviderPort) as GuardedLlmProvider).inner).toBeInstanceOf(MockLlmAdapter);
 
   const status = (await (await fetch(`${url}/v1/near/status`)).json()) as {
     nearMode: string;
@@ -93,7 +95,8 @@ async function verifyLocalMockIntegration(): Promise<void> {
 async function verifyTestnetIntegration(): Promise<void> {
   const { app, url } = await boot({ NEAR_MODE: 'testnet', AI_PROVIDER: 'testnet', AI_LIVE: '1' });
   expect(app.get(StakingPort)).toBeInstanceOf(TestnetStakingAdapter);
-  expect(app.get(LlmProviderPort)).toBeInstanceOf(NearAiLlmAdapter);
+  expect(app.get(LlmProviderPort)).toBeInstanceOf(GuardedLlmProvider);
+  expect((app.get(LlmProviderPort) as GuardedLlmProvider).inner).toBeInstanceOf(NearAiLlmAdapter);
 
   const status = (await (await fetch(`${url}/v1/near/status`)).json()) as {
     nearMode: string;
@@ -166,7 +169,8 @@ async function verifyMainnetIntegration(): Promise<void> {
   });
   expect(app.get(StakingPort)).toBeInstanceOf(TestnetStakingAdapter);
   expect((app.get(StakingPort) as unknown as { rpc: { network: string } }).rpc.network).toBe('mainnet');
-  expect(app.get(LlmProviderPort)).toBeInstanceOf(NearAiLlmAdapter);
+  expect(app.get(LlmProviderPort)).toBeInstanceOf(GuardedLlmProvider);
+  expect((app.get(LlmProviderPort) as GuardedLlmProvider).inner).toBeInstanceOf(NearAiLlmAdapter);
 
   const status = (await (await fetch(`${url}/v1/near/status`)).json()) as {
     nearMode: string;

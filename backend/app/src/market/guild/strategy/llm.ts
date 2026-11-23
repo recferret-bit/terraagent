@@ -1,4 +1,5 @@
-import type { LlmProviderPort } from '../../../ports/llm-provider.port.js';
+import { llmFailureOf, type LlmProviderPort, type LlmResponse } from '../../../ports/llm-provider.port.js';
+import { DeterministicGuildStrategy } from './deterministic.js';
 import {
   GuildStrategyError,
   GuildStrategyPort,
@@ -23,6 +24,8 @@ export class LlmGuildStrategy extends GuildStrategyPort {
   constructor(
     private readonly llm: LlmProviderPort,
     private readonly w16 = false,
+    /** Rules used when the provider is unfunded / down (not cached, so AI resumes once the circuit closes). */
+    private readonly fallback: GuildStrategyPort = new DeterministicGuildStrategy(),
   ) {
     super();
   }
@@ -32,18 +35,26 @@ export class LlmGuildStrategy extends GuildStrategyPort {
     const prior = this.issued.get(npc.id);
     if (prior && clock.nowMs >= prior.at && clock.nowMs - prior.at < HOUR_MS) return prior.choice;
     const choice = await this.ask(npc);
+    if (!choice) return this.fallback.choose(npc, clock);
     this.issued.set(npc.id, { at: clock.nowMs, choice });
     return choice;
   }
 
-  private async ask(npc: GuildStrategyNpc): Promise<GuildStrategyChoice> {
-    const res = await this.llm.complete({
-      system: SYSTEM,
-      messages: [{ role: 'user', content: npc.id }],
-      maxTokens: 256,
-      temperature: 0,
-      json: true,
-    });
+  /** `null` = the provider failed (typed `LlmProviderError`): the caller uses the rule-based strategy. */
+  private async ask(npc: GuildStrategyNpc): Promise<GuildStrategyChoice | null> {
+    let res: LlmResponse;
+    try {
+      res = await this.llm.complete({
+        system: SYSTEM,
+        messages: [{ role: 'user', content: npc.id }],
+        maxTokens: 256,
+        temperature: 0,
+        json: true,
+      });
+    } catch (err) {
+      if (llmFailureOf(err)) return null;
+      throw err;
+    }
     const parsed = parseGuildStrategy(readJson(res.text));
     if (!parsed.ok) throw new GuildStrategyError(parsed.code, `Guild strategy rejected: ${parsed.code}`);
     return parsed.value;

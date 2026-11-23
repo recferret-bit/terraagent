@@ -212,5 +212,9 @@
 .ta-director__ai-access[data-state='tee'] .ta-director__ai-badge { color: var(--ta-terra); }
 .ta-director__ai-cta { text-align: center; text-decoration: none; white-space: normal; }
 .ta-director__ai-hint, .ta-director__ai-stats { color: var(--ta-steel); font: 500 10px/1.3 var(--ta-font-mono); }
+/* the NEAR.AI provider refused the key: the colony keeps playing on rules (a system fault, not a player action) */
+.ta-director__ai-access[data-provider] .ta-director__ai-badge { color: var(--ta-fault-text); }
+.ta-director__ai-access[data-provider] { border-left: 2px solid var(--ta-fault); padding-left: var(--ta-s1); }
+.ta-director__ai-provider { color: var(--ta-text); }
 .ta-director__meter { height: 6px; background: var(--ta-plate-2); border: 1px solid var(--ta-seam-2); }
 .ta-director__meter-fill { height: 100%; background: var(--ta-blue); }
