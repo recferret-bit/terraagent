@@ -5,7 +5,7 @@ import type { PrismaClient } from '@terra/db';
 import { defineEnv } from '@terra/config';
 import { DEV_PLANET_CAPACITY, DEV_PLANET_RADIUS, DEV_PLANET_TYPE, devPlanetSeedFor, mergeOverrides, type BalanceOverrides } from '@terra/sim';
 import type { Logger } from 'pino';
-import { Counter, Gauge } from 'prom-client';
+import { Gauge } from 'prom-client';
 import { z } from 'zod';
 import { EventBus } from '../bus/event-bus';
 import { AiModule } from '../ai/ai.module';
@@ -24,7 +24,7 @@ import { layerLogger } from '../core/logging/logger';
 import { APP_ENV, LOGGER, type AppEnv } from '../core/tokens';
 import { EconomyActivationService } from '../economy/activation/activation.service';
 import { installAwayPolicyMetric } from './away-rejections';
-import { installPlanetModeGauge } from './planet-mode-metric';
+import { installThreadMetrics } from './metrics/thread-metrics';
 import { EconomyActivationBridge, STATIC_OVERRIDES, SWAPPER } from './economy-activation-bridge';
 import { ProfileSwapper } from './profile-swap';
 import { EconomyModule } from '../economy/economy.module';
@@ -198,6 +198,7 @@ export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown
   private unsubHomeSeat: (() => void) | undefined;
   private unsubRecovery: (() => void) | undefined;
   private unsubAntiCheat: (() => void) | undefined;
+  private unsubThreadMetrics: (() => void) | undefined;
   private readonly log: Logger;
 
   constructor(
@@ -314,22 +315,7 @@ export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown
 
   private registerPoolMetrics(pool: SimThreadPool): void {
     const reg = this.metrics.registry;
-    new Gauge({ name: 'ta_game_threads', help: 'Live sim threads', registers: [reg], collect() { this.set(pool.live); } });
-    new Gauge({
-      name: 'ta_game_planets', help: 'Planets loaded per sim thread', labelNames: ['thread'], registers: [reg],
-      async collect() {
-        this.reset();
-        for (const s of await pool.stats()) this.set({ thread: String(s.thread) }, s.planets.length);
-      },
-    });
-    installPlanetModeGauge(reg, () => pool.stats());
-    new Gauge({
-      name: 'ta_game_tick_lag_steps', help: 'Max steps a planet is behind its due time, per sim thread', labelNames: ['thread'], registers: [reg],
-      async collect() {
-        this.reset();
-        for (const s of await pool.stats()) this.set({ thread: String(s.thread) }, s.maxLag);
-      },
-    });
+    this.unsubThreadMetrics = installThreadMetrics(pool, reg, this.log); // cached thread stats: a scrape never waits (0.6)
     const planets = this.planets;
     new Gauge({
       name: 'ta_game_warp', help: 'Effective dev time warp per planet (only planets above 1)', labelNames: ['planet'], registers: [reg],
@@ -341,13 +327,6 @@ export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown
     installAwayPolicyMetric(reg);
     installNotifyMetrics(reg);
     installDigestRowsGauge(reg, () => this.digests.rowCount());
-    new Counter({
-      name: 'ta_game_steps_total', help: 'Engine steps executed per sim thread', labelNames: ['thread'], registers: [reg],
-      async collect() {
-        this.reset();
-        for (const s of await pool.stats()) this.inc({ thread: String(s.thread) }, s.steps);
-      },
-    });
     this.readiness.register('simThreads', () => {
       if (pool.live < pool.size) throw new Error(`${pool.size - pool.live} of ${pool.size} sim threads down`); // BE-11
       return pool.live;
@@ -411,6 +390,7 @@ export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown
     this.unsubHomeSeat?.();
     this.unsubHomeSeat = undefined;
     this.unsubRecovery?.();
+    this.unsubThreadMetrics?.();
     this.homeService?.setLandingHost(undefined);
     this.readiness.unregister('simThreads');
     await this.planets.shutdown();

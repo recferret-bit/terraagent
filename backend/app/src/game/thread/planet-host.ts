@@ -33,7 +33,7 @@ import {
   type SchedulerView,
 } from './parts/planet-host-ops';
 import { ProductionBatches } from './production-batches';
-import { type LoadMsg, type PlanetStats, type Post, type ToThread, W00_PLANET_TYPE } from './protocol';
+import { type FromThread, type LoadMsg, type PlanetStats, type Post, type StepSamples, type ToThread, W00_PLANET_TYPE } from './protocol';
 
 export type { SchedulerView };
 
@@ -87,6 +87,7 @@ export class PlanetHost {
     switch (msg.t) {
       case 'load': return this.load(msg);
       case 'unload': {
+        if (msg.handoff) return this.handoff(msg.planetId);
         const p = this.planets.get(msg.planetId);
         if (p) this.flushEvents(msg.planetId, p);
         this.planets.delete(msg.planetId);
@@ -259,6 +260,7 @@ export class PlanetHost {
       p.nextDeltaMs = this.now() + this.deltaIntervalMs;
     } else this.flushEvents(planetId, p);
     p.subscribed = on;
+    this.sched?.setPlayers?.(planetId, on);
   }
 
   private flushEvents(planetId: string, p: Planet): void {
@@ -271,13 +273,21 @@ export class PlanetHost {
    */
   flushDeltas(): void {
     const now = this.now();
-    for (const [id, p] of this.planets) {
-      if (!p.subscribed || now < p.nextDeltaMs) continue;
-      p.nextDeltaMs += this.deltaIntervalMs;
-      if (p.nextDeltaMs <= now) p.nextDeltaMs = now + this.deltaIntervalMs; // never queue a burst after a stall
-      try { this.sendDelta(id, p); } catch (e) {
-        this.post({ t: 'error', thread: this.thread, planetId: id, message: e instanceof Error ? e.message : String(e) });
-      }
+    for (const [id, p] of this.planets) this.flushDue(id, p, now);
+  }
+
+  /** Right after the planet's own step (fairness 1.1): its delta leaves before any other planet steps. */
+  flushDelta(planetId: string): void {
+    const p = this.planets.get(planetId);
+    if (p) this.flushDue(planetId, p, this.now());
+  }
+
+  private flushDue(id: string, p: Planet, now: number): void {
+    if (!p.subscribed || now < p.nextDeltaMs) return;
+    p.nextDeltaMs += this.deltaIntervalMs;
+    if (p.nextDeltaMs <= now) p.nextDeltaMs = now + this.deltaIntervalMs; // never queue a burst after a stall
+    try { this.sendDelta(id, p); } catch (e) {
+      this.post({ t: 'error', thread: this.thread, planetId: id, message: e instanceof Error ? e.message : String(e) });
     }
   }
 
@@ -300,6 +310,23 @@ export class PlanetHost {
   /** Steps every loaded planet once (tests/tools); the thread's `PlanetScheduler` does the timing. */
   stepAll(dt = 1): void {
     for (const id of [...this.planets.keys()]) this.stepPlanet(id, dt);
+  }
+
+  /**
+   * `unload { handoff }` (rebalancing): the planet leaves this thread in one dispatch, so no step runs between its
+   * snapshot and its removal. Its last delta and open events go out first (the stream stays gapless for the target),
+   * then the full snapshot and the commands it had queued, which the main thread replays on the target thread.
+   */
+  private handoff(planetId: string): void {
+    const p = this.planets.get(planetId);
+    if (!p) return this.post({ t: 'handedOff', planetId, tick: -1, pending: [] });
+    const production = p.production?.collect(p.state, true) ?? [];
+    if (production.length) this.publish(planetId, p, production);
+    if (p.subscribed) this.sendDelta(planetId, p);
+    this.flushEvents(planetId, p);
+    const bytes = owned(snapshot(p.state));
+    this.planets.delete(planetId);
+    this.post({ t: 'handedOff', planetId, tick: p.state.meta.tick, bytes, pending: p.pending.splice(0) }, [bytes.buffer as ArrayBuffer]);
   }
 
   private snapshotNow(planetId?: string): void {
@@ -358,12 +385,18 @@ export class PlanetHost {
     return collectPlanetStats(this.planets, this.sched);
   }
 
+  /** The `stats` message: a `ctl stats` reply, or (`reqId` 0, with step samples) the thread's periodic push. */
+  statsMsg(reqId: number, stepSamples?: readonly StepSamples[]): Extract<FromThread, { t: 'stats' }> {
+    const load = this.sched?.load?.() ?? { busyRatio: 0, droppedSlots: 0 };
+    return {
+      t: 'stats', thread: this.thread, reqId, planets: this.stats(), steps: this.steps, maxLag: this.sched?.maxLag ?? 0,
+      recentPasses: this.sched?.recentPasses() ?? [], ...load, ...(stepSamples ? { stepSamples } : {}),
+    };
+  }
+
   private ctl(msg: Extract<ToThread, { t: 'ctl' }>): void {
     if (msg.op === 'stats') {
-      this.post({
-        t: 'stats', thread: this.thread, reqId: msg.reqId, planets: this.stats(), steps: this.steps,
-        maxLag: this.sched?.maxLag ?? 0, recentPasses: this.sched?.recentPasses() ?? [],
-      });
+      this.post(this.statsMsg(msg.reqId));
     } else if (msg.op === 'step') {
       if (process.env.NODE_ENV !== 'production') this.stepPlanet(msg.planetId, msg.dt);
     } else if (msg.op === 'block') {

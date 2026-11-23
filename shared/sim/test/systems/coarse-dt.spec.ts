@@ -217,7 +217,7 @@ describe('W09-04 coarse dt clock and catch-up cap', () => {
     expect(getPlanetTime(coarse.state, data)).toEqual(getPlanetTime(fine.state, data));
   });
 
-  it('coarse catch-up still takes at most 5 steps per pass and does not drop due slots', () => {
+  it('coarse catch-up takes one slot per turn and does not drop due slots under the debt cap', () => {
     let now = 0;
     const steps: number[] = [];
     const s = new PlanetScheduler({
@@ -228,7 +228,7 @@ describe('W09-04 coarse dt clock and catch-up cap', () => {
     s.add('pl', 'coarse');
     now = 10_000; // slots due at 0,1000,…,10000
     let total = 0;
-    for (let i = 0; i < 8; i++) {
+    for (let i = 0; i < 20; i++) {
       const rep = s.runPass();
       total += rep.steps;
       expect(rep.maxPlanetSteps).toBeLessThanOrEqual(MAX_CATCHUP);

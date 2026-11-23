@@ -33,6 +33,8 @@ export interface PlanetSubscriber {
   onDelta?(d: { fromTick: number; toTick: number; diff: Uint8Array; events: SimEvent[] }): void;
   onEvent?(events: SimEvent[]): void;
   onSnapshot?(s: { tick: number; bytes: Uint8Array }): void;
+  /** The planet moved to another sim thread (rebalancing): the stream is gapless, but clients resync to be safe. */
+  onResync?(): void;
 }
 
 export interface FullState {
@@ -447,6 +449,7 @@ export class GamePlanets {
         return this.requests.answer(msg.reqId, msg.t === 'landingSite' ? msg.answer : msg);
       case 'planetFailed':
         return this.planetDown(msg.planetId, 'step_failed', msg.message);
+      case 'moved': return this.each(msg.planetId, (s) => s.onResync?.());
       case 'snapshot':
         for (const fn of this.snapshotListeners) fn(msg.planetId, msg);
         return this.each(msg.planetId, (s) => s.onSnapshot?.(msg));

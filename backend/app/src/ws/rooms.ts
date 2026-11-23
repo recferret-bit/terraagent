@@ -133,6 +133,8 @@ export class PlanetRooms {
         // Until the delta builder fills `delta`, the thread sends bare events: forward the kinds the contract knows.
         for (const e of events) if (hasEventKind(e.kind)) send(encodeWire({ v: 1, t: 'event', tick: e.atTick, d: e }), e.atTick);
       },
+      // the planet moved to another sim thread (rebalancing): every welcomed socket gets a fresh `welcome {reason:'resync'}`
+      onResync: () => { for (const m of members) if (m.welcomeTick !== undefined) m.resync(); },
     };
   }
 }

@@ -22,14 +22,20 @@ import {
   type TuneRequest,
 } from '@terra/sim';
 import type { ProductionBatches } from '../production-batches';
-import type { LoadMsg, PassStat, PlanetStats, Post } from '../protocol';
+import type { LoadMsg, PassStat, PlanetStats, Post, ThreadLoad } from '../protocol';
 
 /** What the host needs from the scheduler to report stats (the scheduler itself lives in the thread entry). */
 export interface SchedulerView {
   info(planetId: string): PlanetSchedule | undefined;
   setMode(planetId: string, mode: StepMode): void;
+  /** Someone watches the planet (subscribed): fair-share weight, never demoted. */
+  setPlayers?(planetId: string, players: boolean): void;
   readonly maxLag: number;
   recentPasses(): PassStat[];
+  /** Thread-wide load figures (the thread entry's `ThreadLoadMeter`); absent = zeros. */
+  load?(): ThreadLoad;
+  /** Smoothed thread ms per second spent on the planet. */
+  loadOf?(planetId: string): number;
 }
 
 export interface Planet {
@@ -176,6 +182,11 @@ export function collectPlanetStats(
       stepsLastPass: s?.stepsLastPass ?? 0,
       warp: s?.warp ?? 1,
       warpRequested: s?.warpRequested ?? 1,
+      lastStepMs: s?.lastStepMs ?? 0,
+      avgStepMs: s?.avgStepMs ?? 0,
+      loadMsPerSec: sched?.loadOf?.(planetId) ?? 0,
+      droppedSlots: s?.droppedSlots ?? 0,
+      demoted: s?.demoted ?? false,
     };
   });
 }
