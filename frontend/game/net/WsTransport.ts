@@ -1,4 +1,4 @@
-import { CLOSE_CODES, decodeWire, encodeWire, ServerMessage, type ServerMessageOf } from '@terra/contracts';
+import { CLOSE_CODES, decodeWire, encodeWire, ServerMessage, WS_PROTO_VERSION, type ServerMessageOf } from '@terra/contracts';
 import { backoffDelay, STABLE_AFTER_MS } from './backoff';
 import { closeAction, REPEAT_WINDOW_MS } from './closeCodes';
 import { Emitter } from './emitter';
@@ -135,7 +135,7 @@ export class WsTransport implements Transport {
     const ws = this.deps.socket(this.target.url);
     this.ws = ws;
     ws.binaryType = 'arraybuffer';
-    ws.onopen = () => this.raw({ t: 'hello', d: { accessToken: this.target.accessToken, proto: [1], client: { app: 'game', version: this.deps.clientVersion } } });
+    ws.onopen = () => this.raw({ t: 'hello', d: { accessToken: this.target.accessToken, proto: [WS_PROTO_VERSION], client: { app: 'game', version: this.deps.clientVersion } } });
     ws.onmessage = (e) => this.onFrame(e.data);
     ws.onclose = (e) => { if (this.ws === ws) { this.ws = null; this.onClosed(e.code, e.reason); } };
     ws.onerror = () => { /* onclose follows */ };

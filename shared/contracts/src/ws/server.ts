@@ -75,7 +75,8 @@ export const Welcome = ServerEnvelope('welcome', z.object({
 export const Delta = ServerEnvelope('delta', z.object({
   fromTick: z.number().int().nonnegative(),
   toTick: z.number().int().nonnegative(),
-  diff: SimDiffFrame, // engine diffSince(fromTick)
+  diff: SimDiffFrame, // engine diffSince(fromTick): every colony's summary fields
+  own: z.array(SimDiffFrame).optional(), // owner-field frames: the socket's own colony (all colonies for a full viewer)
   events: z.array(SimEventWire).optional(), // events of this window
 }));
 

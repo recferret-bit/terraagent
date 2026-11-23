@@ -279,7 +279,7 @@ describe('Full NestJS HTTP + WS spectator against Postgres', () => {
 
     const wsClient = await WsClient.open(`${url.replace('http://', 'ws://')}/ws`);
     sockets.push(wsClient.ws);
-    wsClient.send({ t: 'hello', d: { accessToken: 'dev:pg-spec', proto: [1], client: { app: 'game', version: 'int' } } });
+    wsClient.send({ t: 'hello', d: { accessToken: 'dev:pg-spec', proto: [2], client: { app: 'game', version: 'int' } } });
     await wsClient.next('ready');
     wsClient.send({ t: 'join', d: { planetId, mode: 'spectator' } });
     const welcome = Welcome.parse(await wsClient.next('welcome'));
@@ -349,7 +349,7 @@ describe('Split sim-worker + api cluster routing against Postgres', () => {
     // Spectator connects to API pod ONLY and receives Postgres history backfill + live worker relay feeds/deltas
     const specWs = await WsClient.open(`${apiUrl.replace('http://', 'ws://')}/ws`);
     sockets.push(specWs.ws);
-    specWs.send({ t: 'hello', d: { accessToken: 'dev:api-spec', proto: [1], client: { app: 'game', version: 'int' } } });
+    specWs.send({ t: 'hello', d: { accessToken: 'dev:api-spec', proto: [2], client: { app: 'game', version: 'int' } } });
     await specWs.next('ready');
     specWs.send({ t: 'join', d: { planetId, mode: 'spectator' } });
     const welcome = Welcome.parse(await specWs.next('welcome'));
@@ -369,7 +369,7 @@ describe('Split sim-worker + api cluster routing against Postgres', () => {
     // Player WS command sent to API pod routes to worker, acks, and persists to Postgres sim_input_history
     const playerWs = await WsClient.open(`${apiUrl.replace('http://', 'ws://')}/ws`);
     sockets.push(playerWs.ws);
-    playerWs.send({ t: 'hello', d: { accessToken: 'dev:api-ws-player', proto: [1], client: { app: 'game', version: 'int' } } });
+    playerWs.send({ t: 'hello', d: { accessToken: 'dev:api-ws-player', proto: [2], client: { app: 'game', version: 'int' } } });
     await playerWs.next('ready');
     playerWs.send({ t: 'join', d: { planetId } });
     await playerWs.next('welcome');

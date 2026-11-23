@@ -3,7 +3,7 @@ import type { SimCommandV1 } from '@terra/contracts';
 import {
   allModules,
   buildPipeline,
-  clientDeltaFrames,
+  bundledClientDeltaFrames,
   createPlanet,
   effectiveOverrides,
   getColonyStock,
@@ -286,7 +286,7 @@ export class PlanetHost {
     const toTick = p.state.meta.tick;
     if (toTick <= p.lastDeltaTick) return;
     const t0 = performance.now();
-    const frames = clientDeltaFrames(p.state, p.lastDeltaTick);
+    const frames = bundledClientDeltaFrames(p.state, p.lastDeltaTick); // first diff: per-viewer bundle (ws/rooms cuts it)
     p.deltaMs = performance.now() - t0;
     p.deltaBytes = frames.reduce((n, f) => n + f.diff.byteLength, 0);
     frames.forEach((f, i) => {

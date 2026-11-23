@@ -63,7 +63,7 @@ class Client {
 const wsUrl = () => `${ex.url.replace('http', 'ws')}/ws`;
 async function connect(name: string, planetId = w.planetId): Promise<Client> {
   const c = await Client.open(wsUrl());
-  c.send({ t: 'hello', d: { accessToken: `dev:${name}`, proto: [1], client: { app: 'game', version: 't' } } });
+  c.send({ t: 'hello', d: { accessToken: `dev:${name}`, proto: [2], client: { app: 'game', version: 't' } } });
   await c.next('ready');
   c.send({ t: 'join', d: { planetId } });
   await c.next('welcome');
@@ -121,7 +121,7 @@ describe('REAL WebSocket: per-socket market topics (LED-25)', () => {
     c.send({ t: 'market.subscribe', d: { planetId: 'some-other-planet', pairs: [WATER] } });
     c.send({ t: 'market.unsubscribe', d: { planetId: 'some-other-planet' } });
     const lobby = await Client.open(wsUrl()); // never joined: the same frames are ignored, the socket stays open
-    lobby.send({ t: 'hello', d: { accessToken: 'dev:topiclobby', proto: [1], client: { app: 'game', version: 't' } } });
+    lobby.send({ t: 'hello', d: { accessToken: 'dev:topiclobby', proto: [2], client: { app: 'game', version: 't' } } });
     await lobby.next('ready');
     lobby.send({ t: 'market.subscribe', d: { planetId: w.planetId, pairs: [WATER] } });
     await sleep(200);

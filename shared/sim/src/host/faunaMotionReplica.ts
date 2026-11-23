@@ -29,12 +29,13 @@ export class FaunaMotionReplica {
     delete state.blobs[FAUNA_MOTION_SEED];
   }
 
-  apply(bytes: Uint8Array, authority: PlanetState, data: CompiledDataLike): void {
+  /** `own`: the window's own colony frames, applied to the shadow with the diff like the authority replica does. */
+  apply(bytes: Uint8Array, authority: PlanetState, data: CompiledDataLike, own?: readonly Uint8Array[]): void {
     const state = this.shadow;
     if (!state) throw new Error('fauna motion replica requires welcome');
     const diff = decodeDiff(bytes);
     if (diff.chunk && diff.chunk.index > 0) {
-      applyDiff(state, bytes);
+      applyDiff(state, bytes, own, authority);
       return;
     }
     if (state.meta.tick !== diff.fromTick) throw new DiffGapError(state.meta.tick, diff.fromTick);
@@ -76,7 +77,7 @@ export class FaunaMotionReplica {
     // Apply the authoritative frame to the shadow, retaining private route/search state between frames.
     state.meta.tick = diff.fromTick;
     const appliedDirectives = state.blobs.faunaDirectives ?? { changedAt: diff.fromTick, value: getFaunaDirectivesState(state) };
-    applyDiff(state, bytes);
+    applyDiff(state, bytes, own, authority);
     state.blobs.faunaDirectives = appliedDirectives;
     const routed = new Set((diff.faunaMotion?.value as FaunaMotionSeed | undefined)?.ids ?? []);
     for (const id of drifted) {

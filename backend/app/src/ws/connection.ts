@@ -89,6 +89,11 @@ export class Connection implements RoomMember {
   welcomeTick: number | undefined;
   mode: 'play' | 'spectator' = 'play';
   paused = false;
+  /**
+   * The colony whose owner-field delta frames this socket gets (rooms). Dev sessions get every colony's: a dev seat
+   * override (`?as=`) or a scenario seat can show a colony other than the joined one.
+   */
+  get deltaColony(): number | undefined { return this.session?.dev ? undefined : this.colonyIndex; }
   /** W13 per-socket market pair filter; reset to "all pairs" whenever the socket leaves its planet. */
   private readonly market = new MarketTopics();
   private resyncing = false;
