@@ -30,18 +30,23 @@ describe('client deltas per viewer on a multi-colony W18 planet', () => {
     let last = host.tick;
     bundledClientDeltaFrames(host.state, last);
     const full = welcome(), own0 = welcome(), own1 = welcome(), whole = welcome();
+    // Sockets welcomed mid-stream (joins, reconnects, backpressure resyncs, the anti-cheat replica): the sim leaves some
+    // writes unstamped, so they hold values the earlier sockets were never sent.
+    let lateWhole: SimHost | null = null, lateFull: SimHost | null = null, lateOwn2: SimHost | null = null;
     let ownBytes = 0, fullBytes = 0, windows = 0;
     for (let t = 0; t < 120; t++) {
       if (t === 10) host.submit(player(0, 'diplomacy.proposeTruce', { targetColonyId: 'col_1', durationHours: 6 }));
       if (t === 40) host.submit(player(1, 'setAutopilot', { mode: 'director', awayRaids: false }));
       if (t === 70) host.submit(player(1, 'diplomacy.declareWar', { targetColonyId: 'col_0' }));
       host.step(1);
-      for (const f of clientDeltaFrames(host.state, last)) whole.applyDiff(f.diff);
+      for (const f of clientDeltaFrames(host.state, last)) { whole.applyDiff(f.diff); lateWhole?.applyDiff(f.diff); }
       for (const f of bundledClientDeltaFrames(host.state, last)) {
         full.applyDiff(f.diff);
         const { diff, own } = unpackDeltaBundle(f.diff);
         own0.applyDiff(diff, ownFramesFor(own, 0));
         own1.applyDiff(diff, ownFramesFor(own, 1));
+        lateFull?.applyDiff(f.diff);
+        lateOwn2?.applyDiff(diff, ownFramesFor(own, 2));
         if (t >= 20) {
           windows++;
           ownBytes += diff.byteLength + ownFramesFor(own, 0).reduce((a, b) => a + b.byteLength, 0);
@@ -53,7 +58,12 @@ describe('client deltas per viewer on a multi-colony W18 planet', () => {
         expect(full.state).toEqual(whole.state);
         expect(clientView(own0.state, 0)).toEqual(clientView(whole.state, 0));
         expect(clientView(own1.state, 1)).toEqual(clientView(whole.state, 1));
+        if (lateWhole) {
+          expect(lateFull!.state).toEqual(lateWhole.state);
+          expect(clientView(lateOwn2!.state, 2)).toEqual(clientView(lateWhole.state, 2));
+        }
       }
+      if (t === 55 || t === 85) { lateWhole = welcome(); lateFull = welcome(); lateOwn2 = welcome(); }
     }
     expect(full.state.colonies.length).toBeGreaterThan(1);
     expect(ownBytes).toBeLessThanOrEqual(fullBytes);

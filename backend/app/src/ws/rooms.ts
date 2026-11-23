@@ -26,9 +26,9 @@ export interface RoomMember {
   welcomeTick: number | undefined;
   /**
    * The socket's own colony: it gets that colony's owner-field frames with each delta. Undefined (spectator, a session
-   * without a colony): every colony's frames (the full view).
+   * without a colony, a dev session): every colony's frames (the full view).
    */
-  readonly colonyIndex?: number;
+  readonly deltaColony?: number;
   send(frame: string | Uint8Array): void;
   /** Bytes queued on the socket and not yet flushed (`ws.bufferedAmount`). */
   readonly bufferedAmount: number;
@@ -134,7 +134,7 @@ export class PlanetRooms {
         if (members.size === 0) return;
         const frame = deltaVariants(d);
         for (const m of members) {
-          if (m.welcomeTick !== undefined && d.toTick > m.welcomeTick && this.writable(m)) m.send(frame(m.colonyIndex));
+          if (m.welcomeTick !== undefined && d.toTick > m.welcomeTick && this.writable(m)) m.send(frame(m.deltaColony));
         }
       },
       onEvent: (events) => {

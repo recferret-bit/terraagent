@@ -51,10 +51,17 @@ export function clientBlobs(blobs: PlanetState['blobs']): PlanetState['blobs'] {
   return out;
 }
 
+/**
+ * Called with the state whenever a client-bound snapshot is taken: a new receiver now holds the live values, so a
+ * client delta stream that patches against what it sent before must forget whatever differs (`host/clientDelta`).
+ */
+export const clientSnapshotObservers = new Set<(state: PlanetState) => void>();
+
 export function snapshot(state: PlanetState, opts: SnapshotOpts = {}): Uint8Array {
   hydrateStateColonyExplored(state);
   const header: SnapshotHeader = { simVersion: SIM_VERSION, codec: 'msgpack', tick: state.meta.tick, planetId: state.meta.planetId };
   if (!opts.forClient) return encodeValue({ header, state });
+  for (const observe of clientSnapshotObservers) observe(state);
   const layers: Record<string, TypedArray> = {};
   for (const l of tileLayers()) if (!l.hidden && state.grid.layers[l.name]) layers[l.name] = state.grid.layers[l.name];
   const blobs = clientBlobs(state.blobs);

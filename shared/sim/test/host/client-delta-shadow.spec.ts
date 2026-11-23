@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  applyDiff, bundledClientDeltaFrames, ClientDeltaShadow, clientDeltaFrames, COLONY_OWNER_FIELDS, createPlanet, decodeDiff,
+  applyDiff, bundledClientDeltaFrames, ClientDeltaShadow, clone, clientDeltaFrames, COLONY_OWNER_FIELDS, createPlanet, decodeDiff,
   decodeValue, defineCommandHandler, encodeValue, defineSimModule, defineSystem, isDeltaBundle, nextInt, ownFramesFor, setBlob,
   SimHost, snapshot, unpackDeltaBundle, type ColonyState, type PlanetState, type SimCommand,
 } from '../../src';
@@ -120,7 +120,8 @@ function authority(): SimHost {
 
 /** What a socket of `own` (undefined: full viewer) must hold: own colony whole, others' summary fields. */
 function clientView(state: PlanetState, own: number | undefined): unknown {
-  const s = (decodeValue(snapshot(state, { forClient: true })) as { state: { colonies: Array<Record<string, unknown>> } }).state;
+  // Of a copy: a client-bound snapshot of the streamed state itself is a welcome, which reconciles the shadow.
+  const s = (decodeValue(snapshot(clone(state), { forClient: true })) as { state: { colonies: Array<Record<string, unknown>> } }).state;
   s.colonies = s.colonies.map((c) => (own === undefined || c.index === own ? c
     : Object.fromEntries(Object.entries(c).filter(([k]) => !COLONY_OWNER_FIELDS.has(k)))));
   return s;
@@ -193,6 +194,32 @@ describe('client delta shadow: round trip per viewer', () => {
     const frames = bundledClientDeltaFrames(h.state, last);
     for (const f of frames) welcomeAt.applyDiff(f.diff);
     expect(clientView(welcomeAt.state, undefined)).toEqual(clientView(h.state, undefined));
+  });
+
+});
+
+describe('client delta shadow: welcomes, bundles and refusals', () => {
+  it('a socket welcomed after an unstamped write still converges (the welcome snapshot reconciles the shadow)', () => {
+    const h = new SimHost({ flags: ['W00'], modules: [] });
+    h.load(createPlanet({ type: 'flat', seed: 'delta-unstamped', radius: 4 }));
+    const units = () => h.state.blobs.units.value as { byId: Record<string, { current: string | null; x?: number }> };
+    setBlob(h.state, 'units', { byId: { 1: { current: 'move' }, 2: { current: 'idle', x: 0 } } }, h.tick);
+    let last = h.tick;
+    const early = joiner(h), whole = joiner(h);
+    const send = () => {
+      for (const f of clientDeltaFrames(h.state, last)) whole.applyDiff(f.diff);
+      for (const f of bundledClientDeltaFrames(h.state, last)) { early.applyDiff(f.diff); late?.applyDiff(f.diff); }
+      last = h.tick;
+    };
+    let late: SimHost | null = null;
+    h.step(1); h.state.blobs.units.changedAt = h.tick; send(); // the shadow holds the blob
+    units().byId[1].current = null; delete units().byId[2]; // unstamped (as auto unit commands are)
+    h.step(1); send();
+    late = joiner(h); // holds the unstamped values
+    units().byId[1].current = 'move'; units().byId[2] = { current: 'idle', x: 5 }; // back to what the shadow holds, plus a change
+    h.step(1); h.state.blobs.units.changedAt = h.tick; send();
+    expect(late.state.blobs.units).toEqual(h.state.blobs.units);
+    expect(early.state).toEqual(whole.state);
   });
 
   it('applyDiff on a host bundle applies every own frame (anti-cheat replica); a plain diff is not a bundle', () => {

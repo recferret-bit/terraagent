@@ -1,3 +1,4 @@
+import { clientSnapshotObservers } from '../codec/snapshot';
 import type { PlanetState } from '../kernel/state';
 import { packDeltaBundle } from './deltaBundle';
 import { ClientDeltaShadow } from './deltaShadow';
@@ -5,6 +6,9 @@ import { clientDeltaFrames, type DeltaFrame, type DiffChunkOptions } from './dif
 
 /** One shadow per streamed planet state: a reloaded planet (new state object) starts a fresh one. */
 const shadows = new WeakMap<PlanetState, ClientDeltaShadow>();
+
+// A welcome snapshot of a streamed state makes a receiver that holds the live values (see `ClientDeltaShadow.reconcile`).
+clientSnapshotObservers.add((state) => shadows.get(state)?.reconcile(state));
 
 /**
  * The client deltas of a host's one send path for `state` (`clientDeltaFrames` with that state's shadow): colonies and

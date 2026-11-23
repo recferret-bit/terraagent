@@ -1,6 +1,6 @@
 import type { Blob, ColonyState, PlanetState } from '../kernel/state';
 import { isColonyOwnerField } from './colonySummary';
-import { applyPatch, deepClone, diffValue, MAX_PATCH_DEPTH, type ObjPatch } from './structPatch';
+import { applyPatch, deepClone, deepEqual, diffValue, MAX_PATCH_DEPTH, type ObjPatch } from './structPatch';
 
 /** A patch of one colony record (`changedAt` rides inside `p.s` when it moved). */
 export interface ColonyPatchEntry { i: number; p: ObjPatch }
@@ -56,6 +56,17 @@ export class ClientDeltaShadow {
     this.cols = [];
     this.blobs.clear();
     this.tick = -1;
+  }
+
+  /**
+   * A client was welcomed with the live state (`snapshot(…, { forClient: true })`). The sim leaves some writes
+   * unstamped (auto unit commands), so the live value of a colony or blob can differ from what earlier receivers
+   * were sent; a patch against the shadow would then misfit (or miss) on the new receiver. Every such entry is
+   * forgotten, so it goes whole to everyone at its next stamp, as whole-record diffs did.
+   */
+  reconcile(state: PlanetState): void {
+    this.cols.forEach((prev, i) => { if (prev && !deepEqual(prev, state.colonies[i])) this.cols[i] = undefined; });
+    for (const [name, prev] of this.blobs) if (!deepEqual(prev, state.blobs[name])) this.blobs.delete(name);
   }
 
   /** The window `fromTick → state.meta.tick` for colonies stamped after `fromTick` and the given changed blobs. */
