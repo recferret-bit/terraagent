@@ -1,3 +1,6 @@
+import { BUILDING_LIGHT_RIGS } from './buildingLightRigs';
+import { baseHubArchetypeId } from '../prestige/tierVisuals';
+
 export interface ArchetypeLightSource {
   id: string;
   /** Local position [x, y, z] relative to the archetype root (in model space, where y = 0 is ground). */
@@ -6,7 +9,7 @@ export interface ArchetypeLightSource {
   target: [number, number, number];
   /** Hex color (e.g. 0x9ee6ff or 0xffe4b5). */
   color: number;
-  /** Projector intensity (default ~1.35 for robots, ~1.15 for building corners). */
+  /** Projector intensity (default ~1.35 for robots, ~1.15 for a building fixture). */
   intensity: number;
   /** Ground projector range in metres (default ~11 for robots, ~9.5 for buildings). */
   range: number;
@@ -20,40 +23,6 @@ export interface ArchetypeLightSource {
   coneBottomRadius: number;
   /** Ground pool disc radius (e.g. 2.4); also widens the spot (see `coneBottomRadius`). */
   poolRadius: number;
-}
-
-function makeCornerLights(opts: {
-  rx: number;
-  ry: number;
-  rz: number;
-  tx: number;
-  ty?: number;
-  tz: number;
-  color: number;
-  intensity: number;
-  range: number;
-  coneTopRadius: number;
-  coneBottomRadius: number;
-  poolRadius: number;
-}): ArchetypeLightSource[] {
-  const ty = opts.ty ?? 0.02;
-  const corners: ReadonlyArray<{ id: string; sx: number; sz: number }> = [
-    { id: 'ne', sx: 1, sz: 1 },
-    { id: 'nw', sx: -1, sz: 1 },
-    { id: 'se', sx: 1, sz: -1 },
-    { id: 'sw', sx: -1, sz: -1 },
-  ];
-  return corners.map(({ id, sx, sz }) => ({
-    id,
-    pos: [sx * opts.rx, opts.ry, sz * opts.rz],
-    target: [sx * opts.tx, ty, sz * opts.tz],
-    color: opts.color,
-    intensity: opts.intensity,
-    range: opts.range,
-    coneTopRadius: opts.coneTopRadius,
-    coneBottomRadius: opts.coneBottomRadius,
-    poolRadius: opts.poolRadius,
-  }));
 }
 
 function makeStandardRobotHeadlamp(): ArchetypeLightSource[] {
@@ -93,61 +62,7 @@ export const DEFAULT_ARCHETYPE_LIGHTS: Readonly<Record<string, ReadonlyArray<Arc
   'robot.combat': makeStandardRobotHeadlamp(),
   'robot.tleilaxu': makeStandardRobotHeadlamp(),
   'robot.raid': makeStandardRobotHeadlamp(),
-  'building.commandHub': makeCornerLights({
-    rx: 1.55,
-    ry: 2.25,
-    rz: 1.55,
-    tx: 4.2,
-    tz: 4.2,
-    color: 0xffe4b5,
-    intensity: 1.25,
-    range: 10.5,
-    coneTopRadius: 0.14,
-    coneBottomRadius: 1.75,
-    poolRadius: 2.5,
-  }),
-  'building.mine': makeCornerLights({
-    rx: 1.18,
-    ry: 1.85,
-    rz: 1.18,
-    tx: 3.4,
-    tz: 3.4,
-    color: 0xffe4b5,
-    intensity: 1.2,
-    range: 9.0,
-    coneTopRadius: 0.12,
-    coneBottomRadius: 1.45,
-    poolRadius: 2.1,
-  }),
-  'building.solar': makeCornerLights({
-    rx: 1.15,
-    ry: 1.35,
-    rz: 1.15,
-    tx: 3.0,
-    tz: 3.0,
-    color: 0x9ee6ff,
-    intensity: 1.05,
-    range: 7.5,
-    coneTopRadius: 0.1,
-    coneBottomRadius: 1.25,
-    poolRadius: 1.8,
-  }),
-  // The Pylon is a power node, not a floodlit building: ONE light source, from its `grid core light` (the cyan
-  // sphere at the top of the lattice, `power.ts`), dropping a narrow cyan pool around the tower foot. Without this
-  // entry it fell through to `building.mine`'s 4-corner rig (owner feedback W03 #5: "4 sources like the HQ").
-  'building.pylon': [
-    {
-      id: 'grid core',
-      pos: [0, 5.55, 0],
-      target: [0, 0.02, 0],
-      color: 0x9ee6ff,
-      intensity: 1.1,
-      range: 8.5,
-      coneTopRadius: 0.16,
-      coneBottomRadius: 1.35,
-      poolRadius: 2.0,
-    },
-  ],
+  ...BUILDING_LIGHT_RIGS,
   // The drop pod carries no projector lights (owner decision): no cones/pools in the orbit bay, freefall or on the
   // landed pod, and no GPU colony projectors from `entityVisionSync`. Kept as an explicit empty entry so the
   // playground LIGHTS editor still lists it and can author lights live.
@@ -169,15 +84,9 @@ function cloneLight(s: ArchetypeLightSource): ArchetypeLightSource {
 }
 
 function resolveDefaultLights(archetypeId: string): ArchetypeLightSource[] {
-  const explicit = DEFAULT_ARCHETYPE_LIGHTS[archetypeId];
+  const explicit = DEFAULT_ARCHETYPE_LIGHTS[baseHubArchetypeId(archetypeId)]; // hub variants share the hub's bulbs
   if (explicit) return explicit.map(cloneLight);
   if (archetypeId.startsWith('robot.')) return makeStandardRobotHeadlamp();
-  if (archetypeId === 'building.rocket' || archetypeId === 'building.roboticsFactory') {
-    return DEFAULT_ARCHETYPE_LIGHTS['building.commandHub']!.map(cloneLight);
-  }
-  if (archetypeId.startsWith('building.')) {
-    return DEFAULT_ARCHETYPE_LIGHTS['building.mine']!.map(cloneLight);
-  }
   return [];
 }
 

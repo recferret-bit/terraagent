@@ -426,11 +426,18 @@ impl CargoContract {
         let target = account_id.unwrap_or_else(env::predecessor_account_id);
         let sdep_key = format!("sdep:{}", target).into_bytes();
         let attached = env::attached_deposit().as_yoctonear();
+        if attached == 0 {
+            return true;
+        }
         let already = env::storage_read(&sdep_key).is_some();
+        let needed = if already { 0 } else { STORAGE_MIN_YOCTO };
+        require!(
+            attached >= needed,
+            "NEAR_INSUFFICIENT_FUNDS: attach >= 0.00125 NEAR for storage_deposit"
+        );
         if !already {
             env::storage_write(&sdep_key, &STORAGE_MIN_YOCTO.to_le_bytes());
         }
-        let needed = if already || attached == 0 { 0 } else { STORAGE_MIN_YOCTO };
         if attached > needed {
             let refund = attached - needed;
             let _ = Promise::new(env::predecessor_account_id()).transfer(NearToken::from_yoctonear(refund));

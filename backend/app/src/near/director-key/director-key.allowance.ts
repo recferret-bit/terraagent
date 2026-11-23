@@ -1,7 +1,25 @@
-import { createHash, createPublicKey } from 'node:crypto';
+import { createHmac, createPublicKey, randomBytes } from 'node:crypto';
 import { RESOURCE_KEYS, type AutoTradeLimits } from '@terra/contracts';
 import { CoreException } from '../../core/errors/index.js';
 import { ed25519PrivateKeyFromSeed, encodeBase58 } from '../keystore/index.js';
+
+const PROCESS_EPHEMERAL_DIRECTOR_KEY_SECRET = randomBytes(32);
+
+function resolveDirectorKeySecret(env?: Readonly<Record<string, unknown>>): Buffer | string {
+  const source = (env ?? process.env) as Record<string, string | undefined>;
+  const configured =
+    source.NEAR_KEK?.trim() ||
+    source.JWT_ACCESS_SECRET?.trim() ||
+    source.AUTH_JWT_SECRET?.trim();
+  if (configured) return configured;
+  if (source.NODE_ENV === 'production') {
+    throw new CoreException('CONFIG_ERROR', {
+      status: 500,
+      message: 'NEAR_KEK or JWT_ACCESS_SECRET is required in production to derive director keys',
+    });
+  }
+  return PROCESS_EPHEMERAL_DIRECTOR_KEY_SECRET;
+}
 
 /** Gas allowance passed to `addLimitedKey`. No data row names a gas budget, so this stays `0` (BE-73). */
 export const DIRECTOR_GAS_ALLOWANCE = '0';
@@ -61,27 +79,37 @@ export function replacedTokenCaps(
   return caps;
 }
 
-/** Derive a deterministic valid NEAR Ed25519 public key (`ed25519:<base58>`) for a colony's director rotation sequence. */
-export function deriveDirectorPublicKey(colonyId: string, seq: number): string {
+/** Derive an HMAC-keyed deterministic NEAR Ed25519 public key (`ed25519:<base58>`) for a colony's director rotation sequence. */
+export function deriveDirectorPublicKey(
+  colonyId: string,
+  seq: number,
+  env?: Readonly<Record<string, unknown>>,
+): string {
   const safeSeq = Number.isSafeInteger(seq) && seq > 0 ? seq : 1;
-  const seed = createHash('sha256').update(`terra-director-key:${colonyId.toLowerCase()}:${safeSeq}`).digest();
+  const seed = createHmac('sha256', resolveDirectorKeySecret(env))
+    .update(`terra-director-key:v2:${colonyId.toLowerCase()}:${safeSeq}`)
+    .digest();
   const priv = ed25519PrivateKeyFromSeed(seed);
   const spki = createPublicKey(priv).export({ format: 'der', type: 'spki' });
   return `ed25519:${encodeBase58(spki.subarray(spki.length - 32))}`;
 }
 
 /** Next public key for this colony. A revoked key stays on the mock wallet, so a re-add uses the next deterministic sequence key. */
-export function nextDirectorPublicKey(colonyId: string, previous: string | null): string {
-  if (!previous) return deriveDirectorPublicKey(colonyId, 1);
+export function nextDirectorPublicKey(
+  colonyId: string,
+  previous: string | null,
+  env?: Readonly<Record<string, unknown>>,
+): string {
+  if (!previous) return deriveDirectorPublicKey(colonyId, 1, env);
   const legacyStem = `ed25519:d:${colonyId.toLowerCase()}:`;
   if (previous.startsWith(legacyStem)) {
     const n = Number(previous.slice(legacyStem.length));
-    return deriveDirectorPublicKey(colonyId, Number.isSafeInteger(n) && n > 0 ? n + 1 : 1);
+    return deriveDirectorPublicKey(colonyId, Number.isSafeInteger(n) && n > 0 ? n + 1 : 1, env);
   }
   for (let seq = 1; seq <= 128; seq += 1) {
-    if (deriveDirectorPublicKey(colonyId, seq) === previous) {
-      return deriveDirectorPublicKey(colonyId, seq + 1);
+    if (deriveDirectorPublicKey(colonyId, seq, env) === previous) {
+      return deriveDirectorPublicKey(colonyId, seq + 1, env);
     }
   }
-  return deriveDirectorPublicKey(colonyId, 1);
+  return deriveDirectorPublicKey(colonyId, 1, env);
 }

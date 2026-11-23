@@ -88,6 +88,8 @@ export interface DiplomacyPanelOptions {
   getOwnColonyIndex?: () => number;
   colonyId?: string;
   warsEnabled?: boolean;
+  readOnly?: boolean;
+  getReadOnly?: () => boolean;
 }
 
 export function formatTickRemaining(targetTick: number, currentTick: number): string {

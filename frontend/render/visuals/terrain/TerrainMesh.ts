@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { PlanetSpec } from '../../planets/PlanetSpec';
 import type { HeightField } from './heightfields';
-import { buildTerrainGrid, buildTerrainGeometry, buildHeightTexture, makeHeightSampler } from './TerrainGrid';
+import { buildTerrainGrid, buildTerrainGeometry, buildHeightTexture, makeHeightSampler, type TerrainGridData } from './TerrainGrid';
 import { createTerrainMaterial, terrainUniforms } from './terrainMaterial';
 
 export interface TerrainResult {
@@ -14,11 +14,17 @@ export interface TerrainResult {
 }
 
 /** Single high-res displaced grid. heightAt() interpolates the SAME triangles the GPU renders. */
-export function createTerrain(spec: PlanetSpec, field: HeightField, half: number, N: number): TerrainResult {
+export function createTerrain(
+  spec: PlanetSpec,
+  field: HeightField,
+  half: number,
+  N: number,
+  precomputedGrid?: TerrainGridData,
+): TerrainResult {
   const span = half * 4;
-  const grid = buildTerrainGrid(field, span, N);
+  const grid = precomputedGrid && precomputedGrid.V === N + 1 ? precomputedGrid : buildTerrainGrid(field, span, N);
   const geo = buildTerrainGeometry(grid, field, span);
-  const heightTex = buildHeightTexture(grid.hs, grid.V);
+  const heightTex = buildHeightTexture(grid.hs, grid.V, grid.heightTexHalf);
   const heightAt = makeHeightSampler(grid, span, N);
 
   const uniforms = terrainUniforms(spec, field.liquid?.level ?? -99, half * 2, field.wind);

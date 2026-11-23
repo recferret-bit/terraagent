@@ -4,9 +4,29 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>TerraAgent — Drop one robot. Leave. It keeps building.</title>
-<meta name="description" content="TerraAgent is an autonomous colony builder in your browser. Your robots mine, build, defend and trade on a live planet, around the clock, even while you are away.">
+<meta name="description" content="TerraAgent is an autonomous 3D colony builder in your browser on NEAR and NEAR.AI. Robots mine, terraform, defend, and trade 24/7 even while you are away.">
+<link rel="canonical" href="https://terraagent.fun/">
 <meta name="theme-color" content="#07080A">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="TerraAgent">
+<meta property="og:title" content="TerraAgent — Autonomous 3D Colony Builder on NEAR &amp; NEAR.AI">
+<meta property="og:description" content="Drop one robot. Leave. It keeps building. Persistent 3D colony RTS with verifiable NEAR.AI commanders, NEP-245 cargo markets, wallet-first 4-tier staking, and bonded diplomacy.">
+<meta property="og:url" content="https://terraagent.fun/">
+<meta property="og:image" content="https://terraagent.fun/og-cover.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="TerraAgent — Autonomous 3D Colony Builder on NEAR &amp; NEAR.AI">
+<meta name="twitter:description" content="Drop one robot. Leave. It keeps building. Persistent 3D colony RTS with verifiable NEAR.AI commanders and on-chain settlement.">
+<meta name="twitter:image" content="https://terraagent.fun/og-cover.png">
+<link rel="icon" href="/favicon.ico" sizes="48x48">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="icon" type="image/png" sizes="96x96" href="/favicon-96x96.png">
+<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+<link rel="manifest" href="/site.webmanifest">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
 <link rel="stylesheet" href="/design/css/tokens.css">
 <link rel="stylesheet" href="/design/css/base.css">
 <link rel="stylesheet" href="/landing/landing.css">
@@ -82,7 +102,11 @@ It keeps building.</h1>
         </div>
 
         <div class="viewport viewport-hero plate brackets">
-          <div id="hero-stage" role="img" aria-label="Live 3D orbit view: a planet with moons, satellites and asteroids, morphing between worlds"></div>
+          <div id="hero-stage" data-stage-state="queued" role="img" aria-label="Live 3D orbit view: a planet with moons, satellites and asteroids, morphing between worlds"></div>
+          <div class="stage-preloader" data-stage-preloader aria-hidden="true" data-preloader-label="INITIALIZING 3D ORBIT" data-preloader-sub="WEBGL2 · STREAMING TELEMETRY">
+            <span class="stage-preloader-reticle"></span>
+            <span class="stage-preloader-bar"><i></i></span>
+          </div>
           <div class="scanlines"></div>
           <div class="viewport-tag tl"><div><span class="c-orange">●</span> LIVE RENDER · WEBGL</div><div id="hero-world">KHARON DUNES</div></div>
           <div class="viewport-tag br"><div>ORBIT VIEW · SAME AS THE GAME MENU</div><div id="hero-morph">WORLD 1 / 3 · MORPH IN 10 S</div></div>
@@ -136,8 +160,12 @@ It keeps building.</h1>
           <p>Live in-game 3D rendering on a forest world shoreline near the water and trees. A Command Hub, Solar Array, Pylon and Metal Extractor run alongside three autonomous harvesters terraforming surrounding rocks and trees.</p>
         </div>
         <div class="colony-row">
-          <div class="viewport viewport-colony plate" id="colony-stage">
+          <div class="viewport viewport-colony plate" id="colony-stage" data-stage-state="queued">
             <canvas id="colony-canvas" role="img" aria-label="Live 3D forest planet colony near the water with trees, Command Hub, Solar Array, Pylon, Metal Extractor and 3 autonomous harvesters"></canvas>
+            <div class="stage-preloader" data-stage-preloader aria-hidden="true" data-preloader-label="LOADING 3D COLONY STAGE" data-preloader-sub="THALASSA FOREST · HEX DIORAMA">
+              <span class="stage-preloader-reticle"></span>
+              <span class="stage-preloader-bar"><i></i></span>
+            </div>
             <div class="scanlines"></div>
             <div class="viewport-tag tl"><span class="c-orange">●</span> LIVE RENDER · WEBGL · THALASSA FOREST COLONY</div>
           </div>
@@ -165,7 +193,11 @@ It keeps building.</h1>
         </div>
         <div class="rv" id="rv-panel" role="tabpanel">
           <div class="rv-view plate">
-            <div class="rv-stage" id="rv-stage"></div>
+            <div class="rv-stage" id="rv-stage" data-stage-state="queued"></div>
+            <div class="stage-preloader" data-stage-preloader aria-hidden="true" data-preloader-label="LOADING 3D ARCHETYPE" data-preloader-sub="KITBASH · UNIFIER SHADER">
+              <span class="stage-preloader-reticle"></span>
+              <span class="stage-preloader-bar"><i></i></span>
+            </div>
             <div class="scanlines"></div>
             <div class="rv-tag" id="rv-tag" aria-live="off"></div>
           </div>
@@ -212,7 +244,13 @@ It keeps building.</h1>
       <p class="label example-note">OPEN WORLDS · 24-HOUR LANDING WINDOW</p>
       <div class="grid-auto planet-grid">
         <article class="planet plate card-hover">
-          <div class="planet-art"><canvas data-planet="dune" role="img" aria-label="Live 3D render of the planet"></canvas></div>
+          <div class="planet-art" data-stage-state="queued">
+            <canvas data-planet="dune" role="img" aria-label="Live 3D render of the planet"></canvas>
+            <div class="stage-preloader stage-preloader-sm" data-stage-preloader aria-hidden="true" data-preloader-label="3D GLOBE">
+              <span class="stage-preloader-reticle"></span>
+              <span class="stage-preloader-bar"><i></i></span>
+            </div>
+          </div>
           <div class="planet-body">
             <div class="planet-head"><h3 class="h3">Kharon Dunes</h3><span class="badge badge-recruiting">DESERT</span></div>
             <p>Wind-carved dunes, rust rocks, brutal sun. Solar-rich, water-poor.</p>
@@ -221,7 +259,13 @@ It keeps building.</h1>
           </div>
         </article>
         <article class="planet plate card-hover">
-          <div class="planet-art"><canvas data-planet="oceanForest" role="img" aria-label="Live 3D render of the planet"></canvas></div>
+          <div class="planet-art" data-stage-state="queued">
+            <canvas data-planet="oceanForest" role="img" aria-label="Live 3D render of the planet"></canvas>
+            <div class="stage-preloader stage-preloader-sm" data-stage-preloader aria-hidden="true" data-preloader-label="3D GLOBE">
+              <span class="stage-preloader-reticle"></span>
+              <span class="stage-preloader-bar"><i></i></span>
+            </div>
+          </div>
           <div class="planet-body">
             <div class="planet-head"><h3 class="h3">Thalassa Verde</h3><span class="badge badge-new">OCEAN</span></div>
             <p>Island chains, lagoons and dense forest. Water-rich, hydro-friendly.</p>
@@ -230,7 +274,13 @@ It keeps building.</h1>
           </div>
         </article>
         <article class="planet plate card-hover">
-          <div class="planet-art"><canvas data-planet="forestRock" role="img" aria-label="Live 3D render of the planet"></canvas></div>
+          <div class="planet-art" data-stage-state="queued">
+            <canvas data-planet="forestRock" role="img" aria-label="Live 3D render of the planet"></canvas>
+            <div class="stage-preloader stage-preloader-sm" data-stage-preloader aria-hidden="true" data-preloader-label="3D GLOBE">
+              <span class="stage-preloader-reticle"></span>
+              <span class="stage-preloader-bar"><i></i></span>
+            </div>
+          </div>
           <div class="planet-body">
             <div class="planet-head"><h3 class="h3">Granite Hollow</h3><span class="badge badge-new">TEMPERATE</span></div>
             <p>Pine highlands and cliff outcrops. Mineral-dense, temperate.</p>
@@ -249,7 +299,7 @@ It keeps building.</h1>
             <p class="eyebrow">05 · AUTONOMOUS AI DIRECTOR</p>
             <h2 class="h1">Rules run every tick.<br><span class="sub-blue">AI steps in when the plan breaks.</span></h2>
           </div>
-          <p>Mining, power routing, and build queues run on the game server at 5 Hz with zero model calls. When a drought, raid, or price spread opens while you are away, <code>NEAR.AI</code> reviews sanitized colony telemetry inside a confidential enclave, respects your price-band and kill-switch gates, and issues one bounded order you can cryptographically verify right inside the HUD.</p>
+          <p>Mining, power routing, and build queues run on the game server at 5 Hz with zero model calls. When a drought, raid, or market spread hits while you are away, <code>NEAR.AI</code> evaluates your colony inside a confidential enclave and issues one bounded order—verifiable right in the HUD.</p>
         </div>
         <div class="director-meta">
           <div class="split plate-sm">
@@ -258,8 +308,8 @@ It keeps building.</h1>
             <div class="split-row"><span>NEAR.AI DIRECTOR · EMERGENCIES &amp; OFFLINE</span><span class="c-blue">5–10 %</span></div>
           </div>
           <div class="scenarios-modes" aria-label="Three ways colony autonomy runs">
-            <div class="mode-pill plate-sm"><span>DEFAULT · FREE</span><b>Rule Engine</b><small>Follows your queue &amp; repairs</small></div>
-            <div class="mode-pill plate-sm is-blue"><span>STAKER · ≥10 NEAR</span><b>Managed NEAR.AI</b><small>Included with Day-1 staking</small></div>
+            <div class="mode-pill plate-sm"><span>DEFAULT · FREE</span><b>5 Free TEE Turns</b><small>Then Rule Engine &amp; repairs</small></div>
+            <div class="mode-pill plate-sm is-blue"><span>STAKER · 10–500+ NEAR</span><b>Managed NEAR.AI</b><small>1–12 colony slots · wallet-first</small></div>
             <div class="mode-pill plate-sm"><span>BYOK · /ME</span><b>Your Own Model</b><small>Encrypted NEAR AI Cloud key</small></div>
           </div>
         </div>
@@ -280,14 +330,14 @@ It keeps building.</h1>
                 <div style="color:var(--ta-text)">Buy 40 bio.water from Kestrel below 0.92 cap,</div>
                 <div style="color:var(--ta-text)">then queue a condensation pump on ridge hex.</div>
                 <div class="gap c-orange-hi">→ market.acceptGuildOffer() · enqueue(water_pump)</div>
-                <div style="color:var(--ta-dim);margin-top:8px">enclave attestation verified in-browser (WebCrypto ECDSA) · 1 order queued<span class="blink c-orange">▌</span></div>
+                <div style="color:var(--ta-dim);margin-top:8px">enclave attestation verified · 1 order queued<span class="blink c-orange">▌</span></div>
               </div>
             </div>
             <div class="scenarios-foot">
-              <span><b>GOVERNED LIMITS</b> The Director sanitizes player labels, checks live order exposure, and honors kill switches &amp; key revocation. Click <code>TEE ✓</code> in the HUD (or <b>Verify &amp; Save</b> on <code>/me.html</code>) to inspect its enclave proof.</span>
+              <span><b>GOVERNED LIMITS</b> Bounded by your spend cap, price band, and kill switch—and permanently blocked from touching staked NEAR or active truces. Open <code>TEE ✓</code> in the HUD to inspect any enclave proof.</span>
               <div class="scenarios-links">
                 <a class="scenarios-cta" href="/dev/economy-sim/">7-DAY ECONOMY SIM →</a>
-                <a class="scenarios-cta" href="/me.html">PILOT / BYOK →</a>
+                <a class="scenarios-cta" href="/me.html#staking">PILOT · STAKE · BYOK →</a>
               </div>
             </div>
           </div>
@@ -312,12 +362,12 @@ It keeps building.</h1>
           <p class="eyebrow">08 · ON-CHAIN OWNERSHIP</p>
           <h2 class="h1">Play a colony,<br><span class="sub-blue">not wallet popups.</span></h2>
         </div>
-        <p>The game simulation runs at full speed on the server while six deployed Rust contracts on NEAR (plus a standalone intent verifier crate) record colony deeds, orbital cargo, bonded diplomacy, staking, and council votes. <a href="/whitepaper/#sub-web3-operator-accounts">Whitepaper: Contracts &amp; Gas Accounts →</a></p>
+        <p>The game simulation runs at full speed on the server while six deployed Rust contracts on NEAR record colony deeds, orbital cargo, bonded diplomacy, staking, and council votes. <a href="/whitepaper/#sub-web3-operator-accounts">Contracts &amp; Gas Spec →</a></p>
       </div>
       <div class="grid-auto chain-pillars">
-        <div class="card plate card-hover"><div class="label">STEP 01 · DROP IN</div><h3 class="h3">Start without a wallet</h3><p>Play immediately as a guest or with social sign-in. Early colony transactions are sponsored automatically inside shared daily gas limits.</p></div>
-        <div class="card plate card-hover"><div class="label">STEP 02 · EXPORT</div><h3 class="h3">Real cargo &amp; 1Click ramp</h3><p>Resources shipped to orbit mint 1:1 on NEAR to trade across stalls, Guild freighters, MCP bots, or cross-chain via NEAR Intents 1Click.</p></div>
-        <div class="card plate card-hover"><div class="label">STEP 03 · CLAIM</div><h3 class="h3">Self-custody + scoped session keys</h3><p>Connect Meteor, MyNearWallet, Intear, OKX, NEAR Mobile, Bitte AI, HOT, HERE, Nightly, or Sender. Rotating keys gives you full custody while optionally keeping a revocable trading session key and 1-click NEAR Social deed shares.</p></div>
+        <div class="card plate card-hover"><div class="label">STEP 01 · DROP IN</div><h3 class="h3">Start without a wallet</h3><p>Play immediately as a guest or with social sign-in. Early colony actions are sponsored automatically inside shared daily gas limits.</p></div>
+        <div class="card plate card-hover"><div class="label">STEP 02 · EXPORT</div><h3 class="h3">Real cargo &amp; 1Click swaps</h3><p>Resources shipped to orbit mint 1:1 on NEAR to trade across player stalls, Guild freighters, or cross-chain USDC via NEAR Intents 1Click.</p></div>
+        <div class="card plate card-hover"><div class="label">STEP 03 · CLAIM</div><h3 class="h3">Self-custody when you want it</h3><p>Connect any major NEAR wallet to rotate your colony into full self-custody—keeping a revocable trading session key so market orders stay popup-free.</p></div>
       </div>
 
       <div class="contracts-board plate" id="contracts-board" aria-label="Deployed NEAR smart contracts"></div>
@@ -349,10 +399,10 @@ It keeps building.</h1>
               <div class="leg-meter" role="img" aria-label="6 of 6 core systems live"><i style="width:100%"></i></div>
               <ul class="tasks">
                 <li class="t-done">24/7 server simulation and WebGL2 diorama across three biomes, combat, and terraforming</li>
-                <li class="t-done">Instant guest play, 10 NEAR wallets (incl. Bitte &amp; HOT), self-custody key rotation + scoped trading session keys</li>
-                <li class="t-done">Planet orderbook, Orbital Guild freighters, live cross-chain <code>1Click</code> ramp &amp; Hosted MCP Server (<code>/v1/mcp</code>)</li>
-                <li class="t-done">Governed NEAR.AI Director with prompt-injection guards, encrypted BYOK + browser <code>TEE ✓</code> verification, and Shade Agents + MPC</li>
-                <li class="t-done">NEP-171 Colony Deeds + NEAR Social shares, Day-1 staking, SputnikDAO v2 council export, and payable bond escrows</li>
+                <li class="t-done">Instant guest play, 10 NEAR wallets, self-custody key rotation, and revocable trading session keys</li>
+                <li class="t-done">Planet orderbook, Orbital Guild freighters, cross-chain <code>1Click</code> quotes, and open bot &amp; MCP APIs</li>
+                <li class="t-done">Governed NEAR.AI Director with encrypted BYOK models and in-browser enclave proof verification</li>
+                <li class="t-done">Soulbound Colony Deeds, wallet-first 4-tier NEAR &amp; LST staking, weighted council voting, and bonded diplomacy</li>
                 <li class="t-done">Fast-forward 7-day multi-colony &amp; 25-agent market simulator at <a href="/dev/economy-sim/">/dev/economy-sim/</a></li>
               </ul>
             </div>
@@ -415,7 +465,7 @@ It keeps building.</h1>
         <h2 class="h1">Questions from orbit</h2>
         <details open><summary>What happens to my colony when I close the tab?</summary><p>It keeps running on the server. The rule engine follows your last priorities, the AI Director handles emergencies, and builders repair what storms break. Next time you open the game you land straight in your colony.</p></details>
         <details><summary>Why can't I join any planet I like?</summary><p>Planets stop accepting new colonies once their seats fill or 24 hours pass since the first landing. That keeps every new player on a fair start. Fresh worlds open automatically.</p></details>
-        <details><summary>Do I need a crypto wallet?</summary><p>No. You start as a guest. Linking or claiming a NEAR wallet is optional and unlocks self-custody withdrawals and Day-1 Staking.</p></details>
+        <details><summary>Do I need a crypto wallet?</summary><p>No. You start as a guest, and verified accounts get 5 free <code>NEAR.AI</code> TEE turns. Connecting a NEAR wallet is optional and unlocks self-custody withdrawals plus wallet-first 4-Tier Staking on <a href="/me.html#staking">/me.html#staking</a> with no Colony Deed required.</p></details>
         <details><summary>How do players earn, and what pays for gas and AI?</summary><p>Sell refined cargo on <a href="/trade.html">/trade.html</a>, collect stall fees at your Trade Hub, run automated trading bots, or claim defense bounties. Real trade activity, staking yield, and forfeited bonds cover gas and AI—never an inflationary reward token.</p></details>
         <details><summary>How does a game end?</summary><p>Build a rocket, launch it, and carry part of your colony to a new planet in the sector. A planet itself ends after 14 days or when every colony on it is gone.</p></details>
       </div>
@@ -434,11 +484,11 @@ It keeps building.</h1>
   <footer class="site-footer">
     <div class="container">
       <span>TERRAAGENT · AUTONOMOUS COLONY BUILDER ON NEAR</span>
-      <nav aria-label="Footer"><a href="/play.html?planet=dune">PLAY</a><a href="/trade.html">EXCHANGE</a><a href="/pitchdeck/">PITCH DECK</a><a href="/whitepaper/">WHITEPAPER</a><a href="/me.html">PILOT / BYOK</a></nav>
+      <nav aria-label="Footer"><a href="/play.html?planet=dune">PLAY</a><a href="/trade.html">EXCHANGE</a><a href="/me.html#staking">STAKING</a><a href="/pitchdeck/">PITCH DECK</a><a href="/whitepaper/">WHITEPAPER</a><a href="/me.html">PILOT / BYOK</a></nav>
     </div>
   </footer>
 </div>
 
-<script type="module" src="/landing/main.ts"></script>
+<script type="module" src="/landing/main.ts" fetchpriority="high"></script>
 </body>
 </html>

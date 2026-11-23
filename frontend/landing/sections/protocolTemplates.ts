@@ -74,12 +74,12 @@ export function renderProtocolSchematicHtml(): string {
       <div class="proto-col">
         <span class="proto-col-label is-in">INFLOWS · 3 REVENUE STREAMS</span>
         <article class="proto-node plate-sm" data-stream="trade">
-          <div class="proto-node-top"><b data-proto-trade-title>80% of Platform Trade Fee</b><span class="proto-rate" data-proto-trade-rate>0.80% / 0.40%</span></div>
-          <p>Paid by the buyer on market fills; the other <span data-proto-dao-share-pct>20%</span> goes to your planet's Council fund.</p>
+          <div class="proto-node-top"><b data-proto-trade-title>80% of Platform Trade Fee</b><span class="proto-rate" data-proto-trade-rate>0.80% / 0.52%</span></div>
+          <p>Paid by the buyer on market fills (<span data-proto-dao-share-pct>20%</span> to Planet Council DAO; 15% of Protocol cut to Tier 4 Lead Patron).</p>
         </article>
         <article class="proto-node plate-sm" data-stream="staking">
           <div class="proto-node-top"><b data-proto-yield-title>20% of Validator Yield</b><span class="proto-rate" data-proto-yield-rate>1.80% APY Slice</span></div>
-          <p>Routed from validator rewards while pilots keep <span data-proto-pilot-net-apy>7.20%</span> net APY and full principal.</p>
+          <p>Wallet-first native NEAR, stNEAR &amp; LiNEAR: pilots keep <span data-proto-pilot-net-apy>7.20%</span> net APY and full principal.</p>
         </article>
         <article class="proto-node plate-sm" data-stream="bonds">
           <div class="proto-node-top"><b data-proto-slash-title>10% Bond Arbitration Slash</b><span class="proto-rate" data-proto-slash-rate>10% of Breach</span></div>
@@ -105,7 +105,7 @@ export function renderProtocolSchematicHtml(): string {
         </article>
         <article class="proto-node is-out-ai plate-sm" data-stream="all">
           <div class="proto-node-top"><b>NEAR.AI Autopilot</b><span class="proto-rate">cloud-api.near.ai</span></div>
-          <p>Funds scheduled emergency sweeps for rival NPCs and <span data-proto-ai-min-stake>≥10 NEAR</span> stakers.</p>
+          <p>Funds Rival NPCs, 5 free TEE trial turns, and 1–12 colony slots for <span data-proto-ai-min-stake>≥10 NEAR</span>–500+ NEAR stakers.</p>
         </article>
         <article class="proto-node plate-sm" data-stream="all">
           <div class="proto-node-top"><b>Low Planet Cost Floor</b><span class="proto-rate">~$0.04 / day</span></div>
@@ -126,7 +126,7 @@ export function renderProtocolStagesHtml(): string {
       <h3>4-Way Trade Split on Every Fill</h3>
       <p>Sellers receive <b>100% of sale price</b>; buyer fees split in the same settlement:</p>
       <div class="proto-bar-group">
-        <div class="proto-bar-caption"><span data-proto-stage-trade-cap>BUYER FEE ALLOCATION (MAX 2.00% / 1.50% STAKER)</span><span>ATOMIC</span></div>
+        <div class="proto-bar-caption"><span data-proto-stage-trade-cap>BUYER FEE ALLOCATION (MAX 2.00% / 1.65%–1.25% T1–T4)</span><span>ATOMIC</span></div>
         <div class="proto-seg-bar" role="img" data-proto-bar-trade aria-label="Up to 50% Stall Owner, 40% Protocol, 10% Planet Council DAO">
           <span class="proto-seg is-terra" data-proto-bar-trade-stall style="width:50%"></span>
           <span class="proto-seg is-orange" data-proto-bar-trade-proto style="width:40%"></span>
@@ -134,8 +134,8 @@ export function renderProtocolStagesHtml(): string {
         </div>
         <div class="proto-legend-list">
           <div class="proto-legend-row"><span>■ Trade Hub Stall</span><b>0.00% – 1.00%</b></div>
-          <div class="proto-legend-row"><span data-proto-legend-proto-label>■ Protocol Share (80%)</span><b data-proto-legend-proto-val>0.80% (0.40% Staker)</b></div>
-          <div class="proto-legend-row"><span data-proto-legend-dao-label>■ Planet Council (20%)</span><b data-proto-legend-dao-val>0.20% (0.10% Staker)</b></div>
+          <div class="proto-legend-row"><span data-proto-legend-proto-label>■ Protocol Share (80%)</span><b data-proto-legend-proto-val>0.80% (0.52%–0.20% T1–T4)</b></div>
+          <div class="proto-legend-row"><span data-proto-legend-dao-label>■ Planet Council (20%)</span><b data-proto-legend-dao-val>0.20% (0.13%–0.05% T1–T4)</b></div>
         </div>
       </div>
     </article>
@@ -146,7 +146,7 @@ export function renderProtocolStagesHtml(): string {
         <span class="badge badge-ai">HUMAN ONLY</span>
       </div>
       <h3 data-proto-stage-staking-title>80 / 20 Yield Split · Zero Pay-to-Win</h3>
-      <p>Validator rewards fund perks at <span data-proto-stage-min-stake>≥10 NEAR</span> without touching principal:</p>
+      <p>Wallet-first 4-tier perks (<span data-proto-stage-min-stake>≥10 NEAR</span> to 500+ NEAR) without touching principal:</p>
       <div class="proto-bar-group">
         <div class="proto-bar-caption"><span data-proto-stage-pool-apy>9.0% VALIDATOR POOL YIELD SPLIT</span><span>LOSSLESS</span></div>
         <div class="proto-seg-bar" role="img" data-proto-bar-stake aria-label="80% Net APY to Pilot, 20% APY to Protocol">
@@ -156,7 +156,7 @@ export function renderProtocolStagesHtml(): string {
         <div class="proto-legend-list">
           <div class="proto-legend-row"><span data-proto-legend-pilot-label>■ Pilot Net Yield (80%)</span><b data-proto-legend-pilot-apy>7.20% Net APY</b></div>
           <div class="proto-legend-row"><span data-proto-legend-yield-label>■ Protocol Slice (20%)</span><b data-proto-legend-yield-apy>1.80% APY</b></div>
-          <div class="proto-legend-row"><span data-proto-legend-perks-label>★ Perks at ≥10 NEAR</span><b data-proto-legend-perks-val>Managed AI + 0.50% Fee</b></div>
+          <div class="proto-legend-row"><span data-proto-legend-perks-label>★ Perks at ≥10 NEAR</span><b data-proto-legend-perks-val>1–12 AI Slots + 0.65%–0.25% Fee</b></div>
         </div>
       </div>
     </article>
@@ -196,23 +196,23 @@ export function renderProtocolReceiptsHtml(): string {
     <div class="proto-proof-grid">
       <article class="proto-proof plate-sm" data-stream="trade">
         <span class="proto-proof-tag is-terra">EXAMPLE 01 · $100 CARGO FILL (0.5% STALL)</span>
-        <strong data-proto-ex-buyer-total>Buyer pays $101.50 ($101.00 Staker)</strong>
+        <strong data-proto-ex-buyer-total>Buyer pays $101.50 ($101.15 T1 · $100.75 T4)</strong>
         <ul class="proto-proof-rows">
           <li><span>Seller Principal (100%)</span><b>$100.00 USDC</b></li>
           <li><span>Trade Hub Stall Owner</span><b>+$0.50 USDC</b></li>
-          <li><span>Planet Council DAO</span><b data-proto-ex-dao>+$0.20 ($0.10 Stk)</b></li>
-          <li><span>Protocol Treasury</span><b data-proto-ex-trade>+$0.80 ($0.40 Stk)</b></li>
+          <li><span>Planet Council DAO</span><b data-proto-ex-dao>+$0.20 ($0.13–$0.05 Stk)</b></li>
+          <li><span>Protocol Treasury</span><b data-proto-ex-trade>+$0.80 ($0.52 Stk)</b></li>
         </ul>
         <p class="proto-proof-foot">1 fill covers <b data-proto-ex-trade-txs>~650 gasless NEP-366 player txs</b> (~0.0003 NEAR/tx at ~$4/NEAR).</p>
       </article>
       <article class="proto-proof plate-sm" data-stream="staking">
-        <span class="proto-proof-tag is-blue">EXAMPLE 02 · 50 NEAR STAKE</span>
+        <span class="proto-proof-tag is-blue">EXAMPLE 02 · 50 NEAR TIER 2 STAKE</span>
         <strong>100% Principal Safe · 2d Unbond</strong>
         <ul class="proto-proof-rows">
           <li><span>Locked Principal</span><b>50.00 NEAR</b></li>
           <li><span>Pilot Net Yield</span><b data-proto-ex-pilot-yield>+3.60 NEAR / yr</b></li>
           <li><span>Protocol Yield Slice</span><b data-proto-ex-proto-yield>+0.90 NEAR / yr</b></li>
-          <li><span>Unlocked Perks</span><b data-proto-ex-perks>Managed AI + 0.50% Fee</b></li>
+          <li><span>Unlocked Perks</span><b data-proto-ex-perks>3 AI Slots + 0.50% Fee (24h)</b></li>
         </ul>
         <p class="proto-proof-foot" data-proto-ex-stake-foot>+0.90 NEAR/yr sponsors ~3,000 meta-txs with zero principal risk.</p>
       </article>
@@ -240,4 +240,18 @@ export function renderProtocolReceiptsHtml(): string {
       </article>
     </div>
   </details>`;
+}
+
+export function renderProtocolBoardHtml(): string {
+  return `<div class="sec-head">
+      <div>
+        <p class="eyebrow">07 · PROTOCOL TREASURY</p>
+        <h2 class="h1">Self-funded servers,<br><span class="sub-blue">gas, and offline AI.</span></h2>
+      </div>
+      <p><code>protocol.terraagent.*</code> is an open treasury on NEAR. Small slices from trades, validator yield, and broken-treaty bonds pay directly for player gas and offline colony AI.</p>
+    </div>
+    ${renderProtocolToolbarHtml()}
+    ${renderProtocolSchematicHtml()}
+    ${renderProtocolStagesHtml()}
+    ${renderProtocolReceiptsHtml()}`;
 }

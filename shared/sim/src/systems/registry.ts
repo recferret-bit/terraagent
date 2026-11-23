@@ -1,6 +1,6 @@
 import type { CommandHandlerDef } from '../kernel/commands';
 import { createPipeline, type Pipeline } from '../kernel/step';
-import type { CompiledDataLike, EngineConfig } from '../kernel/config';
+import type { CompiledDataLike, EngineConfig, SimHostRole } from '../kernel/config';
 import { compileData } from '../data';
 import type { SimSystem } from '../kernel/system';
 import type { SimModule } from './define';
@@ -16,6 +16,8 @@ export interface EngineConfigInput {
   data?: CompiledDataLike;
   /** Defaults to every discovered module; tests may pass a subset or extras. */
   modules?: readonly SimModule[];
+  /** Execution role: `'authority_external_bots'`, `'replica'`, or `'standalone'` (default). */
+  hostRole?: SimHostRole;
 }
 
 /** Default engine config from the registry: hosts pass flags + data and never assemble system lists by hand. */
@@ -31,6 +33,7 @@ export function createEngineConfig(input: EngineConfigInput): EngineConfig {
     data: input.data ?? compileData(flags),
     systems: allSystems(modules).filter((s) => flags.has(s.wave)),
     handlers: allHandlers(modules),
+    ...(input.hostRole ? { hostRole: input.hostRole } : {}),
   };
 }
 

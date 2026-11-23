@@ -1,7 +1,15 @@
+import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
+import { ArchetypeCatalog } from '../kitbash';
+import { PLANET_SPECS } from '../planets/PlanetSpec';
 import { ProceduralTextureRegistry, type ProceduralPBRBundle } from './ProceduralTextureRegistry';
+import { createFoliageMaterial } from './terrain/Scatter';
+import { makeWildflowerGeo } from './terrain/groundFloraGeos';
+import { terrainUniforms } from './terrain/terrainMaterial';
+import { buildTreeBreedGeo } from './terrain/treeBreeds';
+import { createUnifiedColonyMaterial } from './UnifiedColonyMaterial';
 
-describe('ProceduralTextureRegistry cache (RN-13)', () => {
+describe('ProceduralTextureRegistry cache (RN-13) and botanical/organic PBR presets', () => {
   it('re-registering a preset drops every cached size, so the new generator is used', () => {
     const first: ProceduralPBRBundle = {};
     const second: ProceduralPBRBundle = {};
@@ -19,5 +27,117 @@ describe('ProceduralTextureRegistry cache (RN-13)', () => {
     expect(ProceduralTextureRegistry.get('rn13Preset_b', 16)).toBe(other);
     ProceduralTextureRegistry.register('rn13Preset', () => ({}));
     expect(ProceduralTextureRegistry.get('rn13Preset_b', 16)).toBe(other);
+  });
+
+  it('synthesizes seamless botanical and pelage PBR bundles with correct color spaces and linear mipmap filtering', () => {
+    for (const preset of ['treeBarkFissures', 'meadowGrassClover', 'desertPebbleCrust', 'warmFurPelage', 'avianFeatherVane']) {
+      const bundle = ProceduralTextureRegistry.get(preset, 32);
+      expect(bundle.map).toBeDefined();
+      expect(bundle.normalMap).toBeDefined();
+      expect(bundle.roughnessMap).toBeDefined();
+      expect(bundle.map!.colorSpace).toBe(THREE.SRGBColorSpace);
+      expect(bundle.normalMap!.colorSpace).toBe(THREE.NoColorSpace);
+      expect(bundle.roughnessMap!.colorSpace).toBe(THREE.NoColorSpace);
+      expect(bundle.normalMap!.wrapS).toBe(THREE.RepeatWrapping);
+      expect(bundle.normalMap!.wrapT).toBe(THREE.RepeatWrapping);
+      expect(bundle.map!.magFilter).toBe(THREE.LinearFilter);
+      expect(bundle.map!.minFilter).toBe(THREE.LinearMipmapLinearFilter);
+      expect(bundle.map!.generateMipmaps).toBe(true);
+      expect(bundle.roughnessMap!.minFilter).toBe(THREE.LinearMipmapLinearFilter);
+      expect(bundle.roughnessMap!.generateMipmaps).toBe(true);
+    }
+  });
+
+  it('wires all 5 biosphere PBR presets and fur/plumage tissues into runtime materials and meshes', () => {
+    const { material: uniMat, uniforms: uniU } = createUnifiedColonyMaterial({ biome: 'temperate' });
+    expect(uniU.uFurPelageMap?.value).toBe(ProceduralTextureRegistry.get('warmFurPelage', 128).map);
+    expect(uniU.uFurRoughnessMap?.value).toBe(ProceduralTextureRegistry.get('warmFurPelage', 128).roughnessMap);
+    expect(uniU.uFeatherVaneMap?.value).toBe(ProceduralTextureRegistry.get('avianFeatherVane', 128).map);
+    expect(uniU.uFeatherRoughnessMap?.value).toBe(ProceduralTextureRegistry.get('avianFeatherVane', 128).roughnessMap);
+
+    const foliageMat = createFoliageMaterial({ value: 0 }, 0.75, false, true);
+    const mockFolSh = {
+      uniforms: {} as Record<string, THREE.IUniform>,
+      vertexShader: '#include <common>\nvoid main() {\n#include <color_vertex>\n#include <begin_vertex>\n}',
+      fragmentShader:
+        '#include <common>\nvoid main() {\n#include <color_fragment>\n#include <roughnessmap_fragment>\n#include <emissivemap_fragment>\n#include <fog_fragment>\n}',
+    } as unknown as THREE.WebGLProgramParametersWithUniforms;
+    foliageMat.onBeforeCompile(mockFolSh, null as unknown as THREE.WebGLRenderer);
+    expect(mockFolSh.uniforms.uBarkMap?.value).toBe(ProceduralTextureRegistry.get('treeBarkFissures', 128).map);
+    expect(mockFolSh.uniforms.uBarkRoughMap?.value).toBe(ProceduralTextureRegistry.get('treeBarkFissures', 128).roughnessMap);
+    expect(mockFolSh.fragmentShader).not.toContain('atan(');
+
+    // Explicit `aBark` tags woody tree stems (1) while keeping pink coralBlossom crowns & wildflowers bark-free (0)
+    const birch = buildTreeBreedGeo('silverBirch', 17);
+    const coral = buildTreeBreedGeo('coralBlossom', 17);
+    const flower = makeWildflowerGeo('oceanForest', 17);
+    const birchBark = birch.getAttribute('aBark');
+    const coralBark = coral.getAttribute('aBark');
+    const coralCol = coral.getAttribute('color');
+    expect(birchBark).toBeDefined();
+    let birchWoodVerts = 0;
+    for (let i = 0; i < birchBark.count; i++) if (birchBark.getX(i) > 0.5) birchWoodVerts++;
+    expect(birchWoodVerts).toBeGreaterThan(20);
+    for (let i = 0; i < coralBark.count; i++) {
+      if (coralCol.getX(i) - coralCol.getY(i) > 0.22) expect(coralBark.getX(i)).toBe(0);
+    }
+    const flowerBark = flower.getAttribute('aBark');
+    for (let i = 0; i < flowerBark.count; i++) expect(flowerBark.getX(i)).toBe(0);
+    birch.dispose();
+    coral.dispose();
+    flower.dispose();
+
+    const terrU = terrainUniforms(PLANET_SPECS.forestRock, 0, 128, [1, 0]);
+    expect(terrU.uMeadowDetailMap?.value).toBe(ProceduralTextureRegistry.get('meadowGrassClover', 128).map);
+    expect(terrU.uDesertCrustMap?.value).toBe(ProceduralTextureRegistry.get('desertPebbleCrust', 128).map);
+    (terrU.uTerraformMap.value as THREE.Texture).dispose();
+
+    // Warm-blooded mammals stamp tissue = 6 (pelage); birds stamp tissue = 7 (plumage)
+    const wolfOrg = ArchetypeCatalog.getGeometry('fauna.timberWolf').getAttribute('aOrganic');
+    const hawkOrg = ArchetypeCatalog.getGeometry('fauna.bird.highlandHawk').getAttribute('aOrganic');
+    let hasFur = false;
+    let hasPlumage = false;
+    for (let i = 0; i < wolfOrg.count; i++) if (Math.abs(wolfOrg.getX(i) - 6) < 0.1) hasFur = true;
+    for (let i = 0; i < hawkOrg.count; i++) if (Math.abs(hawkOrg.getX(i) - 7) < 0.1) hasPlumage = true;
+    expect(hasFur).toBe(true);
+    expect(hasPlumage).toBe(true);
+
+    foliageMat.dispose();
+    uniMat.dispose();
+  });
+});
+
+describe('warmFurPelage CRT/pixel fur locks and UnifiedColonyMaterial pelage sheen', () => {
+  it('produces chunky achromatic fur locks in warmFurPelage and CRT/pixel-ready Kajiya + velvet rim in UnifiedColonyMaterial', () => {
+    const fur = ProceduralTextureRegistry.get('warmFurPelage', 64);
+    const data = fur.map!.image.data as Uint8Array;
+    let minLuma = 255;
+    let maxLuma = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      const r = data[i]!;
+      const g = data[i + 1]!;
+      const b = data[i + 2]!;
+      expect(r).toBe(g);
+      expect(g).toBe(b);
+      minLuma = Math.min(minLuma, r);
+      maxLuma = Math.max(maxLuma, r);
+    }
+    expect(maxLuma - minLuma).toBeGreaterThanOrEqual(45);
+
+    const { material: mat } = createUnifiedColonyMaterial({ biome: 'temperate' });
+    const mockShader = {
+      uniforms: {} as Record<string, THREE.IUniform>,
+      vertexShader: '#include <common>\n#include <beginnormal_vertex>\n#include <begin_vertex>\n#include <shadowmap_vertex>',
+      fragmentShader: '#include <common>\n#include <color_fragment>\n#include <roughnessmap_fragment>\n#include <metalnessmap_fragment>\n#include <normal_fragment_maps>\n#include <opaque_fragment>',
+    } as unknown as THREE.WebGLProgramParametersWithUniforms;
+    mat.onBeforeCompile(mockShader, null as unknown as THREE.WebGLRenderer);
+    expect(mockShader.fragmentShader).toContain('taFurClump');
+    expect(mockShader.fragmentShader).toContain('taVelvetRim');
+    expect(mockShader.fragmentShader).toContain('taKajiya');
+    // Ensure screen-space derivatives remain outside tissue-dependent `if` branches
+    const derivSection = mockShader.fragmentShader.split('// Evaluate derivatives outside')[1]?.split('if (hasOrganicMicroNormal) {')[0] ?? '';
+    expect(derivSection).toContain('dFdx(organicHeight)');
+    expect(derivSection).toContain('dFdy(organicHeight)');
+    mat.dispose();
   });
 });

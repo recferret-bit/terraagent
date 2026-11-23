@@ -37,9 +37,15 @@ import { DeedTelemetryService } from './deed/deed-telemetry.service.js';
 import { DeedRepository } from './deed/deed.repository.js';
 import { W20ScenarioSeedService } from './deed/w20-scenario-seed.service.js';
 import { W22ScenarioSeedService } from './treasury/w22-scenario-seed.service.js';
+import { W28ScenarioSeedService } from './infrastructure/dev/w28-scenario-seed.service.js';
 import { AccountClaimController } from './staking/account-claim.controller.js';
 import { AccountClaimService } from './staking/account-claim.service.js';
 import { StakingController } from './staking/staking.controller.js';
+import { StakingPerksController } from './staking/staking-perks.controller.js';
+import { StakingPerformanceController } from './staking/staking-performance.controller.js';
+import { StakingPerformanceService } from './staking/performance/staking-performance.service.js';
+import { NearUsdPriceService } from './staking/performance/near-usd-price.service.js';
+import { StakingPerksService } from './staking/perks/staking-perks.service.js';
 import { ShadeAgentController } from './shade-agent/shade-agent.controller.js';
 import { ShadeAgentService } from './shade-agent/shade-agent.service.js';
 import { StakingPoolsController } from './staking/staking-pools.controller.js';
@@ -98,6 +104,8 @@ export const env = {
     ShadeAgentController,
     SocialAuthController,
     StakingController,
+    StakingPerksController,
+    StakingPerformanceController,
     StakingPoolsController,
     TreasuryController,
   ],
@@ -145,6 +153,9 @@ export const env = {
     ShadeAgentService,
     SocialAuthService,
     SocialLink,
+    StakingPerksService,
+    NearUsdPriceService,
+    StakingPerformanceService,
     StakingPositionSyncService,
     StakingService,
     NearMockCommand,
@@ -154,6 +165,7 @@ export const env = {
     TreasuryProposalsService,
     W20ScenarioSeedService,
     W22ScenarioSeedService,
+    W28ScenarioSeedService,
   ],
   imports: [NearInfrastructureModule, OutboxModule, NotifyModule, GameModule],
   exports: [
@@ -182,6 +194,7 @@ export const env = {
     PlanetDaoLifecycleService,
     ShadeAgentService,
     SocialLink,
+    StakingPerksService,
     StakingPositionSyncService,
     StakingService,
   ],

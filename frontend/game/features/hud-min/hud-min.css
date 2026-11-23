@@ -70,6 +70,19 @@
   border: 0;
 }
 
+.ta-hud-min__colony:not(.ta-hud-min__sr-only) {
+  color: var(--ta-orange-hi);
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-label);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  margin-right: var(--ta-s1);
+  padding-right: var(--ta-s2);
+  border-right: 1px solid var(--ta-seam-2);
+}
+
 .ta-hud-min__icon {
   display: inline-flex;
   align-items: center;

@@ -10,6 +10,7 @@ export interface ActiveHomeColony {
   readonly planetName: string;
   readonly colonyId: string;
   readonly colonyName: string;
+  readonly foundingSectorId?: string;
 }
 
 const PLANET_TYPE_TO_KIND: Readonly<Record<string, ActivePlanetKind>> = {
@@ -88,12 +89,19 @@ export async function probeActiveHomeColony(opts: ProbeActiveColonyOptions = {})
     if (!homeRes.ok) return null;
     const body = (await homeRes.json()) as {
       state?: string;
-      colony?: { id?: string; name?: string };
+      foundingSectorId?: unknown;
+      colony?: { id?: string; name?: string; foundingSectorId?: unknown };
       planet?: { id?: string; name?: string; type?: string };
     };
     if (body?.state !== 'ACTIVE' || !body.planet || !body.colony) return null;
     const kind = kindOfPlanetType(body.planet.type ?? '');
     if (!kind) return null;
+    const rawSector =
+      typeof body.colony.foundingSectorId === 'string' && body.colony.foundingSectorId.trim().length > 0
+        ? body.colony.foundingSectorId.trim()
+        : typeof body.foundingSectorId === 'string' && body.foundingSectorId.trim().length > 0
+          ? body.foundingSectorId.trim()
+          : undefined;
     return {
       kind,
       planetType: body.planet.type as ActivePlanetType,
@@ -101,6 +109,7 @@ export async function probeActiveHomeColony(opts: ProbeActiveColonyOptions = {})
       planetName: String(body.planet.name ?? kind),
       colonyId: String(body.colony.id ?? ''),
       colonyName: String(body.colony.name ?? 'Colony'),
+      ...(rawSector ? { foundingSectorId: rawSector } : {}),
     };
   } catch {
     return null;

@@ -1,6 +1,7 @@
 import type { SimEventWire } from '@terra/contracts';
+import { isSceneInDescent, isSceneInOrbit } from '@terra/render/core/dayNightConfig';
 import {
-  getRainLevel, getWeatherParams, isTwisterAvailable, isUserEditingWeather, isWeatherOn,
+  clearTransientWeather, getRainLevel, getWeatherParams, isTwisterAvailable, isUserEditingWeather, isWeatherOn,
   onWeatherAction, onWeatherUserEdit, setWeather, setWeatherParams, triggerWaterElectrocution,
   type WeatherActionKind, type WeatherParams,
 } from '@terra/render/core/weatherConfig';
@@ -60,6 +61,9 @@ export class WeatherHazardRenderer implements RendererInstance {
   private readonly offWeatherUserEdit: () => void;
   private readonly offWindUserEdit: () => void;
   private readonly seenEvents = new Map<string, number>();
+  private readonly clearedCraterKeys = new Set<string>();
+  private readonly clearedLightningKeys = new Set<string>();
+  private clearedTerrainRef: unknown = null;
   private readonly pendingMeteorClears: Array<{ tiles: Array<{ q: number; r: number }>; remainingS: number }> = [];
   private lastMeteorTick = -1;
   private lastLightningTick = -1;
@@ -314,26 +318,43 @@ export class WeatherHazardRenderer implements RendererInstance {
 
     const terrain = resolveHexTerrain(this.ctx);
     if (weatherBlob.lastMeteor && weatherBlob.lastMeteor.tick !== this.lastMeteorTick) {
+      const initialStale = this.lastMeteorTick < 0 && simView.tick - weatherBlob.lastMeteor.tick > 5;
       this.lastMeteorTick = weatherBlob.lastMeteor.tick;
-      this.playMeteor(weatherBlob.lastMeteor.q, weatherBlob.lastMeteor.r, weatherBlob.lastMeteor.tiles);
+      if (!initialStale) {
+        this.playMeteor(weatherBlob.lastMeteor.q, weatherBlob.lastMeteor.r, weatherBlob.lastMeteor.tiles);
+      }
     }
     if (weatherBlob.lastLightning && weatherBlob.lastLightning.tick !== this.lastLightningTick) {
+      const initialStale = this.lastLightningTick < 0 && simView.tick - weatherBlob.lastLightning.tick > 5;
       this.lastLightningTick = weatherBlob.lastLightning.tick;
       const lTiles = expandLightningTiles(weatherBlob.lastLightning.tiles?.length ? weatherBlob.lastLightning.tiles : [{ q: weatherBlob.lastLightning.q, r: weatherBlob.lastLightning.r }]);
       clearLightningTilesOnTerrain(terrain, lTiles);
-      this.playLightning(lTiles, weatherBlob.lastLightning.hitWater);
+      if (!initialStale) this.playLightning(lTiles, weatherBlob.lastLightning.hitWater);
     }
 
+    if (terrain !== this.clearedTerrainRef) {
+      this.clearedTerrainRef = terrain;
+      this.clearedCraterKeys.clear();
+      this.clearedLightningKeys.clear();
+    }
     const craters = weatherBlob.craters ?? [];
     this.meteorFx?.syncCraters(craters, undefined, heightAt);
     for (const c of craters) {
       if (!this.meteorFx?.hasDescendingStrikeNear(c.q, c.r)) {
-        clearMeteorTilesOnTerrain(terrain, computeCraterDiscTiles(c.q, c.r, c.tiles));
+        const key = `${c.q},${c.r},${c.tiles?.length ?? 0}`;
+        if (!this.clearedCraterKeys.has(key)) {
+          this.clearedCraterKeys.add(key);
+          clearMeteorTilesOnTerrain(terrain, computeCraterDiscTiles(c.q, c.r, c.tiles));
+        }
       }
     }
     this.lightningFx?.syncLightningSites(weatherBlob.lightningSites, heightAt);
     for (const s of weatherBlob.lightningSites ?? []) {
-      clearLightningTilesOnTerrain(terrain, expandLightningTiles(s.tiles?.length ? s.tiles : [{ q: s.q, r: s.r }]));
+      const key = `${s.q},${s.r},${s.tiles?.length ?? 0}`;
+      if (!this.clearedLightningKeys.has(key)) {
+        this.clearedLightningKeys.add(key);
+        clearLightningTilesOnTerrain(terrain, expandLightningTiles(s.tiles?.length ? s.tiles : [{ q: s.q, r: s.r }]));
+      }
     }
 
     if (weatherBlob.activeTwisters) {
@@ -346,6 +367,8 @@ export class WeatherHazardRenderer implements RendererInstance {
   public update(view: GameView, dt: number): void {
     const step = Math.max(0, dt);
     const simView = view.sim?.view ?? this.ctx.services.store?.latest ?? null;
+    const scene = resolveScene(this.ctx);
+    const inOrbitOrDescent = Boolean(scene && (isSceneInOrbit(scene) || isSceneInDescent(scene)));
     const heightAt = resolveHeightAt(this.ctx);
     const terrain = resolveHexTerrain(this.ctx);
 
@@ -355,7 +378,7 @@ export class WeatherHazardRenderer implements RendererInstance {
       if (p.remainingS <= 0) { clearMeteorTilesOnTerrain(terrain, p.tiles); this.pendingMeteorClears.splice(i, 1); }
     }
 
-    if (simView) {
+    if (simView && !inOrbitOrDescent) {
       const weatherBlob = simView.blobs?.weather as WeatherBlobView | undefined;
       if (weatherBlob) this.syncWeatherBlob(simView, weatherBlob, heightAt);
       const overloaded = extractOverloadedBuildings(simView, weatherBlob, heightAt, this.ctx.services.scene3d ? (q, r) => this.ctx.services.scene3d!.tileToWorld(q, r) : undefined);
@@ -377,10 +400,14 @@ export class WeatherHazardRenderer implements RendererInstance {
   }
 
   public dispose(): void {
+    clearTransientWeather();
     if (this.weatherEditTimer !== null) { clearTimeout(this.weatherEditTimer); this.weatherEditTimer = null; }
     if (this.windEditTimer !== null) { clearTimeout(this.windEditTimer); this.windEditTimer = null; }
     this.offRenderEvents?.(); this.offServerEvents?.();
     this.offWeatherAction(); this.offWeatherUserEdit(); this.offWindUserEdit();
+    this.clearedCraterKeys.clear();
+    this.clearedLightningKeys.clear();
+    this.clearedTerrainRef = null;
     this.hqRespawnModal.dispose(); this.screenOverlay.dispose();
     this.meteorFx?.dispose(); this.twisterFx?.dispose(); this.lightningFx?.dispose();
   }

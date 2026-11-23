@@ -21,11 +21,14 @@ export class AwayPanel {
   private inflight = false;
 
   constructor(host: HTMLElement, private readonly opts: AwayPanelOptions = {}) {
+    const ro = Boolean(opts.readOnly?.());
     this.saved = loadAwaySettings();
-    patchSharedAutopilotState({
-      awayRaids: this.saved.awayRaids,
-      mode: this.saved.mode,
-    });
+    if (!ro) {
+      patchSharedAutopilotState({
+        awayRaids: this.saved.awayRaids,
+        mode: this.saved.mode,
+      });
+    }
     this.dom = buildAwayDom(host, {
       mercenary: opts.mercenary === true,
       onOpenHq: opts.onOpenHq,
@@ -34,6 +37,7 @@ export class AwayPanel {
     this.trade = opts.flags?.has('W15') ? new AutoTradeSection(this.dom.body, opts) : null;
     this.bind();
     this.paint();
+    if (ro) this.applyReadOnlyState();
     this.setOpen(true);
     this.offShared = subscribeSharedAutopilotState((st) => {
       if (st.awayRaids !== this.saved.awayRaids) {
@@ -99,8 +103,19 @@ export class AwayPanel {
     return { hireMercenaries: this.dom.mercenaries.checked, mercenaryMaxSpend: spend };
   }
 
+  private applyReadOnlyState(): void {
+    this.dom.save.disabled = true;
+    this.dom.mode.disabled = true;
+    this.dom.raids.disabled = true;
+    if (this.dom.mercenaries) this.dom.mercenaries.disabled = true;
+    if (this.dom.maxSpend) this.dom.maxSpend.disabled = true;
+    for (const family of AWAY_FAMILIES) {
+      this.dom.sessions[family].disabled = true;
+    }
+  }
+
   private async save(): Promise<void> {
-    if (this.inflight) return;
+    if (this.inflight || this.opts.readOnly?.()) return;
     const next = this.read();
     if (next === 'budget' || next === 'spend') {
       this.paint();

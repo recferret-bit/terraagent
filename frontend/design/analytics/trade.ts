@@ -1,8 +1,7 @@
 import { runtimeLabel } from './context';
 import { trackProduct } from './trackSafe';
 
-const TRADE_REASONS = ['validation', 'rejected', 'network', 'insufficient', 'expired', 'timeout', 'unknown'] as const;
-export type TradeReason = (typeof TRADE_REASONS)[number];
+export type TradeReason = 'validation' | 'rejected' | 'network' | 'insufficient' | 'expired' | 'timeout' | 'unknown';
 export type ClientTradeReason = 'network' | 'timeout' | 'unknown';
 
 let pageNoted = false;

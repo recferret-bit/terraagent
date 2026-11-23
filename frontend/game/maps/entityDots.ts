@@ -202,14 +202,14 @@ interface DotContext {
   readonly palette: DotPalette;
 }
 
-/** One map marker for `row`, or null when it sits on an unexplored tile (own entities always show). */
+/** One map marker for `row`, or null when it sits outside current sight (own entities always show). */
 function makeDot(c: DotContext, row: EntityRow, raw: Record<string, unknown> | undefined): EntityDot | null {
   if (row.hp <= 0) return null;
   const role = classifyEntityRole(row.owner, c.ownColonySlot, descriptorOf(raw), row.kind);
   const axialQ = finiteOr(row.x, row.q ?? 0);
   const axialR = finiteOr(row.y, row.r ?? 0);
   const [roundedQ, roundedR] = hexRound(axialQ, axialR);
-  if (role !== 'own' && !c.visible(roundedQ, roundedR)) return null;
+  if (role !== 'own' && !(c.view.spectatorAllVision && row.owner >= 0) && !c.visible(roundedQ, roundedR)) return null;
   const q = finiteOr(row.q, roundedQ);
   const r = finiteOr(row.r, roundedR);
   const { x, y } = c.view.axialToPixel(axialQ, axialR);

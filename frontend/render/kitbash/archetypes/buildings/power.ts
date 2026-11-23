@@ -38,7 +38,7 @@ export function pylon() {
   }
   cyl(b, 'frameGunmetal', 0.18, 0.18, 0.12, [0, 5.14, 0], { seg: 8, name: 'pylon crown' });
   cyl(b, 'frameGunmetal', 0.035, 0.045, 0.86, [0, 5.22, 0], { seg: 6, name: 'finial mast' });
-  // The pylon's single light source (its projector entry in `lighting/archetypeLights.ts` sits here).
+  // The pylon's single night projector sits on this sphere (`buildingLightRigs.ts`).
   ball(b, 'energyCyan', 0.2, [0, 5.55, 0], { emissiveIntensity: 4.2, name: 'grid core light' });
   b.addPart(new THREE.SphereGeometry(0.06, 6, 5), 'frameGunmetal', { name: 'finial cap', position: [0, 6.08, 0] });
   return b.build();
@@ -73,7 +73,7 @@ export function solar() {
   plinth(b, 4, 4);
   box(b, 'hullPrimary', [1.2, 0.82, 1.0], [0, 0.18, 1.35], { r: 0.1, name: 'inverter housing' });
   box(b, 'hullSecondary', [0.7, 0.06, 0.5], [0, 0.98, 1.35], { r: 0.02, name: 'inverter hatch' });
-  glow(b, 'energyCyan', [0.6, 0.08, 0.04], [0, 0.75, 1.86], { name: 'inverter status light' });
+  glow(b, 'energyCyan', [0.6, 0.08, 0.08], [0, 0.75, 1.835], { name: 'inverter status light' });
   lamp(b, 'energyCyan', 0.08, [0.45, 0.92, 1.86], { name: 'inverter beacon light' });
   const tilt = 0.5;
   const eul = new THREE.Euler(tilt, 0, 0);
@@ -96,7 +96,7 @@ export function solar() {
     const hi = P(0, 0, -len / 2 + 0.3), lo = P(0, 0, len / 2 - 0.3);
     strut(b, 'frameGunmetal', [sx * 1.05, 0.18, hi[2]], hi, 0.07, { name: 'rear support strut' });
     strut(b, 'frameGunmetal', [sx * 1.05 + sx * 0.2, 0.18, lo[2] + 0.3], lo, 0.06, { name: 'front support strut' });
-    cable(b, [sx * 0.55, 0.75, 1.35], [sx * 1.0, lo[1], lo[2]], 0.16, 0.035, 'frameGunmetal', { name: 'wing power cable' });
+    cable(b, [sx * 0.55, 0.75, 1.35], [sx * 1.0, lo[1], lo[2]], 0.06, 0.035, 'frameGunmetal', { points: 3, name: 'wing power cable' });
   }
   // small sun-tracker mast + vane (silhouette breaker)
   strut(b, 'frameGunmetal', [0, 0.18, -1.65], [0.15, 3.62, -1.7], 0.05, { name: 'tracker mast' });
@@ -116,7 +116,7 @@ export function wind() {
   const R = 1.5;
   // static top cap + aviation lamp
   cyl(b, 'frameGunmetal', 0.16, 0.2, 0.28, [0, 6.38, 0], { seg: 10, name: 'mast top cap' });
-  lamp(b, 'dangerCrimson', 0.1, [0, 6.72, 0], { name: 'aviation light' });
+  lamp(b, 'dangerCrimson', 0.1, [0, 6.72, 0], { housing: false, name: 'aviation light' });
   // rotor (rotates about Y at 0,0)
   const A = spin(0, 0);
   for (const y of [2.0, 5.4]) {

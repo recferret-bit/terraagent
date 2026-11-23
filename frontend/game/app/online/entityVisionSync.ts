@@ -1,12 +1,12 @@
 import * as THREE from 'three';
-import { computeSolarState, getDayNightParams, isDayNightOn } from '@terra/render/core/dayNightConfig';
+import { colonyNightBlend, computeSolarState, getDayNightParams, isDayNightOn } from '@terra/render/core/dayNightConfig';
 import {
   applyBuildingLight,
   attachEntityProjectorRig,
+  getColonyVisionUniforms,
   peekArchetypeLights,
   projectorCosOuter,
   stepLightLevel,
-  getColonyLightingBlend,
   isWorldPointInColonyFov,
   MAX_PROJECTOR_CANDIDATES,
   resetColonyVisionAndLights,
@@ -22,6 +22,7 @@ import {
   ENTITY_STATE,
   entityLightLevel,
   getEntitySpottingRadius,
+  isColonyVisionSourceKind,
   isEntityContributingVision,
   type CompiledDataLike,
 } from '@terra/sim';
@@ -141,30 +142,29 @@ function collectOwnedEntityVisionAndProjectors(
   };
 
   // Lighting cones are cosmetic. Sight is omnidirectional and uses the shared simulation radius.
-  if (rec.hp > 0 && isEntityContributingVision(rec.state)) {
+  // A drop pod, a spawn marker, and any other prop do not open the fog. Buildings and units do.
+  if (rec.hp > 0 && isColonyVisionSourceKind(rec.kind) && isEntityContributingVision(rec.state)) {
     const outerRadius = getEntitySpottingRadius(rec.kind, data) * TILE_M;
     if (outerRadius > 0) visionSources.push({ x: ux, z: uz, innerRadius: outerRadius * 0.88, outerRadius });
   }
   if (rec.mesh.visible && rec.state !== ENTITY_STATE.descending) appendArchetypeProjectors(projOpts);
 }
 
-/** Seconds the colony FoV shroud / night factor / projectors take to ease in after the descent hands over. */
+/** Seconds the colony FoV shroud and projector cones take to ease in after the descent hands over. */
 export const COLONY_FADE_IN_S = 0.8;
 let lastBlendMs = -1;
 /** Wall seconds (≤ 0.1) between the last two `syncColonyVisionAndProjectors` calls: the light fade step. */
 let lastDtS = 0;
+let fovBlend = 1;
 
-/**
- * 0 while the space phase / descent renders, then eases 0 → 1 over `COLONY_FADE_IN_S` of wall time. The value lives
- * in `setColonyLightingBlend` (starts at 1, so a session that never ran a descent, e.g. `?skip=1`, is fully on).
- */
-function stepColonyBlend(active: boolean): number {
+function stepFovBlend(active: boolean): number {
   const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
   const dt = lastBlendMs < 0 ? 0 : Math.min(0.1, Math.max(0, (now - lastBlendMs) / 1000));
   lastBlendMs = now;
   lastDtS = dt;
-  setColonyLightingBlend(active ? getColonyLightingBlend() + dt / COLONY_FADE_IN_S : 0);
-  return getColonyLightingBlend();
+  fovBlend = active ? Math.min(1, fovBlend + dt / COLONY_FADE_IN_S) : 0;
+  if (active) setColonyLightingBlend(1);
+  return fovBlend;
 }
 
 /**
@@ -178,18 +178,21 @@ export function syncColonyVisionAndProjectors(opts: {
   terrain: HexTerrain | null;
   tiles: ClientTiles | null;
   /**
-   * False while the descent cinematic renders (its surface, pod and sky are not in colony coordinates): FoV shroud,
-   * night factor and projectors are held off, then eased in over `COLONY_FADE_IN_S` once the colony takes over.
+   * False while the descent cinematic renders (its surface, pod and sky are driven by `SkyRig`): FoV shroud and
+   * colony projectors stay off, then ease in over `COLONY_FADE_IN_S` once the colony takes over without dipping `uNightFactor`.
    */
   colonyActive?: boolean;
+  /** Spectator all-bots FoV mode: unites live vision, projectors, and explored memory across every active colony. */
+  spectatorAllVision?: boolean;
 }): void {
-  const { records, ownerColonyIndex, terrain, tiles } = opts;
-  const blend = stepColonyBlend(opts.colonyActive ?? true);
+  const { records, ownerColonyIndex, terrain, tiles, spectatorAllVision } = opts;
+  const active = opts.colonyActive ?? true;
+  const blend = stepFovBlend(active);
   const dnParams = getDayNightParams();
   const solar = computeSolarState(dnParams);
-  const sunElevSin = Math.sin(((solar.hour / 24) - 0.25) * Math.PI * 2);
-  const nightGate = !isDayNightOn() ? 0 : THREE.MathUtils.smoothstep(-sunElevSin, 0.001, 0.035) * blend;
-  const nightFactor = !isDayNightOn() ? 0 : Math.max(1 - solar.daylight, nightGate * 0.88) * blend;
+  const night = isDayNightOn() ? colonyNightBlend(solar.hour, solar.daylight) : { nightFactor: 0, nightGate: 0 };
+  const nightGate = night.nightGate * blend;
+  const nightFactor = night.nightFactor;
   const rigIntensity = (0.22 + 0.78 * nightFactor) * dnParams.projectorIntensity * nightGate;
   const lightScale = (0.32 + 0.98 * nightFactor) * dnParams.projectorIntensity * nightGate;
 
@@ -206,19 +209,47 @@ export function syncColonyVisionAndProjectors(opts: {
     attachEntityProjectorRig(rec.mesh, archetypeId);
     if (isEntityInViewFocus(rec.mesh)) applyBuildingLight(rec.mesh, stateMul, rigIntensity, rec.buildStage);
 
-    if (rec.owner === ownerColonyIndex) {
+    if (spectatorAllVision ? rec.owner >= 0 : rec.owner === ownerColonyIndex) {
       collectOwnedEntityVisionAndProjectors(rec, visionSources, projectors, lightScale, stateMul, opts.data);
     }
   }
 
-  if (terrain) {
-    updateColonyVisionTexture({
-      radius: terrain.radius,
-      colonyIndex: ownerColonyIndex,
-      explored: tiles?.explored,
-      exploredByColony: tiles?.exploredByColony,
-      visionSources,
-    });
+  if (terrain && active) {
+    if (spectatorAllVision && (tiles?.exploredByColony || tiles?.explored)) {
+      const arrays = Object.values(tiles.exploredByColony ?? {}).filter(
+        (a): a is Uint8Array => Boolean(a && a.length > 0),
+      );
+      const tileCount = tiles.count ?? tiles.explored?.length ?? 0;
+      const bitBytes = Math.max(
+        tileCount > 0 ? Math.ceil(tileCount / 8) : 0,
+        arrays.reduce((m, a) => Math.max(m, a.length), 0),
+      );
+      const mergedBitset = bitBytes > 0 ? new Uint8Array(bitBytes) : undefined;
+      if (mergedBitset) {
+        for (const arr of arrays) {
+          for (let b = 0; b < arr.length; b++) mergedBitset[b]! |= arr[b]!;
+        }
+        if (tiles.explored) {
+          for (let t = 0; t < tiles.explored.length; t++) {
+            if (tiles.explored[t]! !== 0) mergedBitset[t >> 3]! |= 1 << (t & 7);
+          }
+        }
+      }
+      updateColonyVisionTexture({
+        radius: terrain.radius,
+        colonyIndex: 0,
+        exploredByColony: mergedBitset ? { 0: mergedBitset } : undefined,
+        visionSources,
+      });
+    } else {
+      updateColonyVisionTexture({
+        radius: terrain.radius,
+        colonyIndex: ownerColonyIndex,
+        explored: tiles?.explored,
+        exploredByColony: tiles?.exploredByColony,
+        visionSources,
+      });
+    }
   }
 
   updateColonyProjectorsAndVision({
@@ -227,6 +258,33 @@ export function syncColonyVisionAndProjectors(opts: {
     fovEnabled: Boolean(terrain) && blend > 0,
     fovStrength: blend,
     fovDim: dnParams.fovDim,
-    nightFactor,
+    nightFactor: active ? nightFactor : undefined,
   });
+}
+
+export function syncEntitiesVisionAndForeignVisibility(opts: {
+  data?: CompiledDataLike;
+  entries: Map<number, EntityMeshRecord>;
+  ownerColonyIndex: number;
+  terrain: HexTerrain | null;
+  hasTerrain: boolean;
+  tiles: ClientTiles | null;
+  colonyActive: boolean;
+  spectatorAllVision: boolean;
+  isTileVisible: ((q: number, r: number) => boolean) | null;
+  isMeshVisible: (rec: EntityMeshRecord) => boolean;
+}): void {
+  const { entries, ownerColonyIndex, terrain, hasTerrain, tiles, colonyActive, spectatorAllVision, isTileVisible, isMeshVisible } = opts;
+  syncColonyVisionAndProjectors({
+    records: entries.values(), data: opts.data, ownerColonyIndex, terrain, tiles, colonyActive, spectatorAllVision,
+  });
+  const fogOn = (getColonyVisionUniforms().uFovEnabled.value as number) > 0.001;
+  for (const rec of entries.values()) {
+    const foreign = spectatorAllVision ? rec.owner < 0 : rec.owner !== ownerColonyIndex;
+    const ownPod = !spectatorAllVision && !foreign && rec.kind === ENTITY_KIND.pod;
+    if (!foreign && !(ownPod && fogOn)) continue;
+    const spotted = !isTileVisible || isTileVisible(rec.q, rec.r);
+    const inCircle = !hasTerrain || isWorldPointInColonyFov(rec.mesh.position.x, rec.mesh.position.z);
+    rec.mesh.visible = spotted && inCircle && isMeshVisible(rec);
+  }
 }

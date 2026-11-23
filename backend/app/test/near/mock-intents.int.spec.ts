@@ -62,10 +62,10 @@ describe('MockIntentsAdapter (W13-04)', () => {
     expect(await own(acc, 'bio.water')).toBe(toCargoBaseUnits(100));
 
     // insufficient: nothing changes
-    for (const p of [
-      intents.deposit({ opId: 'd2', accountId: acc, tokenId: WATER, amount: w(101) }),
-      intents.withdraw({ opId: 'w2', accountId: acc, tokenId: WATER, amount: w(201), to: acc }),
-    ]) await expect(p).rejects.toMatchObject({ errorCode: 'NEAR_INSUFFICIENT_BALANCE' });
+    for (const run of [
+      () => intents.deposit({ opId: 'd2', accountId: acc, tokenId: WATER, amount: w(101) }),
+      () => intents.withdraw({ opId: 'w2', accountId: acc, tokenId: WATER, amount: w(201), to: acc }),
+    ]) await expect(run()).rejects.toMatchObject({ errorCode: 'NEAR_INSUFFICIENT_BALANCE' });
     expect(await intents.verifierBalance(acc, WATER)).toBe(200n);
     expect(await own(acc, 'bio.water')).toBe(toCargoBaseUnits(100));
     expect(await db.prisma.mockChainReceipt.count({ where: { opId: { in: ['d2', 'w2'] } } })).toBe(0);

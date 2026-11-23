@@ -1,10 +1,12 @@
-import { createHash, generateKeyPairSync } from 'node:crypto';
+import { createHash, generateKeyPairSync, randomBytes } from 'node:crypto';
 import type { PrismaClient } from '@terra/db';
 import { PublicKey } from 'near-api-js';
 import { describe, expect, it, vi } from 'vitest';
 import { FlagsService } from '../../src/flags/flags.service.js';
+import { verifyWalletOrderSignature } from '../../src/market/orders/wallet-signed-orders.js';
 import { deriveDirectorPublicKey, nextDirectorPublicKey } from '../../src/near/director-key/director-key.allowance.js';
 import { MockIntentsAdapter } from '../../src/near/infrastructure/adapters/mock/intents.adapter.js';
+import { clearNep413ReplayCache, signNep413Message } from '../../src/near/identity/nep413-verifier.js';
 import { generateSealedTradingSessionKey, openSealedTradingSessionSeed } from '../../src/near/identity/trading-session-key.js';
 import { encodeBase58 } from '../../src/near/keystore/base58.js';
 import { DEV_KEK, KeyStore, KekRing, loadKekRing } from '../../src/near/keystore/index.js';
@@ -98,26 +100,127 @@ describe('Self-custody trading session keys & Claim lifecycle', () => {
 });
 
 describe('Deterministic Ed25519 director keys & staking wallet-tx descriptors', () => {
-  it('derives valid NEAR Ed25519 PublicKeys on director rotation sequence', () => {
-    const k1 = deriveDirectorPublicKey('co_alpha', 1);
-    const k2 = nextDirectorPublicKey('co_alpha', k1);
-    const k3 = nextDirectorPublicKey('co_alpha', 'ed25519:d:co_alpha:2');
+  it('derives HMAC-keyed NEAR Ed25519 PublicKeys on director rotation sequence and blocks unkeyed production use', () => {
+    const k1 = deriveDirectorPublicKey('co_alpha', 1, { NEAR_KEK: 'secret-kek-a' });
+    const k2 = nextDirectorPublicKey('co_alpha', k1, { NEAR_KEK: 'secret-kek-a' });
+    const k3 = nextDirectorPublicKey('co_alpha', 'ed25519:d:co_alpha:2', { NEAR_KEK: 'secret-kek-a' });
+    const otherKek = deriveDirectorPublicKey('co_alpha', 1, { NEAR_KEK: 'secret-kek-b' });
     expect(k1).not.toBe(k2);
-    expect(k2).toBe(deriveDirectorPublicKey('co_alpha', 2));
-    expect(k3).toBe(deriveDirectorPublicKey('co_alpha', 3));
+    expect(k1).not.toBe(otherKek);
+    expect(k2).toBe(deriveDirectorPublicKey('co_alpha', 2, { NEAR_KEK: 'secret-kek-a' }));
+    expect(k3).toBe(deriveDirectorPublicKey('co_alpha', 3, { NEAR_KEK: 'secret-kek-a' }));
     expect(() => PublicKey.fromString(k1)).not.toThrow();
     expect(() => PublicKey.fromString(k2)).not.toThrow();
     expect(createHash('sha256').update(k1).digest('hex')).toHaveLength(64);
+    expect(() => deriveDirectorPublicKey('co_alpha', 1, { NODE_ENV: 'production', NEAR_KEK: '', JWT_ACCESS_SECRET: '' })).toThrow(/NEAR_KEK/i);
   });
 
-  it('builds valid staking wallet tx descriptors for stake_payable, deposit_near, and claim_native_near', () => {
+  it('builds valid staking wallet tx descriptors for stake_payable, stake_lst, deposit_near, and claim_native_near', () => {
     const stakeTx = buildStakingWalletTxDescriptor({ action: 'stake_payable', poolId: 'astro-stakers.poolv1.near', amountNear: '12' });
     expect(stakeTx.methodName).toBe('stake_payable');
     expect(stakeTx.attachedDepositYocto).toBe('12000000000000000000000000');
+
+    const lstTx = buildStakingWalletTxDescriptor(
+      { action: 'stake_lst', amountNear: '15', accountId: 'pilot.testnet' },
+      { NEAR_ADAPTER_STAKING: 'testnet' },
+    );
+    expect(lstTx.contractId).toBe('meta-v2.pool.testnet');
+    expect(lstTx.methodName).toBe('ft_transfer_call');
+    expect(lstTx.attachedDepositYocto).toBe('1');
+    expect(lstTx.args).toMatchObject({
+      receiver_id: 'staking.terraagent.testnet',
+      amount: '15000000000000000000000000',
+    });
+    expect(() =>
+      buildStakingWalletTxDescriptor({ action: 'stake_lst', lstContract: 'stnear.attacker.testnet', amountNear: '10' }),
+    ).toThrow(/unwhitelisted/i);
+
     const claimTx = buildStakingWalletTxDescriptor({ action: 'claim_native_near', amountNear: '2', accountId: 'pilot.testnet' });
     expect(claimTx.methodName).toBe('claim_native_near');
     expect(claimTx.attachedDepositYocto).toBe('0');
     expect(claimTx.args).toMatchObject({ amount: '2000000000000000000000000', recipient_id: 'pilot.testnet' });
     expect(() => buildStakingWalletTxDescriptor({ action: 'bad_action' })).toThrow();
+  });
+});
+
+describe('Wallet-signed market order intent & key binding', () => {
+  it('binds wallet-signed market orders to exact side/resource/amount/price and verifies key ownership before nonce burn', async () => {
+    clearNep413ReplayCache();
+    const legit = generateKeyPairSync('ed25519');
+    const attacker = generateKeyPairSync('ed25519');
+    const legitPub = `ed25519:${encodeBase58(legit.publicKey.export({ format: 'der', type: 'spki' }).subarray(-32))}`;
+    const attackerPub = `ed25519:${encodeBase58(attacker.publicKey.export({ format: 'der', type: 'spki' }).subarray(-32))}`;
+    const nonce = randomBytes(32).toString('base64');
+    const orderBody = { side: 'sell' as const, resource: 'metals.t1' as const, amount: 50, price: { token: 'USDC' as const, amount: '56000000' } };
+
+    // 1. Order substitution (signed amount=1, submitted amount=50) is rejected
+    const subSig = signNep413Message({
+      accountId: 'pilot.testnet',
+      publicKey: legitPub,
+      privateKey: legit.privateKey,
+      message: 'order:pl_1:sell:metals.t1:1:USDC:56000000',
+      nonceBase64: nonce,
+      recipient: 'intents.near',
+    });
+    await expect(
+      verifyWalletOrderSignature({
+        sig: subSig,
+        planetId: 'pl_1',
+        body: orderBody,
+        expectedWalletAccountId: 'pilot.testnet',
+        pinnedPublicKey: legitPub,
+        envMap: { NODE_ENV: 'test', NEAR_ADAPTER_INTENTS: 'testnet' },
+      }),
+    ).rejects.toThrow(/does not match requested order/i);
+
+    // 2. Spoofed keypair is rejected WITHOUT burning nonce
+    const spoofSig = signNep413Message({
+      accountId: 'pilot.testnet',
+      publicKey: attackerPub,
+      privateKey: attacker.privateKey,
+      message: 'order:pl_1:sell:metals.t1:50:USDC:56000000',
+      nonceBase64: nonce,
+      recipient: 'intents.near',
+    });
+    await expect(
+      verifyWalletOrderSignature({
+        sig: spoofSig,
+        planetId: 'pl_1',
+        body: orderBody,
+        expectedWalletAccountId: 'pilot.testnet',
+        pinnedPublicKey: legitPub,
+        envMap: { NODE_ENV: 'test', NEAR_ADAPTER_INTENTS: 'testnet' },
+      }),
+    ).rejects.toThrow(/not an authorized FullAccess key/i);
+
+    // 3. Legitimate signature with the same nonce succeeds, and second replay fails
+    const validSig = signNep413Message({
+      accountId: 'pilot.testnet',
+      publicKey: legitPub,
+      privateKey: legit.privateKey,
+      message: 'order:pl_1:sell:metals.t1:50:USDC:56000000',
+      nonceBase64: nonce,
+      recipient: 'intents.near',
+    });
+    await expect(
+      verifyWalletOrderSignature({
+        sig: validSig,
+        planetId: 'pl_1',
+        body: orderBody,
+        expectedWalletAccountId: 'pilot.testnet',
+        pinnedPublicKey: legitPub,
+        envMap: { NODE_ENV: 'test', NEAR_ADAPTER_INTENTS: 'testnet' },
+      }),
+    ).resolves.toBeUndefined();
+    await expect(
+      verifyWalletOrderSignature({
+        sig: validSig,
+        planetId: 'pl_1',
+        body: orderBody,
+        expectedWalletAccountId: 'pilot.testnet',
+        pinnedPublicKey: legitPub,
+        envMap: { NODE_ENV: 'test', NEAR_ADAPTER_INTENTS: 'testnet' },
+      }),
+    ).rejects.toThrow(/nonce has already been used/i);
   });
 });

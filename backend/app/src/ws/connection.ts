@@ -2,17 +2,21 @@ import type { Logger } from 'pino';
 import {
   CLOSE_CODES,
   encodeWire,
+  type AgentDecisionFeedItemV1,
   type AwayDigestV1,
   type ClientMessageOf,
   type CloseCode,
   type HomeResponse,
+  type SimInputFeedItemV1,
 } from '@terra/contracts';
 import type { WebSocket } from 'ws';
+import type { SectorAntiCheatService } from '../core/anticheat';
+import type { PlanetHostLocation } from '../game/cluster/sim-cluster.service';
 import type { AwayDigestService } from '../game/digest';
 import type { FullState, GamePlanets } from '../game/game-planets.service';
 import { holdColonySocket, releaseColonySocket } from '../game/presence/socket-presence';
-import type { CommandIngress } from './command-ingress';
-import { DEFAULT_HOME, type HomeProvider } from './home-provider';
+import type { CommandIngress, MemoColony } from './command-ingress';
+import type { HomeProvider } from './home-provider';
 import { MarketTopics } from './market-topics';
 import {
   buildWelcomeMessage,
@@ -23,6 +27,8 @@ import {
   resolveConnectionHome,
   seatConnectionScenario,
   TICK_MS,
+  verifyConnectionJoin,
+  verifyPostSnapshotConnectionJoin,
 } from './parts/connection-helpers';
 import type { PlanetRooms, RoomMember } from './rooms';
 import { BadHelloTokenError, type SessionVerifier, type VerifiedSession } from './session-verifier';
@@ -35,6 +41,7 @@ export interface ConnectionDeps {
   readonly rooms: PlanetRooms;
   readonly ingress: CommandIngress;
   readonly home?: HomeProvider;
+  readonly antiCheat?: SectorAntiCheatService;
   /** Closed away digest for `welcome.away` (CT-32). Absent in gateway fixtures that do not boot digests. */
   readonly digests?: Pick<AwayDigestService, 'deliverWelcome'>;
   readonly flags: readonly string[];
@@ -50,6 +57,13 @@ export interface ConnectionDeps {
   onJoined(conn: Connection): void;
   onClosed(conn: Connection): void;
   onWelcome(): void;
+  recentInputs?(planetId: string): SimInputFeedItemV1[];
+  recentDecisions?(planetId: string): AgentDecisionFeedItemV1[];
+  recentInputsAsync?(planetId: string): Promise<SimInputFeedItemV1[]>;
+  recentDecisionsAsync?(planetId: string): Promise<AgentDecisionFeedItemV1[]>;
+  ensureHosted?(planetId: string): Promise<PlanetHostLocation | null>;
+  fullState?(planetId: string): Promise<FullState>;
+  joinRoom?(planetId: string, member: RoomMember, loc: PlanetHostLocation): void;
 }
 
 type State = 'new' | 'lobby' | 'joining' | 'playing' | 'closed';
@@ -69,13 +83,16 @@ export class Connection implements RoomMember {
   colonyId: string | null = null;
   /** Colony index from home, when the row has one. The presence command carries it (W09-28 owns takeover). */
   colonyIndex: number | undefined;
+  sectorId: string | undefined;
+  bindingHash: string | undefined;
   welcomeTick: number | undefined;
+  mode: 'play' | 'spectator' = 'play';
   paused = false;
   /** W13 per-socket market pair filter; reset to "all pairs" whenever the socket leaves its planet. */
   private readonly market = new MarketTopics();
   private resyncing = false;
   /** Per-socket colony-lookup memo for the ingress (BE-09); reset when the socket leaves its planet. */
-  private readonly colonyMemo: { planetId?: string; colony?: null } = {};
+  private readonly colonyMemo: { planetId?: string; colony?: MemoColony | null } = {};
   /** This socket has incremented the colony presence refcount (CT-38). Released once in `leaveRoom`. */
   private colonyHeld = false;
   private chain: Promise<void> = Promise.resolve();
@@ -113,10 +130,29 @@ export class Connection implements RoomMember {
     this.resyncing = true;
     const planetId = this.planetId;
     this.welcomeTick = undefined; // no deltas until the snapshot is out
-    this.d.planets.fullState(planetId).then(
-      (snap) => {
+    const fetchState = this.d.fullState ? this.d.fullState(planetId) : this.d.planets.fullState(planetId);
+    fetchState.then(
+      async (snap) => {
         if (this.state !== 'playing' || this.planetId !== planetId) return;
-        this.sendWelcome('resync', planetId, snap);
+        this.d.antiCheat?.syncFromSnapshotBytes(planetId, snap.bytes);
+        if (this.colonyId) {
+          const indexed = this.d.antiCheat?.index.getColonyById(this.colonyId);
+          if (indexed && indexed.status !== 'ACTIVE' && !(this.session?.dev && this.d.planets.isScenarioColonyPlanet(planetId))) {
+            this.d.antiCheat?.recordRejection('ws', 'join', 'colony_inactive');
+            this.bye(CLOSE_CODES.forbidden, 'colony_inactive');
+            return;
+          }
+          if (indexed) {
+            this.sectorId = indexed.baseSectorId;
+            this.bindingHash = indexed.bindingHash;
+          }
+        }
+        const [recentInputs, recentDecisions] = await Promise.all([
+          this.d.recentInputsAsync ? this.d.recentInputsAsync(planetId) : Promise.resolve(undefined),
+          this.d.recentDecisionsAsync ? this.d.recentDecisionsAsync(planetId) : Promise.resolve(undefined),
+        ]);
+        if (this.state !== 'playing' || this.planetId !== planetId) return;
+        this.sendWelcome('resync', planetId, snap, null, recentInputs, recentDecisions);
         this.welcomeTick = snap.tick;
       },
       (e) => { this.d.log.error({ err: e, planetId }, 'resync fullState failed'); this.bye(CLOSE_CODES.forbidden, 'planet_unavailable'); },
@@ -184,7 +220,10 @@ export class Connection implements RoomMember {
     this.market.reset();
     this.colonyId = null;
     this.colonyIndex = undefined;
+    this.sectorId = undefined;
+    this.bindingHash = undefined;
     this.welcomeTick = undefined;
+    this.mode = 'play';
   }
 
   /** Holds presence only after `playing`, and before replace closes the colony's previous socket. */
@@ -277,35 +316,80 @@ export class Connection implements RoomMember {
   private async onJoin(msg: ClientMessageOf<'join'>): Promise<void> {
     const planetId = msg.d.planetId;
     if (this.state === 'playing') this.leaveRoom();
-    if (!this.d.planets.isLoaded(planetId)) return this.bye(CLOSE_CODES.forbidden, 'forbidden');
+    const loc: PlanetHostLocation | null = this.d.ensureHosted
+      ? await this.d.ensureHosted(planetId)
+      : this.d.planets.isLoaded(planetId)
+        ? { kind: 'local' }
+        : null;
+    if (this.state === 'closed') return;
+    if (!loc) return this.bye(CLOSE_CODES.forbidden, 'forbidden');
+    const joinMode: 'play' | 'spectator' = msg.d.mode === 'spectator' ? 'spectator' : 'play';
     this.state = 'joining';
     this.planetId = planetId;
-    await seatConnectionScenario({
-      seat: this.d.seatDevScenario,
-      playerId: this.playerId,
-      session: this.session,
-      planets: this.d.planets,
-      planetId,
+    this.mode = joinMode;
+    if (joinMode !== 'spectator') {
+      await seatConnectionScenario({
+        seat: this.d.seatDevScenario,
+        playerId: this.playerId,
+        session: this.session,
+        planets: this.d.planets,
+        planetId,
+        log: this.d.log,
+      });
+    }
+    const joinCheck = await verifyConnectionJoin({
+      homeProvider: this.d.home,
+      antiCheat: this.d.antiCheat,
       log: this.d.log,
+      playerId: this.playerId,
+      planetId,
+      requestedSectorId: msg.d.sectorId,
+      requestedColonyId: msg.d.colonyId,
+      dev: this.session?.dev === true,
+      isScenarioPlanet: this.d.planets.isScenarioColonyPlanet(planetId),
+      mode: joinMode,
     });
-    const home = this.playerId ? await this.resolveHome(this.playerId, planetId) : DEFAULT_HOME;
     if (this.state !== 'joining') return; // closed or left meanwhile
-    const own = home.state === 'ACTIVE' && home.colony.planetId === planetId;
-    if (!own && !this.session?.dev) return this.bye(CLOSE_CODES.forbidden, 'not_your_planet');
-    this.colonyId = own ? home.colony.id : null;
-    this.colonyIndex = own ? home.colony.colonyIndex : undefined;
-    this.d.rooms.join(planetId, this);
+    if (!joinCheck.ok) return this.bye(CLOSE_CODES.forbidden, joinCheck.reason);
+
+    this.colonyId = joinMode === 'spectator' ? null : joinCheck.colonyId;
+    this.colonyIndex = joinMode === 'spectator' ? undefined : joinCheck.colonyIndex;
+    this.sectorId = joinCheck.sectorId;
+    this.bindingHash = joinMode === 'spectator' ? undefined : joinCheck.bindingHash;
+    if (this.d.joinRoom) this.d.joinRoom(planetId, this, loc);
+    else this.d.rooms.join(planetId, this);
     let snap: FullState;
     try {
-      snap = await this.d.planets.fullState(planetId);
+      snap = await (this.d.fullState ? this.d.fullState(planetId) : this.d.planets.fullState(planetId));
     } catch (e) {
       this.d.log.error({ err: e, planetId }, 'fullState failed');
       return this.bye(CLOSE_CODES.forbidden, 'planet_unavailable');
     }
     if (this.state !== 'joining') return; // closed or left meanwhile
-    const away = await readConnectionReturnDigest(this.colonyId, this.d.digests, this.d.log, snap.bytes);
+    this.d.antiCheat?.syncFromSnapshotBytes(planetId, snap.bytes);
+    const postCheck = verifyPostSnapshotConnectionJoin({
+      antiCheat: this.d.antiCheat,
+      planetId,
+      colonyId: this.colonyId,
+      colonyIndex: this.colonyIndex,
+      requestedSectorId: msg.d.sectorId,
+      currentSectorId: this.sectorId,
+      currentBindingHash: this.bindingHash,
+      dev: this.session?.dev === true,
+      isScenarioPlanet: this.d.planets.isScenarioColonyPlanet(planetId),
+      mode: joinMode,
+    });
+    if (!postCheck.ok) return this.bye(CLOSE_CODES.forbidden, postCheck.reason);
+    this.sectorId = postCheck.sectorId;
+    this.bindingHash = postCheck.bindingHash;
+    const away = this.mode === 'spectator' ? null : await readConnectionReturnDigest(this.colonyId, this.d.digests, this.d.log, snap.bytes);
     if (this.state !== 'joining') return;
-    this.sendWelcome('join', planetId, snap, away);
+    const [recentInputs, recentDecisions] = await Promise.all([
+      this.d.recentInputsAsync ? this.d.recentInputsAsync(planetId) : Promise.resolve(undefined),
+      this.d.recentDecisionsAsync ? this.d.recentDecisionsAsync(planetId) : Promise.resolve(undefined),
+    ]);
+    if (this.state !== 'joining') return;
+    this.sendWelcome('join', planetId, snap, away, recentInputs, recentDecisions);
     this.welcomeTick = snap.tick;
     this.state = 'playing';
     this.holdColony();
@@ -313,7 +397,16 @@ export class Connection implements RoomMember {
     this.d.onJoined(this);
   }
 
-  private sendWelcome(reason: 'join' | 'resync', planetId: string, snap: FullState, away: AwayDigestV1 | null = null): void {
+  private sendWelcome(
+    reason: 'join' | 'resync',
+    planetId: string,
+    snap: FullState,
+    away: AwayDigestV1 | null = null,
+    preloadedInputs?: SimInputFeedItemV1[],
+    preloadedDecisions?: AgentDecisionFeedItemV1[],
+  ): void {
+    const recentInputs = preloadedInputs ?? this.d.recentInputs?.(planetId) ?? this.d.planets.recentInputs?.(planetId, 100);
+    const recentDecisions = preloadedDecisions ?? this.d.recentDecisions?.(planetId) ?? this.d.planets.recentDecisions?.(planetId, 100);
     this.sendMsg(
       buildWelcomeMessage({
         reason,
@@ -323,14 +416,33 @@ export class Connection implements RoomMember {
         deltaHz: this.d.planets.deltaHz,
         flags: this.d.flags,
         away,
+        mode: this.mode,
+        recentInputs,
+        recentDecisions,
       }),
     );
   }
 
   private async onCmd(msg: ClientMessageOf<'cmd'>): Promise<void> {
+    if (this.mode === 'spectator') {
+      return this.sendMsg({
+        v: 1,
+        t: 'cmd.reject',
+        d: { id: msg.id, code: 'spectator_read_only', detail: 'Spectator connections are read-only' },
+      });
+    }
     if (this.state !== 'playing' || !this.playerId || !this.planetId) {
       return this.sendMsg({ v: 1, t: 'cmd.reject', d: { id: msg.id, code: 'internal', detail: 'not joined' } });
     }
-    await this.d.ingress.handle({ playerId: this.playerId, planetId: this.planetId, dev: this.session?.dev === true, memo: this.colonyMemo, reply: (m) => this.sendMsg(m) }, msg);
+    await this.d.ingress.handle({
+      transport: 'ws',
+      playerId: this.playerId,
+      planetId: this.planetId,
+      sectorId: this.sectorId,
+      bindingHash: this.bindingHash,
+      dev: this.session?.dev === true,
+      memo: this.colonyMemo,
+      reply: (m) => this.sendMsg(m),
+    }, msg);
   }
 }

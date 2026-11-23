@@ -114,6 +114,7 @@ describe('GP-08: one blob shape per queue', () => {
   it('terraformTasks is { byColony } and constructionQueue is { orders }, written through setBlob', () => {
     const host = rig();
     setColonyStock(host.state, 0, CARGO);
+    expect(send(host, 'enqueueTask', { terraform: { op: 'grade', tiles: [{ q: -2, r: 0 }] } }).code).toBeUndefined();
     expect(send(host, 'placeBuilding', { building: 'commandHub', q: 4, r: 0 }).code).toBeUndefined();
     expect(Object.keys(host.state.blobs.terraformTasks)).toEqual(['changedAt', 'value']);
     expect(Object.keys(host.state.blobs.terraformTasks.value as object)).toEqual(['byColony']);

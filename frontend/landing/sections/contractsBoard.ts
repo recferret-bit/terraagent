@@ -114,11 +114,11 @@ const CONTRACTS: readonly DeployedContract[] = [
     badge: 'HUMAN ONLY',
     badgeClass: 'badge-ai',
     accent: 'var(--ta-energy)',
-    kicker: 'LOSSLESS VAULT',
-    title: 'Day-1 Staking Vault',
-    summary: 'Holds native NEAR stakes with a 2-day unbond, splits validator yield, and restricts all staking calls to human wallets.',
-    inGameTrigger: 'Pilot Stake (≥10 NEAR)',
-    onChainAction: 'deposit_near · stake · withdraw',
+    kicker: '4-TIER VAULT',
+    title: 'Wallet-First Staking Vault',
+    summary: 'Stakes native NEAR or stNEAR/LiNEAR with no Deed required, 1-click compound (0% fee), <7d 25 bp exit fee, and human-only guards.',
+    inGameTrigger: 'Wallet Stake (10–500+ NEAR)',
+    onChainAction: 'stake_payable · compound_yield · withdraw',
     codeHash: '9b51P4dVKvQWK5r8T5J9gdiNuEvNMuxY3CK1SihefNwb',
     txHash: '5UvHFrKUocqf5JewptneZqGeXgXkJQZaeVMPfHTrusX2',
     iconSvg: `<svg viewBox="0 0 48 48" fill="none" aria-hidden="true">
@@ -137,9 +137,9 @@ const CONTRACTS: readonly DeployedContract[] = [
     accent: 'var(--ta-orange-hi)',
     kicker: 'PUBLIC GOODS',
     title: 'Planet Council Treasury',
-    summary: "Collects each planet's share of trade fees so settled colonies can vote on meteor shields and Guild subsidies.",
+    summary: "Collects each planet's share of trade fees so settled colonies can vote (with 1.5× Tier 3+ staker weight) on meteor shields and Guild subsidies.",
     inGameTrigger: 'Council Vote',
-    onChainAction: 'propose · vote · finalize',
+    onChainAction: 'propose · vote_weighted · finalize',
     codeHash: 'J5L9QjPghZQ337PLxyv7ehEtNRWo2KuMvTnoAMyNEGrS',
     txHash: 'DmsGYQ7VBajz1rRC5FKxNarnnddhs5CzeVgfJc6mqx5U',
     iconSvg: `<svg viewBox="0 0 48 48" fill="none" aria-hidden="true">
@@ -282,28 +282,28 @@ export async function hydrateContractsStatus(host: HTMLElement): Promise<void> {
   }
 }
 
-export function initContractsBoard(): void {
-  const host = document.getElementById('contracts-board');
-  if (!host) return;
-
+export function renderContractsBoardHtml(): string {
   const cards = CONTRACTS.map(renderContractCard).join('');
   const acctLinks = ACCOUNTS.map(
     (a) =>
       `<span class="acct-pill plate-sm" data-account-key="${a.key}"><b>${a.label}</b><a data-account-link href="${DEFAULT_EXPLORER}/address/${a.id}" target="_blank" rel="noopener noreferrer">${a.id} ↗</a></span>`,
   ).join('');
 
-  host.innerHTML = `<div class="board-h contracts-board-h">
+  return `<div class="board-h contracts-board-h">
       <span><i class="dot-live"></i> SIX DEPLOYED RUST CONTRACTS ON NEAR</span>
       <span class="contracts-status-wrap"><span data-chain-live-status>LIVE ON NEAR TESTNET · FASTNEAR RPC</span> · <a class="chain-json-link" href="/v1/near/status">/v1/near/status ↗</a> · <a class="chain-json-link" href="/whitepaper/#sub-web3-operator-accounts">whitepaper ↗</a></span>
     </div>
     <div class="contracts-grid" id="chain-stream">${cards}</div>
     <div class="contract-accounts">
       ${acctLinks}
-      <span class="acct-pill plate-sm"><b>INTENTS</b><code>intents.near + 1Click</code></span>
-      <span class="acct-pill plate-sm"><b>VERIFIER &amp; MPC</b><code>verifier + v1.signer</code></span>
-      <span class="acct-pill plate-sm"><b>AGENT MCP</b><code>/v1/mcp · agent-market</code></span>
-      <span class="acct-pill plate-sm"><b>DOCS</b><a href="/whitepaper/#sub-web3-operator-accounts">Gas &amp; Accounts Spec ↗</a></span>
     </div>`;
+}
+
+export function initContractsBoard(): void {
+  const host = document.getElementById('contracts-board');
+  if (!host) return;
+
+  if (host.children.length === 0) host.innerHTML = renderContractsBoardHtml();
 
   void hydrateContractsStatus(host);
 }

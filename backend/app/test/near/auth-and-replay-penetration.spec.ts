@@ -7,11 +7,13 @@ import { PublicEconomySimController } from '../../src/dev/economy-sim.controller
 import { FlagsService } from '../../src/flags/flags.service.js';
 import { BountyController } from '../../src/near/bounty/bounty.controller.js';
 import { NearDeedController } from '../../src/near/deed/deed.controller.js';
+import { assertColonyOwnership } from '../../src/near/identity/colony-ownership.guard.js';
 import { consumeNep413NoncePersistent, signNep413Message } from '../../src/near/identity/nep413-verifier.js';
 import { RelayStatusService } from '../../src/near/identity/relay-status.service.js';
 import { resolveNearNetworkConfig } from '../../src/near/infrastructure/network/near-network.config.js';
 import { NearRpcClient } from '../../src/near/infrastructure/rpc/near-rpc.client.js';
 import { encodeBase58 } from '../../src/near/keystore/base58.js';
+import { StakingController } from '../../src/near/staking/staking.controller.js';
 
 function reqWithBearer(bearer: string | null, ip = '10.0.0.1'): IncomingMessage {
   return {
@@ -64,6 +66,21 @@ describe('Endpoint ownership IDOR & strict listing enforcement', () => {
       ),
     ).rejects.toMatchObject({ errorCode: 'NEAR_NOT_OWNER' });
 
+    // Omitting playerId in body must STILL reject via prisma.colony.findUnique fallback
+    await expect(
+      bountyCtrl.post(
+        'pl_1',
+        {
+          colonyId: 'col_1',
+          colonyIndex: 0,
+          target: { kind: 'clear_nest', nestId: 'nest_1' },
+          reward: { resource: 'metals.t1', amount: 50 },
+          expiresAt: Date.now() + 3_600_000,
+        },
+        reqWithBearer('dev:attacker'),
+      ),
+    ).rejects.toMatchObject({ errorCode: 'NEAR_NOT_OWNER' });
+
     const deedsRepo = {
       findByColonyId: vi.fn(async () => ({ colonyId: 'col_1', playerId: 'pr_owner' })),
       listForPlayerOrColony: vi.fn(async () => []),
@@ -89,6 +106,80 @@ describe('Endpoint ownership IDOR & strict listing enforcement', () => {
     expect(listOut.deed).toBeNull();
     expect(listOut.deeds).toEqual([]);
     expect(deedsRepo.listAll).not.toHaveBeenCalled();
+  });
+});
+
+describe('StakingController IDOR & offline real-PrismaClient guard', () => {
+  it('blocks cross-player IDOR on StakingController and skips DB calls on un-migrated offline PrismaClient', async () => {
+    const flags = new FlagsService({ TA_WAVES: 'all' } as never);
+    const stakingCtrl = new StakingController(
+      {
+        resolveColonyOwnerPlayerId: vi.fn(async () => 'pr_owner'),
+        stake: vi.fn(),
+        unstake: vi.fn(),
+        withdraw: vi.fn(),
+      } as never,
+      flags,
+      mockTokens,
+      { NODE_ENV: 'test' } as never,
+    );
+    await expect(
+      stakingCtrl.unstake(
+        { colonyId: 'col_1', pool: 'astro-stakers.poolv1.near', amount: '5' },
+        undefined,
+        'Bearer dev:attacker',
+        undefined,
+        reqWithBearer('dev:attacker'),
+      ),
+    ).rejects.toMatchObject({ errorCode: 'NEAR_NOT_OWNER' });
+
+    const realShapePrisma = {
+      $connect: vi.fn(),
+      nearColonyAccount: { findFirst: vi.fn(async () => { throw new Error('DB unreachable'); }) },
+      colony: { findUnique: vi.fn(async () => { throw new Error('DB unreachable'); }) },
+    } as unknown as PrismaClient;
+    await expect(
+      assertColonyOwnership({
+        req: reqWithBearer('dev:owner'),
+        tokens: mockTokens,
+        env: { NODE_ENV: 'test' } as never,
+        prisma: realShapePrisma,
+        port: 'Escrow',
+        colonyId: 'col_offline',
+      }),
+    ).resolves.toMatch(/^pr_/);
+  });
+});
+
+describe('Production dev_pilot ownership lock', () => {
+  it('blocks taking over dev_pilot-owned colonies when NODE_ENV=production', async () => {
+    const flags = new FlagsService({ TA_WAVES: 'all' } as never);
+    const strictEnv = { NODE_ENV: 'production', NEAR_ADAPTER_ESCROW: 'testnet' } as never;
+    const devPilotPrisma = {
+      colony: { findUnique: vi.fn(async () => ({ id: 'col_dev', playerId: 'dev_pilot' })) },
+      nearColonyAccount: { findFirst: vi.fn(async () => null) },
+    } as unknown as PrismaClient;
+    const prodBounty = new BountyController(
+      { post: vi.fn(), list: vi.fn() } as never,
+      { claim: vi.fn() } as never,
+      flags,
+      devPilotPrisma,
+      mockTokens,
+      strictEnv,
+    );
+    await expect(
+      prodBounty.post(
+        'pl_1',
+        {
+          colonyId: 'col_dev',
+          colonyIndex: 0,
+          target: { kind: 'clear_nest', nestId: 'nest_1' },
+          reward: { resource: 'metals.t1', amount: 50 },
+          expiresAt: Date.now() + 3_600_000,
+        },
+        reqWithBearer('dev:attacker'),
+      ),
+    ).rejects.toMatchObject({ errorCode: 'NEAR_NOT_OWNER' });
   });
 });
 

@@ -1,4 +1,4 @@
-import { DEPOSIT, PREP, TERRAIN, geoBuildBlock, geoBuildOptionsFor, hexDistance } from '@terra/sim';
+import { DEPOSIT, PREP, TERRAIN, geoBuildBlock, hexDistance } from '@terra/sim';
 import type { ClientTiles } from '../../store/replica/viewCodec';
 import type { GhostContext } from './ghostContext';
 
@@ -36,8 +36,6 @@ export interface HoverAnchorInput {
   readonly footprintW: number;
   readonly footprintD: number;
   readonly requiresDeposit?: string;
-  readonly colonyId: number;
-  readonly w05Active: boolean;
   readonly tilesData?: ClientTiles;
   readonly ctx: GhostContext;
   readonly isValidAt: (aq: number, ar: number) => boolean;
@@ -70,9 +68,8 @@ export function nudgeHoverAnchor(input: HoverAnchorInput): { q: number; r: numbe
   if (input.tilesData.deposit && (input.tilesData.deposit[hoverIdx] ?? DEPOSIT.none) !== DEPOSIT.none) return null;
   const terrain = input.tilesData.terrain ? (input.tilesData.terrain[hoverIdx] ?? TERRAIN.flat) : TERRAIN.flat;
   const prep = input.tilesData.prep ? (input.tilesData.prep[hoverIdx] ?? PREP.wild) : PREP.wild;
-  if ((!input.w05Active && terrain === TERRAIN.deep) || prep === PREP.ridge || prep === PREP.moat) return null;
-  const geo = { ...geoBuildOptionsFor(input.ctx.world, input.colonyId, input.ctx.data), linkedPrep: input.w05Active };
-  if (geoBuildBlock(terrain, prep, DEPOSIT.none, 'any', geo)) return null;
+  // Slope, rock, water, trees and holes are not a foundation. Do not slide a footprint onto them.
+  if (geoBuildBlock(terrain, prep, DEPOSIT.none, 'any', { linkedPrep: false })) return null;
 
   for (const [dq, dr] of LARGE_FOOTPRINT_OFFSETS) {
     const aq = input.q + dq, ar = input.r + dr;

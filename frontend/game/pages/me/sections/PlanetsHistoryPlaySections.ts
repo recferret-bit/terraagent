@@ -1,16 +1,28 @@
 import type { MeProfileResponse } from '@terra/contracts';
 import { el } from '../dom';
 
-export function renderPlanetsSection(profile: MeProfileResponse): HTMLElement {
-  const currentCards = profile.currentColonies.map((c) =>
-    el(
+export interface PlanetsPlayRenderOptions {
+  readonly localHost?: boolean;
+}
+
+export function renderPlanetsSection(
+  profile: MeProfileResponse,
+  opts: PlanetsPlayRenderOptions = {},
+): HTMLElement {
+  const currentCards = profile.currentColonies.map((c) => {
+    const diveHref = opts.localHost
+      ? '/play.html?host=local&skip=1'
+      : c.colonyId.startsWith('co_w12_')
+        ? '/play.html?scenario=w12&as=w12'
+        : `/play.html?skip=1&colonyId=${encodeURIComponent(c.colonyId)}`;
+    return el(
       'div',
       { className: 'plate-sm ta-colony-card', dataset: { testid: 'me-current-colony', colonyId: c.colonyId } },
       el('div', { className: 'ta-colony-head' }, el('strong', null, c.name), el('span', { className: 'label c-terra' }, `S${c.stage}`)),
       el('p', { className: 'ta-colony-meta' }, `${c.planetName} · ${c.planetType}`),
-      el('a', { className: 'btn btn-primary btn-sm', href: c.colonyId.startsWith('co_w12_') ? '/play.html?scenario=w12&as=w12' : `/play.html?skip=1&colonyId=${encodeURIComponent(c.colonyId)}`, dataset: { testid: 'me-colony-dive-in' } }, 'Dive in'),
-    ),
-  );
+      el('a', { className: 'btn btn-primary btn-sm', href: diveHref, dataset: { testid: 'me-colony-dive-in' } }, 'Dive in'),
+    );
+  });
 
   const pastCards = profile.pastColonies.map((c) =>
     el(
@@ -41,11 +53,12 @@ export function renderHistorySection(profile: MeProfileResponse): HTMLElement {
   );
 }
 
-export function renderPlaySection(): HTMLElement {
+export function renderPlaySection(opts: PlanetsPlayRenderOptions = {}): HTMLElement {
+  const playHref = opts.localHost ? '/play.html?host=local' : '/play.html';
   return el(
     'div',
     { className: 'ta-play-body', dataset: { testid: 'me-play-body' } },
     el('p', { className: 'ta-me-muted' }, 'Deploy to an orbital drop or resume your active colony.'),
-    el('a', { className: 'btn btn-primary', href: '/play.html', dataset: { testid: 'me-play-cta' } }, 'Play TerraAgent →'),
+    el('a', { className: 'btn btn-primary', href: playHref, dataset: { testid: 'me-play-cta' } }, 'Play TerraAgent →'),
   );
 }

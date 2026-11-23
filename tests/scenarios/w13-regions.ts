@@ -27,7 +27,7 @@ export interface RegionColonySeed extends ColonySeed {
 export const W13_REGION_COLONIES: readonly RegionColonySeed[] = [
   { index: 0, id: 'col_0', name: 'Dune Works', color: 0xff6b00, origin: [-10, 0], depots: 0, army: 4, fighting: 20, extraSolar: 5, stock: { 'metals.t1': 900, 'minerals.t1': 200, 'minerals.t3': 0, 'bio.water': 400, 'bio.biomass': 100 } },
   { index: 1, id: 'col_1', name: 'Crystal Ridge', color: 0x2f8fff, origin: [10, 0], depots: 1, army: 0, fighting: 0, extraSolar: 0, stock: { 'metals.t1': 100, 'minerals.t1': 300, 'minerals.t3': 400, 'bio.water': 300, 'bio.biomass': 100 } },
-  { index: 2, id: 'col_2', name: 'Iron Guard', color: 0x9b59ff, origin: [0, 11], depots: 1, army: 12, fighting: 6, extraSolar: 0, stock: { 'metals.t1': 300, 'minerals.t1': 100, 'minerals.t3': 0, 'bio.water': 400, 'bio.biomass': 50 } },
+  { index: 2, id: 'col_2', name: 'Iron Guard', color: 0x9b59ff, origin: [-3, 10], depots: 1, army: 12, fighting: 6, extraSolar: 0, stock: { 'metals.t1': 300, 'minerals.t1': 100, 'minerals.t3': 0, 'bio.water': 400, 'bio.biomass': 50 } },
 ];
 
 const EXTRA_SOLAR: readonly (readonly [number, number])[] = [[4, -3], [1, -4], [-2, -4], [-4, 4], [3, -5]];

@@ -32,6 +32,7 @@ export const REJECT_TEXT: Readonly<Record<ToastRejectCode, string>> = {
   planet_ended: 'Rejected: Planet ended',
   wave_disabled: 'Rejected: Wave disabled',
   host_unavailable: 'Rejected: Game host unavailable',
+  spectator_read_only: 'Spectator mode is read-only',
   internal: 'Rejected: Internal error',
   rate_limited: 'Slow down: too many orders',
   already_landed: 'Rejected: Colony already landed',

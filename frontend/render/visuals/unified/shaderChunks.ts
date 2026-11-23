@@ -68,7 +68,8 @@ const VERT_SUB_ANIM = /* glsl */ `
         } else if (abs(animType - 2.0) < 0.1 || (hasBodyCarrier && abs(subAnim - 2.0) < 0.1)) {
           float bobAmp = hasBodyCarrier ? 0.025 : 0.05;
           float bobFreq = hasBodyCarrier ? g : uTime * 4.0;
-          transformed.y += sin(bobFreq + pivot.x * 3.1) * bobAmp;
+          float bobPhase = abs(subAnim - 9.0) < 0.1 ? 0.0 : pivot.x * 3.1;
+          transformed.y += sin(bobFreq + bobPhase) * bobAmp;
         } else if (abs(animType - 3.0) < 0.1 || (hasBodyCarrier && abs(subAnim - 3.0) < 0.1)) {
           float recoilWave = sin(g * (1.0 + uWorkWeight) + pivot.x * 2.3);
           transformed.z -= pow(max(recoilWave, 0.0), 6.0) * 0.06;
@@ -77,8 +78,8 @@ const VERT_SUB_ANIM = /* glsl */ `
 const VERT_GAIT_ANIM = /* glsl */ `
         // 4..9: 100% Rigid-body locomotion gaits & full-body step-reaction carriers (zero part distortion)
         if (abs(animType - 4.0) < 0.1) {
-          // 4 (Thigh), 14 (Shin+Ankle) & 24 (Foot): Rigid 3-link bipedal kinematic chain
-          float phase = (pivot.x >= 0.0) ? 0.0 : 3.14159265;
+          // 4 (Thigh), 14 (Shin+Ankle) & 24 (Foot): Rigid 3-link bipedal or diagonal quadruped kinematic chain
+          float phase = ((pivot.x >= 0.0) ? 0.0 : 3.14159265) + ((aOrganic > 0.5 && pivot.z < -0.05) ? 3.14159265 : 0.0);
           float tau = g + phase;
           float s = sin(tau);
           float lift = max(0.0, cos(tau));
@@ -86,9 +87,12 @@ const VERT_GAIT_ANIM = /* glsl */ `
           float hipAngle = s * 0.22 * uWalkWeight;
           float ch = cos(hipAngle), sh = sin(hipAngle);
           float ky0 = -0.3173 * pivot.y;
+          float ay0 = -0.5769 * pivot.y;
           vec3 kneeRest = vec3(pivot.x, pivot.y + ky0, pivot.z);
           vec3 kneeMoved = vec3(pivot.x + dh.x, pivot.y + dh.y + ky0 * ch, pivot.z + dh.z + ky0 * sh);
-          float shinAngle = hipAngle + lift * 0.52 * uWalkWeight;
+          float baseShin = hipAngle + lift * 0.52 * uWalkWeight;
+          float minShin = (aOrganic > 0.5) ? acos(1.0 - clamp((-(dh.y + ky0 * (ch - 1.0)) - 0.005) / max(0.08, -ay0), 0.0, 0.45)) : 0.0;
+          float shinAngle = (aOrganic > 0.5) ? max(baseShin, minShin) : baseShin;
           float cs = cos(shinAngle), ss = sin(shinAngle);
           if (subAnim < 0.5) {
             float ry = transformed.y - pivot.y;
@@ -107,7 +111,6 @@ const VERT_GAIT_ANIM = /* glsl */ `
               kneeMoved.z + uy * ss + uz * cs
             );
           } else {
-            float ay0 = -0.5769 * pivot.y;
             vec3 ankleRest = vec3(pivot.x, kneeRest.y + ay0, pivot.z);
             vec3 ankleMoved = vec3(pivot.x + dh.x, kneeMoved.y + ay0 * cs, kneeMoved.z + ay0 * ss);
             transformed = ankleMoved + (transformed - ankleRest);
@@ -266,12 +269,24 @@ export const FRAG_METALNESS = /* glsl */ `#include <metalnessmap_fragment>
         }`;
 
 /** Subtle Fresnel silhouette rim light + projector illumination + FoV shroud before output. */
-export const FRAG_RIM = /* glsl */ `// Add subtle Fresnel silhouette rim light before output
+export const FRAG_RIM = /* glsl */ `// Add subtle Fresnel silhouette rim light + stylized pixel-friendly fur sheen & tufted velvet rim before output
         // max(): |dot| of two unit vectors rounds to 1.0000001 on view-facing faces; pow(negative) = NaN, which the
         // bloom mip chain spreads into a ~1000 px black square (the descent pod flash)
-        float fresnel = pow(max(1.0 - abs(dot(normalize(normal), normalize(vViewPosition))), 0.0), 3.2);
+        vec3 taNrm = normalize(normal);
+        vec3 taViewDir = normalize(vViewPosition);
+        float taAbsNdotV = abs(dot(taNrm, taViewDir));
+        float fresnel = pow(max(1.0 - taAbsNdotV, 0.0), 3.2);
         vec3 taProj = evalColonyProjectorLight(vTaWorldPos, normalize(vTaWorldNormal));
         outgoingLight += diffuseColor.rgb * taProj + taProj * 0.10;
         outgoingLight += uRimTint * fresnel * uRimStrength * (1.0 - clamp(uNightFactor, 0.0, 1.0) * 0.78);
+        if (vOrganic > 5.5 && vOrganic < 6.5) {
+          float taTuftWave = 0.5 + 0.5 * furTuftField(vLocalPos * 1.35);
+          vec3 taHairTan = normalize(cross(taNrm, vec3(0.0, 1.0, 0.0)) + vec3(1e-4, 0.0, 0.0));
+          float taKajiya = pow(max(0.0, 1.0 - abs(dot(taHairTan, normalize(taViewDir + vec3(0.25, 0.55, 0.20))))), 2.4);
+          float taVelvetRim = pow(max(1.0 - taAbsNdotV, 0.0), 2.05) * (0.45 + 0.55 * taTuftWave);
+          vec3 taFurColor = mix(diffuseColor.rgb * 1.38, uRimTint, 0.28);
+          float taDayScale = 1.0 - clamp(uNightFactor, 0.0, 1.0) * 0.72;
+          outgoingLight += min(taFurColor * (taVelvetRim * 0.34 + taKajiya * (0.07 + 0.11 * taTuftWave)) * taDayScale, vec3(0.28));
+        }
         outgoingLight = applyColonyFovShroud(vTaWorldPos, outgoingLight);
         #include <opaque_fragment>`;

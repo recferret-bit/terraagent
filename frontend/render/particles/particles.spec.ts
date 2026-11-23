@@ -51,7 +51,8 @@ describe('Particle geometries & preset registry (@terra/render/particles)', () =
 
   it('resolves targetKind accurately from terrain, deposit, mode, and biome', () => {
     expect(ParticlePresetRegistry.resolveTargetKind({ terrainKey: 'forest', biomeKey: 'oceanForest' })).toBe('tree');
-    expect(ParticlePresetRegistry.resolveTargetKind({ terrainKey: 'forest', biomeKey: 'dune' })).toBe('rock');
+    expect(ParticlePresetRegistry.resolveTargetKind({ terrainKey: 'forest', biomeKey: 'dune' })).toBe('tree');
+    expect(ParticlePresetRegistry.resolveTargetKind({ terrainKey: 'rock', biomeKey: 'dune' })).toBe('rock');
     expect(ParticlePresetRegistry.resolveTargetKind({ terrainKey: 'rock', biomeKey: 'forestRock' })).toBe('rock');
     expect(ParticlePresetRegistry.resolveTargetKind({ terrainKey: 'slope', biomeKey: 'dune' })).toBe('dune');
     expect(ParticlePresetRegistry.resolveTargetKind({ terrainKey: 'hole', biomeKey: 'oceanForest' })).toBe('hole');
@@ -220,7 +221,7 @@ describe('Tool origins kinematics (@terra/render/particles)', () => {
 
 describe('Preset coverage & emitter robustness (@terra/render/particles)', () => {
   it('has exactly one preset per target kind, and NaN beam emissive fails the validator', () => {
-    const kinds = ParticlePresetRegistry.list().filter(p => p.targetKind !== 'combat').map((p) => p.targetKind).sort();
+    const kinds = ParticlePresetRegistry.list().filter(p => p.targetKind !== 'combat' && !('variantOf' in p && p.variantOf)).map((p) => p.targetKind).sort();
     expect(kinds).toEqual(['dune', 'flat', 'hole', 'metals', 'minerals', 'oil', 'repair', 'rock', 'tree']);
     expect(new Set(BUILTIN_PARTICLE_PRESETS.map((p) => p.id)).size).toBe(9);
     const clean = structuredClone(ParticlePresetRegistry.getByTargetKind('rock'));

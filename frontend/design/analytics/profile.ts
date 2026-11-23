@@ -2,9 +2,8 @@ import { runtimeLabel } from './context';
 import { trackProduct } from './trackSafe';
 
 const SECTIONS = ['pilot', 'progress', 'planets', 'history', 'achievements', 'play'] as const;
-const PROFILE_REASONS = ['unauthorized', 'network', 'invalid', 'unknown'] as const;
 export type ProfileSection = (typeof SECTIONS)[number];
-export type ProfileReason = (typeof PROFILE_REASONS)[number];
+export type ProfileReason = 'unauthorized' | 'network' | 'invalid' | 'unknown';
 
 export function classifyProfileFailure(input: { status?: number; name?: string; network?: boolean; invalid?: boolean }): ProfileReason {
   if (input.status === 401 || input.status === 403) return 'unauthorized';

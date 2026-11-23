@@ -5,13 +5,11 @@ import { trackProduct } from './trackSafe';
 
 const METHODS = ['google', 'x', 'email', 'near-wallet', 'fastauth'] as const;
 const WALLETS = ['none', 'meteor-wallet', 'okx-wallet', 'near-mobile-wallet', 'intear-wallet', 'my-near-wallet', 'other'] as const;
-const STAGES = ['popup', 'oauth', 'verify', 'restore'] as const;
-const REASONS = ['popup_blocked', 'dismissed', 'oauth_error', 'rejected', 'network', 'invalid', 'timeout', 'unknown'] as const;
 
 export type AuthMethod = (typeof METHODS)[number];
 export type WalletKind = (typeof WALLETS)[number];
-export type AuthStage = (typeof STAGES)[number];
-export type AuthReason = (typeof REASONS)[number];
+export type AuthStage = 'popup' | 'oauth' | 'verify' | 'restore';
+export type AuthReason = 'popup_blocked' | 'dismissed' | 'oauth_error' | 'rejected' | 'network' | 'invalid' | 'timeout' | 'unknown';
 
 export interface AuthFailureInput {
   readonly popupBlocked?: boolean;

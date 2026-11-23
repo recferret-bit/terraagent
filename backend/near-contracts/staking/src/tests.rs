@@ -1,10 +1,11 @@
 use super::*;
 use near_sdk::test_utils::VMContextBuilder;
 use near_sdk::testing_env;
+use near_sdk::{Gas, NearToken, PromiseError, PromiseOrValue};
 
-const ONE_NEAR: u128 = 1_000_000_000_000_000_000_000_000;
+pub(crate) const ONE_NEAR: u128 = 1_000_000_000_000_000_000_000_000;
 
-fn ctx(predecessor: &str) -> VMContextBuilder {
+pub(crate) fn ctx(predecessor: &str) -> VMContextBuilder {
     let mut builder = VMContextBuilder::new();
     builder
         .current_account_id("staking.terraagent.testnet".parse().unwrap())
@@ -13,7 +14,7 @@ fn ctx(predecessor: &str) -> VMContextBuilder {
     builder
 }
 
-fn new_contract() -> StakingVaultContract {
+pub(crate) fn new_contract() -> StakingVaultContract {
     testing_env!(ctx("terraagent.testnet").build());
     StakingVaultContract::new(
         "terraagent.testnet".parse().unwrap(),
@@ -80,7 +81,8 @@ fn stake_unstake_unbonding_rewards_and_withdraw_flow() {
     assert_eq!(pos.unbonding, "0");
     assert_eq!(pos.withdrawable, four_near);
 
-    let w = contract.withdraw(
+    assert!(pos.rewards.parse::<u128>().unwrap() > 0);
+    let _ = contract.withdraw(
         "op-withdraw-1".into(),
         "col1.testnet".into(),
         None,
@@ -88,8 +90,10 @@ fn stake_unstake_unbonding_rewards_and_withdraw_flow() {
         900,
         t12,
     );
-    assert!(w.withdrawn.parse::<u128>().unwrap() > four_near.parse::<u128>().unwrap());
-    assert!(contract.get_near_balance("col1.testnet".into()).parse::<u128>().unwrap() > 0);
+    // Single-step payout: nothing is parked in the virtual `balances` ledger any more.
+    assert_eq!(contract.get_near_balance("col1.testnet".into()), "0");
+    let after = contract.get_position("col1.testnet".into(), "astro-stakers.pool.mock".into(), 0, t12);
+    assert_eq!((after.withdrawable.as_str(), after.rewards.as_str()), ("0", "0"));
     assert!(contract.get_protocol_yield_balance().parse::<u128>().unwrap() > 0);
 }
 
@@ -321,7 +325,7 @@ fn payer_delegated_stake_and_custom_withdraw_recipient() {
     assert_eq!(u1, u2);
 
     let t_ready = t0 + GAME_DAY_MS + UNBONDING_DURATION_MS;
-    let w1 = contract.withdraw(
+    let _ = contract.withdraw(
         "op-w".into(),
         "col_0".into(),
         Some("wallet.testnet".into()),
@@ -329,18 +333,23 @@ fn payer_delegated_stake_and_custom_withdraw_recipient() {
         900,
         t_ready,
     );
-    // Idempotent replay of withdraw:
-    let w2 = contract.withdraw(
-        "op-w".into(),
-        "col_0".into(),
-        Some("wallet.testnet".into()),
-        "p1".into(),
-        900,
-        t_ready,
+    // The transfer settles: the callback caches the result, a replay of the same op returns it.
+    testing_env!(ctx("staking.terraagent.testnet").build());
+    let done = contract.on_withdraw(
+        "op-w".into(), "col_0".into(), "p1".into(), "wallet.testnet".into(),
+        (10 * ONE_NEAR - 10 * ONE_NEAR / 400).to_string(), "1".into(), "0".into(), "0".into(), Ok(()),
     );
-    assert_eq!(w1, w2);
-    assert_eq!(w1.recipient_id, "wallet.testnet");
-    assert!(contract.get_near_balance("wallet.testnet".into()).parse::<u128>().unwrap() > 10 * ONE_NEAR);
+    testing_env!(ctx("minter.terraagent.testnet").build());
+    let replay = contract.withdraw("op-w".into(), "col_0".into(), Some("wallet.testnet".into()), "p1".into(), 900, t_ready);
+    match replay {
+        PromiseOrValue::Value(v) => {
+            assert_eq!(v, done);
+            assert_eq!(v.recipient_id, "wallet.testnet");
+        }
+        _ => panic!("replay must return the cached result"),
+    }
+    // Payout went to the wallet, not into the vault ledger.
+    assert_eq!(contract.get_near_balance("wallet.testnet".into()), "0");
 }
 
 #[test]
@@ -353,7 +362,7 @@ fn withdraw_before_unbonding_panics() {
     let t0 = 1_700_000_000_000u64;
     contract.stake("op-s".into(), "col1.testnet".into(), None, "p1".into(), 900, ten_near.clone(), t0);
     contract.unstake("op-u".into(), "col1.testnet".into(), "p1".into(), 900, ten_near, t0);
-    contract.withdraw("op-w".into(), "col1.testnet".into(), None, "p1".into(), 900, t0 + 1000);
+    let _ = contract.withdraw("op-w".into(), "col1.testnet".into(), None, "p1".into(), 900, t0 + 1000);
 }
 
 #[test]
@@ -577,7 +586,8 @@ fn preserves_native_ndep_solvency_across_payer_withdraw_and_payable_lst_flows() 
     let t10 = t0 + 10 * GAME_DAY_MS;
     contract.unstake("op-u-cross".into(), "pilot1.pilots.terraagent.testnet".into(), "astro-stakers.pool.testnet".into(), 900, ten_near, t10);
     let t13 = t10 + UNBONDING_DURATION_MS + GAME_DAY_MS;
-    let w = contract.withdraw(
+    let before = contract.get_position("pilot1.pilots.terraagent.testnet".into(), "astro-stakers.pool.testnet".into(), 900, t13);
+    let _ = contract.withdraw(
         "op-w-cross".into(),
         "pilot1.pilots.terraagent.testnet".into(),
         Some("alice.testnet".into()),
@@ -585,12 +595,13 @@ fn preserves_native_ndep_solvency_across_payer_withdraw_and_payable_lst_flows() 
         900,
         t13,
     );
-    let withdrawn_val = w.withdrawn.parse::<u128>().unwrap();
-    assert_eq!(contract.get_native_deposit_balance("alice.testnet".into()), withdrawn_val.to_string());
-
-    testing_env!(ctx("alice.testnet").prepaid_gas(Gas::from_tgas(40)).build());
-    let _ = contract.claim_native_near(withdrawn_val.to_string(), None);
+    assert!(before.withdrawable.parse::<u128>().unwrap() > 0);
+    // The payout left the contract directly, so the native-deposit ledger stays empty.
     assert_eq!(contract.get_native_deposit_balance("alice.testnet".into()), "0");
+    assert_eq!(
+        contract.get_position_native_backing("pilot1.pilots.terraagent.testnet".into(), "astro-stakers.pool.testnet".into()),
+        "0"
+    );
 
     // Direct wallet payable stake + LST ft_on_transfer
     testing_env!(ctx("bob.testnet").attached_deposit(NearToken::from_near(4)).build());
@@ -605,4 +616,131 @@ fn preserves_native_ndep_solvency_across_payer_withdraw_and_payable_lst_flows() 
     );
     assert_eq!(refund, "0");
     assert_eq!(contract.get_position("bob.testnet".into(), "meta-pool.near".into(), 900, t0).staked, (3 * ONE_NEAR).to_string());
+}
+
+#[test]
+#[should_panic(expected = "LST token contract is not whitelisted")]
+fn ft_on_transfer_rejects_subdomain_spoofed_lst_contract() {
+    let mut contract = new_contract();
+    testing_env!(ctx("stnear.attacker.testnet").build());
+    contract.ft_on_transfer(
+        "attacker.testnet".parse().unwrap(),
+        (1_000_000 * ONE_NEAR).to_string(),
+        r#"{"pool_id":"stnear.attacker.testnet"}"#.into(),
+    );
+}
+
+#[test]
+fn stake_payable_blocks_non_operator_time_warp_inflated_apy_and_duplicate_deposit() {
+    let mut contract = new_contract();
+    let t0_ms = 1_700_000_000_000u64;
+
+    let mut first = ctx("mallory.testnet");
+    first.attached_deposit(NearToken::from_near(10));
+    first.block_timestamp(t0_ms * 1_000_000);
+    testing_env!(first.build());
+    contract.stake_payable("op-m1".into(), "astro-stakers.pool.testnet".into(), 900, t0_ms, None);
+
+    // Non-operator attempting to pass now_ms = t0 + 100 years must accrue 0 fake yield when block_timestamp == t0_ms
+    let mut second = ctx("mallory.testnet");
+    second.attached_deposit(NearToken::from_millinear(10));
+    second.block_timestamp(t0_ms * 1_000_000);
+    testing_env!(second.build());
+    let view = contract.stake_payable(
+        "op-m2".into(),
+        "astro-stakers.pool.testnet".into(),
+        900,
+        t0_ms + 365 * 100 * GAME_DAY_MS,
+        None,
+    );
+    assert_eq!(view.rewards, "0");
+
+    // 1 yoctoNEAR dust deposit on stake_payable / deposit_near is rejected to prevent storage-lock griefing
+    let mut dust = ctx("mallory.testnet");
+    dust.attached_deposit(NearToken::from_yoctonear(1));
+    testing_env!(dust.build());
+    assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        contract.stake_payable("op-dust".into(), "astro-stakers.pool.testnet".into(), 900, t0_ms, None);
+    })).is_err());
+    assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        contract.deposit_near(None);
+    })).is_err());
+
+    // Delimiter injection in account_id or pool_id is rejected
+    let mut delim = ctx("mallory.testnet");
+    delim.attached_deposit(NearToken::from_near(1));
+    testing_env!(delim.build());
+    assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        contract.stake_payable("op-delim".into(), "astro-stakers.pool.testnet".into(), 900, t0_ms, Some("alice|evil".into()));
+    })).is_err());
+
+    // Inflated apy_bp > 1000 from non-operator panics
+    let mut high_apy = ctx("mallory.testnet");
+    high_apy.attached_deposit(NearToken::from_near(1));
+    high_apy.block_timestamp(t0_ms * 1_000_000);
+    testing_env!(high_apy.build());
+    let apy_panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        contract.stake_payable("op-m3".into(), "astro-stakers.pool.testnet".into(), 5_000, t0_ms, None);
+    }));
+    assert!(apy_panic.is_err());
+
+    // Replaying op-m1 with attached NEAR panics instead of swallowing deposit
+    let mut dup = ctx("mallory.testnet");
+    dup.attached_deposit(NearToken::from_near(5));
+    dup.block_timestamp(t0_ms * 1_000_000);
+    testing_env!(dup.build());
+    let dup_panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        contract.stake_payable("op-m1".into(), "astro-stakers.pool.testnet".into(), 900, t0_ms, None);
+    }));
+    assert!(dup_panic.is_err());
+}
+
+#[test]
+fn partial_unstake_and_withdraw_preserves_remaining_pos_ndep_and_blocks_virtual_siphon() {
+    let mut contract = new_contract();
+    let t0 = 1_700_000_000_000u64;
+
+    // Alice stakes 10 real NEAR via stake_payable AND has 9 unbacked virtual NEAR in balances
+    let mut dep = ctx("alice.testnet");
+    dep.account_balance(NearToken::from_near(30));
+    dep.attached_deposit(NearToken::from_near(10));
+    dep.block_timestamp(t0 * 1_000_000);
+    testing_env!(dep.build());
+    contract.stake_payable("op-part-s1".into(), "astro.pool.testnet".into(), 0, t0, None);
+
+    testing_env!(ctx("minter.terraagent.testnet").account_balance(NearToken::from_near(30)).build());
+    contract.credit_near("op-virt-9".into(), "alice.testnet".into(), (9 * ONE_NEAR).to_string());
+
+    // Alice unstakes 1 NEAR (leaving 9 NEAR staked) and withdraws after unbonding
+    contract.unstake("op-part-u1".into(), "alice.testnet".into(), "astro.pool.testnet".into(), 0, ONE_NEAR.to_string(), t0);
+    let t_ready = t0 + UNBONDING_DURATION_MS;
+    let _ = contract.withdraw("op-part-w1".into(), "alice.testnet".into(), None, "astro.pool.testnet".into(), 0, t_ready);
+
+    // Position holds the remaining 9 NEAR of native backing, while the 25 bp (< 7d) exit fee moved to protocol backing!
+    let fee = ONE_NEAR / 400;
+    assert_eq!(
+        contract.get_position_native_backing("alice.testnet".into(), "astro.pool.testnet".into()),
+        (9 * ONE_NEAR).to_string()
+    );
+    assert_eq!(contract.get_native_deposit_balance("alice.testnet".into()), "0");
+    assert_eq!(contract.get_native_deposit_balance(contract.get_protocol_account()), fee.to_string());
+
+    // Attempting to siphon 10 real NEAR using her 9 virtual NEAR + 1 withdrawn NEAR must panic!
+    testing_env!(ctx("alice.testnet").account_balance(NearToken::from_near(30)).prepaid_gas(Gas::from_tgas(40)).build());
+    assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let _ = contract.claim_native_near((10 * ONE_NEAR).to_string(), None);
+    })).is_err());
+
+    // The remaining 9 NEAR unstake + withdraw directly and release all of their backing; protocol can sweep & claim the backed fee.
+    testing_env!(ctx("minter.terraagent.testnet").account_balance(NearToken::from_near(30)).build());
+    let t_late = t0 + EARLY_EXIT_WINDOW_MS;
+    contract.unstake("op-part-u2".into(), "alice.testnet".into(), "astro.pool.testnet".into(), 0, (9 * ONE_NEAR).to_string(), t_late);
+    let _ = contract.withdraw("op-part-w2".into(), "alice.testnet".into(), None, "astro.pool.testnet".into(), 0, t_late + UNBONDING_DURATION_MS);
+    assert_eq!(contract.get_position_native_backing("alice.testnet".into(), "astro.pool.testnet".into()), "0");
+    assert_eq!(contract.get_native_deposit_balance("alice.testnet".into()), "0");
+    contract.withdraw_protocol_yield("op-sweep-fee".into(), Some(fee.to_string()), None);
+    assert_eq!(contract.get_native_deposit_balance("terraagent.testnet".into()), fee.to_string());
+    testing_env!(ctx("terraagent.testnet").account_balance(NearToken::from_near(30)).prepaid_gas(Gas::from_tgas(40)).build());
+    let _ = contract.claim_native_near(fee.to_string(), None);
+    assert_eq!(contract.get_native_deposit_balance("terraagent.testnet".into()), "0");
 }

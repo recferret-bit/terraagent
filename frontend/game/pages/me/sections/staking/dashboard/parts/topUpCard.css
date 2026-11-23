@@ -1,0 +1,135 @@
+.ta-stk-topup-block {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  filter: drop-shadow(0 0 12px color-mix(in srgb, var(--ta-orange) 32%, transparent));
+  transition: filter var(--ta-dur-quick) ease;
+}
+
+.ta-stk-topup-block:has(.is-clickable:hover),
+.ta-stk-topup-block:has(.is-clickable:focus-within) {
+  filter: drop-shadow(0 0 22px color-mix(in srgb, var(--ta-orange) 55%, transparent));
+}
+
+.ta-stk-topup-block:has(.is-maxed) {
+  filter: none;
+}
+
+.ta-stk-topup-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px 20px;
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--ta-orange) 18%, var(--ta-plate)),
+    color-mix(in srgb, var(--ta-orange) 5%, var(--ta-plate-2))
+  );
+  border: 1.5px solid var(--ta-orange);
+  border-top: 3px solid var(--ta-orange-hi);
+  box-shadow: var(--ta-glow-1);
+  transition: transform var(--ta-dur-quick) ease, border-color var(--ta-dur-quick) ease, box-shadow var(--ta-dur-quick) ease, background var(--ta-dur-quick) ease;
+}
+
+.ta-stk-topup-card.is-clickable {
+  cursor: pointer;
+}
+
+.ta-stk-topup-card.is-clickable:hover,
+.ta-stk-topup-card.is-clickable:focus-within {
+  transform: translateY(-2px);
+  border-color: var(--ta-orange-hi);
+  box-shadow: var(--ta-glow-3);
+}
+
+.ta-stk-topup-card.is-maxed {
+  border-color: var(--ta-terra);
+  border-top-color: var(--ta-terra);
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--ta-terra) 14%, var(--ta-plate)),
+    var(--ta-plate-2)
+  );
+  box-shadow: none;
+}
+
+.ta-stk-topup-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.ta-stk-topup-info {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.ta-stk-topup-tier {
+  font-family: var(--ta-font-display);
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--ta-hull);
+  text-shadow: 0 0 12px color-mix(in srgb, var(--ta-orange) 65%, transparent);
+}
+
+.ta-stk-topup-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  color: var(--ta-text-2);
+}
+
+.ta-stk-topup-hint {
+  font-family: var(--ta-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  color: var(--ta-orange-hi);
+  border: 1px dashed color-mix(in srgb, var(--ta-orange) 65%, var(--ta-seam-3));
+  background: color-mix(in srgb, var(--ta-orange) 10%, var(--ta-deep));
+}
+
+.ta-stk-topup-next {
+  font-family: var(--ta-font-mono);
+  font-size: 12px;
+  color: var(--ta-orange-hi);
+}
+
+.ta-stk-topup-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.ta-stk-topup-progress-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ta-stk-topup-progress-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-family: var(--ta-font-mono);
+  font-size: 12px;
+  color: var(--ta-text-2);
+}
+
+.ta-stk-topup-bar {
+  height: 10px;
+  background: color-mix(in srgb, var(--ta-void) 75%, var(--ta-seam));
+  border: 1px solid color-mix(in srgb, var(--ta-orange) 35%, var(--ta-seam-3));
+}

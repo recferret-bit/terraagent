@@ -1,3 +1,4 @@
+import type {} from '../registry/types';
 import { browserDeps } from './browser';
 import { AnalyticsClient, type Props } from './client';
 
@@ -28,6 +29,6 @@ declare module '../registry/types' {
 }
 
 /** Dev helper: `window.__track.setConsent(true); __track.track('x'); await __track.flush()`. */
-if (import.meta.env?.DEV && typeof window !== 'undefined') {
+if ((import.meta as { env?: { DEV?: boolean } }).env?.DEV && typeof window !== 'undefined') {
   (window as unknown as { __track: unknown }).__track = { track, setConsent, getConsent, flush };
 }

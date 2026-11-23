@@ -45,6 +45,8 @@ export const VoteInput = z.object({
   proposalId: z.number().int().nonnegative(),
   voter: AccountId,
   vote: DaoVote,
+  /** W28-06 vote weight in bp (`10 000` = one vote, `15 000` = Tier 3+ `1.5x`); absent = one vote. */
+  weightBp: z.number().int().min(1).max(100_000).optional(),
 });
 export type VoteInput = z.infer<typeof VoteInput>;
 
@@ -99,6 +101,7 @@ export const DaoProposalView = z.strictObject({
   state: DaoProposalState,
   yes: z.number().int().nonnegative(),
   no: z.number().int().nonnegative(),
+  yesWeightBp: z.number().int().positive().optional(),
   votes: z.array(z.strictObject({ voter: AccountId, vote: DaoVote })),
 });
 export type DaoProposalView = z.infer<typeof DaoProposalView>;

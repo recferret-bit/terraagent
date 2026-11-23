@@ -5,7 +5,10 @@ import { AuthTokenService } from '../core/auth/index.js';
 import { APP_ENV, type AppEnv } from '../core/tokens.js';
 import { FlagsService } from '../flags/flags.service.js';
 import { W12SeedService } from '../progression/w12-seed.service.js';
+import type { PrismaClient } from '@terra/db';
+import { PRISMA } from '../db/db.module.js';
 import { resolveMePlayer } from './me-auth.js';
+import { aliasDevPlayer } from './me-dev-alias.js';
 import { MeAchievementsService } from './me-achievements.service.js';
 
 @Controller('me')
@@ -16,12 +19,13 @@ export class MeAchievementsController {
     @Inject(FlagsService) private readonly flags: FlagsService,
     @Optional() @Inject(APP_ENV) private readonly env?: AppEnv,
     @Optional() @Inject(W12SeedService) private readonly seed?: W12SeedService,
+    @Optional() @Inject(PRISMA) private readonly prisma?: PrismaClient,
   ) {}
 
   @Get('achievements')
   async achievements(@Req() req: IncomingMessage): Promise<MeAchievementsResponse> {
     const prod = this.env?.NODE_ENV === 'production';
-    const player = resolveMePlayer(req, this.tokens, this.flags, prod);
+    const player = await aliasDevPlayer(resolveMePlayer(req, this.tokens, this.flags, prod), this.prisma, prod);
     let wavesOverride: string | undefined;
     if (!prod) {
       if (player.id === 'pr_dev_w12') await this.seed?.ensureSeeded(player.id);

@@ -1,7 +1,9 @@
 import 'reflect-metadata';
+import type { IncomingMessage, ServerResponse } from 'node:http';
 import { fileURLToPath } from 'node:url';
 import { Module, type DynamicModule, type INestApplication } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { coreEnv, parseEnv, readEnvSource, type EnvSection } from '@terra/config';
 import type { DestinationStream, Logger } from 'pino';
 import { corsOrigin } from './core/cors';
@@ -43,7 +45,23 @@ export async function createApp(options: CreateAppOptions = {}): Promise<Created
   const source = options.source ?? readEnvSource(here('../../../'));
   const env = parseEnv(sections, source) as unknown as AppEnv;
   const root = createRootLogger({ level: env.LOG_LEVEL, nodeEnv: env.NODE_ENV, layerLevels: env.LOG_LEVELS as string | undefined, destination: options.logDestination });
-  const app = await NestFactory.create(AppModule.build(found.map((m) => m.module), env, root), { logger: false });
+  const app = await NestFactory.create<NestExpressApplication>(
+    AppModule.build(found.map((m) => m.module), env, root),
+    { logger: false, bodyParser: false },
+  );
+  app.use((req: IncomingMessage, res: ServerResponse, next: () => void) => {
+    const len = Number(req.headers['content-length'] ?? 0);
+    const limit = req.url?.startsWith('/v1/internal/sim/') ? 16 * 1024 * 1024 : 1024 * 1024;
+    if (Number.isFinite(len) && len > limit) {
+      res.statusCode = 413;
+      res.setHeader('content-type', 'application/json');
+      res.end(JSON.stringify({ errorCode: 'PAYLOAD_TOO_LARGE', error: { code: 'payload_too_large', message: 'Request body too large' } }));
+      return;
+    }
+    next();
+  });
+  app.useBodyParser('json', { limit: '16mb' });
+  app.useBodyParser('urlencoded', { extended: true, limit: '1mb' });
   app.useLogger(new PinoNestLogger(layerLogger(root, 'infra', env.LOG_LEVELS as string | undefined)));
   app.use(requestIdMiddleware);
   app.useGlobalFilters(new AllExceptionsFilter(layerLogger(root, 'http', env.LOG_LEVELS as string | undefined), env.NODE_ENV === 'production'));

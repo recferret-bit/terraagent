@@ -15,6 +15,7 @@ import {
 } from '@terra/render/particles';
 import { CombatBurstSystem } from '@terra/render/particles/CombatBurstSystem';
 import type { PlanetKind } from '@terra/render/planets/PlanetSpec';
+import { applyHubPrestige, defaultHubTierForArchetype, hubUplinkBeam } from '@terra/render/prestige/hubPrestige';
 import { ProjectileVfxSystem } from '@terra/render/visuals/projectiles';
 import { InstancedRangeRings } from '@terra/render/visuals/rings';
 import { LightningStrikeFx, MeteorStrikeFx, TwisterFx } from '@terra/render/weather';
@@ -174,6 +175,9 @@ export function createArchetypeRig(
   const pedRadius = Math.max(0.68, Math.max(fp[0] * 0.52, fp[1] * 0.52, meshSize.x * 0.56, meshSize.z * 0.56));
   group.add(buildPedestal(pedRadius));
 
+  const defaultTier = defaultHubTierForArchetype(slot.spec.targetId);
+  if (defaultTier > 0) applyHubPrestige(mesh, defaultTier);
+
   if (mode === 'build33') setArchetypeBuildProgress(mesh, 0.36);
   if (mode === 'ruin') setArchetypeRuin(mesh, true);
 
@@ -190,6 +194,7 @@ export function createArchetypeRig(
       frameCameraForBox(vp, meshBox, t * 0.35, 0.52);
     },
     dispose: () => {
+      hubUplinkBeam(mesh)?.dispose();
       vp.scene.remove(group);
       disposeGroupGeometries(group);
     },

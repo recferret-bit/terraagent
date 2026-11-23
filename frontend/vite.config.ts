@@ -1,7 +1,8 @@
 import { defineConfig, type Plugin } from 'vite';
-import { existsSync, readFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { parseEnv } from 'node:util';
+import { prerenderLandingHtml } from './landing/seoPrerender';
 
 const frontend = import.meta.dirname;
 const root = resolve(frontend, '..');
@@ -28,48 +29,73 @@ function splitUrl(raw: string): { path: string; search: string } {
   return qAt === -1 ? { path: raw, search: '' } : { path: raw.slice(0, qAt), search: raw.slice(qAt) };
 }
 
-/** `/dev/chain/tx` and `/dev/chain/tx/*` serve the receipt page. Leaves `/v1` for the app proxy. */
 function rewriteChainTx(req: { url?: string }): void {
   const { path, search } = splitUrl(req.url ?? '');
   if (path !== '/dev/chain/tx' && !path.startsWith('/dev/chain/tx/')) return;
   req.url = `/dev/chain/tx.html${search}`;
 }
 
-/**
- * `/dev/mock-oauth` (no slash) is the mock login page. Without this, Vite's SPA fallback serves the hub,
- * so the Save progress popup has no `#mo-preset`.
- */
 function rewriteMockOauth(req: { url?: string }): void {
   const { path, search } = splitUrl(req.url ?? '');
   if (path !== '/dev/mock-oauth') return;
   req.url = `/dev/mock-oauth/index.html${search}`;
 }
 
-/** `/me` and `/me/` serve `me.html` (`OWNER_TASKS.md` N2). */
 function rewriteMePage(req: { url?: string }): void {
   const { path, search } = splitUrl(req.url ?? '');
   if (path !== '/me' && path !== '/me/') return;
   req.url = `/me.html${search}`;
 }
 
-/** `/deed` and `/deed/*` serve `deed.html` (W20-12 public share page). */
 function rewriteDeedPage(req: { url?: string }): void {
   const { path, search } = splitUrl(req.url ?? '');
   if (path !== '/deed' && !path.startsWith('/deed/')) return;
   req.url = `/deed.html${search}`;
 }
 
-/** `/dev/economy-sim` (no slash) serves `/dev/economy-sim/index.html`. */
 function rewriteEconomySim(req: { url?: string }): void {
   const { path, search } = splitUrl(req.url ?? '');
   if (path !== '/dev/economy-sim') return;
   req.url = `/dev/economy-sim/index.html${search}`;
 }
 
+function emitDeedEntryAssets(distDir: string): void {
+  const deedHtmlPath = resolve(distDir, 'deed.html');
+  if (!existsSync(deedHtmlPath)) return;
+  const html = readFileSync(deedHtmlPath, 'utf8');
+  const jsMatch = /<script\b[^>]*type=["']module["'][^>]*\bsrc=["'](\/assets\/deed-[^"']+\.js)["']/i.exec(html);
+  const assetsDir = resolve(distDir, 'assets');
+  mkdirSync(assetsDir, { recursive: true });
+  if (jsMatch?.[1]) {
+    const srcJs = resolve(distDir, jsMatch[1].slice(1));
+    if (existsSync(srcJs)) cpSync(srcJs, resolve(assetsDir, 'deed-entry.js'));
+  }
+  const cssParts: string[] = [];
+  for (const tag of html.matchAll(/<link\b[^>]*\brel=["']stylesheet["'][^>]*>/gi)) {
+    const hrefMatch = /\bhref=["'](\/assets\/[^"']+\.css)["']/i.exec(tag[0]);
+    if (!hrefMatch?.[1] || hrefMatch[1].startsWith('/assets/base-')) continue;
+    const srcCss = resolve(distDir, hrefMatch[1].slice(1));
+    if (existsSync(srcCss)) cssParts.push(readFileSync(srcCss, 'utf8').replace(/^@import[^;]+;\s*/gm, ''));
+  }
+  if (cssParts.length > 0) writeFileSync(resolve(assetsDir, 'deed-entry.css'), cssParts.join('\n'));
+}
+
 const chainTxPage: Plugin = {
   name: 'chain-tx-page',
   configureServer(server) {
-    server.middlewares.use((req, _res, next) => {
+    server.middlewares.use((req, res, next) => {
+      const { path } = splitUrl(req.url ?? '');
+      if (path === '/assets/deed-entry.js') {
+        req.url = '/game/pages/deed/main.ts';
+        next();
+        return;
+      }
+      if (path === '/assets/deed-entry.css') {
+        res.statusCode = 200;
+        res.setHeader('Content-Type', 'text/css; charset=utf-8');
+        res.end('@import "/game/features/deed/deedCardArt.css";\n@import "/game/pages/deed/deedPage.css";\n');
+        return;
+      }
       rewriteChainTx(req);
       rewriteMockOauth(req);
       rewriteMePage(req);
@@ -88,12 +114,29 @@ const chainTxPage: Plugin = {
       next();
     });
   },
+  closeBundle() {
+    emitDeedEntryAssets(resolve(frontend, 'dist'));
+  },
+};
+
+const landingSeoPlugin: Plugin = {
+  name: 'landing-seo-prerender',
+  transformIndexHtml: {
+    order: 'post',
+    handler(html, ctx) {
+      const file = ctx.filename.replace(/\\/g, '/');
+      if (ctx.path === '/landing.html' || file.endsWith('/landing.html')) {
+        return prerenderLandingHtml(html);
+      }
+      return html;
+    },
+  },
 };
 
 // One Vite app rooted at frontend/. URLs mirror the file layout: /play.html, /landing.html, /playground.html, /design/.
 // `@terra/*` (render, sim, contracts, …) resolve as npm workspace packages; there are no path aliases.
 export default defineConfig({
-  plugins: [chainTxPage],
+  plugins: [chainTxPage, landingSeoPlugin],
   root: frontend,
   envDir,
   ...(defineAppEnv
@@ -106,14 +149,24 @@ export default defineConfig({
     outDir: resolve(frontend, 'dist'),
     emptyOutDir: true,
     rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.replace(/\\/g, '/').includes('/node_modules/three/')) {
+            return 'three-vendor';
+          }
+          return undefined;
+        },
+      },
       input: {
         main: resolve(frontend, 'index.html'),
         landing: resolve(frontend, 'landing.html'),
+        notFound: resolve(frontend, '404.html'),
         play: resolve(frontend, 'play.html'),
         me: resolve(frontend, 'me.html'),
         deed: resolve(frontend, 'deed.html'),
         trade: resolve(frontend, 'trade.html'),
         playground: resolve(frontend, 'playground.html'),
+        apiAtlas: resolve(frontend, 'dev/api-atlas/index.html'),
         devChain: resolve(frontend, 'dev/chain/index.html'),
         devChainTx: resolve(frontend, 'dev/chain/tx.html'),
         devEconomySim: resolve(frontend, 'dev/economy-sim/index.html'),

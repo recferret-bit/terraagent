@@ -1,6 +1,9 @@
 import type { PlanetListV1, PlanetSummaryV1, SectorId } from '@terra/contracts';
-import { getViewportPreset, isShaderOptimized, type ViewportPreset } from '@terra/render/core/perfConfig';
+import { onPerfConfigChange } from '@terra/render/core/perfConfig';
+import { onShadowQualityChange } from '@terra/render/core/shadowQuality';
+import type { OrbitalGlobeMarkerInput, OrbitalProjectedFrame } from '@terra/render/orbit/types';
 import { PLANET_KINDS, PLANET_SPECS, type PlanetKind } from '@terra/render/planets/PlanetSpec';
+import { mountPlanetThumbnails, type PlanetThumbnailsHandle } from '@terra/render/planets/PlanetThumbnails';
 import { notePlanetPickerViewed, notePlanetSelected } from '../../design/analytics/play';
 import { PilotAccess } from '../../design/pilot/PilotAccess';
 import { probeActiveHomeColony, type ActiveHomeColony } from '../../design/pilot/activeHomeColony';
@@ -16,12 +19,16 @@ import {
   type SectorIntentInput,
   type SectorIntentV1,
 } from './lobby/orbitalPickerModel';
+import { OrbitalArHud } from './orbitalHud/OrbitalArHud';
+import './orbitalHud/orbitalArHud.css';
 import {
-  bindSectorChooserEvents,
-  renderSectorChooserHtml,
-} from './lobby/sectorChooser';
+  SettingsModal,
+  createInitialMenuSettings,
+  type MenuSettings,
+} from './parts/settingsModal';
 import { updateWorldCardElement, worldCardHtml } from './worldCard';
 
+export type { MenuSettings } from './parts/settingsModal';
 export type { SectorIntentV1, SectorIntentInput } from './lobby/orbitalPickerModel';
 export {
   LobbyPlanetFeed,
@@ -33,14 +40,6 @@ export {
   type LobbyWsLike,
 } from './lobby/lobbyPlanetFeed';
 
-export interface MenuSettings {
-  bloom: boolean;
-  quality: 'low' | 'high';
-  skipCinematic: boolean;
-  optimized: boolean;
-  resolution: ViewportPreset;
-}
-
 export interface MenuCallbacks {
   onPlanet(kind: PlanetKind): void;
   onDeploy(
@@ -50,7 +49,7 @@ export interface MenuCallbacks {
     sectorIntent: SectorIntentV1,
   ): void;
   onSettings(s: MenuSettings): void;
-  /** Seed edited or randomised. */
+  /** Optional legacy seed hook (seed input removed from UI; `?seed=` URL param still supported). */
   onSeed?(seed: number): void;
   /** Sector placement intent changed (`{ mode: 'auto' }` or `{ mode: 'chosen', sectorId }`). */
   onSector?(sectorIntent: SectorIntentV1): void;
@@ -66,64 +65,18 @@ export interface MainMenuOptions {
   readonly probeFetch?: typeof fetch;
 }
 
-function buildMenuInnerHtml(
-  planetsByKind: Readonly<Record<PlanetKind, PlanetSummaryV1>>,
-  selectedKind: PlanetKind,
-  sectorIntent: SectorIntentV1,
-  queuePaused: boolean,
-  settings: MenuSettings,
-): string {
+function buildMenuShellHtml(planetsByKind: Readonly<Record<PlanetKind, PlanetSummaryV1>>): string {
   const cards = PLANET_KINDS.map((k) => worldCardHtml(k, planetsByKind[k])).join('');
-  const { optimized, resolution } = settings;
-  const resOpts: [ViewportPreset, string][] = [
-    ['auto', 'AUTO'],
-    ['2560x1440', '2560×1440'],
-    ['1920x1080', '1920×1080'],
-    ['1280x720', '1280×720'],
-  ];
-  const resRadios = resOpts
-    .map(
-      ([v, lbl]) =>
-        `<label><input type="radio" name="s-res" value="${v}" ${resolution === v ? 'checked' : ''} /><span>${lbl}</span></label>`,
-    )
-    .join('');
-  const sectorChooser = renderSectorChooserHtml(
-    selectedKind,
-    planetsByKind[selectedKind],
-    sectorIntent,
-    queuePaused,
-  );
-  const landingHref =
-    typeof location !== 'undefined' && location.hostname === 'play.terraagent.fun'
-      ? 'https://terraagent.fun/'
-      : '/landing.html';
   return `
-      <div class="menu-top"><div><h1 class="title">TERRA<b>AGENT</b></h1><div class="subtitle">AUTONOMOUS COLONY BUILDER · SELECT A WORLD</div></div><a class="btn btn-ghost btn-sm" href="${landingHref}">◂ TERRAAGENT.FUN</a></div>
+      <div class="menu-top">
+        <div class="menu-brand">
+          <h1 class="title">TERRA<b>AGENT</b></h1>
+          <div class="subtitle">AUTONOMOUS COLONY BUILDER · SELECT A WORLD</div>
+        </div>
+        <div class="menu-top-actions"></div>
+      </div>
       <div class="menu-bottom">
         <div class="cards">${cards}</div>
-        <div class="deploy-box plate">
-          <div id="sector-picker-host">${sectorChooser}</div>
-          <div class="field-label">WORLD SEED</div>
-          <div class="row"><input class="input" id="seed" inputmode="numeric" title="World seed" /><button class="btn btn-icon" id="dice" title="Randomise seed">🎲</button></div>
-          <div class="settings">
-            <label><input type="checkbox" id="s-bloom" checked /> bloom</label>
-            <label>quality <select id="s-q"><option value="high">high</option><option value="low">low</option></select></label>
-            <label><input type="checkbox" id="s-skip" /> skip cinematic</label>
-          </div>
-          <div class="radio-group">
-            <div class="field-label">OPTIMIZATIONS</div>
-            <div class="radios">
-              <label><input type="radio" name="s-opt" value="1" ${optimized ? 'checked' : ''} /><span>ON</span></label>
-              <label><input type="radio" name="s-opt" value="0" ${!optimized ? 'checked' : ''} /><span>OFF</span></label>
-            </div>
-          </div>
-          <div class="radio-group">
-            <div class="field-label">VIEWPORT W×H</div>
-            <div class="radios">${resRadios}</div>
-          </div>
-          <div id="menu-err"></div>
-          <button class="btn btn-primary btn-lg" id="deploy">DEPLOY</button>
-        </div>
       </div>`;
 }
 
@@ -131,23 +84,21 @@ export class MainMenu {
   readonly el = document.createElement('div');
   kind: PlanetKind;
   seed: number;
-  settings: MenuSettings = {
-    bloom: true,
-    quality: 'high',
-    skipCinematic: false,
-    optimized: isShaderOptimized(),
-    resolution: getViewportPreset(),
-  };
+  settings: MenuSettings = createInitialMenuSettings();
+  private readonly explicitSeed: number | undefined;
   private planetsByKind: Record<PlanetKind, PlanetSummaryV1>;
   private sectorIntent: SectorIntentV1;
   private queuePaused = false;
   private pilotAccess: PilotAccess;
-  private deployBtn!: HTMLButtonElement;
-  private seedInput!: HTMLInputElement;
-  private errEl!: HTMLElement;
-  private sectorHostEl!: HTMLElement;
+  private arHud: OrbitalArHud;
+  private settingsModal: SettingsModal;
+  private thumbnails: PlanetThumbnailsHandle | null = null;
+  private deployBtn: HTMLButtonElement;
+  private errEl: HTMLElement;
   private ownedFeed: LobbyPlanetFeed | null = null;
   private unsubscribeFeed: (() => void) | null = null;
+  private readonly offFpsCap: () => void;
+  private readonly offShadowQuality: () => void;
   private activeColony: ActiveHomeColony | null = null;
   private disposed = false;
   private readonly autoProbeColony: boolean;
@@ -161,6 +112,7 @@ export class MainMenu {
     options?: MainMenuOptions,
   ) {
     this.kind = kind;
+    this.explicitSeed = seed;
     this.seed = seed ?? PLANET_SPECS[kind].seed;
     this.autoProbeColony = Boolean(options?.autoProbeColony);
     this.probeFetch = options?.probeFetch;
@@ -173,28 +125,52 @@ export class MainMenu {
     this.sectorIntent = normalizeSectorIntent(options?.sectorIntent);
     this.el.id = 'menu';
     this.el.className = 'ui-layer';
-    this.el.innerHTML = buildMenuInnerHtml(
-      this.planetsByKind,
-      this.kind,
-      this.sectorIntent,
-      this.queuePaused,
-      this.settings,
-    );
+    this.el.innerHTML = buildMenuShellHtml(this.planetsByKind);
     parent.appendChild(this.el);
 
-    this.pilotAccess = new PilotAccess(this.el.querySelector<HTMLElement>('.menu-top')!, {
+    this.pilotAccess = new PilotAccess(this.el.querySelector<HTMLElement>('.menu-top-actions')!, {
       onAuthChange: () => {
         if (this.autoProbeColony) void this.probeActiveColony();
       },
     });
-    this.deployBtn = this.el.querySelector('#deploy')!;
-    this.seedInput = this.el.querySelector('#seed')!;
-    this.errEl = this.el.querySelector('#menu-err')!;
-    this.sectorHostEl = this.el.querySelector('#sector-picker-host')!;
+
+    this.arHud = new OrbitalArHud(
+      this.el,
+      {
+        kind: this.kind,
+        summary: this.planetsByKind[this.kind],
+        intent: this.sectorIntent,
+        queuePaused: this.queuePaused,
+        activeColony: this.activeColony,
+      },
+      {
+        onSectorSelect: (intent) => this.setSectorIntent(intent, true),
+        onDeploy: () => {
+          if (!this.canDeploy()) return;
+          this.cb.onDeploy(this.kind, this.seed, this.settings, this.getSectorIntent());
+        },
+      },
+    );
+    this.deployBtn = this.arHud.getDeployButton();
+    this.errEl = this.arHud.getErrorElement();
+
+    this.settingsModal = new SettingsModal(this.el, this.settings, (next) => {
+      this.settings = next;
+      this.cb.onSettings(next);
+    });
+    this.offFpsCap = onPerfConfigChange((opt, res, cap) => {
+      if (this.settings.optimized === opt && this.settings.resolution === res && this.settings.fpsCap === cap) return;
+      this.settings = { ...this.settings, optimized: opt, resolution: res, fpsCap: cap };
+    });
+    this.offShadowQuality = onShadowQualityChange((shadows) => {
+      if (this.settings.shadows === shadows) return;
+      this.settings = { ...this.settings, shadows };
+    });
 
     this.bindControls();
-    this.bindSectorHost();
     this.select(kind, false);
+    this.mountCardThumbnails();
+    window.addEventListener('keydown', this.onKeyCapture, true);
 
     if (options?.feed) {
       this.attachFeed(options.feed);
@@ -208,96 +184,85 @@ export class MainMenu {
     notePlanetPickerViewed('play');
   }
 
+  private mountCardThumbnails(): void {
+    const canvases = [...this.el.querySelectorAll<HTMLCanvasElement>('canvas[data-planet]')];
+    this.thumbnails = mountPlanetThumbnails(canvases, { size: 160, spinMultiplier: 3, syncWithOrbitMenu: true });
+  }
+
   private bindControls(): void {
     this.el.querySelectorAll<HTMLElement>('.world-card').forEach((c) => {
       c.onclick = () => this.select(c.dataset.k as PlanetKind, true);
     });
-    this.seedInput.oninput = () => {
-      const n = parseInt(this.seedInput.value, 10);
-      if (Number.isFinite(n)) {
-        this.seed = n >>> 0;
-        this.cb.onSeed?.(this.seed);
-      }
-    };
-    (this.el.querySelector('#dice') as HTMLElement).onclick = () => {
-      this.seed = (Math.random() * 99999) | 0;
-      this.seedInput.value = String(this.seed);
-      this.cb.onSeed?.(this.seed);
-    };
-    const sb = this.el.querySelector('#s-bloom') as HTMLInputElement;
-    const sq = this.el.querySelector('#s-q') as HTMLSelectElement;
-    const ss = this.el.querySelector('#s-skip') as HTMLInputElement;
-    const push = () => {
-      const optEl = this.el.querySelector<HTMLInputElement>('input[name="s-opt"]:checked');
-      const resEl = this.el.querySelector<HTMLInputElement>('input[name="s-res"]:checked');
-      this.settings = {
-        bloom: sb.checked,
-        quality: sq.value as 'low' | 'high',
-        skipCinematic: ss.checked,
-        optimized: optEl ? optEl.value === '1' : true,
-        resolution: (resEl?.value as ViewportPreset) ?? 'auto',
-      };
-      this.cb.onSettings(this.settings);
-    };
-    sb.onchange = sq.onchange = ss.onchange = push;
-    this.el
-      .querySelectorAll<HTMLInputElement>('input[name="s-opt"], input[name="s-res"]')
-      .forEach((r) => (r.onchange = push));
-    this.deployBtn.onclick = () => {
-      this.deployBtn.disabled = true;
-      this.cb.onDeploy(this.kind, this.seed, this.settings, this.getSectorIntent());
-    };
   }
 
-  private bindSectorHost(): void {
-    bindSectorChooserEvents(this.sectorHostEl, (intent) => {
-      this.setSectorIntent(intent, true);
-    });
+  private onKeyCapture = (e: KeyboardEvent): void => {
+    if (e.key !== 'Escape' || this.disposed || this.el.classList.contains('hide')) return;
+    if (this.handleEscape()) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  };
+
+  handleEscape(): boolean {
+    if (this.settingsModal.isOpen()) {
+      this.settingsModal.close();
+      return true;
+    }
+    if (typeof document !== 'undefined' && document.querySelector('dialog[open]')) {
+      return false;
+    }
+    this.settingsModal.open();
+    return true;
   }
 
-  private renderSectorChooser(): void {
+  openSettings(): void { this.settingsModal.open(); }
+  closeSettings(): void { this.settingsModal.close(); }
+  isSettingsOpen(): boolean { return this.settingsModal.isOpen(); }
+
+  private renderArHud(): void {
     const summary = this.planetsByKind[this.kind];
     if (this.sectorIntent.mode === 'chosen') {
       const chosenId = this.sectorIntent.sectorId;
-      const existsInLand = summary.sectors.some(
-        (s) => s.kind === 'land' && s.sectorId === chosenId,
-      );
-      if (!existsInLand) {
-        this.sectorIntent = { mode: 'auto' };
-      }
+      const existsInLand = summary.sectors.some((s) => s.kind === 'land' && s.sectorId === chosenId);
+      if (!existsInLand) this.sectorIntent = { mode: 'auto' };
     }
-    this.sectorHostEl.innerHTML = renderSectorChooserHtml(
-      this.kind,
+    this.arHud.update({
+      kind: this.kind,
       summary,
-      this.sectorIntent,
-      this.queuePaused,
-    );
-    this.bindSectorHost();
+      intent: this.sectorIntent,
+      queuePaused: this.queuePaused,
+      activeColony: this.activeColony,
+    });
+  }
+
+  getGlobeMarkers(): readonly OrbitalGlobeMarkerInput[] {
+    return this.arHud.getGlobeMarkers();
+  }
+
+  updateArProjection(frame: OrbitalProjectedFrame | null): void {
+    this.arHud.syncProjection(frame);
   }
 
   select(k: PlanetKind, notify: boolean): void {
     if (this.activeColony && k !== this.activeColony.kind) return;
     const changed = k !== this.kind;
     this.kind = k;
-    if (changed) this.seed = PLANET_SPECS[k].seed;
-    this.seedInput.value = String(this.seed);
+    if (changed) this.seed = this.explicitSeed ?? PLANET_SPECS[k].seed;
     this.el
       .querySelectorAll<HTMLElement>('.world-card')
       .forEach((c) => c.classList.toggle('sel', c.dataset.k === k));
-    this.renderSectorChooser();
+    this.renderArHud();
     if (notify) {
       notePlanetSelected(k, 'play');
       this.cb.onPlanet(k);
     }
   }
 
-  getActiveColony(): ActiveHomeColony | null {
-    return this.activeColony;
-  }
-
-  hasActiveColony(): boolean {
-    return this.activeColony !== null;
-  }
+  /** Id of the planet selected in the menu (the orbit stage shows its prestige), or null when unknown. */
+  selectedPlanetId(): string | null { return this.planetsByKind[this.kind]?.id ?? null; }
+  getActiveColony(): ActiveHomeColony | null { return this.activeColony; }
+  hasActiveColony(): boolean { return this.activeColony !== null; }
+  canDeploy(): boolean { return !this.arHud.isForeignSectorSelected(); }
 
   setActiveColony(active: ActiveHomeColony | null): void {
     this.activeColony = active;
@@ -305,6 +270,8 @@ export class MainMenu {
     if (active && this.kind !== active.kind) {
       this.select(active.kind, true);
       applyActiveColonyToMenuDom(this.el, active);
+    } else {
+      this.renderArHud();
     }
   }
 
@@ -331,7 +298,7 @@ export class MainMenu {
     } else {
       this.sectorIntent = { mode: 'auto' };
     }
-    this.renderSectorChooser();
+    this.renderArHud();
     if (notify) this.cb.onSector?.(this.getSectorIntent());
   }
 
@@ -347,9 +314,7 @@ export class MainMenu {
     return this.planetsByKind;
   }
 
-  isQueuePaused(): boolean {
-    return this.queuePaused;
-  }
+  isQueuePaused(): boolean { return this.queuePaused; }
 
   setPlanetList(list: PlanetListV1 | readonly PlanetSummaryV1[], queuePaused?: boolean): void {
     this.planetsByKind = mergePlanetListIntoCanonicalMap(list, this.planetsByKind);
@@ -364,10 +329,8 @@ export class MainMenu {
         updateWorldCardElement(cardEl, this.planetsByKind[k]);
       }
     });
-    if (this.activeColony) {
-      applyActiveColonyToMenuDom(this.el, this.activeColony);
-    }
-    this.renderSectorChooser();
+    if (this.activeColony) applyActiveColonyToMenuDom(this.el, this.activeColony);
+    this.renderArHud();
   }
 
   updatePlanets(list: PlanetListV1 | readonly PlanetSummaryV1[], queuePaused?: boolean): void {
@@ -391,30 +354,41 @@ export class MainMenu {
   }
 
   setError(msg: string): void {
+    this.arHud.syncLockState();
     this.errEl.textContent = msg;
-    this.deployBtn.disabled = false;
+    this.deployBtn.disabled = !this.canDeploy();
   }
 
   hide(): void {
+    this.settingsModal.close();
+    this.thumbnails?.setPaused(true);
     this.el.classList.add('hide');
+    this.ownedFeed?.suspend();
   }
 
   show(): void {
     this.el.classList.remove('hide');
-    this.deployBtn.disabled = false;
     this.errEl.textContent = '';
+    this.arHud.syncLockState();
+    this.thumbnails?.setPaused(false);
+    this.ownedFeed?.resume();
   }
 
-  hasLinkedPilot(): boolean {
-    return this.pilotAccess.hasLinkedPilot();
-  }
+  hasLinkedPilot(): boolean { return this.pilotAccess.hasLinkedPilot(); }
 
   dispose(): void {
     this.disposed = true;
+    this.offFpsCap();
+    this.offShadowQuality();
+    window.removeEventListener('keydown', this.onKeyCapture, true);
     this.unsubscribeFeed?.();
     this.unsubscribeFeed = null;
     this.ownedFeed?.dispose();
     this.ownedFeed = null;
+    this.thumbnails?.dispose();
+    this.thumbnails = null;
+    this.arHud.dispose();
+    this.settingsModal.dispose();
     this.pilotAccess.dispose();
     this.el.remove();
   }

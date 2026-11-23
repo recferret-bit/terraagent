@@ -14,6 +14,7 @@ const DEFAULT_SPIN_MULT = 6;
 export interface PlanetThumbnailsOptions {
   readonly size?: number;
   readonly spinMultiplier?: number;
+  readonly syncWithOrbitMenu?: boolean;
 }
 
 export interface PlanetThumbnailsHandle {
@@ -61,6 +62,7 @@ function drawThumbItem(
   renderer: THREE.WebGLRenderer,
   composer: EffectComposer,
   renderPass: RenderPass,
+  pixelated: boolean,
 ): void {
   const { cv, ctx } = it;
   const dpr = Math.min(typeof devicePixelRatio === 'number' ? devicePixelRatio : 1, 2);
@@ -75,7 +77,15 @@ function drawThumbItem(
   composer.render();
   ctx.clearRect(0, 0, w, h);
   const s = Math.min(w, h);
+  // Nearest blit keeps the pixel-art pass's blocks; smoothing would blur them back into a photo.
+  ctx.imageSmoothingEnabled = !pixelated;
   ctx.drawImage(renderer.domElement, (w - s) / 2, (h - s) / 2, s, s);
+  cv.classList.add('is-live');
+  const parent = cv.parentElement;
+  if (parent) {
+    parent.classList.add('is-live');
+    parent.dataset.stageState = 'live';
+  }
 }
 
 /**
@@ -88,6 +98,9 @@ export function mountPlanetThumbnails(
   opts: PlanetThumbnailsOptions = {},
 ): PlanetThumbnailsHandle | null {
   if (!canvases.length) return null;
+  if (typeof WebGLRenderingContext === 'undefined' && typeof WebGL2RenderingContext === 'undefined') {
+    return null;
+  }
   const size = opts.size ?? DEFAULT_SIZE;
   const spinMult = opts.spinMultiplier ?? DEFAULT_SPIN_MULT;
 
@@ -116,19 +129,34 @@ export function mountPlanetThumbnails(
   let paused = false;
   let disposed = false;
 
+  let thumbAccumDt = 0;
+  let thumbDrawnOnce = false;
   const drawAll = (dt: number, t: number) => {
     if (paused || disposed) return;
+    thumbAccumDt += dt;
+    if (opts.syncWithOrbitMenu && thumbDrawnOnce && thumbAccumDt < 0.12) return;
+    const stepDt = thumbDrawnOnce ? thumbAccumDt : dt;
+    thumbAccumDt = 0;
+    let drawnAny = false;
     for (const it of items) {
       if (!host.isVisible(it.cv)) continue;
-      it.globe.update(dt * spinMult, t);
-      drawThumbItem(it, renderer, composer, renderPass);
+      if (opts.syncWithOrbitMenu) {
+        it.globe.shared.uTime.value = t;
+        it.globe.spin.rotation.y = Math.sin(t * 0.24) * 0.16;
+        it.globe.clouds.rotation.y += stepDt * 0.036;
+      } else {
+        it.globe.update(stepDt * spinMult, t);
+      }
+      drawThumbItem(it, renderer, composer, renderPass, pixelArt.enabled);
+      drawnAny = true;
     }
+    if (drawnAny) thumbDrawnOnce = true;
   };
 
   const offPixel = onPixelArtChange((enabled) => {
     if (disposed) return;
     pixelArt.enabled = enabled;
-    for (const it of items) drawThumbItem(it, renderer, composer, renderPass);
+    for (const it of items) drawThumbItem(it, renderer, composer, renderPass, pixelArt.enabled);
   });
 
   const host = new StageHost({
@@ -142,7 +170,7 @@ export function mountPlanetThumbnails(
     setPaused(nextPaused: boolean) {
       paused = nextPaused;
       if (!paused && !disposed) {
-        for (const it of items) drawThumbItem(it, renderer, composer, renderPass);
+        for (const it of items) drawThumbItem(it, renderer, composer, renderPass, pixelArt.enabled);
       }
     },
     renderOnce() {

@@ -1,6 +1,7 @@
+import * as THREE from 'three';
 import type { ColonyViewport } from '@terra/render/core/createColonyViewport';
 import { applyPlanetLook } from '@terra/render/planets/applyPlanetLook';
-import type { HexTerrain } from '@terra/render/planets/hex';
+import { tileXZ, type HexTerrain } from '@terra/render/planets/hex';
 import type { PlanetKind } from '@terra/render/planets/PlanetSpec';
 import type { ClientFlagsStore } from '../../../core/flags';
 import type { LandfallController } from '../../../features/landfall';
@@ -14,8 +15,88 @@ import type { OnlineDayNightSync } from '../dayNightSync';
 import type { EntityMeshes } from '../EntityMeshes';
 import type { FeatureHud } from '../featureHud';
 import { extractPodDescentStatus, type PodDescentStatus } from '../podStatus';
-import type { PodLandingStateName } from '../PodTouchdownFx';
-import { resolveOnlinePlanetLook, syncSpaceTerrainOffset } from '../viewportHelper';
+import { POD_TOUCHDOWN_DESCENT_S, type ColonyLoadMode, type PodLandingStateName } from '../PodTouchdownFx';
+import { applySpaceVoidBackground, resolveOnlinePlanetLook, syncSpaceTerrainOffset } from '../viewportHelper';
+
+const tmpHqPos = new THREE.Vector3();
+
+/** Camera dive onto an existing base. `hold` keeps the HUD hidden until the dive ends. */
+export interface ArrivalHud {
+  hold: boolean;
+  /** When the HUD appears, clear selection and fold the Build pane. */
+  quiet: boolean;
+  /** Do not auto-select the HQ for this arrival. */
+  noSelect: boolean;
+  /** The orbital drop has been started at least once (a later terrain rebuild must not replay it). */
+  started: boolean;
+}
+
+type ArrivalHudHost = {
+  setVisible(visible: boolean): void;
+  collapseCommandDock(): void;
+};
+
+/** Shows the gameplay HUD once the returning-colony camera drop has finished. */
+export function settleArrivalHud(
+  arrival: ArrivalHud,
+  cam: { isOrbitalDropping(): boolean } | null,
+  landfall: { deselect(): void },
+  hud: ArrivalHudHost,
+): void {
+  if (!arrival.hold || cam?.isOrbitalDropping()) return;
+  releaseArrivalHud(arrival, landfall, hud);
+}
+
+function releaseArrivalHud(arrival: ArrivalHud, landfall: { deselect(): void }, hud: ArrivalHudHost): void {
+  const quiet = arrival.quiet;
+  arrival.hold = false;
+  arrival.quiet = false;
+  if (quiet) landfall.deselect();
+  hud.setVisible(true);
+  if (quiet) hud.collapseCommandDock();
+}
+
+function beginOrbitalDrop(cam: RTSCamera, terrain: HexTerrain | null, hqObj: THREE.Object3D | null, q: number, r: number): void {
+  if (hqObj) {
+    cam.follow(hqObj);
+    cam.startOrbitalDrop(hqObj.getWorldPosition(tmpHqPos), { duration: 1.55, followObj: hqObj });
+    return;
+  }
+  const [tx, tz] = tileXZ(q, r);
+  const ty = terrain ? terrain.heightAt(tx, tz) : 0;
+  cam.startOrbitalDrop(tmpHqPos.set(tx, ty, tz), { duration: 1.55, followObj: null });
+}
+
+/** Frames the colony. A drop onto an existing base hides the HUD until the camera is on the HQ. */
+function syncColonyArrival(deps: ViewOverlaySyncDeps, mode: ColonyLoadMode, status: PodDescentStatus): void {
+  const hqObj = deps.entities.ownHqObject();
+  const dropping = mode === 'direct' && Boolean(deps.orbitalCameraDrop) && !deps.sawPodDescending;
+  if (!deps.colonyFramed && deps.cam) {
+    deps.setColonyFramed(true);
+    deps.focusTile(status.q, status.r, true);
+    if (dropping && (!deps.arrival.started || deps.arrival.hold)) {
+      beginOrbitalDrop(deps.cam, deps.terrain, hqObj, status.q, status.r);
+      deps.arrival.started = true;
+      deps.arrival.hold = true;
+      deps.arrival.quiet = true;
+      deps.arrival.noSelect = true;
+    } else if (hqObj) {
+      deps.cam.follow(hqObj);
+    }
+  } else if (deps.cam && hqObj && !deps.cam.followTarget) {
+    deps.cam.follow(hqObj);
+  }
+  if (deps.arrival.hold && deps.cam?.isOrbitalDropping()) {
+    deps.landfall.deselect();
+    deps.hud.setVisible(false);
+    return;
+  }
+  if (deps.arrival.hold || deps.arrival.quiet) {
+    releaseArrivalHud(deps.arrival, deps.landfall, deps.hud);
+    return;
+  }
+  deps.hud.setVisible(true);
+}
 
 export function resolveSeatIndexFromSearch(search: string, v: ClientView): number | null {
   const asParam = new URLSearchParams(search).get('as')?.trim().toLowerCase() ?? '';
@@ -29,13 +110,16 @@ export function resolveSeatIndexFromSearch(search: string, v: ClientView): numbe
 export function applySessionSpacePhase(opts: {
   readonly phase: PodLandingStateName | null;
   readonly showTerrain: boolean;
+  readonly isGroundReady?: boolean;
   readonly entities: EntityMeshes;
   readonly banner: ConnectionBanner | null;
   readonly terrain: HexTerrain | null;
   readonly cameraTargetTile: { readonly q: number; readonly r: number };
   readonly store: WorldStore;
   readonly planetKind: PlanetKind | null;
+  readonly planetSeed?: string | number | null;
   readonly viewport: ColonyViewport;
+  readonly dayNightSync?: OnlineDayNightSync | null;
   readonly focusTile: (q: number, r: number, instant?: boolean) => void;
   readonly onView: (v: ClientView) => void;
 }): boolean {
@@ -43,15 +127,19 @@ export function applySessionSpacePhase(opts: {
   opts.entities.podTouchdown.setSpacePhase(opts.phase);
   opts.entities.group.visible = opts.phase === null;
   if (opts.banner) opts.banner.el.style.display = opts.phase === null ? '' : 'none';
-  syncSpaceTerrainOffset(opts.terrain, opts.phase !== null, opts.showTerrain, opts.cameraTargetTile);
+  const groundReady = opts.phase === null || (opts.isGroundReady ?? true);
+  syncSpaceTerrainOffset(opts.terrain, opts.phase !== null, opts.showTerrain && groundReady, opts.cameraTargetTile);
   if (opts.phase === null && wasActive) {
+    opts.dayNightSync?.syncFrame();
     if (opts.terrain) {
-      const look = resolveOnlinePlanetLook(opts.store.latest?.planet.type ?? 'temperate', opts.planetKind);
+      const look = resolveOnlinePlanetLook(opts.store.latest?.planet.type ?? 'temperate', opts.planetKind, opts.store.latest?.planet.seed ?? opts.planetSeed);
       try {
         applyPlanetLook(opts.viewport, look);
       } catch {
         /* Ignore in headless tests */
       }
+    } else {
+      applySpaceVoidBackground(opts.viewport.scene);
     }
     opts.focusTile(opts.cameraTargetTile.q, opts.cameraTargetTile.r, true);
     if (opts.store.latest) {
@@ -59,7 +147,7 @@ export function applySessionSpacePhase(opts: {
       opts.entities.update(0, opts.terrain);
     }
   }
-  return Boolean(opts.terrain);
+  return Boolean(opts.terrain && groundReady);
 }
 
 export interface ViewOverlaySyncDeps {
@@ -76,10 +164,16 @@ export interface ViewOverlaySyncDeps {
   readonly flags: ClientFlagsStore;
   readonly planetId: string;
   readonly fastStartLand: boolean;
+  readonly loadMode?: ColonyLoadMode;
   readonly skipDescent: boolean;
   readonly fromSpaceDescent: boolean;
+  readonly deferReveal?: boolean;
+  readonly orbitalCameraDrop?: boolean;
+  readonly sawPodDescending?: boolean;
   readonly cameraCentered: boolean;
   readonly colonyFramed: boolean;
+  /** Returning-colony orbital arrival: hold the HUD until the camera drop finishes, then show it quietly. */
+  readonly arrival: ArrivalHud;
   readonly sendLandOnce: () => void;
   readonly focusTile: (q: number, r: number, instant?: boolean) => void;
   readonly setCameraTargetTile: (q: number, r: number) => void;
@@ -97,28 +191,32 @@ export function syncSessionBootOverlayOnView(deps: ViewOverlaySyncDeps): void {
     return;
   }
 
+  if (deps.deferReveal) {
+    deps.setCameraTargetTile(status.q, status.r);
+    deps.hud.setVisible(false);
+    return;
+  }
+
+  const mode: ColonyLoadMode = deps.loadMode ?? (deps.skipDescent ? 'instant' : 'pod');
+  const isDirectOrInstant = mode === 'direct' || mode === 'instant';
   if (deps.bootOverlay) {
-    if (status.descending && deps.fastStartLand && (deps.skipDescent || deps.entities.hasPodTouchedDown())) {
+    if (status.descending && (isDirectOrInstant || (deps.fastStartLand && deps.entities.hasPodTouchedDown()))) {
       deps.sendLandOnce();
     }
-    if (!deps.cameraCentered || status.descending) {
+    if (!deps.cameraCentered || (status.descending && mode === 'pod')) {
       deps.focusTile(status.q, status.r, true);
       deps.setCameraCentered(true);
     }
-    if ((status.descending || !deps.hqReady) && !deps.skipDescent) {
+    if ((status.descending || !deps.hqReady) && mode === 'pod') {
       const landed = deps.fromSpaceDescent || deps.entities.hasPodTouchedDown();
-      deps.bootOverlay.showDescent({ progress: status.progress, q: status.q, r: status.r, landed });
+      const td = deps.entities.podTouchdown.peekSurfaceState();
+      const smoothProg = Math.max(status.progress, Math.min(1, td.elapsed / POD_TOUCHDOWN_DESCENT_S));
+      deps.bootOverlay.showDescent({ progress: smoothProg, q: status.q, r: status.r, landed, planetType: view.planet.type });
       deps.hud.setVisible(false);
       return;
     }
     deps.bootOverlay.showColony(view.planet.id || deps.planetId || 'pl_dev');
-    deps.hud.setVisible(true);
-    if (!deps.colonyFramed && deps.cam && deps.entities.ownHqObject()) {
-      deps.setColonyFramed(true);
-      deps.focusTile(status.q, status.r, true);
-      deps.landfall.selectHq();
-      deps.cam?.follow(deps.entities.ownHqObject());
-    }
+    syncColonyArrival(deps, mode, status);
     return;
   }
 
@@ -126,6 +224,49 @@ export function syncSessionBootOverlayOnView(deps: ViewOverlaySyncDeps): void {
     if (status.q !== 0 || status.r !== 0 || status.hqLanded || status.descending) {
       deps.focusTile(status.q, status.r, true);
       deps.setCameraCentered(true);
+    }
+  }
+  const showHud = !((status.descending || !deps.hqReady) && mode === 'pod');
+  if (showHud && (deps.arrival.hold || deps.arrival.quiet)) {
+    releaseArrivalHud(deps.arrival, deps.landfall, deps.hud);
+    return;
+  }
+  deps.hud.setVisible(showHud);
+}
+
+export function applySessionOrbitalReveal(opts: {
+  readonly terrain: HexTerrain | null;
+  readonly store: WorldStore;
+  readonly planetKind: PlanetKind | null;
+  readonly planetSeed?: string | number | null;
+  readonly viewport: ColonyViewport;
+  readonly dayNightSync: OnlineDayNightSync | null;
+  readonly banner: ConnectionBanner | null;
+  readonly hasBootResult: boolean;
+  readonly isLocalHost: boolean;
+  readonly bootOverlay: BootOverlay | null;
+  readonly entities: EntityMeshes;
+  readonly onView: (v: ClientView) => void;
+}): void {
+  if (opts.terrain) {
+    const look = resolveOnlinePlanetLook(opts.store.latest?.planet.type ?? 'temperate', opts.planetKind, opts.store.latest?.planet.seed ?? opts.planetSeed);
+    try {
+      applyPlanetLook(opts.viewport, look);
+    } catch {
+      /* Ignore in headless tests */
+    }
+  }
+  opts.dayNightSync?.syncFrame();
+  if (opts.banner && opts.hasBootResult && !opts.isLocalHost) {
+    opts.banner.el.style.display = '';
+  }
+  if (opts.store.latest) {
+    opts.onView(opts.store.latest);
+    opts.entities.update(0, opts.terrain);
+  } else if (opts.bootOverlay) {
+    opts.bootOverlay.splashEl.hidden = false;
+    if (opts.bootOverlay.splashEl.dataset.error !== 'true') {
+      opts.bootOverlay.showSplash('Linking to colony…');
     }
   }
 }
@@ -155,9 +296,15 @@ export function syncSessionFrameHud(deps: FrameHudSyncDeps): void {
   const v = deps.store.latest;
   if (!v || deps.entities.podTouchdown.isSpacePhaseActive()) return;
   deps.dayNightSync?.syncFrame();
-  if (deps.bootOverlay?.phase === 'descent' && deps.entities.hasPodTouchedDown() && !deps.bootOverlay.descentEl.hidden) {
+  if (deps.bootOverlay?.phase === 'descent' && !deps.bootOverlay.descentEl.hidden) {
     const status = extractPodDescentStatus(v, deps.colonyIndex, deps.spawn);
-    deps.bootOverlay.showDescent({ progress: status.progress, q: status.q, r: status.r, landed: true });
+    if (deps.entities.hasPodTouchedDown()) {
+      deps.bootOverlay.showDescent({ progress: status.progress, q: status.q, r: status.r, landed: true, planetType: v.planet.type });
+    } else {
+      const td = deps.entities.podTouchdown.computeState(status.descending, status.progress);
+      const smoothProg = Math.max(status.progress, Math.min(1, td.elapsed / 1.75));
+      deps.bootOverlay.updateDescent({ progress: smoothProg, q: status.q, r: status.r, planetType: v.planet.type });
+    }
   }
   if (deps.fastStartLand && !deps.landSent && deps.entities.hasPodTouchedDown()) {
     if (extractPodDescentStatus(v, deps.colonyIndex, deps.spawn).descending) deps.sendLandOnce();

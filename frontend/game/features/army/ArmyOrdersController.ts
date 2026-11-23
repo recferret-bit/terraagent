@@ -39,6 +39,7 @@ export interface ArmyOrdersControllerOptions {
   ownerColonyIndex?: number;
   getView?: () => unknown;
   isInputBlocked?: () => boolean;
+  readOnly?: () => boolean;
   now?: () => number;
 }
 
@@ -254,7 +255,12 @@ export class ArmyOrdersController {
     return this.currentStance;
   }
 
+  isReadOnly(): boolean {
+    return Boolean(this.opts.readOnly?.());
+  }
+
   setStance(stance: ArmyStance): boolean {
+    if (this.isReadOnly()) return false;
     if (stance !== 'hold' && stance !== 'defend' && stance !== 'hunt') return false;
     this.currentStance = stance;
     for (const id of this.selectedEntityIds) this.stanceByUnitId.set(id, stance);
@@ -266,6 +272,7 @@ export class ArmyOrdersController {
   }
 
   setAttackMoveArmed(armed: boolean): boolean {
+    if (armed && this.isReadOnly()) return false;
     const next = Boolean(armed);
     if (this.attackMoveArmed !== next) {
       this.attackMoveArmed = next;
@@ -311,6 +318,7 @@ export class ArmyOrdersController {
   }
 
   clickTile(q: number, r: number, shiftKey = false): boolean {
+    if (this.isReadOnly()) return false;
     if (!Number.isFinite(q) || !Number.isFinite(r)) return false;
     if (this.attackMoveArmed && this.selectedEntityIds.length > 0) {
       const unitIds = [...this.selectedEntityIds];
@@ -357,6 +365,7 @@ export class ArmyOrdersController {
   }
 
   rightClickTile(q: number, r: number): boolean {
+    if (this.isReadOnly()) return false;
     if (!Number.isFinite(q) || !Number.isFinite(r)) return false;
     if (this.selectedEntityIds.length === 0) {
       const landfallSel = this.opts.landfall?.getSelectedEntity();
@@ -405,7 +414,7 @@ export class ArmyOrdersController {
     let down = { x: 0, y: 0, button: -1 };
     let suppressClick: { at: number; q: number; r: number } | null = null;
     let suppressContext: { at: number; q: number; r: number } | null = null;
-    const isBlocked = () => Boolean(this.opts.isInputBlocked?.());
+    const isBlocked = () => Boolean(this.isReadOnly() || this.opts.isInputBlocked?.());
 
     const onDown = (ev: Event) => {
       const e = ev as PointerEvent;

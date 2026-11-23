@@ -91,7 +91,11 @@ function readInitialParams(): WeatherParams {
   try {
     const raw = localStorage.getItem(PARAMS_KEY);
     if (!raw) return { ...DEFAULT_WEATHER_PARAMS };
-    return sanitizeWeatherPatch(DEFAULT_WEATHER_PARAMS, JSON.parse(raw) as Partial<WeatherParams>);
+    const parsed = sanitizeWeatherPatch(DEFAULT_WEATHER_PARAMS, JSON.parse(raw) as Partial<WeatherParams>);
+    const q = typeof location !== 'undefined' ? new URLSearchParams(location.search).get('weather') : null;
+    if (q === '1' || q === 'true') return parsed;
+    // Never restore stale rain/storm precipitation across page reloads or planet changes.
+    return { ...parsed, rainIntensity: 0, stormActive: false, stormDarkness: 0 };
   } catch {
     return { ...DEFAULT_WEATHER_PARAMS };
   }
@@ -254,11 +258,26 @@ export function setWeatherParams(
     enabled = true;
     try { localStorage.setItem(ON_KEY, '1'); } catch { /* ignore */ }
   }
-  if (changed || source === 'user') {
+  if (source === 'user') {
     try { localStorage.setItem(PARAMS_KEY, JSON.stringify(params)); } catch { /* ignore */ }
+  }
+  if (changed || source === 'user') {
     notify(source);
   }
   return params;
+}
+
+/** Clears transient precipitation/wetness/puddle state when switching planets or returning to orbit. */
+export function clearTransientWeather(): void {
+  params = sanitizeWeatherPatch(params, { rainIntensity: 0, stormActive: false, stormDarkness: 0 });
+  weatherUniforms.uRainIntensity.value = 0;
+  weatherUniforms.uStormDarkness.value = 0;
+  weatherUniforms.uWetness.value = 0;
+  weatherUniforms.uPuddleLevel.value = 0;
+  weatherUniforms.uWaterElectroIntensity.value = 0;
+  weatherUniforms.uPuddleElectroIntensity.value = 0;
+  try { localStorage.setItem(PARAMS_KEY, JSON.stringify(params)); } catch { /* ignore */ }
+  notify('sync');
 }
 
 export function resetWeatherParams(): Readonly<WeatherParams> {

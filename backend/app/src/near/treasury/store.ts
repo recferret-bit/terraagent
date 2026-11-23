@@ -77,6 +77,7 @@ export function toDaoView(daoAccountId: string, policy: DaoPolicy, proposals: re
         state: proposal.status,
         yes: tally.yes,
         no: tally.no,
+        ...(tally.yesWeightBp !== undefined ? { yesWeightBp: tally.yesWeightBp } : {}),
         votes: proposal.votes.map((vote) => ({ voter: vote.voter, vote: vote.vote })),
       };
     }),

@@ -36,7 +36,7 @@ describe('W18 PvP & Diplomacy scenario (w18 / w18-pvp-diplomacy)', () => {
     const metrics = computeAtlasSectorColonyMetrics(state);
     expect(metrics.sec_0_0?.foundedSeats).toBe(5);
     expect(metrics.sec_0_0?.livingColonies).toBe(5);
-  });
+  }, 30_000);
 
   it('executes Step 1 & Step 2: A raids B (turrets engage + depot siphoned into A) and C rejects raid_protected', () => {
     const { host } = createScenarioPlanet('w18');

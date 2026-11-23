@@ -27,6 +27,7 @@ export function unitHasTerraformJob(rawView: unknown, id: number): boolean {
 export function baseHqSelectedView(hq: HqStatusView): SelectedEntityView {
   return {
     entityId: hq.entityId,
+    owner: hq.owner,
     kind: ENTITY_KIND.hq,
     kindLabel: `HQ T${hq.tier} · COMMANDER DRONE`,
     shortCode: 'HQ',
@@ -72,6 +73,7 @@ function buildCombatUnitSelectedEntity(
     : (job === 'idle' ? 0 : 1);
   return {
     entityId: e.id,
+    owner: e.owner,
     kind: e.kind,
     kindLabel: cu.label,
     shortCode: cu.code,
@@ -128,7 +130,7 @@ export function buildSelectedEntityFromRow(
     const uRec = unitsById[String(e.id)];
     const queueCount = uRec ? (uRec.current ? 1 : 0) + (Array.isArray(uRec.queue) ? uRec.queue.length : 0) : (job === 'idle' ? 0 : 1);
     return {
-      entityId: e.id, kind: e.kind, kindLabel: `WORKER DRONE T${tier}`, shortCode: 'WRK',
+      entityId: e.id, owner: e.owner, kind: e.kind, kindLabel: `WORKER DRONE T${tier}`, shortCode: 'WRK',
       isUnit: true, isMovable: true, tier, q: e.q, r: e.r, x: e.x, y: e.y,
       hp: e.hp, hpMax: e.hpMax > 0 ? e.hpMax : (tier === 2 ? 150 : 160), currentJob: job, queueCount,
       state: e.state, progress, terraformJob: unitHasTerraformJob(rawView, e.id),
@@ -137,7 +139,7 @@ export function buildSelectedEntityFromRow(
   if (e.kind === ENTITY_KIND.devProbe) {
     const job = hqJobFromStateCode(e.state);
     return {
-      entityId: e.id, kind: e.kind, kindLabel: 'PROBE DRONE', shortCode: 'PRB',
+      entityId: e.id, owner: e.owner, kind: e.kind, kindLabel: 'PROBE DRONE', shortCode: 'PRB',
       isUnit: true, isMovable: true, tier: 1, q: e.q, r: e.r, x: e.x, y: e.y,
       hp: e.hp, hpMax: e.hpMax > 0 ? e.hpMax : 100, currentJob: job, queueCount: job === 'idle' ? 0 : 1,
       state: e.state, progress,
@@ -148,7 +150,7 @@ export function buildSelectedEntityFromRow(
   const dismantle = dismantleJobOf(rawView, e.id);
   if (dismantle) {
     return {
-      entityId: e.id, kind: e.kind, kindLabel: b.label, shortCode: b.code,
+      entityId: e.id, owner: e.owner, kind: e.kind, kindLabel: b.label, shortCode: b.code,
       isUnit: false, isMovable: false, tier: 1, q: e.q, r: e.r, x: e.x, y: e.y,
       hp: e.hp, hpMax: e.hpMax > 0 ? e.hpMax : b.hpMax, currentJob: 'dismantling', queueCount: 1,
       footprintW: b.w, footprintD: b.d, state: e.state, progress: Math.max(0.001, Math.min(0.999, dismantle.progress)),
@@ -158,7 +160,7 @@ export function buildSelectedEntityFromRow(
   const queueCount = progress > 0 && progress < 1 ? 1 : 0;
   const extractorTier = resolveExtractorTierView(rawView, e.owner ?? 0, e.id, e.kind);
   return {
-    entityId: e.id, kind: e.kind, kindLabel: b.label, shortCode: b.code,
+    entityId: e.id, owner: e.owner, kind: e.kind, kindLabel: b.label, shortCode: b.code,
     isUnit: false, isMovable: false, tier: 1, q: e.q, r: e.r, x: e.x, y: e.y,
     hp: e.hp, hpMax: e.hpMax > 0 ? e.hpMax : b.hpMax, currentJob: job, queueCount,
     footprintW: b.w, footprintD: b.d, state: e.state, progress,
@@ -202,6 +204,7 @@ export function extractSelectableEntities(
   rawView: unknown,
   ownerColonyIndex?: number,
   hq?: HqStatusView | null,
+  includeAllColonies = false,
 ): Map<number, SelectedEntityView> {
   const out = new Map<number, SelectedEntityView>();
   const resolvedHq = hq === undefined ? extractHqFromView(rawView, ownerColonyIndex) : hq;
@@ -209,22 +212,33 @@ export function extractSelectableEntities(
   if (!rawView || typeof rawView !== 'object') return out;
   const view = rawView as { entities?: Float32Array | ViewEntity[] | Record<string, unknown>; count?: number; blobs?: Record<string, unknown> } & Record<string, unknown>;
   const owner = ownerColonyIndex ?? resolvedHq?.owner ?? 0;
-  const col = viewColony(view, owner) as Record<string, unknown> | undefined;
-  const powerBlob = (view.blobs?.power as { byColony?: Record<number, { offlineReasons?: Record<number, string> }> } | undefined)?.byColony?.[owner];
-  const colPower = col?.power as { offlineReasons?: Record<number, string> } | undefined;
-  const offlineReasons = colPower?.offlineReasons ?? powerBlob?.offlineReasons ?? {};
+  const powerByColony = (view.blobs?.power as { byColony?: Record<number, { offlineReasons?: Record<number, string> }> } | undefined)?.byColony;
+  const offlineReasonsFor = (colIdx: number): Record<number, string> => {
+    const c = viewColony(view, colIdx) as Record<string, unknown> | undefined;
+    const colPower = c?.power as { offlineReasons?: Record<number, string> } | undefined;
+    return colPower?.offlineReasons ?? powerByColony?.[colIdx]?.offlineReasons ?? {};
+  };
   const unitsById = ((view.blobs?.units as { byId?: Record<string, { current?: unknown; queue?: unknown[] }> } | undefined)?.byId) ?? {};
   const supMap = buildSupplementalUnitMap(view);
 
   const addRaw = (raw: Record<string, unknown>) => {
     const id = Number(raw.id ?? raw.entityId ?? 0);
     const row = normalizeEntityRowWithSupplements(raw, supMap.get(id));
-    if (ownerColonyIndex !== undefined && row.owner !== ownerColonyIndex) return;
-    if (row.kind === ENTITY_KIND.hq) {
-      if (resolvedHq) out.set(resolvedHq.entityId, enrichHqSelectedView(resolvedHq, rawView));
+    if (includeAllColonies) {
+      if (row.owner < 0) return;
+    } else if (ownerColonyIndex !== undefined && row.owner !== ownerColonyIndex) {
       return;
     }
-    const sel = buildSelectedEntityFromRow(row, rawView, offlineReasons, unitsById);
+    if (row.kind === ENTITY_KIND.hq) {
+      if (resolvedHq && row.owner === resolvedHq.owner) {
+        out.set(resolvedHq.entityId, enrichHqSelectedView(resolvedHq, rawView));
+      } else if (includeAllColonies) {
+        const colHq = extractHqFromView(rawView, row.owner);
+        if (colHq) out.set(colHq.entityId, enrichHqSelectedView(colHq, rawView));
+      }
+      return;
+    }
+    const sel = buildSelectedEntityFromRow(row, rawView, offlineReasonsFor(row.owner ?? owner), unitsById);
     if (sel) out.set(sel.entityId, sel);
   };
 

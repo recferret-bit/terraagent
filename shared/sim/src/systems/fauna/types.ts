@@ -113,6 +113,14 @@ export interface FaunaAggressionEntry {
   hiveId?: number;
 }
 
+export interface ColonyPlanetDamageLedger {
+  forestCleared: number;
+  tilesTerraformed: number;
+  hivesHarmed: number;
+  faunaKilled?: number;
+  lastProcessedTick: number;
+}
+
 export interface FaunaHivesBlob {
   initialized: boolean;
   hivesById: Record<number, HiveRecord>;
@@ -126,6 +134,7 @@ export interface FaunaHivesBlob {
   lastScheduledRollTickByColony: Record<number, number>;
   scheduledRollIndexByColony: Record<number, number>;
   pendingEvents: PendingFaunaEvent[];
+  planetDamageByColony: Record<number, ColonyPlanetDamageLedger>;
 }
 
 export interface ResolvedSpeciesConfig {

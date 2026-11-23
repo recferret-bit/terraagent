@@ -89,6 +89,11 @@ test('infra enables profile server and frontend does not', () => {
   assert.match(infra.stdout, /--profile server/);
   assert.match(infra.stdout, /\/srv\/terraagent\/compose\/infra\.yml/);
   assert.match(infra.stdout, /00-default\.conf/);
+  assert.match(infra.stdout, /docker-entrypoint\.sh/);
+  assert.match(infra.stdout, /\/srv\/terraagent\/nginx\/tls\//);
+  const rewrittenInfra = rewriteCompose(readFileSync(join(root, 'infra/compose/infra.yml'), 'utf8'));
+  assert.equal(rewrittenInfra.match(/"443:443"/g).length, 1);
+  assert.equal(rewrittenInfra.match(/\/etc\/letsencrypt/g).length, 2);
   assert.equal(infra.stdout.includes('prisma migrate deploy'), false);
   const frontend = run({}, ['frontend', '--dry-run']);
   assert.equal(frontend.status, 0, frontend.out);
@@ -104,6 +109,7 @@ test('each stack reloads nginx after its vhosts and the server env points at pos
   assert.match(full.stdout, /--env-file \/srv\/terraagent\/\.env/);
   assert.match(full.stdout, /DATABASE_URL=postgresql:\/\/terra:terra@postgres:5432\/terraagent/);
   assert.match(full.stdout, /NODE_ENV=production/);
+  assert.match(full.stdout, /NEAR_MODE=testnet/);
   assert.match(full.stdout, /chmod 600 \/srv\/terraagent\/\.env/);
   const sections = stackSections(full.stdout);
   for (const name of ['frontend', 'backend', 'chain']) {

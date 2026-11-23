@@ -161,3 +161,49 @@ describe('W13 book Guild badge', () => {
     expect(body.querySelector('[data-actor=npc]')?.classList.contains('tr-guild')).toBe(true);
   });
 });
+
+describe('W28 Tier 2+ Early Guild Ship Radar in GuildOffers', () => {
+  it('renders early inbound freighter countdown for Tier 2+ and hides when arrived, 404, or W28 off', async () => {
+    const { GuildOffers } = await import('./GuildOffers');
+    const { GuildVisitModel } = await import('./model');
+    let now = 1_700_000_000_000;
+    const radarFetch = async () => ({
+      ok: true,
+      json: async () => ({
+        nowMs: now,
+        visits: [{ npcId: 'kestrel', name: 'GHS Kestrel', arriveAt: now + 180_000, departAt: now + 600_000, noticeAt: now - 10_000, early: true }],
+      }),
+    });
+    const root = document.createElement('div');
+    const model = new GuildVisitModel();
+    const ctx = {
+      flags: new Set(['W15', 'W28']),
+      host: 'server',
+      services: {
+        session: { planetId: () => 'pl_1' },
+        store: { latest: { colonies: [{ index: 0, colonyId: 'col_0' }] } },
+      },
+    } as never;
+    const offers = new GuildOffers(root, ctx, model, () => now, radarFetch);
+    offers.onShow();
+    await new Promise((r) => setTimeout(r, 0));
+    const radarEl = root.querySelector<HTMLElement>('[data-testid=guild-early-radar]')!;
+    expect(radarEl.hidden).toBe(false);
+    expect(radarEl.textContent).toContain('GHS Kestrel inbound');
+
+    // Once now >= arriveAt, early radar hides automatically (corner).
+    now += 181_000;
+    offers.onShow();
+    expect(radarEl.hidden).toBe(true);
+    offers.dispose();
+
+    // Negative: W28 off never polls or shows early radar.
+    const rootOff = document.createElement('div');
+    const offCtx = { flags: new Set(['W15']), host: 'server', services: {} } as never;
+    const offOffers = new GuildOffers(rootOff, offCtx, new GuildVisitModel(), () => now, radarFetch);
+    offOffers.onShow();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(rootOff.querySelector<HTMLElement>('[data-testid=guild-early-radar]')?.hidden).toBe(true);
+    offOffers.dispose();
+  });
+});

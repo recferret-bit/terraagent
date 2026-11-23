@@ -12,6 +12,8 @@ import {
 } from '../systems/goals';
 import { colonyMaxWorkerTier } from '../systems/construction/placement';
 import { placementWorldFromState } from '../systems/construction/placementWorld';
+import { getColonyQueue, type QueueEntry } from '../systems/queue';
+import { getRivalColonyMeta, isRivalAiColony } from '../systems/rival-ai/store';
 import { resolveWorkerRow, workerTierOf, type WorkerTier } from '../systems/harvest/unit';
 import { unitSupplyOfKind } from '../systems/supply/sources';
 import type { HqJob, HqUnitView } from '../systems/hq';
@@ -87,12 +89,17 @@ export interface ViewColony {
   /** W13-55: Supply & trade panel data (badges, shopping basket, logistics bill); absent without a region pin / logistics state. */
   supplyTrade?: SupplyTradeView;
   activeSuggestion?: AutopilotOrderSuggestion | null;
+  /** True when operated by an autonomous bot / rival AI colony (exposed for spectator inspection & sector state sync). */
+  isBot?: boolean;
+  botPersona?: string;
+  foundingSectorId?: string;
+  queue?: QueueEntry[];
   [field: string]: unknown;
 }
 
 export interface SimView {
   tick: number;
-  planet: { id: string; type: PlanetType; radius: number };
+  planet: { id: string; type: PlanetType; radius: number; seed?: string };
   tiles: {
     count: number;
     terrain: Uint8Array;
@@ -180,6 +187,14 @@ function buildViewColonies(
     out.lastAutopilotDecision = getLastAutopilotDecision(state, k.index);
     const supply = supplyTradeView(state, k);
     if (supply) out.supplyTrade = supply;
+    const rivalMeta = getRivalColonyMeta(state, k.index);
+    const isBot = Boolean(rivalMeta || isRivalAiColony(state, k.index) || (k as { isBot?: boolean }).isBot);
+    out.isBot = isBot;
+    if (rivalMeta?.persona) out.botPersona = rivalMeta.persona;
+    else if (typeof (k as { botPersona?: string }).botPersona === 'string') out.botPersona = (k as { botPersona?: string }).botPersona;
+    if (typeof k.foundingSectorId === 'string' && k.foundingSectorId) out.foundingSectorId = k.foundingSectorId;
+    const qEntries = getColonyQueue(state, k.index);
+    if (qEntries.length > 0 || !Array.isArray(out.queue)) out.queue = qEntries;
     return out;
   });
 }
@@ -238,7 +253,7 @@ export function view(state: PlanetState): SimView {
 
   return {
     tick: state.meta.tick,
-    planet: { id: state.meta.planetId, type: state.meta.planetType, radius: state.grid.radius },
+    planet: { id: state.meta.planetId, type: state.meta.planetType, radius: state.grid.radius, seed: state.meta.seed },
     tiles: {
       count: state.grid.count,
       terrain: L.terrain as Uint8Array,

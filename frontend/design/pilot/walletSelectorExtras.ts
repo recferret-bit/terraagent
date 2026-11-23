@@ -14,6 +14,10 @@ export interface InjectedWalletDescriptor {
 interface InjectedNearProvider {
   getAccounts?: () => Promise<Array<{ accountId: string }>>;
   requestSignIn?: (opts: { contractId?: string }) => Promise<unknown>;
+  signAndSendTransaction?: (params: {
+    receiverId: string;
+    actions: unknown[];
+  }) => Promise<unknown>;
   signMessage?: (params: {
     message: string;
     nonce: Uint8Array;
@@ -102,4 +106,38 @@ export async function signWithExtraWallet(
     signature: signed.signature,
     callbackUrl: req.callbackUrl,
   };
+}
+
+export async function sendTxWithInjectedExtraWallet(
+  walletId: string | undefined,
+  tx: {
+    readonly receiverId: string;
+    readonly methodName: string;
+    readonly args: Record<string, unknown>;
+    readonly gasYocto: string;
+    readonly depositYocto: string;
+  },
+): Promise<boolean> {
+  if (walletId !== 'hot-wallet' && walletId !== 'here-wallet' && walletId !== 'nightly' && walletId !== 'sender') {
+    return false;
+  }
+  const provider = getInjectedProvider(walletId);
+  if (!provider || typeof provider.signAndSendTransaction !== 'function') {
+    return false;
+  }
+  await provider.signAndSendTransaction({
+    receiverId: tx.receiverId,
+    actions: [
+      {
+        type: 'FunctionCall',
+        params: {
+          methodName: tx.methodName,
+          args: tx.args,
+          gas: tx.gasYocto,
+          deposit: tx.depositYocto,
+        },
+      },
+    ],
+  });
+  return true;
 }

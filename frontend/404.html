@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TerraAgent — 404 · Sector Not Found</title>
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#07080A">
+<link rel="icon" href="/favicon.ico" sizes="48x48">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="icon" type="image/png" sizes="96x96" href="/favicon-96x96.png">
+<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+<link rel="manifest" href="/site.webmanifest">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="/design/css/tokens.css">
+<link rel="stylesheet" href="/design/css/base.css">
+<style>
+  body {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: var(--ta-s7) 0;
+  }
+  .nf-wrap {
+    max-width: 780px;
+    margin: 0 auto;
+    width: 100%;
+  }
+  .nf-plate {
+    position: relative;
+    background: var(--ta-plate);
+    border: 1px solid var(--ta-seam-3);
+    border-top: 3px solid var(--ta-orange);
+    overflow: hidden;
+  }
+  .nf-hazard {
+    height: 10px;
+  }
+  .nf-body {
+    position: relative;
+    padding: var(--ta-s7) var(--ta-s6);
+    display: flex;
+    flex-direction: column;
+    gap: var(--ta-s4);
+  }
+  .nf-code {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--ta-s3);
+    flex-wrap: wrap;
+  }
+  .nf-status {
+    font-family: var(--ta-font-mono);
+    font-size: var(--ta-fs-eyebrow);
+    letter-spacing: var(--ta-track-eyebrow);
+    color: var(--ta-orange-hi);
+  }
+  .nf-title {
+    margin: 0;
+    font-family: var(--ta-font-display);
+    font-weight: 700;
+    font-size: clamp(32px, 5vw, var(--ta-fs-h1));
+    line-height: 1.02;
+    text-transform: uppercase;
+    color: var(--ta-text);
+  }
+  .nf-copy {
+    margin: 0;
+    color: var(--ta-text-2);
+    max-width: 60ch;
+  }
+  .nf-nav {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: var(--ta-s3);
+    margin-top: var(--ta-s2);
+  }
+  .nf-foot {
+    padding: var(--ta-s3) var(--ta-s6);
+    background: var(--ta-deep);
+    border-top: 1px solid var(--ta-seam);
+    font-family: var(--ta-font-mono);
+    font-size: var(--ta-fs-label);
+    letter-spacing: var(--ta-track-label);
+    color: var(--ta-steel);
+    display: flex;
+    justify-content: space-between;
+    gap: var(--ta-s3);
+    flex-wrap: wrap;
+  }
+  @media (max-width: 640px) {
+    .nf-body { padding: var(--ta-s5) var(--ta-s4); }
+    .nf-foot { padding: var(--ta-s3) var(--ta-s4); }
+  }
+</style>
+</head>
+<body>
+<main class="container nf-wrap">
+  <section class="nf-plate plate-lg brackets" aria-labelledby="nf-heading">
+    <div class="nf-hazard hazard" aria-hidden="true"></div>
+    <div class="scanlines" aria-hidden="true"></div>
+    <div class="nf-body">
+      <div class="nf-code">
+        <span class="nf-status">TELEMETRY // HTTP 404</span>
+        <span class="badge badge-alert">SECTOR NOT FOUND</span>
+      </div>
+      <h1 id="nf-heading" class="nf-title">404 · Uncharted Orbit</h1>
+      <p class="nf-copy">The requested coordinates do not match an active TerraAgent relay, colony deed, or documentation surface. Jump back to a verified sector below.</p>
+      <nav class="nf-nav" aria-label="TerraAgent destinations">
+        <a class="btn btn-primary btn-sm" href="/">LANDING</a>
+        <a class="btn btn-ghost btn-sm" href="/play.html">PLAY COLONY</a>
+        <a class="btn btn-ghost btn-sm" href="/trade.html">EXCHANGE</a>
+        <a class="btn btn-ghost btn-sm" href="/whitepaper/">WHITEPAPER</a>
+        <a class="btn btn-ghost btn-sm" href="/pitchdeck/">PITCH DECK</a>
+        <a class="btn btn-ghost btn-sm" href="/playground.html">3D PLAYGROUND</a>
+      </nav>
+    </div>
+    <div class="nf-foot">
+      <span>TERRAAGENT NAVIGATION RELAY</span>
+      <span>STATUS 404 · NOINDEX</span>
+    </div>
+  </section>
+</main>
+<script type="module" src="/design/js/nav.js"></script>
+</body>
+</html>

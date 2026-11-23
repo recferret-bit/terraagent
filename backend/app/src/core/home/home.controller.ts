@@ -26,16 +26,32 @@ export class HomeController {
     @CurrentPlayer() player: AuthenticatedPlayer,
     @Query('type') type?: string,
     @Query('colonyId') colonyId?: string,
+    @Query('planetId') planetId?: string,
     @Query('resolve') resolve?: string,
     @Query('mode') mode?: string,
+    @Query('sector') sector?: string,
+    @Query('sectorId') sectorId?: string,
   ): Promise<HomeResponse> {
     const authPlayer = req?.player ?? player;
-    if (colonyId) return this.homeService.resumeColony(authPlayer.id, colonyId);
+    const requestedSectorId = (sectorId ?? sector)?.trim() || undefined;
+    const requestedPlanetId = planetId?.trim() || undefined;
+    if (colonyId) {
+      return this.homeService.resumeColony(authPlayer.id, colonyId, requestedSectorId, requestedPlanetId);
+    }
     const preferredType = isDevPlanetType(type) ? type : undefined;
     if (resolve === '1' || resolve === 'true' || mode === 'lobby') {
-      return this.homeService.resolveHome(authPlayer, { preferredType });
+      return this.homeService.resolveHome(authPlayer, {
+        preferredType,
+        sectorId: requestedSectorId,
+        planetId: requestedPlanetId,
+      });
     }
-    return this.homeService.getOrAssignHome(authPlayer, preferredType);
+    return this.homeService.getOrAssignHome(
+      authPlayer,
+      preferredType,
+      requestedSectorId,
+      requestedPlanetId,
+    );
   }
 
   /** Marks the player's latest (or specified) eliminated/ended colony recap as seen and returns updated `resolveHome` (`state: 'NEW'`). */

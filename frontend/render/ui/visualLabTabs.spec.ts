@@ -14,8 +14,9 @@ import { PLANET_SPECS } from '../planets/PlanetSpec';
 import { disposePixelDialog, initPixelDialog, selectVisualTab, togglePixelDialog } from './pixelDialog';
 import { WATER_SLIDERS, WEATHER_SLIDERS, WIND_SLIDERS } from './visualLabSpecs';
 import { getVisualLabTab, VISUAL_LAB_TABS } from './visualLabTabs';
+import { isSceneInOrbit } from '../core/dayNightConfig';
 import {
-  getWeatherParams, isTwisterAvailable, onWeatherAction, resetWeatherParams, setWeather, setWeatherParams, WEATHER_RANGES,
+  clearTransientWeather, getWeatherParams, isTwisterAvailable, onWeatherAction, resetWeatherParams, setWeather, setWeatherParams, WEATHER_RANGES,
 } from '../core/weatherConfig';
 import { createRainAndStormPass } from '../weather/RainAndStormPass';
 
@@ -291,6 +292,41 @@ describe('F8 dialog WIND / WATER tabs', () => {
     expect(pass.group.visible).toBe(false);
     expect((scene.fog as THREE.FogExp2).density).toBeCloseTo(0.007, 4);
     expect(getWeatherParams().rainIntensity).toBe(0);
+    pass.dispose();
+  });
+});
+
+describe('Orbital rain & transient weather suppression', () => {
+  beforeEach(restore);
+  afterEach(restore);
+
+  it('suppresses rain streaks and storm darkening in orbital scene and clears synced rain on orbit return', () => {
+    const orbitScene = new THREE.Scene();
+    orbitScene.userData.isOrbitalSpace = true;
+    expect(isSceneInOrbit(orbitScene)).toBe(true);
+    orbitScene.background = new THREE.Color(0x03050c);
+    orbitScene.fog = new THREE.FogExp2(0x03050c, 0.002);
+    const cam = new THREE.PerspectiveCamera(28, 1, 1, 600);
+    cam.position.set(0, 0, 12);
+    const pass = createRainAndStormPass(orbitScene, cam);
+
+    // Synced colony weather never persists rain into localStorage and never spawns streaks in orbit
+    localStorage.removeItem('terraagent.weather.params.v1');
+    setWeatherParams({ rainIntensity: 0.9, stormDarkness: 0.8, stormActive: true }, 'sync');
+    pass.update(0.016);
+    expect(pass.group.visible).toBe(false);
+    expect(pass.group.parent).toBeNull();
+    expect(pass.getActiveStreakCount()).toBe(0);
+    expect((orbitScene.fog as THREE.FogExp2).density).toBeCloseTo(0.002, 5);
+    expect(localStorage.getItem('terraagent.weather.params.v1')).toBeNull();
+
+    // Even user-pinned storm settings clear cleanly on return to orbit / colony exit
+    setWeatherParams({ rainIntensity: 0.75, stormDarkness: 0.5, stormActive: true }, 'user');
+    expect(localStorage.getItem('terraagent.weather.params.v1')).not.toBeNull();
+    clearTransientWeather();
+    expect(getWeatherParams().rainIntensity).toBe(0);
+    expect(getWeatherParams().stormActive).toBe(false);
+    expect(localStorage.getItem('terraagent.weather.params.v1')).not.toContain('"rainIntensity":0.75');
     pass.dispose();
   });
 });

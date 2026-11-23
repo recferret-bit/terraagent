@@ -34,6 +34,7 @@ export interface HubPlacementModel {
   hqWorkRate: number;
   /** The colony's open (not completed, not cancelled) construction order, if any. */
   order: ConstructionOrder | undefined;
+  readOnly?: boolean;
 }
 
 export interface HubPlacementActions {
@@ -99,9 +100,11 @@ export class HubPlacementView {
   }
 
   render(m: HubPlacementModel): void {
+    const ro = Boolean(m.readOnly);
     const g = m.ghost;
-    this.buildHubBtn.setAttribute('aria-pressed', String(m.active));
-    this.buildHubBtn.className = `btn btn-sm ${m.active ? 'btn-primary' : 'btn-ghost'} ta-hub-menu__build-btn`;
+    this.buildHubBtn.disabled = ro;
+    this.buildHubBtn.setAttribute('aria-pressed', String(!ro && m.active));
+    this.buildHubBtn.className = `btn btn-sm ${!ro && m.active ? 'btn-primary' : 'btn-ghost'} ta-hub-menu__build-btn`;
     setDataAttr(this.buildHubBtn, 'cost', m.costText);
     this.buildCostEl.textContent = m.costText;
 
@@ -113,22 +116,25 @@ export class HubPlacementView {
     setDataAttr(this.ghostEl, 'r', String(g.r));
     this.ghostEl.className = `ta-hub-ghost plate-sm ${g.valid ? 'ghost-valid' : 'ghost-invalid'}`;
 
-    this.reasonEl.textContent = g.valid ? 'Valid site (3×3)' : (g.reasonText ?? 'site blocked');
+    this.reasonEl.textContent = g.valid ? 'Valid site (3×3) · ground ready' : (g.reasonText ?? 'site blocked');
     if (g.reasonCode) setDataAttr(this.reasonEl, 'reason-code', g.reasonCode);
     else this.reasonEl.removeAttribute('data-reason-code');
-    if (m.active) this.renderFootprintGrid(g);
+    if (m.active && !g.valid) this.renderFootprintGrid(g);
+    else if (g.valid) { this.gridKey = ''; this.gridEl.replaceChildren(); }
     this.renderBill(g.bill, m.hqWorkRate);
-    this.confirmBtn.disabled = !g.valid;
+    this.confirmBtn.disabled = ro || !g.valid;
 
     this.orderStatusEl.textContent = m.order ? `${m.order.building}: ${m.order.statusText || m.order.status}` : 'No active Hub order';
-    this.cancelOrderBtn.disabled = !m.order;
+    this.cancelOrderBtn.disabled = ro || !m.order;
   }
 
   private renderBill(bill: HubGhostBill, hqWorkRate: number): void {
     setDataAttr(this.billTilesEl, 'tiles-to-prepare', String(bill.tilesToPrepare));
     setDataAttr(this.billTilesEl, 'total-tiles', String(bill.totalTiles));
-    this.billTilesEl.textContent = `${bill.tilesToPrepare}/${bill.totalTiles} tiles to prepare`;
-    this.billOpsEl.textContent = formatGhostOps(bill.ops);
+    this.billTilesEl.textContent = bill.tilesToPrepare === 0
+      ? 'No terraform'
+      : `${bill.tilesToPrepare}/${bill.totalTiles} tiles to terraform first`;
+    this.billOpsEl.textContent = bill.tilesToPrepare === 0 ? '' : formatGhostOps(bill.ops);
     setDataAttr(this.billTimeEl, 'hq-seconds', String(bill.hqSeconds));
     setDataAttr(this.billTimeEl, 'base-seconds', String(bill.baseSeconds));
     this.billTimeEl.textContent = `${bill.hqSeconds.toFixed(1)}s (HQ ${hqWorkRate}×)`;

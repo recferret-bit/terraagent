@@ -1,9 +1,29 @@
 use near_sdk::store::LookupMap;
-use near_sdk::{env, near, require, AccountId, NearToken, PanicOnDefault, Promise};
+use near_sdk::{env, ext_contract, near, require, AccountId, Gas, NearToken, PanicOnDefault, Promise};
 use serde_json::json;
+
+const CFG_CARGO_KEY: &[u8] = b"cfg:cargo";
+const MIN_NEAR_ESCROW_YOCTO: u128 = 5_000_000_000_000_000_000_000; // 0.005 NEAR covers escrow storage lock
+const CARGO_PAYOUT_GAS: Gas = Gas::from_tgas(10);
+
+#[allow(dead_code)]
+#[ext_contract(ext_cargo)]
+trait ExtCargo {
+    fn mt_transfer(
+        &mut self,
+        receiver_id: AccountId,
+        token_id: String,
+        amount: String,
+        memo: Option<String>,
+    );
+}
 
 fn nfund_key(escrow_id: &str) -> Vec<u8> {
     format!("nfund:{}", escrow_id).into_bytes()
+}
+
+fn cfund_key(escrow_id: &str) -> Vec<u8> {
+    format!("cfund:{}", escrow_id).into_bytes()
 }
 
 fn is_native_funded(escrow_id: &str) -> bool {
@@ -12,6 +32,24 @@ fn is_native_funded(escrow_id: &str) -> bool {
 
 fn set_native_funded(escrow_id: &str) {
     env::storage_write(&nfund_key(escrow_id), &[1]);
+}
+
+fn clear_native_funded(escrow_id: &str) {
+    env::storage_remove(&nfund_key(escrow_id));
+}
+
+fn read_cargo_funded(escrow_id: &str) -> Option<AccountId> {
+    env::storage_read(&cfund_key(escrow_id))
+        .and_then(|b| String::from_utf8(b).ok())
+        .and_then(|s| s.parse::<AccountId>().ok())
+}
+
+fn set_cargo_funded(escrow_id: &str, cargo_id: &AccountId) {
+    env::storage_write(&cfund_key(escrow_id), cargo_id.as_bytes());
+}
+
+fn clear_cargo_funded(escrow_id: &str) {
+    env::storage_remove(&cfund_key(escrow_id));
 }
 
 #[near(serializers = [json, borsh])]
@@ -95,6 +133,35 @@ impl BountyEscrowContract {
             "NEAR_NOT_OWNER: only owner can update operator"
         );
         self.operator_id = operator_id;
+    }
+
+    pub fn set_cargo_contract(&mut self, cargo_id: AccountId) {
+        require!(
+            env::predecessor_account_id() == self.owner_id,
+            "NEAR_NOT_OWNER: only owner can update cargo contract"
+        );
+        env::storage_write(CFG_CARGO_KEY, cargo_id.as_bytes());
+    }
+
+    fn assert_authorized_cargo_contract(&self) {
+        let caller = env::predecessor_account_id();
+        if let Some(bytes) = env::storage_read(CFG_CARGO_KEY) {
+            if let Ok(custom) = String::from_utf8(bytes) {
+                let trimmed = custom.trim();
+                if !trimmed.is_empty() {
+                    require!(
+                        caller.as_str() == trimmed,
+                        "NEAR_NOT_OWNER: unauthorized NEP-245 cargo contract"
+                    );
+                    return;
+                }
+            }
+        }
+        let owner_res = format!("res.{}", self.owner_id);
+        require!(
+            caller.as_str() == owner_res,
+            "NEAR_NOT_OWNER: unauthorized NEP-245 cargo contract"
+        );
     }
 
     pub fn get_owner(&self) -> AccountId {
@@ -193,7 +260,15 @@ impl BountyEscrowContract {
         self.processed_ops.insert(op_id.clone(), escrow_id.clone());
 
         if is_native_funded(&escrow_id) && rec.amount > 0 {
+            clear_native_funded(&escrow_id);
             let _ = Promise::new(caller.clone()).transfer(NearToken::from_yoctonear(rec.amount));
+        } else if let Some(cargo_id) = read_cargo_funded(&escrow_id) {
+            clear_cargo_funded(&escrow_id);
+            if rec.amount > 0 {
+                let _ = ext_cargo::ext(cargo_id)
+                    .with_static_gas(CARGO_PAYOUT_GAS)
+                    .mt_transfer(caller.clone(), rec.token_id.clone(), rec.amount.to_string(), Some(op_id.clone()));
+            }
         }
 
         emit_escrow(
@@ -251,7 +326,19 @@ impl BountyEscrowContract {
         self.processed_ops.insert(op_id.clone(), escrow_id.clone());
 
         if is_native_funded(&escrow_id) && requested > 0 {
+            if rec.status == "refunded" {
+                clear_native_funded(&escrow_id);
+            }
             let _ = Promise::new(rec.funder.clone()).transfer(NearToken::from_yoctonear(requested));
+        } else if let Some(cargo_id) = read_cargo_funded(&escrow_id) {
+            if rec.status == "refunded" {
+                clear_cargo_funded(&escrow_id);
+            }
+            if requested > 0 {
+                let _ = ext_cargo::ext(cargo_id)
+                    .with_static_gas(CARGO_PAYOUT_GAS)
+                    .mt_transfer(rec.funder.clone(), rec.token_id.clone(), requested.to_string(), Some(op_id.clone()));
+            }
         }
 
         emit_escrow(
@@ -311,11 +398,24 @@ impl BountyEscrowContract {
         self.processed_ops.insert(op_id.clone(), escrow_id.clone());
 
         if is_native_funded(&escrow_id) {
+            clear_native_funded(&escrow_id);
             if victim_cut > 0 {
                 let _ = Promise::new(victim_id.clone()).transfer(NearToken::from_yoctonear(victim_cut));
             }
             if protocol_cut > 0 {
                 let _ = Promise::new(protocol_id.clone()).transfer(NearToken::from_yoctonear(protocol_cut));
+            }
+        } else if let Some(cargo_id) = read_cargo_funded(&escrow_id) {
+            clear_cargo_funded(&escrow_id);
+            if victim_cut > 0 {
+                let _ = ext_cargo::ext(cargo_id.clone())
+                    .with_static_gas(CARGO_PAYOUT_GAS)
+                    .mt_transfer(victim_id.clone(), rec.token_id.clone(), victim_cut.to_string(), Some(op_id.clone()));
+            }
+            if protocol_cut > 0 {
+                let _ = ext_cargo::ext(cargo_id)
+                    .with_static_gas(CARGO_PAYOUT_GAS)
+                    .mt_transfer(protocol_id.clone(), rec.token_id.clone(), protocol_cut.to_string(), Some(op_id.clone()));
             }
         }
 
@@ -347,13 +447,21 @@ impl BountyEscrowContract {
         require!(!op_id.is_empty(), "NEAR_ESCROW_INVALID: op_id required");
         require!(!escrow_id.is_empty(), "NEAR_ESCROW_INVALID: escrow_id required");
         require!(!beneficiary.is_empty(), "NEAR_ESCROW_STATE: beneficiary required");
+        let qty = env::attached_deposit().as_yoctonear();
         if let Some(existing_id) = self.processed_ops.get(&op_id) {
+            require!(
+                qty == 0,
+                "NEAR_ESCROW_DUPLICATE_OP: duplicate op_id with attached NEAR deposit"
+            );
             if let Some(existing) = self.escrows.get(existing_id) {
                 return EscrowView::from(existing);
             }
         }
-        let qty = env::attached_deposit().as_yoctonear();
         require!(qty > 0, "NEAR_ESCROW_INVALID: attached NEAR deposit must be > 0");
+        require!(
+            qty >= MIN_NEAR_ESCROW_YOCTO,
+            "NEAR_ESCROW_INVALID: attached NEAR deposit must be >= 0.005 NEAR to cover storage"
+        );
         require!(
             self.escrows.get(&escrow_id).is_none(),
             "NEAR_ESCROW_EXISTS: escrow_id already exists"
@@ -403,11 +511,28 @@ impl BountyEscrowContract {
             env::predecessor_account_id() == rec.funder,
             "NEAR_NOT_OWNER: only escrow funder may claim expired refund"
         );
+        let native_funded = is_native_funded(&escrow_id);
+        let cargo_funded = read_cargo_funded(&escrow_id);
+        require!(
+            native_funded || cargo_funded.is_some(),
+            "NEAR_ESCROW_STATE: operator-custodied escrows must be refunded via operator"
+        );
         let amount = rec.amount;
         rec.status = "refunded".to_string();
         self.escrows.insert(escrow_id.clone(), rec.clone());
-        if is_native_funded(&escrow_id) && amount > 0 {
+        if native_funded && amount > 0 {
+            clear_native_funded(&escrow_id);
             let _ = Promise::new(rec.funder.clone()).transfer(NearToken::from_yoctonear(amount));
+        } else if let Some(cargo_id) = cargo_funded {
+            clear_cargo_funded(&escrow_id);
+            if amount > 0 {
+                let _ = ext_cargo::ext(cargo_id).with_static_gas(CARGO_PAYOUT_GAS).mt_transfer(
+                    rec.funder.clone(),
+                    rec.token_id.clone(),
+                    amount.to_string(),
+                    Some("expired_self_refund".to_string()),
+                );
+            }
         }
         emit_escrow(
             "escrow_refund",
@@ -431,6 +556,7 @@ impl BountyEscrowContract {
         amounts: Vec<String>,
         msg: String,
     ) -> Vec<String> {
+        self.assert_authorized_cargo_contract();
         require!(
             token_ids.len() == 1 && amounts.len() == 1,
             "NEAR_ESCROW_INVALID: single token transfer expected"
@@ -460,10 +586,14 @@ impl BountyEscrowContract {
             .parse::<u128>()
             .unwrap_or_else(|_| env::panic_str("NEAR_ESCROW_INVALID: invalid amount"));
         require!(qty > 0, "NEAR_ESCROW_INVALID: amount must be > 0");
+        if self.processed_ops.contains_key(&op_id) {
+            return vec![qty.to_string()];
+        }
         require!(
             self.escrows.get(&escrow_id).is_none(),
             "NEAR_ESCROW_EXISTS: escrow_id already exists"
         );
+        let cargo_contract = env::predecessor_account_id();
         let rec = EscrowRecord {
             escrow_id: escrow_id.clone(),
             status: "open".to_string(),
@@ -473,6 +603,7 @@ impl BountyEscrowContract {
             amount: qty,
             expires_at_ms,
         };
+        set_cargo_funded(&escrow_id, &cargo_contract);
         self.escrows.insert(escrow_id.clone(), rec);
         self.processed_ops.insert(op_id, escrow_id);
         vec!["0".to_string()]

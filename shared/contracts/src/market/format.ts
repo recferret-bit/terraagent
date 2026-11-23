@@ -23,17 +23,25 @@ export function formatAtomic(token: MarketTokenKey, atomic: bigint | string): st
   return `${whole}.${frac}`;
 }
 
-/** Parses what `formatAtomic` prints (and plain `10`, `10.2`). Rejects more decimals than the token has, signs, exponents and empty input. */
-export function parseDisplayAmount(token: MarketTokenKey, text: string): bigint {
+/**
+ * Human decimal → atomic units for any token precision (`10.00` @ 6 → `10000000`; W28-13 `RampView`). Rejects signs,
+ * exponents, empty input and more decimals than `decimals` (unless the extra digits are all zeros).
+ */
+export function parseDecimalToAtomic(text: string, decimals: number, label = 'token'): bigint {
+  if (!Number.isInteger(decimals) || decimals < 0 || decimals > 36) throw new RangeError(`bad decimals: ${decimals}`);
   const m = /^(0|[1-9]\d*)(?:\.(\d+))?$/.exec(text.trim());
   if (!m) throw new RangeError(`not a plain non-negative amount: "${text}"`);
-  const decimals = marketToken(token).decimals;
   const frac = m[2] ?? '';
   if (frac.length > decimals) {
     // trailing zeros beyond the token's precision are harmless only when they are all zeros
-    if (!/^0+$/.test(frac.slice(decimals))) throw new RangeError(`${token} has at most ${decimals} decimals: "${text}"`);
+    if (!/^0+$/.test(frac.slice(decimals))) throw new RangeError(`${label} has at most ${decimals} decimals: "${text}"`);
   }
   return BigInt(m[1]!) * pow10(decimals) + BigInt(frac.slice(0, decimals).padEnd(decimals, '0') || '0');
+}
+
+/** Parses what `formatAtomic` prints (and plain `10`, `10.2`). Rejects more decimals than the token has, signs, exponents and empty input. */
+export function parseDisplayAmount(token: MarketTokenKey, text: string): bigint {
+  return parseDecimalToAtomic(text, marketToken(token).decimals, token);
 }
 
 /**

@@ -20,8 +20,14 @@ try {
   const kit = await vite.ssrLoadModule('/render/kitbash/index.ts');
   const v = await vite.ssrLoadModule('/render/kitbash/validate/index.ts');
   let targets = ids;
-  if (flag('--all')) targets = kit.ArchetypeCatalog.list().map((e) => e.id);
-  else if (val('--category')) targets = kit.ArchetypeCatalog.list(val('--category')).map((e) => e.id);
+  if (flag('--all')) targets = [...kit.ArchetypeCatalog.list(), ...kit.ArchetypeCatalog.listBiosphere()].map((e) => e.id);
+  else if (val('--category')) {
+    const cat = val('--category');
+    targets = [
+      ...kit.ArchetypeCatalog.list(cat),
+      ...(cat === 'fauna' ? kit.ArchetypeCatalog.listBiosphere() : []),
+    ].map((e) => e.id);
+  }
   if (!targets.length) { console.error('usage: validate-model.mjs <archetype id> [...] | --category <robot|building|ship|resource|fauna|prop> | --all  [--json] [--quiet] [--strict] [--pairs] [--geometry-only]'); process.exit(2); }
 
   const reports = [];

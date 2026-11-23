@@ -279,3 +279,59 @@ describe('WS reauth & token expiry (W01-03, LB-02)', () => {
     expect(closed.reason).toBe('forbidden');
   });
 });
+
+describe('WS join colony/sector anti-cheat validation', () => {
+  it('closes 4003 when an ACTIVE colony player sends join with another planet, colonyId, or sectorId', async () => {
+    const OTHER_PLANET = devPlanetIds(2, 1)[1]!;
+    const { app: nestApp, wsUrl, authTokens } = await boot({ GAME_DEV_PLANETS: '2' });
+    const playerId = newId('pr');
+    const colonyId = newId('co');
+    const activeHome: HomeResponseType = {
+      state: 'ACTIVE',
+      colony: {
+        id: colonyId,
+        planetId: PLANET,
+        name: 'Locked Outpost',
+        color: 1,
+        state: 'ACTIVE',
+        foundingSectorId: 'sec_0_0',
+        spawnQ: 2,
+        spawnR: -1,
+      },
+      planet: {
+        id: PLANET,
+        name: 'Dev Alpha',
+        type: 'desert',
+        state: 'ACTIVE',
+        seats: { taken: 1, capacity: 5 },
+      },
+    };
+    const provider = nestApp.get<HomeProvider>(HOME_PROVIDER);
+    provider.getHome = async (id: string) =>
+      id === playerId ? activeHome : { state: 'NEW', planets: [], newPlanetTypes: ['desert'] };
+
+    // 1. Mismatched sectorId on active planet -> 4003 not_your_sector
+    const cSec = await WsTestClient.open(wsUrl);
+    cSec.hello(authTokens.signAccessToken({ sub: playerId, handle: 'Locked' }, 900));
+    await cSec.next('ready');
+    cSec.send({ t: 'join', d: { planetId: PLANET, sectorId: 'sec_1_0' } });
+    expect((await cSec.next('bye')).d).toEqual({ code: 4003, reason: 'not_your_sector' });
+    expect((await cSec.closed).code).toBe(4003);
+
+    // 2. Mismatched colonyId on active planet -> 4003 not_your_colony
+    const cCol = await WsTestClient.open(wsUrl);
+    cCol.hello(authTokens.signAccessToken({ sub: playerId, handle: 'Locked' }, 900));
+    await cCol.next('ready');
+    cCol.send({ t: 'join', d: { planetId: PLANET, colonyId: 'co_spoofed' } });
+    expect((await cCol.next('bye')).d).toEqual({ code: 4003, reason: 'not_your_colony' });
+    expect((await cCol.closed).code).toBe(4003);
+
+    // 3. Different non-scenario planet -> 4003 not_your_planet
+    const cPl = await WsTestClient.open(wsUrl);
+    cPl.hello(authTokens.signAccessToken({ sub: playerId, handle: 'Locked' }, 900));
+    await cPl.next('ready');
+    cPl.send({ t: 'join', d: { planetId: OTHER_PLANET } });
+    expect((await cPl.next('bye')).d).toEqual({ code: 4003, reason: 'not_your_planet' });
+    expect((await cPl.closed).code).toBe(4003);
+  });
+});

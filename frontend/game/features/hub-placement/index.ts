@@ -8,7 +8,7 @@ import {
 } from '../../core/registry/types';
 import '../../net/services';
 import type { ClientTiles } from '../../store/replica/viewCodec';
-import { ownColonyIndex } from '../shared/colony';
+import { isReadOnlySpectator, ownColonyIndex } from '../shared/colony';
 import type { InProcessHost } from '../shared/commandDispatch';
 import {
   computeGhostPrepBill,
@@ -128,6 +128,7 @@ export function mountHubPlacement(
     host: simHost,
     getColonyId: () => ownColonyIndex(services, opts?.colonyId),
     requireHq: opts?.requireHq,
+    readOnly: () => isReadOnlySpectator(services),
     onReject: (code, detail) => services.hudMin?.handleReject(code, detail, { kind: 'placeBuilding' }),
   });
 

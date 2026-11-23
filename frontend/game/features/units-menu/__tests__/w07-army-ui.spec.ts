@@ -156,6 +156,7 @@ describe('W07-18 Army UI: Ordering 2 Recon, Factory Queue Progress, Supply 2/10 
     // Army section contains the Recon card
     const armySection = host.querySelector('[data-section="army"]');
     expect(armySection).not.toBeNull();
+    expect(armySection?.querySelector('[data-army-blurb]')?.textContent).toMatch(/Robotics Factory/);
     const reconCard = armySection?.querySelector('[data-unit="recon"]');
     expect(reconCard).not.toBeNull();
 

@@ -1,6 +1,14 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
-import { isCanonicalPlanetId, type PlanetType, type PublicColonySummaryV1 } from '@terra/contracts';
+import {
+  SECTOR_ID_REGEX,
+  W11_SEVEN_SECTOR_COORDS,
+  formatSectorId,
+  isCanonicalPlanetId,
+  type PlanetType,
+  type PublicColonySummaryV1,
+} from '@terra/contracts';
 import type { PrismaClient } from '@terra/db';
+import { SectorAntiCheatService } from '../core/anticheat';
 import { HomeRepository } from '../core/home/home.repository';
 import { databaseEnabled } from '../core/persistence';
 import { APP_ENV, type AppEnv } from '../core/tokens';
@@ -43,6 +51,36 @@ function emptySets(): Record<PlanetType, Set<string>> {
   return { desert: new Set(), ocean: new Set(), temperate: new Set() };
 }
 
+function emptyColonyLists(): Record<PlanetType, PublicColonySummaryV1[]> {
+  return { desert: [], ocean: [], temperate: [] };
+}
+
+function sanitizeDbColonyId(rawId: string, fallbackPrefix: string, index: number): string {
+  if (/^(co|col)_[A-Za-z0-9_-]{1,64}$/.test(rawId)) return rawId;
+  const safe = rawId.replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 48);
+  return `${fallbackPrefix}${safe || index}`;
+}
+
+function pickDbSectorId(raw: string | undefined, index: number): string {
+  if (raw && SECTOR_ID_REGEX.test(raw)) return raw;
+  const [mq, mr] = W11_SEVEN_SECTOR_COORDS[Math.abs(index) % W11_SEVEN_SECTOR_COORDS.length]!;
+  return formatSectorId(mq, mr);
+}
+
+function mergeColonySummaries(
+  primary: readonly PublicColonySummaryV1[],
+  secondary: readonly PublicColonySummaryV1[],
+): PublicColonySummaryV1[] {
+  const out: PublicColonySummaryV1[] = [];
+  const seenIds = new Set<string>();
+  for (const item of [...primary, ...secondary]) {
+    if (seenIds.has(item.colonyId)) continue;
+    seenIds.add(item.colonyId);
+    out.push(item);
+  }
+  return out;
+}
+
 /**
  * Bridges real DB colony state (canonical + active loaded worlds), loaded `GamePlanets` Rival AIs,
  * active `TradeApiKey` bot keys, and live WebSocket connections into `PlanetsService`.
@@ -58,6 +96,7 @@ export class LiveStatsTelemetry implements PlanetLiveTelemetryProvider {
     @Inject(APP_ENV) private readonly env: AppEnv,
     @Optional() @Inject(GamePlanets) private readonly gamePlanets?: GamePlanets,
     @Optional() @Inject(HomeRepository) private readonly homeRepo?: HomeRepository,
+    @Optional() @Inject(SectorAntiCheatService) private readonly antiCheat?: SectorAntiCheatService,
   ) {}
 
   invalidate(): void {
@@ -109,22 +148,25 @@ export class LiveStatsTelemetry implements PlanetLiveTelemetryProvider {
     const seenByType = emptySets();
     const humanByType = emptySets();
     const botByType = emptySets();
+    const dbColoniesByType = emptyColonyLists();
     const planetTypes = new Map<string, PlanetType>();
     const archivedIds = new Set<string>();
 
     if (this.prisma && databaseEnabled(this.env)) {
-      await this.collectDbCounts(seenByType, humanByType, botByType, planetTypes, archivedIds);
+      await this.collectDbCounts(seenByType, humanByType, botByType, dbColoniesByType, planetTypes, archivedIds);
     }
 
     const loaded = await collectLoadedPlanetTelemetry({
       gamePlanets: this.gamePlanets,
       homeRepo: this.homeRepo,
+      index: this.antiCheat?.index,
       archivedIds,
       knownTypes: planetTypes,
       inferType: inferPlanetTypeFromIdOrDb,
     });
 
     for (const [pid, t] of loaded.planetTypes) planetTypes.set(pid, t);
+    const liveColoniesByType = emptyColonyLists();
     for (const t of ['desert', 'ocean', 'temperate'] as const) {
       for (const k of loaded.humanKeysByType[t]) {
         humanByType[t].add(k);
@@ -134,6 +176,7 @@ export class LiveStatsTelemetry implements PlanetLiveTelemetryProvider {
         botByType[t].add(k);
         seenByType[t].add(k);
       }
+      liveColoniesByType[t] = mergeColonySummaries(loaded.liveColoniesByType[t], dbColoniesByType[t]);
     }
 
     const coloniesByType: Record<PlanetType, number> = {
@@ -154,7 +197,7 @@ export class LiveStatsTelemetry implements PlanetLiveTelemetryProvider {
         ocean: botByType.ocean.size,
         temperate: botByType.temperate.size,
       },
-      liveColoniesByType: loaded.liveColoniesByType,
+      liveColoniesByType,
       planetTypes,
       totalColonies: coloniesByType.desert + coloniesByType.ocean + coloniesByType.temperate,
     };
@@ -164,6 +207,7 @@ export class LiveStatsTelemetry implements PlanetLiveTelemetryProvider {
     seenByType: Record<PlanetType, Set<string>>,
     humanByType: Record<PlanetType, Set<string>>,
     botByType: Record<PlanetType, Set<string>>,
+    dbColoniesByType: Record<PlanetType, PublicColonySummaryV1[]>,
     planetTypes: Map<string, PlanetType>,
     archivedIds: Set<string>,
   ): Promise<void> {
@@ -172,57 +216,126 @@ export class LiveStatsTelemetry implements PlanetLiveTelemetryProvider {
       prisma.planet.findMany({ select: { id: true, type: true, state: true, lifecycle: true } }),
       prisma.colony.findMany({
         where: { status: { in: LIVING_COLONY_STATUSES } },
-        select: { id: true, planetId: true, playerId: true },
+        select: { id: true, planetId: true, playerId: true, isBot: true, name: true, foundingSectorId: true, colonyIndex: true, createdAt: true },
       }),
       prisma.sectorReservation.findMany({
         where: { state: 'COMMITTED' },
-        select: { colonyId: true, planetId: true, playerId: true },
+        select: { colonyId: true, planetId: true, playerId: true, sectorId: true, slotIndex: true, createdAt: true },
       }),
-      prisma.marketStall.findMany({ select: { colonyId: true, planetId: true } }),
+      prisma.marketStall.findMany({ select: { colonyId: true, planetId: true, colonyIndex: true, name: true } }),
       prisma.tradeApiKey?.findMany
         ? prisma.tradeApiKey.findMany({
             where: { revokedAt: null },
-            select: { keyId: true, planetId: true },
+            select: { keyId: true, label: true, colonyId: true, colonyIndex: true, planetId: true, createdAt: true },
           })
         : Promise.resolve([]),
     ]);
 
     for (const p of allPlanets) {
-      if (ARCHIVED_PLANET_STATUSES.includes(p.state) || p.lifecycle === 'ARCHIVED') {
-        archivedIds.add(p.id);
-      } else {
-        planetTypes.set(p.id, inferPlanetTypeFromIdOrDb(p.id, p.type));
-      }
+      if (ARCHIVED_PLANET_STATUSES.includes(p.state) || p.lifecycle === 'ARCHIVED') archivedIds.add(p.id);
+      else planetTypes.set(p.id, inferPlanetTypeFromIdOrDb(p.id, p.type));
     }
-    for (const c of colonies) {
-      if (archivedIds.has(c.planetId)) continue;
-      const t = inferPlanetTypeFromIdOrDb(c.planetId, planetTypes.get(c.planetId));
-      const key = `${c.planetId}:${c.id}`;
-      seenByType[t].add(key);
-      const pid = (c as { playerId?: string }).playerId ?? '';
-      if (pid.startsWith('ai:')) botByType[t].add(key);
-      else humanByType[t].add(key);
+    const ctx: DbIngestCtx = { seenByType, humanByType, botByType, dbColoniesByType, planetTypes, archivedIds, nowIso: new Date().toISOString() };
+    ingestDbColonies(ctx, colonies);
+    ingestDbReservations(ctx, reservations);
+    ingestDbStallsAndKeys(ctx, stalls, botKeys);
+  }
+}
+
+interface DbIngestCtx {
+  seenByType: Record<PlanetType, Set<string>>;
+  humanByType: Record<PlanetType, Set<string>>;
+  botByType: Record<PlanetType, Set<string>>;
+  dbColoniesByType: Record<PlanetType, PublicColonySummaryV1[]>;
+  planetTypes: Map<string, PlanetType>;
+  archivedIds: Set<string>;
+  nowIso: string;
+}
+
+function ingestDbColonies(
+  ctx: DbIngestCtx,
+  colonies: ReadonlyArray<{ id: string; planetId: string; playerId: string; isBot?: boolean; name?: string; foundingSectorId?: string; colonyIndex?: number; createdAt?: Date }>,
+): void {
+  for (const c of colonies) {
+    if (ctx.archivedIds.has(c.planetId)) continue;
+    const t = inferPlanetTypeFromIdOrDb(c.planetId, ctx.planetTypes.get(c.planetId));
+    const key = `${c.planetId}:${c.id}`;
+    ctx.seenByType[t].add(key);
+    const isBot = c.isBot === true || (c.playerId ?? '').startsWith('ai:') || (c.playerId ?? '').startsWith('bot:');
+    if (isBot) ctx.botByType[t].add(key);
+    else ctx.humanByType[t].add(key);
+    if (typeof c.name === 'string' && typeof c.foundingSectorId === 'string') {
+      ctx.dbColoniesByType[t].push({
+        colonyId: sanitizeDbColonyId(c.id, 'col_db_', c.colonyIndex ?? 0),
+        displayName: c.name.slice(0, 64),
+        foundingSectorId: pickDbSectorId(c.foundingSectorId, c.colonyIndex ?? 0),
+        foundedAt: c.createdAt ? c.createdAt.toISOString() : ctx.nowIso,
+        ...(isBot ? { isBot: true } : {}),
+      });
     }
-    for (const r of reservations) {
-      if (archivedIds.has(r.planetId)) continue;
-      const t = inferPlanetTypeFromIdOrDb(r.planetId, planetTypes.get(r.planetId));
-      const key = `${r.planetId}:${r.colonyId}`;
-      seenByType[t].add(key);
-      const pid = (r as { playerId?: string }).playerId ?? '';
-      if (pid.startsWith('ai:')) botByType[t].add(key);
-      else humanByType[t].add(key);
+  }
+}
+
+function ingestDbReservations(
+  ctx: DbIngestCtx,
+  reservations: ReadonlyArray<{ colonyId: string; planetId: string; playerId: string; sectorId?: string; slotIndex?: number; createdAt?: Date }>,
+): void {
+  for (const r of reservations) {
+    if (ctx.archivedIds.has(r.planetId)) continue;
+    const t = inferPlanetTypeFromIdOrDb(r.planetId, ctx.planetTypes.get(r.planetId));
+    const key = `${r.planetId}:${r.colonyId}`;
+    ctx.seenByType[t].add(key);
+    const isBot = (r.playerId ?? '').startsWith('ai:');
+    if (isBot) ctx.botByType[t].add(key);
+    else ctx.humanByType[t].add(key);
+    if (typeof r.sectorId === 'string') {
+      ctx.dbColoniesByType[t].push({
+        colonyId: sanitizeDbColonyId(r.colonyId, 'col_res_', r.slotIndex ?? 0),
+        displayName: isBot ? 'AI Outpost' : 'Landing Pod',
+        foundingSectorId: pickDbSectorId(r.sectorId, r.slotIndex ?? 0),
+        foundedAt: r.createdAt ? r.createdAt.toISOString() : ctx.nowIso,
+        ...(isBot ? { isBot: true } : {}),
+      });
     }
-    for (const s of stalls) {
-      if (archivedIds.has(s.planetId) || !isCanonicalPlanetId(s.planetId)) continue;
-      const t = inferPlanetTypeFromIdOrDb(s.planetId, planetTypes.get(s.planetId));
-      const key = `${s.planetId}:${s.colonyId}`;
-      seenByType[t].add(key);
-      if (s.colonyId.startsWith('bot-')) botByType[t].add(key);
+  }
+}
+
+function ingestDbStallsAndKeys(
+  ctx: DbIngestCtx,
+  stalls: ReadonlyArray<{ colonyId: string; planetId: string; colonyIndex?: number | null; name?: string | null }>,
+  botKeys: ReadonlyArray<{ keyId: string; planetId: string; label?: string; colonyId?: string; colonyIndex?: number; createdAt?: Date }>,
+): void {
+  for (let i = 0; i < stalls.length; i++) {
+    const s = stalls[i]!;
+    if (ctx.archivedIds.has(s.planetId) || !isCanonicalPlanetId(s.planetId)) continue;
+    const t = inferPlanetTypeFromIdOrDb(s.planetId, ctx.planetTypes.get(s.planetId));
+    const key = `${s.planetId}:${s.colonyId}`;
+    ctx.seenByType[t].add(key);
+    const isBot = s.colonyId.startsWith('bot-');
+    if (isBot) ctx.botByType[t].add(key);
+    if (typeof s.name === 'string' && s.name.length > 0) {
+      ctx.dbColoniesByType[t].push({
+        colonyId: sanitizeDbColonyId(s.colonyId, 'col_stl_', i),
+        displayName: s.name.slice(0, 64),
+        foundingSectorId: pickDbSectorId(undefined, s.colonyIndex ?? i),
+        foundedAt: ctx.nowIso,
+        ...(isBot ? { isBot: true } : {}),
+      });
     }
-    for (const bk of botKeys) {
-      if (archivedIds.has(bk.planetId)) continue;
-      const t = inferPlanetTypeFromIdOrDb(bk.planetId, planetTypes.get(bk.planetId));
-      botByType[t].add(`key:${bk.planetId}:${bk.keyId}`);
+  }
+  for (let i = 0; i < botKeys.length; i++) {
+    const bk = botKeys[i]!;
+    if (ctx.archivedIds.has(bk.planetId)) continue;
+    const t = inferPlanetTypeFromIdOrDb(bk.planetId, ctx.planetTypes.get(bk.planetId));
+    ctx.botByType[t].add(`key:${bk.planetId}:${bk.keyId}`);
+    if (typeof bk.label === 'string' && bk.label.length > 0) {
+      ctx.dbColoniesByType[t].push({
+        colonyId: sanitizeDbColonyId(bk.colonyId || bk.keyId, 'col_bot_', bk.colonyIndex ?? i),
+        displayName: bk.label.slice(0, 64),
+        foundingSectorId: pickDbSectorId(undefined, bk.colonyIndex ?? i),
+        foundedAt: bk.createdAt ? bk.createdAt.toISOString() : ctx.nowIso,
+        isBot: true,
+      });
     }
   }
 }

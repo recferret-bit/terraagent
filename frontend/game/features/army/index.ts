@@ -8,7 +8,7 @@ import {
 import '../../net/services';
 import { isGameInputBlocked } from '../../core/input/gameInputBlock';
 import type { SendCommand } from '../../net/commandBus';
-import { ownColonyIndex } from '../shared/colony';
+import { isReadOnlySpectator, ownColonyIndex } from '../shared/colony';
 import type { TilePickerFn } from '../shared/pointer';
 import type { Scene3dService } from '../shared/scene3d';
 import type { LandfallController, StoreLike } from '../landfall/selection';
@@ -87,7 +87,9 @@ function ensureArmyController(opts: MountArmyOptions): { controller: ArmyOrdersC
   if (services?.armyOrders) {
     return { controller: services.armyOrders, owned: false };
   }
+  const isReadOnly = () => isReadOnlySpectator(services);
   const isBlocked = () =>
+    isReadOnly() ||
     isGameInputBlocked() ||
     services?.hubPlacement?.isPlacementActive() === true ||
     (services?.getPlacementGhostState?.() ?? null) !== null ||
@@ -104,6 +106,7 @@ function ensureArmyController(opts: MountArmyOptions): { controller: ArmyOrdersC
     ownerColonyIndex: opts.ownerColonyIndex,
     getView: () => services?.getView?.() ?? services?.store?.latest,
     isInputBlocked: isBlocked,
+    readOnly: isReadOnly,
   });
   if (services) {
     services.armyOrders = controller;

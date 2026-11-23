@@ -1,8 +1,10 @@
 import * as THREE from 'three';
 import type { PlanetSpec } from '@terra/render/planets/PlanetSpec';
+import type { DescentPrestigeSource } from '@terra/render/descent/types';
 import type { PlanetSurface } from '@terra/render/planets/surface/types';
 import type { ColonyViewport } from '@terra/render/core/createColonyViewport';
 import { clamp, smoothstep } from '../math';
+import type { DescentSolarTarget } from './descentSolarSync';
 import type { Trajectory } from './Trajectory';
 
 /** Everything the frame parts share and never reassign. */
@@ -18,9 +20,13 @@ export interface DescentContext {
   tScale: number;
   /** Direction TO the sun (== viewport sun offset, so lighting is continuous at handover). */
   sunDir: THREE.Vector3;
+  /** True when `OrbitalStage` aligned the globe spin quaternion before the `tn = startAt` cut. */
+  globeAligned?: boolean;
   traj: Trajectory;
   /** Parent of every descent object (removed on cleanup). */
   root: THREE.Group;
+  /** Cosmetic staking prestige of the player's own tier (W28-12); read each frame, so it may arrive late. */
+  prestige?: DescentPrestigeSource;
 }
 
 /** Per-frame values written by early parts and read by later ones (and by the next frame: `camPos`). */
@@ -30,6 +36,7 @@ export class FrameState {
   yRel = 0;
   /** Reentry envelope, plasma intensity, heat, retro-thrust envelope, cloud-deck-crossing blend. */
   P = 0; plasmaI = 0; heat = 0; thr = 0; cb = 0;
+  solar: DescentSolarTarget | null = null;
   readonly podBase = new THREE.Vector3();
   readonly podCenter = new THREE.Vector3();
   readonly camPos = new THREE.Vector3();

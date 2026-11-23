@@ -8,6 +8,8 @@ import { withTransaction, type PrismaClient } from '@terra/db';
 import { databaseEnabled } from '../../core/persistence.js';
 import { APP_ENV, type AppEnv } from '../../core/tokens.js';
 import { PRISMA } from '../../db/db.module.js';
+import { FlagsService } from '../../flags/flags.service.js';
+import { resolveWalletPerks } from '../../near/staking/perks/perks.resolver.js';
 import { MarketPolicyProvider } from '../orders/market-policy.provider.js';
 import { TradeAuth, type TradePrincipal } from './trade-auth.js';
 import { TradeError } from './trade-error.js';
@@ -33,6 +35,7 @@ export class TradeKeysService implements OnModuleInit {
     private readonly streams: TradeStreamService,
     @Inject(PRISMA) private readonly prisma: PrismaClient,
     @Optional() @Inject(APP_ENV) private readonly env?: AppEnv,
+    @Optional() private readonly flags?: FlagsService,
   ) {}
 
   /** A request still PENDING at boot never reached the sim (the process died between the row and the submit): it is cancelled, so it stops counting. */
@@ -47,15 +50,42 @@ export class TradeKeysService implements OnModuleInit {
     this.orders.gate();
     this.sessionOnly(p);
     const colony = await this.orders.colonyOrThrow(p, body.planetId);
-    const active = await this.keys.countActive(p.ownerId);
-    if (active >= MAX_ACTIVE_KEYS_PER_OWNER) throw new TradeError('key_limit', `At most ${MAX_ACTIVE_KEYS_PER_OWNER} active keys per owner; revoke one first.`, { max: MAX_ACTIVE_KEYS_PER_OWNER });
+    let maxKeys = MAX_ACTIVE_KEYS_PER_OWNER;
+    let tier: number | undefined;
+    if (this.flags?.has('W28')) {
+      const perks = await resolveWalletPerks(this.prisma, {
+        colonyId: colony.colonyId,
+        playerId: p.ownerId,
+        accountId: colony.accountId,
+        env: (this.env ?? process.env) as Record<string, string | undefined>,
+        w28: true,
+      });
+      maxKeys = Math.min(MAX_ACTIVE_KEYS_PER_OWNER, perks.perks.botKeys);
+      tier = perks.perks.tier;
+    }
     const usdcPairs = this.policy.current().pairs.filter((x) => x.quote === 'USDC').map((x) => x.pair);
     const allowance = mergeAllowance(defaultAllowance(usdcPairs), body.allowance);
     const key = newKey();
-    const rec = await this.keys.create({
-      key, ownerId: p.ownerId, label: body.label, planetId: body.planetId, colonyId: colony.colonyId, colonyIndex: colony.colonyIndex, accountId: colony.accountId,
-      scopes: body.scopes, ...(body.ratePerSecond ? { ratePerSecond: body.ratePerSecond } : {}), ...(body.rateBurst ? { rateBurst: body.rateBurst } : {}), allowance,
-    });
+    const createInTx = async (tx?: PrismaClient) => {
+      if (tx && typeof (tx as { $executeRaw?: unknown }).$executeRaw === 'function') {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`trade_keys:${p.ownerId}`}, 0))`;
+      }
+      const active = await this.keys.countActive(p.ownerId, tx);
+      if (active >= maxKeys) {
+        throw new TradeError(
+          'key_limit',
+          `At most ${maxKeys} active keys per owner${tier !== undefined ? ` at Staking Tier ${tier}` : ''}; revoke one first.`,
+          { max: maxKeys, ...(tier !== undefined ? { tier } : {}) },
+        );
+      }
+      return this.keys.create({
+        key, ownerId: p.ownerId, label: body.label, planetId: body.planetId, colonyId: colony.colonyId, colonyIndex: colony.colonyIndex, accountId: colony.accountId,
+        scopes: body.scopes, ...(body.ratePerSecond ? { ratePerSecond: body.ratePerSecond } : {}), ...(body.rateBurst ? { rateBurst: body.rateBurst } : {}), allowance,
+      }, tx);
+    };
+    const rec = typeof this.prisma?.$transaction === 'function'
+      ? await withTransaction(this.prisma, (tx) => createInTx(tx as unknown as PrismaClient))
+      : await createInTx();
     return { ...(await this.withUsage(keyView(rec))), secret: key.secret };
   }
 

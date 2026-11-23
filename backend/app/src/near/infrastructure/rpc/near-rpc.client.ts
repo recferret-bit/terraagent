@@ -147,6 +147,12 @@ export class NearRpcClient {
     return Number(BigInt(view.amount)) / 1e24;
   }
 
+  /** Exact `view_account` balance in yoctoNEAR (the float `accountBalanceNear` is lossy). */
+  async accountBalanceYocto(accountId: string): Promise<string> {
+    const view = await this.withFailover((p) => p.viewAccount({ accountId }));
+    return BigInt(view.amount).toString();
+  }
+
   async accountStorageReport(accountId: string, thresholdNear?: number): Promise<AccountStorageReport> {
     return fetchAccountStorageReport((op) => this.withFailover(op), accountId, thresholdNear);
   }

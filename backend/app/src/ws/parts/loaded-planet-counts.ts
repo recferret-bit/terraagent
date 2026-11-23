@@ -6,6 +6,7 @@ import {
   type PublicColonySummaryV1,
 } from '@terra/contracts';
 import { isRivalAiColony, restore, type PlanetState } from '@terra/sim';
+import type { SectorHashIndex } from '../../core/anticheat/sector-hash-index';
 import type { HomeRepository } from '../../core/home/home.repository';
 import type { GamePlanets } from '../../game/game-planets.service';
 
@@ -106,8 +107,35 @@ async function collectFromHomeRepo(
         foundedAt: c.createdAt.toISOString(),
         ...(isBot ? { isBot: true } : {}),
       },
-      `${t}:${c.name.toLowerCase()}`,
+      key,
     );
+  }
+}
+
+function ingestIndexedColonies(
+  index: SectorHashIndex,
+  planetId: string,
+  out: LoadedPlanetTelemetry,
+  planetTypes: Map<string, PlanetType>,
+  seenNames: Set<string>,
+  inferType: (planetId: string, dbType?: string | null) => PlanetType,
+): void {
+  const t = inferType(planetId, undefined);
+  planetTypes.set(planetId, t);
+  const nowIso = new Date().toISOString();
+  for (const col of index.listColoniesOnPlanet(planetId)) {
+    if (col.status !== 'ACTIVE') continue;
+    const isBot = Boolean(col.isRivalAi) || col.playerId.startsWith('ai:');
+    const key = `${planetId}:${col.colonyId}`;
+    if (isBot) out.aiBotKeysByType[t].add(key);
+    else out.humanKeysByType[t].add(key);
+    pushSummary(out.liveColoniesByType[t], seenNames, {
+      colonyId: sanitizeColonyId(col.colonyId, col.colonyIndex),
+      displayName: String(col.name || `Colony ${col.colonyIndex + 1}`).slice(0, 64),
+      foundingSectorId: resolveSectorId(col.baseSectorId, col.colonyIndex),
+      foundedAt: nowIso,
+      ...(isBot ? { isBot: true } : {}),
+    }, key);
   }
 }
 
@@ -118,12 +146,17 @@ async function collectFromSimThreads(
   seenNames: Set<string>,
   archivedIds: ReadonlySet<string>,
   inferType: (planetId: string, dbType?: string | null) => PlanetType,
+  index?: SectorHashIndex,
 ): Promise<void> {
-  const loadedIds = gamePlanets.loadedIds();
+  const loadedIds = gamePlanets.loadedIds().filter((id) => !archivedIds.has(id));
+  const needSnap: string[] = [];
+  for (const id of loadedIds) {
+    if (index?.getPlanet(id)?.syncedFromSim) ingestIndexedColonies(index, id, out, planetTypes, seenNames, inferType);
+    else needSnap.push(id);
+  }
+  if (needSnap.length === 0) return;
   const snaps = await Promise.all(
-    loadedIds
-      .filter((id) => !archivedIds.has(id))
-      .map(async (id) => ({ id, full: await readFullStateWithTimeout(gamePlanets, id) })),
+    needSnap.map(async (id) => ({ id, full: await readFullStateWithTimeout(gamePlanets, id) })),
   );
   const nowIso = new Date().toISOString();
   for (const { id, full } of snaps) {
@@ -144,10 +177,9 @@ async function collectFromSimThreads(
           col.status === 'active';
         if (!isBot && !isSeated) continue;
         const colonyId = sanitizeColonyId(col.id, col.index);
-        const nameKey = `${t}:${String(col.name || colonyId).toLowerCase()}`;
         const key = `${id}:${colonyId}`;
         if (isBot) out.aiBotKeysByType[t].add(key);
-        else if (!seenNames.has(nameKey)) out.humanKeysByType[t].add(key);
+        else if (!seenNames.has(key)) out.humanKeysByType[t].add(key);
         pushSummary(
           out.liveColoniesByType[t],
           seenNames,
@@ -158,7 +190,7 @@ async function collectFromSimThreads(
             foundedAt: nowIso,
             ...(isBot ? { isBot: true } : {}),
           },
-          nameKey,
+          key,
         );
       }
     } catch {
@@ -174,6 +206,8 @@ async function collectFromSimThreads(
 export async function collectLoadedPlanetTelemetry(options: {
   readonly gamePlanets?: GamePlanets;
   readonly homeRepo?: HomeRepository;
+  /** When a planet is already mirrored here, lobby counts do not snapshot the sim thread. */
+  readonly index?: SectorHashIndex;
   readonly archivedIds: ReadonlySet<string>;
   readonly knownTypes: ReadonlyMap<string, PlanetType>;
   readonly inferType: (planetId: string, dbType?: string | null) => PlanetType;
@@ -190,7 +224,9 @@ export async function collectLoadedPlanetTelemetry(options: {
     await collectFromHomeRepo(options.homeRepo, out, planetTypes, seenNames, options.archivedIds, options.inferType);
   }
   if (options.gamePlanets && typeof options.gamePlanets.loadedIds === 'function') {
-    await collectFromSimThreads(options.gamePlanets, out, planetTypes, seenNames, options.archivedIds, options.inferType);
+    await collectFromSimThreads(
+      options.gamePlanets, out, planetTypes, seenNames, options.archivedIds, options.inferType, options.index,
+    );
   }
   return out;
 }

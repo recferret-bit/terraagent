@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import type { IncomingMessage } from 'node:http';
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import { AgentQuoteQuery, PlaceTradeOrderRequest } from '@terra/contracts';
+import { GamePlanets } from '../../game/game-planets.service.js';
 import { TradeAgentService } from '../../market/trade/trade-agent.service.js';
 import { TradeAuth, type TradePrincipal } from '../../market/trade/trade-auth.js';
 import { TradeOrdersService } from '../../market/trade/trade-orders.service.js';
@@ -22,6 +23,7 @@ export class McpService {
     private readonly read: TradeReadService,
     private readonly agent: TradeAgentService,
     private readonly orders: TradeOrdersService,
+    @Optional() @Inject(GamePlanets) private readonly planets?: GamePlanets,
   ) {}
 
   async handleJsonRpc(req: IncomingMessage, raw: unknown, asName?: string): Promise<McpJsonRpcResponse> {
@@ -86,6 +88,13 @@ export class McpService {
     name: string,
     args: Record<string, unknown>,
   ): Promise<unknown> {
+    if (name === 'list_planets' || name === 'get_planets') {
+      TradeAuth.require(p, 'read');
+      const loaded = this.planets?.loadedIds() ?? [];
+      const scoped = p.key?.planetId ? [p.key.planetId] : [];
+      const planetIds = [...new Set([...scoped, ...loaded])];
+      return { planets: planetIds.length > 0 ? planetIds : ['pl_dev'] };
+    }
     if (name === 'list_pairs') {
       TradeAuth.require(p, 'read');
       return this.read.pairs();
@@ -95,15 +104,19 @@ export class McpService {
       const levels = typeof args.levels === 'number' ? args.levels : undefined;
       return this.read.book(String(args.planetId ?? ''), String(args.pair ?? ''), levels);
     }
-    if (name === 'quote_swap') {
+    if (name === 'quote_swap' || name === 'request_quote') {
       return this.agent.quote(p, AgentQuoteQuery.parse(args));
     }
     if (name === 'get_balances') {
       return this.read.balances(p, typeof args.planetId === 'string' ? args.planetId : undefined);
     }
-    if (name === 'place_order') {
-      const idem = typeof args.idempotencyKey === 'string' ? args.idempotencyKey : `mcp-${randomUUID().slice(0, 12)}`;
-      return (await this.orders.place(p, PlaceTradeOrderRequest.parse(args), idem)).body;
+    if (name === 'place_order' || name === 'place_signed_intent_order') {
+      const { idempotencyKey, ...orderArgs } = args;
+      const idem =
+        typeof idempotencyKey === 'string' && idempotencyKey.trim()
+          ? idempotencyKey.trim()
+          : `mcp-${randomUUID().slice(0, 12)}`;
+      return (await this.orders.place(p, PlaceTradeOrderRequest.parse({ ttlS: 3600, ...orderArgs }), idem)).body;
     }
     if (name === 'cancel_order') {
       const idem = typeof args.idempotencyKey === 'string' ? args.idempotencyKey : `mcp-${randomUUID().slice(0, 12)}`;

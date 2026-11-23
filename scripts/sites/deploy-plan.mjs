@@ -17,15 +17,22 @@ const REMOTE_SRC = '/srv/terraagent/src';
 const SRC_EXCLUDES = ['node_modules', '.git', '.claude', 'target', 'dist', 'scripts/dev/.out', 'tests/e2e/.out', 'tests/.out', 'playwright-report', '.env', '.env.*'];
 
 export function rewriteCompose(text) {
-  return text
+  let out = text
     .replaceAll('context: ../..', 'context: /srv/terraagent/src')
     .replaceAll('../nginx/', `${REMOTE_NGINX}/`)
-    .replaceAll('path: ../.env', `path: ${SERVER_ENV}`)
-    .replace('      - "80:80"\n', '      - "80:80"\n      - "443:443"\n')
-    .replace(
+    .replaceAll('path: ../.env', `path: ${SERVER_ENV}`);
+  // Older compose files published only port 80 and had no certificate mount.
+  // Current infra.yml already publishes 443 and mounts terra_certs at /etc/letsencrypt.
+  if (!out.includes('"443:443"')) {
+    out = out.replace('      - "80:80"\n', '      - "80:80"\n      - "443:443"\n');
+  }
+  if (!out.includes('/etc/letsencrypt')) {
+    out = out.replace(
       '      - terra_www:/usr/share/nginx/html:ro\n',
       '      - terra_www:/usr/share/nginx/html:ro\n      - /srv/terraagent/nginx/tls:/etc/nginx/tls:ro\n      - /etc/letsencrypt:/etc/letsencrypt:ro\n',
     );
+  }
+  return out;
 }
 
 export function buildPlan({ env, stacks, catalog, root }) {
@@ -63,6 +70,7 @@ function ensureServerEnv() {
     `chmod 600 ${SERVER_ENV}`,
     `grep -q '^DATABASE_URL=' ${SERVER_ENV} || echo '${urlLine}' >> ${SERVER_ENV}`,
     `grep -q '^NODE_ENV=' ${SERVER_ENV} || echo 'NODE_ENV=production' >> ${SERVER_ENV}`,
+    `grep -q '^NEAR_MODE=' ${SERVER_ENV} || echo 'NEAR_MODE=testnet' >> ${SERVER_ENV}`,
   ].join(' && ');
 }
 
@@ -114,7 +122,11 @@ function nginxRsyncs(stack, target, catalog) {
     ['infra/nginx/nginx.conf', `${REMOTE_NGINX}/nginx.conf`],
     ['infra/nginx/snippets/', `${REMOTE_NGINX}/snippets/`],
   ];
-  if (stack === 'infra') pairs.push(['infra/nginx/hosts/00-default.conf', `${REMOTE_NGINX}/hosts/00-default.conf`]);
+  if (stack === 'infra') {
+    pairs.push(['infra/nginx/hosts/00-default.conf', `${REMOTE_NGINX}/hosts/00-default.conf`]);
+    pairs.push(['infra/nginx/docker-entrypoint.sh', `${REMOTE_NGINX}/docker-entrypoint.sh`]);
+    pairs.push(['infra/nginx/tls/', `${REMOTE_NGINX}/tls/`]);
+  }
   for (const host of hostsByStack(catalog, stack)) {
     pairs.push([`infra/nginx/hosts/${host.vhost}`, `${REMOTE_NGINX}/hosts/${host.vhost}`]);
   }

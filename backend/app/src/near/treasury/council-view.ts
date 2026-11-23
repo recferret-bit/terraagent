@@ -11,6 +11,7 @@ export interface TreasuryProposalResponse {
   readonly state: string;
   readonly yes: number;
   readonly no: number;
+  readonly yesWeightBp?: number;
   readonly cost: string;
   readonly deadlineMs: number;
   readonly votes: DaoProposalView['votes'];
@@ -88,6 +89,7 @@ export function toProposal(row: DaoProposalView, meta: StoredProposalMeta | unde
     state: row.state,
     yes: row.yes,
     no: row.no,
+    ...(row.yesWeightBp !== undefined ? { yesWeightBp: row.yesWeightBp } : {}),
     votes: row.votes,
     cost: meta?.cost ?? priced?.cost ?? '0',
     deadlineMs: meta?.deadlineMs ?? 0,

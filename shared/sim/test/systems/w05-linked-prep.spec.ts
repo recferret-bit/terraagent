@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parseWaves } from '@terra/contracts';
 import {
-  ENTITY_KIND,
   PREP,
   SimHost,
   TERRAIN,
@@ -12,7 +11,6 @@ import {
   getBuildingJobs,
   getColonyTerraformOrders,
   getConstructionOrders,
-  getManualTerraformLaneCount,
   hexIndex,
   placementWorldFromState,
   rowOf,
@@ -47,8 +45,8 @@ function createW05Host(): SimHost {
   return host;
 }
 
-describe('W05-09: Linked site prep with W05 ops (D-37 re-opened, GP-55)', () => {
-  it('acceptance: Place on 2 slope + 1 hole + 1 flat -> one linked order (Level x2, Fill, Grade x4); cancel -> both disappear', () => {
+describe('W05-09: obstacles are not a foundation (a place does not terraform)', () => {
+  it('rejects a solar on 2 slope + 1 hole + 1 flat and creates no terraform order', () => {
     const host = createW05Host();
     const state = host.state;
     const idx = hexIndex(state.grid.radius);
@@ -77,7 +75,6 @@ describe('W05-09: Linked site prep with W05 ops (D-37 re-opened, GP-55)', () => 
     setTileTerrain(state.grid, idx.indexOf(fp[3].q, fp[3].r), TERRAIN.flat);
     setTilePrep(state.grid, idx.indexOf(fp[3].q, fp[3].r), PREP.wild);
 
-    // 1. evaluatePlacement accepts the site and bills Level x2, Fill x1, Grade x4
     const evalRes = evaluatePlacement(placementWorldFromState(state), {
       colonyId: 0,
       building: 'solar',
@@ -85,53 +82,19 @@ describe('W05-09: Linked site prep with W05 ops (D-37 re-opened, GP-55)', () => 
       r: 0,
       data,
     });
-    expect(evalRes.ok).toBe(true);
-    expect(evalRes.bill.ops).toEqual({
-      grade: 4,
-      clear: 0,
-      break: 0,
-      level: 2,
-      fill: 1,
-    });
-    expect(evalRes.bill.cost).toEqual({
-      'metals.t1': 10,
-      'minerals.t1': 9,
-    });
+    expect(evalRes.ok).toBe(false);
+    expect(['slope', 'hole', 'water']).toContain(evalRes.block);
 
-    // 2. Enqueue the 2x2 Solar build order
     const buildCmd = mkCmd('enqueueTask', { task: { kind: 'build', building: 'solar', q: 3, r: 0 } });
     host.submit(buildCmd);
-    const out = host.step(1).outcomes[0];
-    expect(out?.code).toBeUndefined();
-
-    // Verify one linked prep order with Level x2, Fill x1, Grade x4
-    const tfOrders = getColonyTerraformOrders(state, 0);
-    expect(tfOrders).toHaveLength(1);
-    const prepOrder = tfOrders[0]!;
-    expect(prepOrder.isLinkedPrep).toBe(true);
-    expect(getManualTerraformLaneCount(state, 0)).toBe(0);
-    expect(prepOrder.jobs).toHaveLength(7);
-    expect(prepOrder.jobs.filter((j) => j.op === 'level')).toHaveLength(2);
-    expect(prepOrder.jobs.filter((j) => j.op === 'fill')).toHaveLength(1);
-    expect(prepOrder.jobs.filter((j) => j.op === 'grade')).toHaveLength(4);
-
-    const buildJobs = Object.values(getBuildingJobs(state));
-    expect(buildJobs).toHaveLength(1);
-    const buildJob = buildJobs[0]!;
-    expect(buildJob.prepOrderId).toBe(prepOrder.orderId);
-    expect(buildJob.waitReason).toBe('site');
-
-    // 3. Cancel the linked order -> both building job and linked prep order disappear
-    host.submit(mkCmd('cancelTask', { taskId: prepOrder.orderId }));
-    expect(host.step(1).outcomes[0]?.code).toBeUndefined();
-    expect(getColonyTerraformOrders(state, 0)).toHaveLength(0);
+    expect(host.step(1).outcomes[0]?.code).toBe('terrain_unbuildable');
+    expect(getColonyTerraformOrders(state, 0)).toEqual([]);
     expect(Object.values(getBuildingJobs(state))).toHaveLength(0);
-    expect(rowOf(state.entities, buildJob.entityId)).toBe(-1);
   });
 });
 
-describe('W05-09: Deep Reclaim tier gate & GP-55 uneven height spread in linked prep', () => {
-  it('requires a T2 worker for linked Deep Reclaim, while Reclaim on shallow water works with T1', () => {
+describe('W05-09: water and uneven ground stay unplaceable', () => {
+  it('rejects shallow and deep water even when a T2 worker exists', () => {
     const host = createW05Host();
     const state = host.state;
     const idx = hexIndex(state.grid.radius);
@@ -142,7 +105,6 @@ describe('W05-09: Deep Reclaim tier gate & GP-55 uneven height spread in linked 
       setTileTerrain(state.grid, idx.indexOf(p.q, p.r), TERRAIN.flat);
       setTilePrep(state.grid, idx.indexOf(p.q, p.r), PREP.wild);
     }
-    // Shallow water is accepted with T1 HQ
     setTileTerrain(state.grid, idx.indexOf(fp[0].q, fp[0].r), TERRAIN.shallow);
     const shallowEval = evaluatePlacement(placementWorldFromState(state), {
       colonyId: 0,
@@ -151,10 +113,9 @@ describe('W05-09: Deep Reclaim tier gate & GP-55 uneven height spread in linked 
       r: 0,
       data,
     });
-    expect(shallowEval.ok).toBe(true);
-    expect(shallowEval.bill.ops.reclaim).toBe(1);
+    expect(shallowEval.ok).toBe(false);
+    expect(shallowEval.block).toBe('water');
 
-    // Deep water is rejected with T1 workers only
     setTileTerrain(state.grid, idx.indexOf(fp[0].q, fp[0].r), TERRAIN.deep);
     const deepLocked = evaluatePlacement(placementWorldFromState(state), {
       colonyId: 0,
@@ -166,7 +127,6 @@ describe('W05-09: Deep Reclaim tier gate & GP-55 uneven height spread in linked 
     expect(deepLocked.ok).toBe(false);
     expect(deepLocked.block).toBe('water');
 
-    // Spawn a T2 Worker -> Deep Reclaim linked prep becomes valid
     spawnWorkerUnit(state, { owner: 0, q: 1, r: 0, tier: 2 });
     const deepUnlocked = evaluatePlacement(placementWorldFromState(state), {
       colonyId: 0,
@@ -175,12 +135,12 @@ describe('W05-09: Deep Reclaim tier gate & GP-55 uneven height spread in linked 
       r: 0,
       data,
     });
-    expect(deepUnlocked.ok).toBe(true);
-    expect(deepUnlocked.bill.ops.deepReclaim).toBe(1);
-    expect(deepUnlocked.bill.ops.grade).toBe(9);
+    expect(deepUnlocked.ok).toBe(false);
+    expect(deepUnlocked.block).toBe('water');
+    expect(getColonyTerraformOrders(state, 0)).toEqual([]);
   });
 
-  it('allows mild uneven height spread on unprepared footprint tiles when W05 linked prep is active (GP-55)', () => {
+  it('rejects a mild uneven height spread on a flat footprint', () => {
     const host = createW05Host();
     const state = host.state;
     const idx = hexIndex(state.grid.radius);
@@ -203,8 +163,7 @@ describe('W05-09: Deep Reclaim tier gate & GP-55 uneven height spread in linked 
       r: 0,
       data,
     });
-    expect(res.ok).toBe(true);
-    expect(state.entities.cols.kind.length).toBeGreaterThan(0);
-    expect(ENTITY_KIND.commandHub).toBeGreaterThan(0);
+    expect(res.ok).toBe(false);
+    expect(res.block).toBe('uneven');
   });
 });

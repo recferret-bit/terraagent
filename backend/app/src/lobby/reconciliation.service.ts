@@ -1,5 +1,6 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import { EventBus } from '../bus/event-bus';
+import { SectorAntiCheatService } from '../core/anticheat';
 import { HomeRepository } from '../core/home/home.repository';
 import { WorldLifecycleService } from './lifecycle.service';
 import { LobbyPersistenceService } from './lobby-persistence.service';
@@ -63,6 +64,7 @@ export class WorldReconciliationService {
   private readonly provisioning: CanonicalWorldProvisioningService;
   private readonly homeRepo: HomeRepository;
   private readonly planetsService?: PlanetsService;
+  private readonly antiCheat?: SectorAntiCheatService;
   private readonly eliminatedColonyIds = new Set<string>();
   private readonly settledColonyIds = new Set<string>();
   private readonly boundBuses = new WeakSet<object>();
@@ -80,8 +82,9 @@ export class WorldReconciliationService {
     @Optional() @Inject(HomeRepository) arg6?: unknown,
     @Optional() @Inject(PlanetsService) arg7?: unknown,
     @Optional() @Inject(EventBus) arg8?: unknown,
+    @Optional() @Inject(SectorAntiCheatService) arg9?: unknown,
   ) {
-    const candidates = [arg2, arg3, arg4, arg5, arg6, arg7, arg8];
+    const candidates = [arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9];
     this.lifecycle =
       candidates.find((c): c is WorldLifecycleService => c instanceof WorldLifecycleService) ??
       new WorldLifecycleService(this.persistence);
@@ -102,6 +105,8 @@ export class WorldReconciliationService {
       ) ??
       new CanonicalWorldProvisioningService(this.persistence, this.lifecycle, this.homeRepo);
     this.planetsService = candidates.find((c): c is PlanetsService => c instanceof PlanetsService);
+    this.antiCheat = candidates.find((c): c is SectorAntiCheatService => c instanceof SectorAntiCheatService);
+    this.antiCheat?.setLobbyPersistence(this.persistence);
     const bus = candidates.find((c): c is EventBus => c instanceof EventBus);
     if (bus) this.bindEventBus(bus);
   }
@@ -243,11 +248,11 @@ export class WorldReconciliationService {
     return this.spawnSaga.reconcileOrphanColony(input, options);
   }
 
-  eliminateColony(
+  async eliminateColony(
     colonyId: string,
     options: { readonly planetId?: string; readonly releaseSeat?: boolean; readonly now?: Date } = {},
   ): Promise<ColonyEliminationReconcileResult> {
-    return transitionColonyStatusHelper({
+    const out = await transitionColonyStatusHelper({
       persistence: this.persistence,
       homeRepo: this.homeRepo,
       eliminatedColonyIds: this.eliminatedColonyIds,
@@ -258,6 +263,9 @@ export class WorldReconciliationService {
       releaseSeat: options.releaseSeat ?? true,
       now: options.now,
     });
+    this.antiCheat?.recordColonyStatus(colonyId, 'ELIMINATED');
+    await this.antiCheat?.hydratePlanetSectors(out.planetId);
+    return out;
   }
 
   eliminateAllColonies(
@@ -269,11 +277,11 @@ export class WorldReconciliationService {
     return this.transitionAllColoniesStatus('ELIMINATED', targetId, opts);
   }
 
-  settleColony(
+  async settleColony(
     colonyId: string,
     options: { readonly planetId?: string; readonly now?: Date } = {},
   ): Promise<ColonyEliminationReconcileResult> {
-    return transitionColonyStatusHelper({
+    const out = await transitionColonyStatusHelper({
       persistence: this.persistence,
       homeRepo: this.homeRepo,
       eliminatedColonyIds: this.eliminatedColonyIds,
@@ -283,6 +291,9 @@ export class WorldReconciliationService {
       planetId: options.planetId,
       now: options.now,
     });
+    this.antiCheat?.recordColonyStatus(colonyId, 'TRANSFERRED');
+    await this.antiCheat?.hydratePlanetSectors(out.planetId);
+    return out;
   }
 
   settleAllColonies(
@@ -372,16 +383,21 @@ export class WorldReconciliationService {
       nowOrOpts,
       maybeOpts,
     });
+    if (this.antiCheat) {
+      for (const pId of Object.keys(report.byPlanet)) {
+        await this.antiCheat.hydratePlanetSectors(pId);
+      }
+    }
     this.sweepHistory.push(report);
     return report;
   }
 
-  private transitionAllColoniesStatus(
+  private async transitionAllColoniesStatus(
     targetStatus: 'ELIMINATED' | 'TRANSFERRED',
     planetIdOrType?: string,
     options: { readonly now?: Date } = {},
   ): Promise<readonly ColonyEliminationReconcileResult[]> {
-    return transitionAllColoniesStatusHelper({
+    const results = await transitionAllColoniesStatusHelper({
       persistence: this.persistence,
       homeRepo: this.homeRepo,
       eliminatedColonyIds: this.eliminatedColonyIds,
@@ -390,6 +406,15 @@ export class WorldReconciliationService {
       planetIdOrType,
       now: options.now,
     });
+    if (this.antiCheat) {
+      const planets = new Set<string>();
+      for (const r of results) {
+        this.antiCheat.recordColonyStatus(r.colonyId, targetStatus);
+        planets.add(r.planetId);
+      }
+      for (const pId of planets) await this.antiCheat.hydratePlanetSectors(pId);
+    }
+    return results;
   }
 }
 

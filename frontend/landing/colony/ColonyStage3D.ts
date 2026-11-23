@@ -3,13 +3,17 @@ import { createColonyViewport, type ColonyViewport } from '@terra/render/core/cr
 import { setDayNight, setDayNightExternalSync, setDayNightParams } from '@terra/render/core/dayNightConfig';
 import { StageHost } from '@terra/render/core/StageHost';
 import {
-  createArchetypeMesh,
   setArchetypeBuildProgress,
-  stripBuildingPlinth,
   tickArchetypeMesh,
 } from '@terra/render/kitbash';
-import { attachEntityProjectorRig, resetColonyVisionAndLights } from '@terra/render/lighting';
+import { resetColonyVisionAndLights } from '@terra/render/lighting';
 import { GridCableRenderer } from '@terra/render/lighting/gridCables';
+import {
+  BuildingsOrchestrator,
+  buildBuildingsOrchestratorConfig,
+  buildUnitsOrchestratorConfig,
+  UnitsOrchestrator,
+} from '@terra/render/orchestrators';
 import {
   computeMeshToolOrigins,
   WorkParticleSystem,
@@ -88,6 +92,8 @@ function stepHexBot(
 export class ColonyStage3D {
   readonly vp: ColonyViewport;
   readonly terrain: HexTerrain;
+  readonly buildingsOrchestrator: BuildingsOrchestrator;
+  readonly unitsOrchestrator: UnitsOrchestrator;
   private readonly entityGroup = new THREE.Group();
   private readonly gridCables: GridCableRenderer;
   private readonly workParticles: WorkParticleSystem;
@@ -96,14 +102,19 @@ export class ColonyStage3D {
   private readonly lookTarget = new THREE.Vector3();
   private simTime = 0;
 
-  constructor(private readonly host: HTMLElement) {
+  constructor(
+    private readonly host: HTMLElement,
+    viewport?: ColonyViewport,
+    opts?: { readonly prewarmOnInit?: boolean },
+  ) {
+    const prewarmOnInit = opts?.prewarmOnInit ?? true;
     host.querySelector('#colony-canvas')?.remove();
     resetColonyVisionAndLights();
     setDayNightExternalSync(true);
     setDayNight(true);
     setDayNightParams({ timeOfDay: 10.5, timeScale: 0 }, 'sync');
 
-    this.vp = createColonyViewport(host);
+    this.vp = viewport ?? createColonyViewport(host);
     const look = specForPlanetType('ocean');
     applyPlanetLook(this.vp, look);
 
@@ -118,6 +129,14 @@ export class ColonyStage3D {
 
     this.entityGroup.name = 'landing-colony-entities';
     this.vp.scene.add(this.entityGroup);
+    this.buildingsOrchestrator = new BuildingsOrchestrator(
+      this.entityGroup,
+      JSON.stringify(buildBuildingsOrchestratorConfig(look.biomeKey, { stripConstructiblePlinths: true, prewarmOnInit })),
+    );
+    this.unitsOrchestrator = new UnitsOrchestrator(
+      this.entityGroup,
+      JSON.stringify(buildUnitsOrchestratorConfig(look.biomeKey, { prewarmOnInit })),
+    );
     this.gridCables = new GridCableRenderer(this.vp.scene);
     this.workParticles = new WorkParticleSystem(this.vp.scene);
 
@@ -135,16 +154,13 @@ export class ColonyStage3D {
     footprint: '1x1' | '2x2' | '3x3',
     yaw = Math.PI / 2,
   ): ColonyGridNode {
-    const mesh = createArchetypeMesh(archetypeId, biomeKey);
-    stripBuildingPlinth(mesh);
-    attachEntityProjectorRig(mesh, archetypeId);
+    const { mesh } = this.buildingsOrchestrator.acquireStandalone(archetypeId, biomeKey);
     setArchetypeBuildProgress(mesh, 1);
 
     const [wx, wz] = footprint === '2x2' ? tileXZ(q + 0.5, r + 0.5) : tileXZ(q, r);
     const wy = footprintGroundY(this.terrain, q, r, footprint);
     mesh.position.set(wx, wy, wz);
     mesh.rotation.y = yaw;
-    this.entityGroup.add(mesh);
     this.buildings.push(mesh);
 
     return {
@@ -176,9 +192,7 @@ export class ColonyStage3D {
     ];
 
     for (const spec of assignments) {
-      const mesh = createArchetypeMesh('robot.miner', biomeKey);
-      attachEntityProjectorRig(mesh, 'robot.miner');
-      this.entityGroup.add(mesh);
+      const { mesh } = this.unitsOrchestrator.acquireStandalone('robot.miner', biomeKey);
       this.bots.push({
         ...spec,
         archetypeId: 'robot.miner',
@@ -258,9 +272,14 @@ export class ColonyStage3D {
 
   dispose(): void {
     setDayNightExternalSync(false);
+    this.buildings.length = 0;
+    this.bots.length = 0;
+    this.buildingsOrchestrator.dispose();
+    this.unitsOrchestrator.dispose();
     this.workParticles.dispose();
     this.gridCables.dispose();
     this.terrain.dispose();
+    this.entityGroup.removeFromParent();
     this.vp.dispose();
   }
 }

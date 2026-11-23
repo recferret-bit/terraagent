@@ -100,6 +100,10 @@ export class DiplomacyPanel implements DiplomacyPanelInstance {
     return this.opts.getOwnColonyIndex ? this.opts.getOwnColonyIndex() : (this.opts.ownColonyIndex ?? 0);
   }
 
+  private isReadOnly(): boolean {
+    return Boolean(this.opts.getReadOnly ? this.opts.getReadOnly() : this.opts.readOnly);
+  }
+
   update(snapshotOrView: unknown): void {
     if (snapshotOrView && typeof snapshotOrView === 'object' && 'incomingOffers' in snapshotOrView) {
       this.currentView = snapshotOrView as DiplomacyColonyView;
@@ -142,15 +146,16 @@ export class DiplomacyPanel implements DiplomacyPanelInstance {
   }
 
   private renderBanner(tick: number): void {
+    const ro = this.isReadOnly();
     const offer = this.currentView.incomingOffers[0];
     const hasOffer = Boolean(offer && offer.expiresAtTick > tick);
     const bannerSig =
       hasOffer && offer
-        ? `${offer.offerId}:${offer.fromColony}:${offer.hours}:${offer.bondAmount ?? 0}:${offer.bondToken ?? ''}`
+        ? `${ro}:${offer.offerId}:${offer.fromColony}:${offer.hours}:${offer.bondAmount ?? 0}:${offer.bondToken ?? ''}`
         : '';
     if (this.lastBannerSig !== bannerSig) {
       this.lastBannerSig = bannerSig;
-      renderIncomingOfferBanner(this.bannerEl, offer, tick, this.opts.actions);
+      renderIncomingOfferBanner(this.bannerEl, offer, tick, ro ? undefined : this.opts.actions, ro);
     } else if (hasOffer && offer) {
       const timerEl = this.bannerEl.querySelector<HTMLElement>('[data-testid="offer-countdown"]');
       if (timerEl) timerEl.textContent = formatTickRemaining(offer.expiresAtTick, tick);
@@ -158,15 +163,16 @@ export class DiplomacyPanel implements DiplomacyPanelInstance {
   }
 
   private renderTruces(tick: number): void {
+    const ro = this.isReadOnly();
     const activeTruces = this.currentView.truces.filter((t) => t.status !== 'ended' && t.expiresAtTick > tick);
-    const trucesSig = activeTruces
+    const trucesSig = `${ro}|${activeTruces
       .map((t) => `${t.truceId}:${t.status}:${t.partnerColony}:${t.bondAmount ?? 0}`)
-      .join('|');
+      .join('|')}`;
     if (this.lastTrucesSig !== trucesSig) {
       this.lastTrucesSig = trucesSig;
       this.trucesEl.replaceChildren();
       for (const truce of activeTruces) {
-        this.trucesEl.appendChild(buildTruceBadgeElement(truce, tick, this.opts.actions));
+        this.trucesEl.appendChild(buildTruceBadgeElement(truce, tick, ro ? undefined : this.opts.actions, ro));
       }
       return;
     }
@@ -183,15 +189,16 @@ export class DiplomacyPanel implements DiplomacyPanelInstance {
   }
 
   private renderWars(tick: number): void {
+    const ro = this.isReadOnly();
     const activeWars = (this.currentView.wars ?? []).filter((w) => w.status === 'active' && w.expiresAtTick > tick);
-    const warsSig = activeWars
+    const warsSig = `${ro}|${activeWars
       .map((w) => `${w.warId}:${w.role}:${w.structuresDestroyed}:${Math.floor(w.resourcesSiphoned)}`)
-      .join('|');
+      .join('|')}`;
     if (this.lastWarsSig !== warsSig) {
       this.lastWarsSig = warsSig;
       this.warsEl.replaceChildren();
       for (const war of activeWars) {
-        this.warsEl.appendChild(buildWarBadgeElement(war, tick, this.opts.actions));
+        this.warsEl.appendChild(buildWarBadgeElement(war, tick, ro ? undefined : this.opts.actions, ro));
       }
       return;
     }
@@ -203,8 +210,10 @@ export class DiplomacyPanel implements DiplomacyPanelInstance {
   }
 
   private renderActions(isOathbreaker: boolean): void {
+    const ro = this.isReadOnly();
     const activeWarCount = (this.currentView.wars ?? []).length;
     const proposeSig = [
+      ro,
       this.currentView.colonyIndex,
       this.currentView.contacts.join(','),
       this.selectedTargetColony,
@@ -225,21 +234,25 @@ export class DiplomacyPanel implements DiplomacyPanelInstance {
       this.selectedHours,
       this.selectedBondPreset,
       (target) => {
+        if (ro) return;
         this.selectedTargetColony = target;
         this.lastProposeSig = null;
         this.render();
       },
       (hours) => {
+        if (ro) return;
         this.selectedHours = hours;
         this.lastProposeSig = null;
         this.render();
       },
       (preset) => {
+        if (ro) return;
         this.selectedBondPreset = preset;
         this.lastProposeSig = null;
         this.render();
       },
       () => {
+        if (ro) return;
         const bondSpec = TRUCE_BOND_PRESETS[this.selectedBondPreset].spec;
         if (bondSpec) {
           this.opts.actions?.onProposeTruce?.(this.selectedTargetColony, this.selectedHours, bondSpec);
@@ -247,6 +260,7 @@ export class DiplomacyPanel implements DiplomacyPanelInstance {
           this.opts.actions?.onProposeTruce?.(this.selectedTargetColony, this.selectedHours);
         }
       },
+      ro,
     );
 
     if (this.opts.warsEnabled !== false) {
@@ -256,14 +270,17 @@ export class DiplomacyPanel implements DiplomacyPanelInstance {
         this.selectedTargetColony,
         this.selectedWarPreset,
         (preset) => {
+          if (ro) return;
           this.selectedWarPreset = preset;
           this.lastProposeSig = null;
           this.render();
         },
         () => {
+          if (ro) return;
           const spec = WAR_BOND_PRESETS[this.selectedWarPreset].spec;
           this.opts.actions?.onDeclareWar?.(this.selectedTargetColony, spec);
         },
+        ro,
       );
     }
   }

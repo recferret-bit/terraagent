@@ -1,5 +1,6 @@
 export {
   createHexTerrain,
+  createHexTerrainInWorker,
   getActiveHexTerrains,
   getGlobalTerritoryColorBlindMode,
   setGlobalTerritoryColorBlindMode,
@@ -8,6 +9,7 @@ export {
   type HexTiles,
   type HexPick,
   type HexTerrainOptions,
+  type PrecomputedHexTerrainData,
 } from './createHexTerrain';
 export {
   buildChunk,
@@ -16,8 +18,11 @@ export {
   HEX_DEPOSIT,
   HEX_PREP,
   HEX_TERRAIN,
+  isDryShoreTile,
+  isWaterAt,
   tileHash01,
   tileHashU32,
+  tileShoreFactor,
   tileStyle,
   type ChunkBuffers,
   type HexTileLayers,
@@ -37,6 +42,7 @@ export {
   type TilePropInstance,
 } from './chunkPropScatter';
 export { createHexWater, HEX_WATER_LEVEL, type HexWater } from './hexWater';
+export { createHexWaterfallSet, type HexWaterfallSet } from './hexWaterfall';
 export {
   applyTileStatePreset,
   createHexTileTint,
@@ -59,4 +65,67 @@ export {
   type TerritoryBorderStats,
 } from './territoryBorder';
 export { kindForPlanetType, planetTypeForKind, specForPlanetType, type SimPlanetType } from './planetKind';
-export { CHUNK_TILES, TILE_M, tileXZ, tileAt, planetExtent } from './hexMath';
+export {
+  CHUNK_TILES,
+  HEX_PROP_EDGE_MARGIN_M,
+  TILE_M,
+  clampToGroundHexagon,
+  hexEdgeMarginM,
+  planetExtent,
+  tileAt,
+  tileXZ,
+} from './hexMath';
+export {
+  applySurfaceForestPipeline,
+  evaluateForestStand,
+  generateCandidateTreePlaces,
+  generateTileForestTrees,
+  runForestGenerationPipeline,
+  stratifyStandSites,
+  synthesizeTreePhenotype,
+  type CandidateTreePlace,
+  type CanopyCohort,
+  type ForestPipelineResult,
+  type ForestStandClassification,
+  type ForestStandRegime,
+  type GeneratedForestTree,
+  type StratifiedTreeSite,
+} from './flora/forestPipeline';
+export {
+  createHexFloraLayer,
+  GROUND_FLORA_KINDS,
+  type GroundFloraKind,
+  type HexFloraCounts,
+  type HexFloraLayer,
+} from './flora/HexFloraLayer';
+export {
+  FLORA_FOOTPRINTS,
+  PROP_EXCLUSION_RADIUS,
+  SpatialExclusionGrid,
+  countTileWaterNeighbors,
+  filterSurfacePlacesWithExclusion,
+  placeFloraByCellsWithExclusion,
+  type FloraFootprint,
+} from './flora/floraPlacementPipeline';
+export {
+  canFitObjectFootprint,
+  canFitObjectOnTerrain,
+  classifyHexSiteAtPoint,
+  classifyHexTilePropSite,
+  classifySurfaceSite,
+  floraEcotoneFields,
+  GROUND_OBJECT_SPECS,
+  inspectTileWaterNeighbors,
+  isDuneWadiSlope,
+  isHexBeachSandAtPoint,
+  renderedFloraOuterRadius,
+  sampleHexShoreAtPoint,
+  type EcotoneSample,
+  type GroundObjectCategory,
+  type GroundObjectKind,
+  type GroundObjectSpec,
+  type TerrainSiteSample,
+  type TerrainSubstrate,
+} from './flora/terrainCompatibility';
+export { makeHeightSampler, sampleHexLatticeField } from './heightSampler';
+export { hashGroundSeed, mixGroundSeed, parseGroundSeedInput } from '@terra/sim/grid/hex';

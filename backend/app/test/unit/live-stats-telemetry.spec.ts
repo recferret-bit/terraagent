@@ -12,7 +12,7 @@ describe('LiveStatsTelemetry', () => {
     expect(inferPlanetTypeFromIdOrDb('pl_custom_99', 'temperate')).toBe('temperate');
   });
 
-  it('aggregates canonical + active dev colonies, skips archived worlds, and returns numeric 0 when no players are online', async () => {
+  it('aggregates canonical + active dev colonies, skips archived worlds, and separates players and bots', async () => {
     const gateway = {
       onlinePlayerCount: vi.fn(() => 0),
       onlinePlayersByPlanet: vi.fn(() => new Map<string, number>()),
@@ -27,22 +27,27 @@ describe('LiveStatsTelemetry', () => {
       },
       colony: {
         findMany: vi.fn().mockResolvedValue([
-          { id: 'col_0', planetId: 'pl_dev' },
-          { id: 'col_1', planetId: 'pl_dev' },
-          { id: 'col_0', planetId: 'pl_dev_ocean' },
-          { id: 'col_dead', planetId: 'pl_old' },
+          { id: 'col_0', planetId: 'pl_dev', playerId: 'pl_human_0' },
+          { id: 'col_1', planetId: 'pl_dev', playerId: 'pl_human_1' },
+          { id: 'col_0', planetId: 'pl_dev_ocean', playerId: 'pl_human_2' },
+          { id: 'col_dead', planetId: 'pl_old', playerId: 'pl_human_3' },
         ]),
       },
       sectorReservation: {
         findMany: vi.fn().mockResolvedValue([
-          { colonyId: 'col_0', planetId: 'pl_dev' }, // duplicate of colony table
-          { colonyId: 'col_t1', planetId: CANONICAL_PLANETS.temperate.id },
+          { colonyId: 'col_0', planetId: 'pl_dev', playerId: 'pl_human_0' }, // duplicate of colony table
+          { colonyId: 'col_t1', planetId: CANONICAL_PLANETS.temperate.id, playerId: 'pl_human_4' },
         ]),
       },
       marketStall: {
         findMany: vi.fn().mockResolvedValue([
           { colonyId: `bot-iron.${CANONICAL_PLANETS.desert.id}`, planetId: CANONICAL_PLANETS.desert.id },
           { colonyId: `bot-iron.pl_dev`, planetId: 'pl_dev' }, // dev stalls do not inflate colony counts
+        ]),
+      },
+      tradeApiKey: {
+        findMany: vi.fn().mockResolvedValue([
+          { keyId: 'tk_1', planetId: CANONICAL_PLANETS.temperate.id },
         ]),
       },
     };
@@ -68,17 +73,100 @@ describe('LiveStatsTelemetry', () => {
       livingColonies: 3,
       presentColonies: 3,
       onlinePlayers: 1,
+      playerColonies: 2,
+      botColonies: 1,
     });
     expect(await telemetry.getPlanetLiveCounts(CANONICAL_PLANETS.ocean.id, 'ocean')).toEqual({
       livingColonies: 1,
       presentColonies: 1,
       onlinePlayers: 1,
+      playerColonies: 1,
+      botColonies: 0,
     });
     expect(await telemetry.getPlanetLiveCounts(CANONICAL_PLANETS.temperate.id, 'temperate')).toEqual({
       livingColonies: 1,
       presentColonies: 1,
       onlinePlayers: 0,
+      playerColonies: 1,
+      botColonies: 1,
     });
     expect(await telemetry.getPublicStatsLiveCounts()).toEqual({ coloniesAlive: 5, playersOnline: 2 });
+  });
+});
+
+describe('LiveStatsTelemetry · GamePlanets sim telemetry', () => {
+  it('reads Rival AI bots and real seated player colonies from loaded GamePlanets sim threads without a database', async () => {
+    const sim = await import('@terra/sim');
+    const state = sim.createState({
+      planetId: CANONICAL_PLANETS.ocean.id,
+      planetType: 'ocean',
+      seed: 'test-seed',
+      radius: 48,
+    });
+    const humanCol = sim.ensureColonyRecord(state, 0, 10);
+    humanCol.id = 'co_human_0';
+    humanCol.name = 'Coral Haven';
+    humanCol.status = 'active';
+    (humanCol as Record<string, unknown>).playerId = 'plr_human_0';
+    (humanCol as Record<string, unknown>).foundingSectorId = 'sec_0_0';
+
+    sim.seedRivalAiColonies(state, { count: 2, capacity: 8, tick: 15 });
+    const bytes = sim.snapshot(state);
+
+    const gateway = {
+      onlinePlayerCount: () => 1,
+      onlinePlayersByPlanet: () => new Map([[CANONICAL_PLANETS.ocean.id, 1]]),
+    };
+    const gamePlanets = {
+      loadedIds: () => [CANONICAL_PLANETS.ocean.id],
+      fullState: vi.fn(async () => ({
+        planetId: CANONICAL_PLANETS.ocean.id,
+        tick: 15,
+        bytes,
+        simVersion: state.meta.simVersion,
+        dataHash: 'hash',
+        planetType: 'ocean',
+        warp: 1,
+      })),
+    };
+
+    const telemetry = new LiveStatsTelemetry(
+      gateway as never,
+      undefined,
+      { NODE_ENV: 'development' } as never,
+      gamePlanets as never,
+    );
+
+    const ocean = await telemetry.getPlanetLiveCounts(CANONICAL_PLANETS.ocean.id, 'ocean');
+    expect(ocean.playerColonies).toBe(1);
+    expect(ocean.botColonies).toBe(2);
+    expect(ocean.onlinePlayers).toBe(1);
+    expect(ocean.livingColonies).toBe(3);
+    expect(ocean.liveColonies?.filter((c) => c.isBot)).toHaveLength(2);
+    expect(ocean.liveColonies?.filter((c) => !c.isBot).map((c) => c.displayName)).toEqual(['Coral Haven']);
+  });
+
+  it('does not snapshot the sim thread when the anti-cheat index already mirrors the planet', async () => {
+    const fullState = vi.fn();
+    const gamePlanets = { loadedIds: () => [CANONICAL_PLANETS.desert.id], fullState };
+    const index = {
+      getPlanet: () => ({ syncedFromSim: true }),
+      listColoniesOnPlanet: () => [{
+        colonyId: 'co_cached', playerId: 'plr_1', planetId: CANONICAL_PLANETS.desert.id,
+        colonyIndex: 0, name: 'Cached', baseSectorId: 'sec_0_0', status: 'ACTIVE', isRivalAi: false,
+      }],
+    };
+    const telemetry = new LiveStatsTelemetry(
+      { onlinePlayerCount: () => 0, onlinePlayersByPlanet: () => new Map() } as never,
+      undefined,
+      { NODE_ENV: 'development' } as never,
+      gamePlanets as never,
+      undefined,
+      { index } as never,
+    );
+    const desert = await telemetry.getPlanetLiveCounts(CANONICAL_PLANETS.desert.id, 'desert');
+    expect(fullState).not.toHaveBeenCalled();
+    expect(desert.playerColonies).toBe(1);
+    expect(desert.liveColonies?.map((c) => c.displayName)).toEqual(['Cached']);
   });
 });

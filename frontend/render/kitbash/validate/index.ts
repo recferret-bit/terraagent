@@ -8,9 +8,9 @@ export { groundContact, type GroundContact } from './groundContact';
 import { extractArchetype } from './extract';
 import { validateModel, type ValidatorOptions } from './ModelValidator';
 import { ArchetypeCatalog } from '../catalog';
-/** Validate one registered archetype by id. Ships, props, and the flying drifter skip the ground rules. */
+/** Validate one registered archetype by id. Ships, props, and flying birds skip the ground rules. */
 export const validateArchetype = (id: string, options: Partial<ValidatorOptions> = {}) => {
   const cat = ArchetypeCatalog.get(id).category;
-  const grounded = cat !== 'ship' && cat !== 'prop' && id !== 'fauna.drifter';
+  const grounded = cat !== 'ship' && cat !== 'prop' && !id.startsWith('fauna.bird.');
   return validateModel(extractArchetype(id), { grounded, ...options });
 };

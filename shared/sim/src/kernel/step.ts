@@ -62,7 +62,9 @@ export function createPipeline(config: EngineConfig): Pipeline {
 function makeContext(state: PlanetState, dt: number, p: Pipeline, events: SimEvent[], postings: LedgerPosting[]): StepContext {
   const tick = state.meta.tick + dt;
   return {
-    dt, tick, flags: p.config.flags, data: p.config.data, events, postings,
+    dt, tick, flags: p.config.flags, data: p.config.data,
+    ...(p.config.hostRole ? { hostRole: p.config.hostRole } : {}),
+    events, postings,
     record: (posting) => { postings.push(posting); },
     rng: (stream) => state.rng[stream],
     newEntityId: () => state.meta.nextEntityId++,

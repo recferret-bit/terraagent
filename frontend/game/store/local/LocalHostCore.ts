@@ -1,13 +1,15 @@
 import { commandGate, flagsFromList, newId, parseWaves, PlanetType, precheckClientCommand, REJECT_CODES, REJECT_DETAIL_MAX, type RejectCode, type ServerMessage } from '@terra/contracts';
 import {
-  applyTunedEntityHealth, buildPipeline, effectiveOverrides, GEN_VERSION, PlanetJournal, PlanetScheduler, SIM_VERSION, SimHost, TICK_MS,
+  applyTunedEntityHealth, buildPipeline, buildingCatalog, createPipeline, effectiveOverrides, GEN_VERSION,
+  planBackendBotActions, PlanetJournal, PlanetScheduler, SIM_VERSION, SimHost, TICK_MS,
   type BalanceOverrides, type JournalProblem, type CommandOutcome, type PlanetTuning, type SimCommand, type SimEvent,
 } from '@terra/sim';
 import { ownBytes } from '../bytes';
 import { describeJournalProblem, resumeJournal } from './hostJournal';
 import { LocalCargoRelay } from './localCargoRelay';
+import { LocalFeedCollector } from './parts/localBotFeed';
 import { LocalDevError, runLocalDevCommand } from './parts/localDevCommands';
-import { scenarioSource, type PlanetSource, type SeededPlanet } from './planetSource';
+import { scenarioSource, spectatorSource, type PlanetSource, type SeededPlanet } from './planetSource';
 import type { FromLocalHost, LocalHostOptions, LocalPost, ToLocalHost } from './protocol';
 import { LocalHardModeClock } from './devPresence';
 import { compatible, snapshotKey, type LocalSnapshot, type SnapshotStore } from './snapshotStore';
@@ -61,6 +63,9 @@ export class LocalHostCore {
   private readonly sched: PlanetScheduler;
   private readonly playerId = newId('pr');
   private readonly cargoRelay = new LocalCargoRelay();
+  private readonly feed = new LocalFeedCollector();
+  private readonly botCommandIds = new Set<string>();
+  private spectatorMode = false;
   /** `?host=local` hard-mode clock. The server copy W09-19 reads is `HardModeClock`. */
   private readonly hardMode = new LocalHardModeClock();
 
@@ -75,7 +80,11 @@ export class LocalHostCore {
   static async create(opts: LocalHostOptions, deps: LocalHostDeps, post: LocalPost): Promise<LocalHostCore> {
     const waves = parseWaves(opts.waves).list;
     const core = new LocalHostCore(waves, deps, post);
-    await core.build(scenarioSource(opts.scenario, waves), false);
+    core.spectatorMode = Boolean(opts.spectator || opts.scenario === 'spectator');
+    const source = core.spectatorMode
+      ? spectatorSource({ planetType: opts.planetType, seed: opts.seed, waves, botCount: opts.botCount })
+      : scenarioSource(opts.scenario, waves);
+    await core.build(source, false);
     core.run();
     return core;
   }
@@ -147,7 +156,14 @@ export class LocalHostCore {
   private installSeed({ host, setupPostings }: SeededPlanet): void {
     this.ledger = PlanetJournal.empty();
     this.report(this.ledger.record(setupPostings));
-    this.install(host, { flags: [...host.pipeline.config.flags], base: {}, live: {} });
+    const authorityHost = host.pipeline.config.hostRole === 'authority_external_bots'
+      ? host
+      : (() => {
+          const next = new SimHost(createPipeline({ ...host.pipeline.config, hostRole: 'authority_external_bots' }));
+          next.load(host.state);
+          return next;
+        })();
+    this.install(authorityHost, { flags: [...host.pipeline.config.flags], base: {}, live: {} });
   }
 
   /** Journal problems go out as host errors (the journal and the sim's `col.stock` disagree). */
@@ -158,7 +174,7 @@ export class LocalHostCore {
   private tryResume(snap: LocalSnapshot, flags: readonly string[]): { host: SimHost; live: BalanceOverrides } | null {
     try {
       const live = (snap.overrides ?? {}) as BalanceOverrides;
-      const pipeline = buildPipeline(flags, live);
+      const pipeline = buildPipeline(flags, live, undefined, 'authority_external_bots');
       if (!compatible(snap, { simVersion: SIM_VERSION, dataHash: pipeline.config.data.hash, flags })) return null;
       const host = new SimHost(pipeline);
       host.load(snap.bytes);
@@ -197,6 +213,8 @@ export class LocalHostCore {
 
   private async restart(source: PlanetSource): Promise<{ planetId: string }> {
     this.cargoRelay.reset();
+    this.feed.reset();
+    this.botCommandIds.clear();
     await this.build(source, true);
     this.up();
     this.sched.setWarp('local', 1);
@@ -210,18 +228,28 @@ export class LocalHostCore {
   private stepOnce(dt: number): void {
     if (this.down) return; // the scheduler pass that saw the failure may still call (warp > 1)
     const due = this.cargoRelay.drainDue(this.host.tick + dt);
-    const batch = [...this.queue.splice(0), ...due];
+    const botPlan =
+      this.host.pipeline.config.hostRole === 'authority_external_bots'
+        ? planBackendBotActions(this.host.state, this.host.pipeline.config.data, this.host.pipeline.config.flags, this.host.tick + dt, this.host.tick)
+        : { commands: [], decisions: [] };
+    const batch = [...this.queue.splice(0), ...due, ...botPlan.commands];
+    for (const bc of botPlan.commands) this.botCommandIds.add(bc.commandId);
+    const wallMs = Math.round(this.deps.wallMs());
+    const pendingMeta = this.feed.prepareBatch(this.host.state, batch, this.host.tick + dt, wallMs);
     this.stepOutcomes = [];
     try {
       for (const c of batch) this.host.submit(c);
       this.host.step(dt);
     } catch (e) {
       this.stepOutcomes = null;
+      this.botCommandIds.clear();
       return this.fail(batch, e);
     }
     const outcomes = this.stepOutcomes;
     this.stepOutcomes = null;
     this.answer(outcomes);
+    const feedMsgs = this.feed.finalizeStep(this.host.state, this.planetId, pendingMeta, outcomes, botPlan.decisions, wallMs);
+    if (this.joined) for (const fm of feedMsgs) this.server(fm);
   }
 
   /**
@@ -234,7 +262,7 @@ export class LocalHostCore {
     this.down = true;
     this.sched.remove('local');
     for (const c of [...batch, ...this.queue.splice(0)]) {
-      if (this.cargoRelay.isInternalCommand(c.commandId)) continue;
+      if (this.cargoRelay.isInternalCommand(c.commandId) || c.source === 'bot') continue;
       this.server({ v: 1, t: 'cmd.reject', d: { id: c.commandId, code: 'internal' } });
     }
     const why = e instanceof Error ? e.message : String(e);
@@ -260,7 +288,7 @@ export class LocalHostCore {
   private answer(outcomes: readonly CommandOutcome[]): void {
     if (this.stepOutcomes) { this.stepOutcomes.push(...outcomes); return; }
     for (const o of outcomes) {
-      if (this.cargoRelay.isInternalCommand(o.commandId)) continue;
+      if (this.cargoRelay.isInternalCommand(o.commandId) || this.botCommandIds.delete(o.commandId)) continue;
       if (!o.code) { this.server({ v: 1, t: 'cmd.ack', d: { id: o.commandId, appliedAtTick: o.appliedAtTick } }); continue; }
       const code: RejectCode = isRejectCode(o.code) ? o.code : 'internal';
       const detail = code === o.code ? o.detail : o.detail ? `${o.code}: ${o.detail}` : o.code;
@@ -303,13 +331,18 @@ export class LocalHostCore {
     this.lastDeltaTick = meta.tick;
     this.joined = true;
     const warp = this.warp;
+    const recent = this.feed.getRecent();
     this.server({
       v: 1, t: 'welcome', tick: meta.tick,
       d: {
-        reason, colonyId: null, planet: { id: meta.planetId, type: type.success ? type.data : 'temperate', name: `local ${this.source.name}` },
+        reason, mode: this.spectatorMode ? 'spectator' : 'play', colonyId: null,
+        planet: { id: meta.planetId, type: type.success ? type.data : 'temperate', name: `local ${this.source.name}` },
         state: ownBytes(this.host.snapshot({ forClient: true })), simVersion: meta.simVersion, dataHash: this.host.pipeline.config.data.hash, tick: meta.tick,
         serverTimeMs: Math.round(this.deps.wallMs()), tickMs: TICK_MS, deltaHz: 5, flags: [...this.tuning.flags],
         overrides: effectiveOverrides(this.tuning) as Record<string, unknown>, ...(warp > 1 ? { warp } : {}),
+        buildings: buildingCatalog(this.host.pipeline.config.data),
+        recentInputs: recent.inputs,
+        recentDecisions: recent.decisions,
       },
     });
   }
@@ -321,7 +354,10 @@ export class LocalHostCore {
     const m = msg.msg;
     switch (m.t) {
       case 'hello': return this.server({ v: 1, t: 'ready', d: { playerId: this.playerId, flags: [...this.tuning.flags] } });
-      case 'join': return this.welcome('join');
+      case 'join': {
+        if (m.d.mode === 'spectator') this.spectatorMode = true;
+        return this.welcome('join');
+      }
       case 'leave': this.joined = false; return;
       case 'ping': return this.server({ v: 1, t: 'pong', d: { clientTimeMs: m.d.clientTimeMs, serverTimeMs: Math.round(this.deps.wallMs()), tick: this.host.tick } });
       case 'cmd': return this.command(m.id, m.d.kind, m.d.args);
@@ -329,6 +365,9 @@ export class LocalHostCore {
   }
 
   private command(id: string, kind: string, args: unknown): void {
+    if (this.spectatorMode) {
+      return this.server({ v: 1, t: 'cmd.reject', d: { id, code: 'spectator_read_only', detail: 'Spectator mode is read-only' } });
+    }
     if (this.down) return this.server({ v: 1, t: 'cmd.reject', d: { id, code: 'host_unavailable', detail: 'the local planet is down after a failed step' } });
     const flags = flagsFromList(this.tuning.flags);
     const hasColony = Boolean(this.host.state.colonies?.length && this.host.state.colonies[0]?.status !== 'eliminated');

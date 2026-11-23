@@ -16,7 +16,7 @@ const PORT_ALIASES: Partial<Record<NearPortName, string>> = {
 const parseNearKind = (raw: string | undefined): NearAdapterKind | undefined => {
   if (raw === 'testnet' || raw === 'devnet') return 'testnet';
   if (raw === 'mainnet') return 'mainnet';
-  if (raw === 'mock') return 'mock';
+  if (raw === 'mock' || raw === 'local') return 'mock';
   return undefined;
 };
 

@@ -209,7 +209,7 @@ describe('W20-18 StakingService & StakingController lifecycle and wave gating', 
       errorCode: 'NOT_FOUND',
       status: 404,
     });
-    expect(() => offController.getStatus('col_0')).toThrow();
+    await expect(offController.getStatus('col_0')).rejects.toMatchObject({ errorCode: 'NOT_FOUND', status: 404 });
     expect(() => offController.stake({ pool: POOL_ASTRO, amount: '1' })).toThrow();
   });
 });

@@ -294,7 +294,11 @@ export class TestnetAgentWalletAdapter implements AgentWalletPort {
     if (!acct || acct.encryptedSecret === 'mock' || acct.encryptedSecret === 'claimed') return null;
     const seed = this.keys().open(acct);
     const signer = KeyPairSigner.fromSecretKey(seedToNearSecretKey(seed) as KeyPairString);
-    const allowance = input && /^\d+$/.test(input.allowance) && BigInt(input.allowance) > 0n ? BigInt(input.allowance) : undefined;
+    const DEFAULT_ONCHAIN_KEY_GAS_YOCTO = 250_000_000_000_000_000_000_000n; // 0.25 NEAR finite gas cap
+    const allowance =
+      input && /^\d+$/.test(input.allowance) && BigInt(input.allowance) > 0n
+        ? BigInt(input.allowance)
+        : DEFAULT_ONCHAIN_KEY_GAS_YOCTO;
     const action =
       mode === 'add'
         ? actions.addFunctionCallAccessKey(parsedPk, input!.receiverId, [...input!.methodNames], allowance)

@@ -106,6 +106,8 @@ kbd{background:var(--ta-plate);border:1px solid var(--ta-seam-2);padding:0 4px;c
 .fp-seed-input:focus{border-color:var(--ta-orange)}
 .fp-acid-btn{border-color:var(--ta-terra);color:var(--ta-terra)}
 .fp-stats{display:flex;flex-direction:column;gap:4px;padding:7px 8px;background:var(--ta-plate-2);border:1px solid var(--ta-seam);font-size:11px}
+.fp-stats>div{display:flex;justify-content:space-between;gap:8px;color:var(--ta-text-2)}
+.fp-stats>div strong{color:var(--ta-text)}
 .fp-stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px 8px;color:var(--ta-steel);font-size:10px;letter-spacing:.06em}
 .fp-stat-grid b{color:var(--ta-text)}
 .fp-hive-row{display:flex;justify-content:space-between;gap:6px;padding-top:4px;border-top:1px solid var(--ta-seam);font-size:10px;color:var(--ta-text-2)}

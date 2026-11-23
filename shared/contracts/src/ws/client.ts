@@ -11,7 +11,12 @@ export const Hello = ClientEnvelope('hello', z.strictObject({
   proto: z.array(z.number().int()).nonempty(),
   client: z.strictObject({ app: z.literal('game'), version: z.string().max(32) }),
 }));
-export const Join = ClientEnvelope('join', z.strictObject({ planetId: HomePlanetId }));
+export const Join = ClientEnvelope('join', z.strictObject({
+  planetId: HomePlanetId,
+  sectorId: z.string().min(1).max(64).optional(),
+  colonyId: z.string().min(1).max(64).optional(),
+  mode: z.enum(['play', 'spectator']).optional(),
+}));
 export const Leave = ClientEnvelope('leave', z.strictObject({}));
 const Topic = z.enum(['planets', 'queue', 'party', 'market']);
 export const Subscribe = ClientEnvelope('subscribe', z.strictObject({ topic: Topic, planetType: PlanetType.optional() }));

@@ -5,11 +5,43 @@ import { isTileExplored, markTileExplored } from '../../grid/tileModel';
 import type { CompiledDataLike } from '../../kernel/config';
 import { setBlob, type PlanetState } from '../../kernel/state';
 import { defaultHubData } from '../factories-hub/unit';
-import { mobileStats } from '../../units/mobility';
+import { isUnitKind, mobileStats } from '../../units/mobility';
 
 export const COMBAT_VISION_BLOB = 'combatVision';
 export const VISION_UPDATE_INTERVAL_TICKS = 5;
 export const BEACON_ENTITY_KIND = 21;
+
+/** Completed colony and hive buildings. Pods, probes and other props are not in this set. */
+const VISION_BUILDING_KINDS: ReadonlySet<number> = new Set([
+  ENTITY_KIND.commandHub,
+  ENTITY_KIND.metalsExtractor,
+  ENTITY_KIND.solar,
+  ENTITY_KIND.tradeHub,
+  ENTITY_KIND.pylon,
+  ENTITY_KIND.capacitor,
+  ENTITY_KIND.wind,
+  ENTITY_KIND.thermal,
+  ENTITY_KIND.supplyDepot,
+  ENTITY_KIND.mineralsQuarry,
+  ENTITY_KIND.waterExtractor,
+  ENTITY_KIND.petroleumWell,
+  ENTITY_KIND.roboticsFactory,
+  ENTITY_KIND.droneControlArray,
+  ENTITY_KIND.autocannon,
+  ENTITY_KIND.laserTower,
+  BEACON_ENTITY_KIND,
+  ENTITY_KIND.hazardShield,
+  ENTITY_KIND.lightningRod,
+  ENTITY_KIND.hydro,
+  ENTITY_KIND.hiveBlackAnt,
+  ENTITY_KIND.hiveBlueBeetle,
+  ENTITY_KIND.hiveGreenSpitter,
+]);
+
+/** Live sight comes from buildings and units only. A drop pod, a probe, or the act of spawning does not. */
+export function isColonyVisionSourceKind(kind: number): boolean {
+  return isUnitKind(kind) || VISION_BUILDING_KINDS.has(kind);
+}
 
 export interface CombatVisionBlob {
   updatedAtTick: number;
@@ -80,14 +112,16 @@ export function getEntityFootprintSize(kind: number, data?: CompiledDataLike): n
 
 /**
  * Spotting radius (in hex tiles) contributed by an entity of `kind` (`UO-C-06`, B2 default):
+ * - Only buildings and units contribute. A drop pod, a dev probe, and any other prop contribute `0`.
  * - Mobile units contribute their `viewRadius` (`Recon = 10`, `HQ = 9`, `Harvester/Builder = 7`).
  * - Fauna units contribute `6` tiles.
- * - Command Hub, Drop Pod, and Beacon T1 contribute `footprint + 6` (`hubBeaconViewBonus`).
+ * - Command Hub and Beacon T1 contribute `footprint + 6` (`hubBeaconViewBonus`).
  * - All other colony buildings contribute `footprint + 4` (`buildingViewBonus`), so 1x1 turrets (`autocannon`,
  *   `laserTower`) have spotting radius `5` (`1 + 4`) while long-range weapons (`range > viewRadius`, e.g. Autocannon
  *   `range = 8`) require a spotter for targets at `6..8` tiles.
  */
 export function getEntitySpottingRadius(kind: number, data?: CompiledDataLike): number {
+  if (!isColonyVisionSourceKind(kind)) return 0;
   if (kind === ENTITY_KIND.recon) {
     const combatUnits = data?.tables?.combatUnits as Record<string, CompiledRow> | undefined;
     const raw = Number(combatUnits?.recon?.viewRadius);
@@ -116,12 +150,10 @@ export function getEntitySpottingRadius(kind: number, data?: CompiledDataLike): 
   const cfg = getCombatConfigRow(data);
   const footprint = getEntityFootprintSize(kind, data);
 
-  if (kind === ENTITY_KIND.hub || kind === ENTITY_KIND.pod || kind === BEACON_ENTITY_KIND) {
+  if (kind === ENTITY_KIND.hub || kind === BEACON_ENTITY_KIND) {
     const hubBonus = Number(cfg?.hubBeaconViewBonus ?? 6);
     return footprint + hubBonus;
   }
-
-  if (kind === ENTITY_KIND.devProbe) return 0;
 
   const buildingBonus = Number(cfg?.buildingViewBonus ?? 4);
   return footprint + buildingBonus;
@@ -155,7 +187,7 @@ export function computeColonySpottedTileIndices(
   for (let row = 0; row < e.count; row++) {
     if (cols.owner[row] !== colonyIndex) continue;
     if (cols.hp[row] <= 0) continue;
-    if (!isEntityContributingVision(cols.state[row])) continue;
+    if (!isColonyVisionSourceKind(cols.kind[row]) || !isEntityContributingVision(cols.state[row])) continue;
 
     const radius = Math.floor(getEntitySpottingRadius(cols.kind[row], data));
     if (radius <= 0) continue;
@@ -180,7 +212,7 @@ function buildEntityVisionSnapshot(state: PlanetState): string {
   const cols = e.cols;
   const parts: string[] = [];
   for (let r = 0; r < e.count; r++) {
-    if (cols.owner[r] < 0 || cols.hp[r] <= 0 || !isEntityContributingVision(cols.state[r])) continue;
+    if (cols.owner[r] < 0 || cols.hp[r] <= 0 || !isColonyVisionSourceKind(cols.kind[r]) || !isEntityContributingVision(cols.state[r])) continue;
     parts.push(`${cols.id[r]}:${cols.owner[r]}:${cols.kind[r]}:${cols.q[r]},${cols.r[r]}`);
   }
   return parts.join(';');

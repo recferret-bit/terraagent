@@ -1,5 +1,6 @@
 import { Controller, Get, Inject, Optional } from '@nestjs/common';
 import type { PrismaClient } from '@terra/db';
+import { aiProvider as resolveAiProvider } from '../../../ai/ai-selection.js';
 import { DEFAULT_NEAR_AI_MODEL, normalizeNearAiModel } from '../../../ai/nearai-models.js';
 import { APP_ENV, type AppEnv } from '../../../core/tokens.js';
 import { PRISMA } from '../../../db/db.module.js';
@@ -61,7 +62,16 @@ export class NearStatusController {
     });
 
     const nearMode = this.envSource.NEAR_MODE ?? 'mock';
-    const aiProvider = this.envSource.AI_PROVIDER ?? 'mock';
+    const rawAiProvider = this.envSource.AI_PROVIDER ?? 'mock';
+    const aiKind = resolveAiProvider(this.envSource);
+    const aiMode: 'mock' | 'testnet' | 'mainnet' =
+      aiKind === 'mock'
+        ? 'mock'
+        : rawAiProvider === 'mainnet'
+          ? 'mainnet'
+          : rawAiProvider === 'testnet'
+            ? 'testnet'
+            : activeNet;
     const signingAlgo = this.envSource.NEAR_AI_SIGNING_ALGO?.trim().toLowerCase() === 'ed25519' ? 'ed25519' : 'ecdsa';
     const trustedSigners = (this.envSource.NEAR_AI_TRUSTED_SIGNERS ?? '')
       .split(',')
@@ -82,7 +92,8 @@ export class NearStatusController {
       ports,
       ...(contractHeadroom.length > 0 ? { contractHeadroom, storageAlerts } : {}),
       ai: {
-        provider: aiProvider,
+        provider: rawAiProvider,
+        mode: aiMode,
         defaultModel: normalizeNearAiModel(this.envSource.NEAR_AI_MODEL ?? DEFAULT_NEAR_AI_MODEL),
         attestationEnabled: this.envSource.NEAR_AI_ATTEST !== '0',
         signingAlgo,

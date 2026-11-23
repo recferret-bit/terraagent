@@ -12,6 +12,8 @@ const SHARED_LEAD_PREFIXES = [
   'package-lock.json',
   'AGENTS.md',
   'CLAUDE.md',
+  'README.md',
+  'HACKATHON.md',
   '.agents/',
   'infra/.env',
 ];

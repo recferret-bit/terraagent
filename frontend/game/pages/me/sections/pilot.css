@@ -75,6 +75,39 @@
 .ta-pilot-rename {
   text-decoration: none;
   font-size: 11px;
+  color: var(--ta-orange-hi);
+  border-color: var(--ta-seam-3);
+}
+
+.ta-pilot-rename-form {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ta-pilot-rename-form[hidden] {
+  display: none;
+}
+
+.ta-pilot-rename-input {
+  width: 220px;
+  max-width: 100%;
+}
+
+.ta-pilot-rename-input[aria-invalid='true'] {
+  border-color: var(--ta-fault);
+  outline: 1px solid var(--ta-fault);
+}
+
+.ta-pilot-rename-status {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ta-text-2);
+}
+
+.ta-pilot-rename-status[data-tone='error'] {
+  color: var(--ta-fault-text);
 }
 
 .ta-pilot-meta-row {

@@ -6,9 +6,26 @@ const cmd = { v: 1, t: 'cmd', id: newId('cm'), d: { kind: 'dev.ping', args: {} }
 
 describe('client messages parse strictly (PR-01)', () => {
   it('accepts valid messages', () => {
-    for (const m of [hello, cmd, { v: 1, t: 'join', d: { planetId: newId('pl') } }, { v: 1, t: 'ping', d: { clientTimeMs: 1 } }, { v: 1, t: 'leave', d: {} }]) {
+    const pl = newId('pl');
+    for (const m of [
+      hello,
+      cmd,
+      { v: 1, t: 'join', d: { planetId: pl } },
+      { v: 1, t: 'join', d: { planetId: pl, sectorId: 's', colonyId: 'c'.repeat(64) } },
+      { v: 1, t: 'ping', d: { clientTimeMs: 1 } },
+      { v: 1, t: 'leave', d: {} },
+    ]) {
       expect(ClientMessage.safeParse(m).success, JSON.stringify(m)).toBe(true);
     }
+  });
+
+  it('enforces join sectorId and colonyId length bounds and rejects unknown join keys', () => {
+    const pl = newId('pl');
+    expect(ClientMessage.safeParse({ v: 1, t: 'join', d: { planetId: pl, sectorId: '' } }).success).toBe(false);
+    expect(ClientMessage.safeParse({ v: 1, t: 'join', d: { planetId: pl, colonyId: '' } }).success).toBe(false);
+    expect(ClientMessage.safeParse({ v: 1, t: 'join', d: { planetId: pl, sectorId: 's'.repeat(65) } }).success).toBe(false);
+    expect(ClientMessage.safeParse({ v: 1, t: 'join', d: { planetId: pl, colonyId: 'c'.repeat(65) } }).success).toBe(false);
+    expect(ClientMessage.safeParse({ v: 1, t: 'join', d: { planetId: pl, extra: true } }).success).toBe(false);
   });
 
   it('rejects unknown fields at the envelope, payload and nested levels', () => {
@@ -43,6 +60,17 @@ describe('server messages parse permissively', () => {
     expect(frame).toBeInstanceOf(Uint8Array);
     const back = Welcome.parse(decodeWire(frame));
     expect([...back.d.state]).toEqual([1, 2, 3]);
+  });
+  it('accepts welcome with a building catalog and without one', () => {
+    expect(Welcome.parse(welcome).d.buildings).toBeUndefined();
+    const entry = {
+      id: 'solar', building: 'solar', label: 'Solar Collector Array', tier: 1,
+      footprintW: 2, footprintD: 2, buildS: 18, hp: 400, powerDrainPerS: 1, powerGenPerS: 13,
+      cost: { 'metals.t1': 60 }, archetype: 'building.solar', requiresDeposit: null,
+      hqOnly: false, allowUnclaimed: true, maxPerColony: null,
+    };
+    const parsed = Welcome.parse({ ...welcome, d: { ...welcome.d, buildings: [entry] } });
+    expect(parsed.d.buildings).toEqual([entry]);
   });
   it('sends byte-free messages as JSON text', () => {
     expect(typeof encodeWire({ v: 1, t: 'pong', d: { clientTimeMs: 1, serverTimeMs: 2 } })).toBe('string');

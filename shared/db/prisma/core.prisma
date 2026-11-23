@@ -66,11 +66,14 @@ model Colony {
   landingSlotId    String?  @map("landing_slot_id")
   spawnQ           Int       @default(0) @map("spawn_q")
   spawnR           Int       @default(0) @map("spawn_r")
+  isBot            Boolean   @default(false) @map("is_bot")
+  botPersona       String?   @map("bot_persona")
   createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   lastSeenAt       DateTime? @map("last_seen_at") @db.Timestamptz(3)
 
   @@unique([planetId, colonyIndex])
   @@index([playerId])
+  @@index([planetId, foundingSectorId])
   @@map("colony")
   @@schema("core")
 }

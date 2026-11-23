@@ -1,13 +1,8 @@
 // Interactive controller & scroll-transition animator for Section 07 (#protocol):
 // mounts the TerraAgent Protocol Treasury visual schematic, binds stream filters,
 // drives scroll-linked conduit/stage transitions, and hydrates live /v1/near/protocol telemetry.
-import { clamp, prefersReducedMotion } from '@terra/render/core/StageHost';
-import {
-  renderProtocolReceiptsHtml,
-  renderProtocolSchematicHtml,
-  renderProtocolStagesHtml,
-  renderProtocolToolbarHtml,
-} from './protocolTemplates';
+import { clamp, prefersReducedMotion } from '@terra/render/core/motionUtils';
+import { renderProtocolBoardHtml } from './protocolTemplates';
 
 interface ProtocolTelemetryDto {
   readonly protocolAccountId?: string;
@@ -15,9 +10,11 @@ interface ProtocolTelemetryDto {
   readonly feeSchedule?: {
     readonly standardPlatformFeeBp?: number;
     readonly stakerPlatformFeeBp?: number;
+    readonly tierTakerFeeBp?: readonly number[];
     readonly daoCarveOutShareBp?: number;
     readonly protocolNetStandardBp?: number;
     readonly protocolNetStakerBp?: number;
+    readonly protocolNetTier4Bp?: number;
     readonly validatorGrossApyBp?: number;
     readonly stakerNetApyBp?: number;
     readonly protocolStakingYieldBp?: number;
@@ -153,18 +150,48 @@ function hydrateTradeAndBonds(host: HTMLElement, sched: NonNullable<ProtocolTele
   const protoBarPct = stdBp > 0 ? Math.round((remBarPct * protoStdBp) / stdBp) : 0;
   const daoBarPct = remBarPct - protoBarPct;
 
+  const tierFees = sched.tierTakerFeeBp;
+  const t4Bp = tierFees && tierFees.length >= 5 ? (tierFees[4] ?? stkBp) : undefined;
+  const protoT4Bp = t4Bp !== undefined ? (sched.protocolNetTier4Bp ?? Math.floor((t4Bp * protoShareBp) / 10_000)) : undefined;
+  const protoT4Pct = protoT4Bp !== undefined ? (protoT4Bp / 100).toFixed(2) : undefined;
+  const daoT4Pct = t4Bp !== undefined && protoT4Bp !== undefined ? ((t4Bp - protoT4Bp) / 100).toFixed(2) : undefined;
+
   setText(host, '[data-proto-svg-fees]', `FEES ${protoPct}%`);
   setText(host, '[data-proto-trade-title]', `${protoPct}% of Platform Trade Fee`);
-  setText(host, '[data-proto-trade-rate]', `${protoStdPct}% / ${protoStkPct}%`);
+  setText(
+    host,
+    '[data-proto-trade-rate]',
+    protoT4Pct !== undefined ? `${protoStdPct}% / ${protoStkPct}%–${protoT4Pct}%` : `${protoStdPct}% / ${protoStkPct}%`,
+  );
   setText(host, '[data-proto-dao-share-pct]', `${daoPct}%`);
-  setText(host, '[data-proto-stage-trade-cap]', `BUYER FEE ALLOCATION (MAX ${(maxBuyerBp / 100).toFixed(2)}% / ${((100 + stkBp) / 100).toFixed(2)}% STAKER)`);
+  setText(
+    host,
+    '[data-proto-stage-trade-cap]',
+    t4Bp !== undefined
+      ? `BUYER FEE ALLOCATION (MAX ${(maxBuyerBp / 100).toFixed(2)}% / ${((100 + stkBp) / 100).toFixed(2)}%–${((100 + t4Bp) / 100).toFixed(2)}% T1–T4)`
+      : `BUYER FEE ALLOCATION (MAX ${(maxBuyerBp / 100).toFixed(2)}% / ${((100 + stkBp) / 100).toFixed(2)}% STAKER)`,
+  );
   setText(host, '[data-proto-legend-proto-label]', `■ Protocol Share (${protoPct}%)`);
-  setText(host, '[data-proto-legend-proto-val]', `${protoStdPct}% (${protoStkPct}% Staker)`);
+  setText(
+    host,
+    '[data-proto-legend-proto-val]',
+    protoT4Pct !== undefined ? `${protoStdPct}% (${protoStkPct}%–${protoT4Pct}% T1–T4)` : `${protoStdPct}% (${protoStkPct}% Staker)`,
+  );
   setText(host, '[data-proto-legend-dao-label]', `■ Planet Council (${daoPct}%)`);
-  setText(host, '[data-proto-legend-dao-val]', `${daoStdPct}% (${daoStkPct}% Staker)`);
-  setText(host, '[data-proto-ex-buyer-total]', `Buyer pays $${(100.5 + stdBp / 100).toFixed(2)} ($${(100.5 + stkBp / 100).toFixed(2)} Staker)`);
-  setText(host, '[data-proto-ex-dao]', `+$${daoStdPct} ($${daoStkPct} Stk)`);
-  setText(host, '[data-proto-ex-trade]', `+$${protoStdPct} ($${protoStkPct} Stk)`);
+  setText(
+    host,
+    '[data-proto-legend-dao-val]',
+    daoT4Pct !== undefined ? `${daoStdPct}% (${daoStkPct}%–${daoT4Pct}% T1–T4)` : `${daoStdPct}% (${daoStkPct}% Staker)`,
+  );
+  setText(
+    host,
+    '[data-proto-ex-buyer-total]',
+    t4Bp !== undefined
+      ? `Buyer pays $${(100.5 + stdBp / 100).toFixed(2)} ($${(100.5 + stkBp / 100).toFixed(2)} T1 · $${(100.5 + t4Bp / 100).toFixed(2)} T4)`
+      : `Buyer pays $${(100.5 + stdBp / 100).toFixed(2)} ($${(100.5 + stkBp / 100).toFixed(2)} Staker)`,
+  );
+  setText(host, '[data-proto-ex-dao]', daoT4Pct !== undefined ? `+$${daoStdPct} ($${daoStkPct}–$${daoT4Pct} Stk)` : `+$${daoStdPct} ($${daoStkPct} Stk)`);
+  setText(host, '[data-proto-ex-trade]', protoT4Pct !== undefined ? `+$${protoStdPct} ($${protoStkPct}–$${protoT4Pct} Stk)` : `+$${protoStdPct} ($${protoStkPct} Stk)`);
   setText(host, '[data-proto-ex-trade-txs]', `${formatSponsoredTxs(protoStdBp / 0.12)} gasless NEP-366 player txs`);
   setBarWidth(host, '[data-proto-bar-trade-stall]', stallBarPct);
   setBarWidth(host, '[data-proto-bar-trade-proto]', protoBarPct);
@@ -205,6 +232,10 @@ function hydrateStakingStage(host: HTMLElement, sched: NonNullable<ProtocolTelem
   const protoStakeYr = (50 * protoApyBp) / 10_000;
   const stakeTxsLabel = formatSponsoredTxs(protoStakeYr / 0.0003);
 
+  const tierFees = sched.tierTakerFeeBp;
+  const t2FeePct = tierFees && tierFees.length >= 3 ? ((tierFees[2] ?? stkFeeBp) / 100).toFixed(2) : undefined;
+  const t4FeePct = tierFees && tierFees.length >= 5 ? ((tierFees[4] ?? stkFeeBp) / 100).toFixed(2) : undefined;
+
   setText(host, '[data-proto-svg-yield]', `YIELD ${yieldProtoPct}%`);
   setText(host, '[data-proto-filter-staking]', `02 · ${yieldPilotPct}/${yieldProtoPct} STAKING`);
   setText(host, '[data-proto-yield-title]', `${yieldProtoPct}% of Validator Yield`);
@@ -220,10 +251,18 @@ function hydrateStakingStage(host: HTMLElement, sched: NonNullable<ProtocolTelem
   setText(host, '[data-proto-legend-yield-label]', `■ Protocol Slice (${yieldProtoPct}%)`);
   setText(host, '[data-proto-legend-yield-apy]', `${protoApyPct}% APY`);
   setText(host, '[data-proto-legend-perks-label]', `★ Perks at ≥${minStake} NEAR`);
-  setText(host, '[data-proto-legend-perks-val]', `Managed AI + ${stkFeePct}% Fee`);
+  setText(
+    host,
+    '[data-proto-legend-perks-val]',
+    t4FeePct !== undefined ? `1–12 AI Slots + ${stkFeePct}%–${t4FeePct}% Fee` : `Managed AI + ${stkFeePct}% Fee`,
+  );
   setText(host, '[data-proto-ex-pilot-yield]', `+${((50 * netApyBp) / 10_000).toFixed(2)} NEAR / yr`);
   setText(host, '[data-proto-ex-proto-yield]', `+${protoStakeYr.toFixed(2)} NEAR / yr`);
-  setText(host, '[data-proto-ex-perks]', `Managed AI + ${stkFeePct}% Fee`);
+  setText(
+    host,
+    '[data-proto-ex-perks]',
+    t2FeePct !== undefined ? `3 AI Slots + ${t2FeePct}% Fee (24h)` : `Managed AI + ${stkFeePct}% Fee`,
+  );
   setText(
     host,
     '[data-proto-ex-stake-foot]',
@@ -253,17 +292,7 @@ export function initProtocolSection(): void {
   const host = document.getElementById('protocol-board');
   if (!host) return;
 
-  host.innerHTML = `<div class="sec-head">
-      <div>
-        <p class="eyebrow">07 · PROTOCOL TREASURY</p>
-        <h2 class="h1">Self-funded servers,<br><span class="sub-blue">gas, and offline AI.</span></h2>
-      </div>
-      <p><code>protocol.terraagent.*</code> is an open treasury on NEAR. Small slices from trades, validator yield, and broken-treaty bonds pay directly for player gas and offline colony AI.</p>
-    </div>
-    ${renderProtocolToolbarHtml()}
-    ${renderProtocolSchematicHtml()}
-    ${renderProtocolStagesHtml()}
-    ${renderProtocolReceiptsHtml()}`;
+  if (host.children.length === 0) host.innerHTML = renderProtocolBoardHtml();
 
   const section = host.closest<HTMLElement>('#protocol') ?? host;
   bindStreamFilter(host);

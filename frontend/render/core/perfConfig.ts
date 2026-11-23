@@ -4,6 +4,12 @@ import {
 } from './viewFocus';
 
 export type ViewportPreset = 'auto' | '2560x1440' | '1920x1080' | '1280x720';
+/** User-configurable frame-rate cap (`0` = uncapped / native display refresh rate). */
+export type FpsLimit = 0 | 30 | 60 | 90 | 120;
+
+export const FPS_LIMITS: readonly FpsLimit[] = [0, 120, 90, 60, 30] as const;
+/** Frame cap used when the URL and `terraagent.fpsCap` are both unset. `0` stays available as UNCAPPED. */
+export const DEFAULT_FPS_CAP: FpsLimit = 60;
 
 export const VIEWPORT_PRESETS: Record<ViewportPreset, { label: string; width: number; height: number } | null> = {
   auto: null,
@@ -14,6 +20,15 @@ export const VIEWPORT_PRESETS: Record<ViewportPreset, { label: string; width: nu
 
 const OPT_KEY = 'terraagent.opt';
 const RES_KEY = 'terraagent.res';
+const FPS_CAP_KEY = 'terraagent.fpsCap';
+
+export function parseFpsLimit(raw: string | number | null | undefined): FpsLimit | null {
+  if (raw === null || raw === undefined || raw === '') return null;
+  if (raw === 0 || raw === '0' || raw === 'uncapped' || raw === 'max' || raw === 'display' || raw === 'off') return 0;
+  const n = typeof raw === 'number' ? raw : Number(raw);
+  if (n === 30 || n === 60 || n === 90 || n === 120) return n;
+  return null;
+}
 
 function readInitialOpt(): boolean {
   try {
@@ -35,15 +50,39 @@ function readInitialPreset(): ViewportPreset {
   return 'auto';
 }
 
+/** URL wins, then a saved cap, then {@link DEFAULT_FPS_CAP}. */
+export function resolveInitialFpsCap(urlValue: string | null, saved: string | null): FpsLimit {
+  const fromUrl = parseFpsLimit(urlValue);
+  if (fromUrl !== null) return fromUrl;
+  const fromSaved = parseFpsLimit(saved);
+  if (fromSaved !== null) return fromSaved;
+  return DEFAULT_FPS_CAP;
+}
+
+function readInitialFpsCap(): FpsLimit {
+  try {
+    const q = new URLSearchParams(location.search);
+    return resolveInitialFpsCap(q.get('fpsCap') ?? q.get('maxFps'), localStorage.getItem(FPS_CAP_KEY));
+  } catch { /* ignore */ }
+  return DEFAULT_FPS_CAP;
+}
+
 let optimized = readInitialOpt();
 let preset: ViewportPreset = readInitialPreset();
-const listeners = new Set<(opt: boolean, res: ViewportPreset) => void>();
+let fpsCap: FpsLimit = readInitialFpsCap();
+const listeners = new Set<(opt: boolean, res: ViewportPreset, cap: FpsLimit) => void>();
+const fpsCapListeners = new Set<(cap: FpsLimit) => void>();
 
-const notify = () => listeners.forEach((fn) => fn(optimized, preset));
+const notify = () => listeners.forEach((fn) => fn(optimized, preset, fpsCap));
+const notifyFpsCap = () => {
+  fpsCapListeners.forEach((fn) => fn(fpsCap));
+  notify();
+};
 
 export const isShaderOptimized = (): boolean => optimized;
 export const getViewportPreset = (): ViewportPreset => preset;
 export const getPresetDimensions = (p: ViewportPreset = preset) => VIEWPORT_PRESETS[p];
+export const getFpsCap = (): FpsLimit => fpsCap;
 
 export function setShaderOptimized(v: boolean): boolean {
   if (optimized === v) return optimized;
@@ -61,9 +100,23 @@ export function setViewportPreset(p: ViewportPreset): ViewportPreset {
   return preset;
 }
 
-export function onPerfConfigChange(fn: (opt: boolean, res: ViewportPreset) => void): () => void {
+export function setFpsCap(next: FpsLimit): FpsLimit {
+  const parsed = parseFpsLimit(next);
+  if (parsed === null || fpsCap === parsed) return fpsCap;
+  fpsCap = parsed;
+  try { localStorage.setItem(FPS_CAP_KEY, String(parsed)); } catch { /* private mode */ }
+  notifyFpsCap();
+  return fpsCap;
+}
+
+export function onPerfConfigChange(fn: (opt: boolean, res: ViewportPreset, cap: FpsLimit) => void): () => void {
   listeners.add(fn);
   return () => { listeners.delete(fn); };
+}
+
+export function onFpsCapChange(fn: (cap: FpsLimit) => void): () => void {
+  fpsCapListeners.add(fn);
+  return () => { fpsCapListeners.delete(fn); };
 }
 
 // ------------------------------------------------------------------ F8 → PERF (runtime performance optimisations)
@@ -158,7 +211,10 @@ export const setPerf = (on: boolean): boolean => perf.setOn(on);
 export const togglePerf = (): boolean => perf.toggle();
 export const getPerfParams = (): Readonly<PerfParams> => perf.get();
 export const setPerfParams = (patch: Partial<PerfParams>): Readonly<PerfParams> => perf.set(patch);
-export const resetPerfParams = (): Readonly<PerfParams> => perf.reset();
+export const resetPerfParams = (): Readonly<PerfParams> => {
+  setFpsCap(DEFAULT_FPS_CAP);
+  return perf.reset();
+};
 export const onPerfChange = (fn: (on: boolean, params: Readonly<PerfParams>) => void): (() => void) => perf.onChange(fn);
 
 /** The render-scale choice in effect: 'auto', a fixed ratio, or 'native' while PERF is off. */

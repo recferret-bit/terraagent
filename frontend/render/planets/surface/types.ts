@@ -1,11 +1,15 @@
 import * as THREE from 'three';
+import type { PlanetBiosphere } from '../../biosphere';
 import type { PlanetSpec } from '../PlanetSpec';
+import type { TerrainGridData } from '../../visuals/terrain/TerrainGrid';
 
 /** Walkable diorama patch for one planet. Owned by the "surface" workstream; consumed by playground, descent, game. */
 export interface PlanetSurface {
   readonly spec: PlanetSpec;
   /** Everything (terrain, water, rocks, trees, props). Add to a scene; y=0 is the nominal build plane. */
   readonly group: THREE.Group;
+  /** Living birds and warm-blooded fauna layer across the surface patch. */
+  readonly biosphere?: PlanetBiosphere;
   /** Half-extent of the square playable patch in metres (terrain extends a bit beyond, fading to fog). */
   readonly halfSize: number;
   /** Terrain height (m) at world x,z (water surfaces NOT included). */
@@ -16,7 +20,16 @@ export interface PlanetSurface {
   readonly landingSite: THREE.Vector3;
   /** Per-frame animation (water waves, foliage sway, dust). dt seconds, time seconds. */
   update(dt: number, time: number): void;
+  /** Detaches `group` immediately and slices GPU buffer/texture disposal across idle frames. */
+  disposeDeferred?(): void;
   dispose(): void;
 }
 
-export type CreatePlanetSurface = (spec: PlanetSpec, opts?: { halfSize?: number; quality?: 'low' | 'high' }) => PlanetSurface;
+export interface PlanetSurfaceOptions {
+  halfSize?: number;
+  quality?: 'low' | 'high';
+  /** Optional worker-precomputed height/normal/AO/bedrock/HalfFloat buffers (`@terra/render/planets/prep`). */
+  precomputedGrid?: TerrainGridData;
+}
+
+export type CreatePlanetSurface = (spec: PlanetSpec, opts?: PlanetSurfaceOptions) => PlanetSurface;

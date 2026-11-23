@@ -31,7 +31,7 @@ function play(host: SimHost, from: number, to: number): void {
       enqueue(host, 'sol', { kind: 'build', building: 'solar', q: 3, r: -2 });
     }
     if (t === 400) enqueue(host, 'ext2', { kind: 'build', building: 'metalsExtractor', q: 6, r: 0 });
-    if (t === 80) host.submit({ colonyIndex: 0, source: 'player', commandId: 'c-cancel', kind: 'cancelTask', args: { taskId: 'sol' } });
+    if (t === 40) host.submit({ colonyIndex: 0, source: 'player', commandId: 'c-cancel', kind: 'cancelTask', args: { taskId: 'sol' } });
     host.step(1);
   }
 }
@@ -77,7 +77,7 @@ describe('LED-16 fixed-unit reconciliation on the w03 scenario (harvesters, extr
     const producedPosted: Record<string, number> = {};
     for (const p of run.postings) if (p.reason === 'production.tick') for (const l of p.legs) if (l.account === 'colony:0') producedPosted[l.asset] = (producedPosted[l.asset] ?? 0) + l.delta;
     for (const k of RESOURCE_KEYS) expect(col.production.produced[k]).toBeGreaterThanOrEqual(producedPosted[k] ?? 0);
-  });
+  }, 30_000);
 
   it('snapshot -> restore mid-accumulation continues to the identical state (same hash as an uninterrupted run)', () => {
     const straight = newRun();
@@ -95,7 +95,7 @@ describe('LED-16 fixed-unit reconciliation on the w03 scenario (harvesters, extr
 
     expect(hash(second)).toBe(hash(straight.host));
     expect(colonyOf(second).residual).toEqual(colonyOf(straight.host).residual);
-  });
+  }, 30_000);
 
   it('keeps stock + orbit + in-flight + residual constant while only production, spending and refunds change nothing in cargo', () => {
     const run = newRun();

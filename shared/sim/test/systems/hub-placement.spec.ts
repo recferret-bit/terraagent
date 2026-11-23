@@ -85,8 +85,7 @@ describe('W01-14: Command Hub 3x3 placement validation & UO-TF-05 unclaimed exce
     // Command Hub on the same unclaimed 3x3 succeeds (UO-TF-05 exception)
     const hubCheck = validateBuildingPlacement(state, { colonyId: 0, q: 3, r: 0 });
     expect(hubCheck.ok).toBe(true);
-    expect(hubCheck.unpreparedCount).toBe(9);
-    expect(hubCheck.preparedCount).toBe(0);
+    expect(hubCheck.placement.bill.tilesToPrepare).toBe(0);
 
     host.submit(mkCmd('placeBuilding', { building: 'commandHub', q: 3, r: 0 }, 0));
     const stepRes = host.step(1);
@@ -100,12 +99,11 @@ describe('W01-14: Command Hub 3x3 placement validation & UO-TF-05 unclaimed exce
       building: 'commandHub',
       q: 3,
       r: 0,
-      status: 'waiting_site',
-      waitingReason: 'waiting(site: 0/9)',
-      statusText: 'waiting(site: 0/9)',
-      preparedCount: 0,
+      status: 'waiting_resources',
+      preparedCount: 9,
       totalTiles: 9,
     });
+    expect(orders[0]?.status).not.toBe('waiting_site');
   });
 });
 

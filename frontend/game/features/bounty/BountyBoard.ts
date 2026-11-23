@@ -1,6 +1,6 @@
 import { sendPlanetRequest } from '../../core/net/planetHttp';
 import type { FeatureContext } from '../../core/registry/types';
-import { ownColonyIndex } from '../shared/colony';
+import { isReadOnlySpectator, ownColonyIndex } from '../shared/colony';
 import { fetchBounties, postBounty, postClaim, readApiErrorCode, type BountyFetch } from './bountyApi';
 import { mountBountySheet, type BountyDom } from './bountyDom';
 import { bountyPostArgs, bountySignature, bountyView, type BountyDraft } from './bountyModel';
@@ -90,10 +90,18 @@ export class BountyBoard {
 
   private paint(): void {
     const view = bountyView({ w22: this.ctx.flags.has('W22'), payload: this.payload, errorCode: this.errorCode });
-    const sig = bountySignature(view);
+    const ro = isReadOnlySpectator(this.ctx.services);
+    const sig = `${ro}|${bountySignature(view)}`;
     if (sig === this.painted) return;
     this.painted = sig;
     this.dom.paint(view);
+    if (ro && typeof this.dom.root.querySelectorAll === 'function') {
+      for (const el of this.dom.root.querySelectorAll<HTMLButtonElement | HTMLInputElement | HTMLSelectElement>(
+        '[data-action="bounty-post"], [data-action="bounty-claim"], button[type="submit"], form input, form select',
+      )) {
+        el.disabled = true;
+      }
+    }
   }
 
   private async refresh(): Promise<void> {
@@ -121,6 +129,7 @@ export class BountyBoard {
   }
 
   private async post(draft: BountyDraft): Promise<void> {
+    if (isReadOnlySpectator(this.ctx.services)) return;
     const args = bountyPostArgs(draft, Date.now());
     if (!args) {
       this.fail('invalid_args');
@@ -134,6 +143,7 @@ export class BountyBoard {
   }
 
   private async claim(id: string): Promise<void> {
+    if (isReadOnlySpectator(this.ctx.services)) return;
     const colony = this.poster();
     const ok = await this.send((planetId) => postClaim(planetId, id, colony, this.token(), this.fetchImpl));
     if (ok) await this.refresh();

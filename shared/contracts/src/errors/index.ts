@@ -5,7 +5,7 @@ export const REJECT_CODES = [
   'invalid_args', 'unknown_kind', 'not_own_colony', 'colony_inactive', 'not_own_territory', 'site_blocked',
   'terrain_unbuildable', 'insufficient_resources', 'supply_cap', 'unknown_entity', 'tier_locked', 'worker_tier_locked', 'stage_locked',
   'no_trade_hub', 'raid_protected', 'truce_active', 'would_isolate', 'launch_gate', 'mint_cap', 'market_unavailable',
-  'planet_ended', 'wave_disabled', 'host_unavailable', 'internal',
+  'planet_ended', 'wave_disabled', 'host_unavailable', 'spectator_read_only', 'internal',
   // too many commands from one player (server ingress token bucket, PROTOCOL §4.2)
   'rate_limited',
   // W01 landing: a colony lands once; no two colonies share a slot or land too close (`hq.startingKit.minLandingSeparation`)
@@ -83,6 +83,10 @@ export const REST_ERROR_CODES = [
   // W20 colony deed & staking (NEAR §6, §9):
   'deed_not_found', 'deed_not_settled', 'account_not_claimed', 'pool_not_whitelisted', 'stake_insufficient_balance',
   'DEED_NOT_FOUND', 'DEED_NOT_SETTLED', 'ACCOUNT_NOT_CLAIMED', 'POOL_NOT_WHITELISTED', 'STAKE_INSUFFICIENT_BALANCE',
+  // W28 staking overhaul (NEAR_STAKING_SPEC §1, §4): nothing accrued to compound / nothing unbonded to withdraw,
+  // USDC profits below the wallet balance, wallet colony-slot cap reached, staking needs a wallet account
+  'nothing_to_compound', 'nothing_to_withdraw', 'insufficient_usdc', 'ai_slot_limit', 'wallet_required',
+  'NOTHING_TO_COMPOUND', 'NOTHING_TO_WITHDRAW', 'INSUFFICIENT_USDC', 'AI_SLOT_LIMIT', 'WALLET_REQUIRED',
   // W22 planet treasury (NEAR §10):
   'dao_not_found', 'not_a_member', 'already_voted', 'treasury_insufficient', 'proposal_closed',
   'DAO_NOT_FOUND', 'NOT_A_MEMBER', 'ALREADY_VOTED', 'TREASURY_INSUFFICIENT', 'PROPOSAL_CLOSED',

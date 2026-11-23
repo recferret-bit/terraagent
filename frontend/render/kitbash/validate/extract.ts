@@ -1,5 +1,6 @@
 // Pulls the sub-parts of a registered archetype out of the merged geometry the game renders.
 import * as THREE from 'three';
+import type { VertebratePartRig, VertebrateRigConfig } from '../../animation/vertebrates/types';
 import { KitbashBuilder } from '../KitbashRegistry';
 import { ArchetypeCatalog } from '../catalog';
 import type { ModelInput, PartDef } from './ModelValidator';
@@ -26,10 +27,26 @@ export function extractArchetype(id: string): ModelInput {
     anim ? { animType: Math.round(anim.getX(v)), pivot: [anim.getY(v), anim.getZ(v), anim.getW(v)] } : { animType: 0, pivot: [0, 0, 0] };
 
   if (model) {
+    const vertParts = geo.userData?.vertebrateParts as Array<VertebratePartRig | undefined> | undefined;
+    const vertConfig = geo.userData?.vertebrateConfig as VertebrateRigConfig | undefined;
     let off = 0; const parts: PartDef[] = [];
     for (const m of model.parts) {
       const a = animOf(off);
-      parts.push({ index: m.index, name: m.name, zone: m.zone, kind: m.kind, ...(m.role ? { role: m.role } : {}), animType: a.animType, pivot: a.pivot, emissive: m.emissive, color: m.color, roughness: m.roughness, metalness: m.metalness, tissue: m.tissue, tris: slice(off, m.vertexCount) });
+      const vp = vertParts?.[m.index];
+      const vertRig = vp ? {
+        role: vp.role,
+        pivot: a.pivot,
+        joint: vp.joint ?? a.pivot,
+        tip: vp.tip ?? [a.pivot[0], 0.02, a.pivot[2]] as [number, number, number],
+        meta: vp.meta ?? 0,
+      } : undefined;
+      parts.push({
+        index: m.index, name: m.name, zone: m.zone, kind: m.kind,
+        ...(m.role ? { role: m.role } : {}), animType: a.animType, pivot: a.pivot,
+        emissive: m.emissive, color: m.color, roughness: m.roughness, metalness: m.metalness, tissue: m.tissue,
+        ...(vertRig ? { vertRig } : {}), ...(vertConfig ? { vertConfig } : {}),
+        tris: slice(off, m.vertexCount),
+      });
       off += m.vertexCount;
     }
     return { id, label: entry.label, source: 'builder', parts };

@@ -2,12 +2,27 @@ import type { PriorityKey } from '@terra/contracts';
 import type { SimCommand } from '../../kernel/commands';
 import type { StepContext } from '../../kernel/context';
 import type { PlanetState } from '../../kernel/state';
+import { isRivalAiColony } from '../rival-ai/store';
 import { isCancelTruce, isCancelWar, isDeclareWar, isRaidCommand, isRespondTruce, locksHumanNearBond } from './orders';
 import { awayPolicy } from './policy';
 import { readAwaySettings } from './store';
 import type { AwayActor, AwayFamily, AwayPolicyView } from './types';
 
 const EXEMPT = new Set(['player', 'dev', 'admin', 'system']);
+
+function isNpcRivalBotCommand(
+  state: PlanetState | undefined,
+  cmd: Pick<SimCommand, 'source'> & { colonyIndex?: number | null },
+): boolean {
+  return Boolean(
+    state &&
+      cmd.source === 'bot' &&
+      typeof cmd.colonyIndex === 'number' &&
+      Number.isInteger(cmd.colonyIndex) &&
+      cmd.colonyIndex >= 0 &&
+      isRivalAiColony(state, cmd.colonyIndex),
+  );
+}
 const PRIORITIES = { economy: 50, expansion: 50, defense: 50, power: 50, terraform: 50 } as Record<PriorityKey, number>;
 
 const rejections = new Map<string, number>();
@@ -99,10 +114,10 @@ function viewFor(state: PlanetState, colonyIndex: number, ctx?: StepContext): Aw
 export function checkAiRaidAwayPolicy(
   state: PlanetState,
   colonyIndex: number,
-  cmd: Pick<SimCommand, 'kind' | 'source' | 'args'>,
+  cmd: Pick<SimCommand, 'kind' | 'source' | 'args'> & { colonyIndex?: number | null },
   ctx?: StepContext,
 ): { code: 'away_policy'; detail: string } | undefined {
-  if (EXEMPT.has(cmd.source) || cmd.kind.startsWith('system.')) return undefined;
+  if (EXEMPT.has(cmd.source) || cmd.kind.startsWith('system.') || isNpcRivalBotCommand(state, cmd)) return undefined;
   if (!isRaidCommand(cmd)) return undefined;
   const decision = awayPolicy(viewFor(state, colonyIndex, ctx), {
     kind: cmd.kind,
@@ -133,10 +148,10 @@ function aiAcceptsNearBondedOffer(
  * lock human `NEAR` in diplomacy/war escrows, whether offline (`away`) or online (`AI AUTOPILOT: ON`).
  */
 export function checkAiCancelTrucePolicy(
-  cmd: Pick<SimCommand, 'kind' | 'source' | 'args'>,
+  cmd: Pick<SimCommand, 'kind' | 'source' | 'args'> & { colonyIndex?: number | null },
   state?: PlanetState,
 ): { code: 'away_policy'; detail: 'AW-13' } | undefined {
-  if (EXEMPT.has(cmd.source) || cmd.kind.startsWith('system.')) return undefined;
+  if (EXEMPT.has(cmd.source) || cmd.kind.startsWith('system.') || isNpcRivalBotCommand(state, cmd)) return undefined;
   if (
     !isCancelTruce(cmd) &&
     !isCancelWar(cmd) &&
@@ -155,7 +170,7 @@ export function checkAiCancelTrucePolicy(
  */
 export function gateAwayCommand(state: PlanetState, cmd: SimCommand, ctx: StepContext): { code: 'away_policy'; detail: string } | undefined {
   if (!ctx.flags.has('W09') && !ctx.flags.has('W18') && !ctx.flags.has('W22')) return undefined;
-  if (EXEMPT.has(cmd.source) || cmd.kind.startsWith('system.')) return undefined;
+  if (EXEMPT.has(cmd.source) || cmd.kind.startsWith('system.') || isNpcRivalBotCommand(state, cmd)) return undefined;
   if (typeof cmd.colonyIndex !== 'number') return undefined;
   if (ctx.flags.has('W18') || ctx.flags.has('W22')) {
     const cancelGate = checkAiCancelTrucePolicy(cmd, state);

@@ -5,7 +5,7 @@ import { MePage } from './MePage';
 import { makeW12AchievementsFixture, makeW12ProfileFixture } from './testFixtures';
 
 describe('W12-13 /me page shell, sticky tabs, wave_disabled plate, and PA-03 safety', () => {
-  it('renders the 6 sticky section tabs and 6 section plates', async () => {
+  it('renders the 6 W12 sticky section tabs (+ STAKING with W28) and 6 W12 section plates', async () => {
     const root = document.createElement('div');
     const profile = makeW12ProfileFixture();
     const achievements = makeW12AchievementsFixture();
@@ -21,7 +21,10 @@ describe('W12-13 /me page shell, sticky tabs, wave_disabled plate, and PA-03 saf
     await page.load();
 
     const tabs = [...root.querySelectorAll('.ta-me-tab')].map((a) => a.textContent);
-    expect(tabs).toEqual(['PILOT', 'PROGRESS', 'PLANETS', 'HISTORY', 'ACHIEVEMENTS', 'PLAY']);
+    expect(tabs).toEqual(['PILOT', 'STAKING', 'PROGRESS', 'PLANETS', 'HISTORY', 'ACHIEVEMENTS', 'PLAY']);
+    expect(root.querySelector('[data-testid="me-tab-staking"]')?.classList.contains('ta-me-tab--staking')).toBe(true);
+    const sectionIds = [...root.querySelectorAll('main > section')].map((s) => s.id);
+    expect(sectionIds.slice(0, 3)).toEqual(['pilot', 'staking', 'progress']);
 
     expect(root.querySelector('#pilot')).not.toBeNull();
     expect(root.querySelector('#progress')).not.toBeNull();

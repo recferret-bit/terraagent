@@ -14,11 +14,14 @@ export interface OneClickDryQuoteRequest {
   readonly amount?: unknown;
   readonly amountIn?: unknown;
   readonly recipient?: unknown;
+  /** Effective flag already decided by the controller guard (`resolveQuoteDry`); defaults to a dry quote. */
+  readonly dry?: boolean;
 }
 
 export interface OneClickDryQuoteResult {
   readonly ok: boolean;
-  readonly dry: true;
+  readonly dry: boolean;
+  readonly depositAddress?: string;
   readonly source: 'live-1click' | 'fallback';
   readonly originAsset: string;
   readonly destinationAsset: string;
@@ -113,7 +116,7 @@ function normalizeDryQuoteRecipient(raw: unknown): string {
 
 /**
  * Live NEAR Intents 1Click API client (`https://1click.chaindefuser.com/v0`, `W23-25`).
- * Always sets `dry: true` so hackathon judges & players see real cross-chain solver quotes with zero mainnet spend.
+ * Sends `dry: true` unless the controller guard (`resolveQuoteDry`, Q-007) allows a confirmed Mainnet quote; fallback is always dry.
  */
 export class OneClickQuoteClient {
   private readonly baseUrl: string;
@@ -163,6 +166,7 @@ export class OneClickQuoteClient {
         ? asTrimmedString(req.amountIn)
         : '1000000000000000000000000'; // 1 wNEAR
     const amountAtomic = parsePositiveAtomicAmount(amount);
+    const dry = req.dry !== false;
     const recipient = normalizeDryQuoteRecipient(req.recipient);
     const deadline = new Date(Date.now() + 15 * 60_000).toISOString();
 
@@ -172,7 +176,7 @@ export class OneClickQuoteClient {
         headers: this.headers(),
         signal: AbortSignal.timeout(6_000),
         body: JSON.stringify({
-          dry: true,
+          dry,
           swapType: 'EXACT_INPUT',
           slippageTolerance: 100,
           originAsset,
@@ -199,10 +203,12 @@ export class OneClickQuoteClient {
           signature?: string;
           timestamp?: string;
         };
+        const depositAddress = (data.quote as { depositAddress?: string } | undefined)?.depositAddress;
         if (data.quote?.amountOut) {
           return {
             ok: true,
-            dry: true,
+            dry,
+            ...(!dry && depositAddress ? { depositAddress } : {}),
             source: 'live-1click',
             originAsset,
             destinationAsset,

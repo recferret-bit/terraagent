@@ -69,6 +69,44 @@ export function jwtStillValid(token: string, nowMs = Date.now()): boolean {
   }
 }
 
+/** Persists a real server pilot session to `localStorage` so sibling tabs (`/me.html`, `/trade.html`) share it. */
+export function persistActivePilotSession(
+  body: {
+    readonly accessToken: string;
+    readonly accountId?: string;
+    readonly player: { readonly id: string; readonly isGuest?: boolean; readonly handle: string };
+  },
+  allowOfflineLocalAuth?: boolean,
+): void {
+  const isGuest = body.player.isGuest !== false;
+  const isLocalSimToken = body.accessToken === 'local-mode-token' || Boolean(allowOfflineLocalAuth);
+  if (
+    !body.accessToken ||
+    isLocalSimToken ||
+    body.accessToken.startsWith('dev:') ||
+    body.accessToken.startsWith('player:')
+  ) {
+    return;
+  }
+  try {
+    localStorage.setItem(
+      'ta_active_pilot',
+      JSON.stringify({
+        playerId: body.player.id,
+        accessToken: body.accessToken,
+        updatedAt: Date.now(),
+        isGuest,
+        handle: body.player.handle,
+        ...(body.accountId ? { accountId: body.accountId } : {}),
+      }),
+    );
+    if (!isGuest) localStorage.setItem('ta_trade_token', body.accessToken);
+    else localStorage.removeItem('ta_trade_token');
+  } catch {
+    /* Refresh cookie remains usable when storage is unavailable. */
+  }
+}
+
 /** Reads a non-expired guest `accessToken` from `localStorage.getItem('ta_active_pilot')` for colony upgrade. */
 export function readStoredGuestUpgradeBearer(nowMs = Date.now()): string {
   try {

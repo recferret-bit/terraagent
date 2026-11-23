@@ -2,6 +2,7 @@ import { Inject, Injectable, Optional } from '@nestjs/common';
 import type { PrismaClient } from '@terra/db';
 import type { IncomingMessage } from 'node:http';
 import { EventBus } from '../../bus/event-bus.js';
+import { SectorAntiCheatService } from '../../core/anticheat/index.js';
 import { AuthTokenService } from '../../core/auth/index.js';
 import { CoreException } from '../../core/errors/core-exception.js';
 import { APP_ENV, type AppEnv } from '../../core/tokens.js';
@@ -26,6 +27,7 @@ import {
 import { W22TelemetryService } from '../telemetry/w22-telemetry.service.js';
 import { PlanetDaoLifecycleService, type EnsuredPlanetDao } from './lifecycle.service.js';
 import { rejectEndedPlanet } from './planet-ended.js';
+import { voteWeightBp } from './vote-weight.js';
 import {
   assertNoOpenProposal,
   assertNotVoted,
@@ -56,6 +58,7 @@ export class TreasuryProposalsService {
     @Optional() @Inject(EventBus) private readonly bus?: EventBus,
     @Optional() @Inject(AuthTokenService) private readonly tokens?: AuthTokenService,
     @Optional() @Inject(W22TelemetryService) private readonly telemetry?: W22TelemetryService,
+    @Optional() @Inject(SectorAntiCheatService) private readonly antiCheat?: SectorAntiCheatService,
   ) {}
 
   async council(planetId: string): Promise<TreasuryCouncilResponse> {
@@ -69,7 +72,7 @@ export class TreasuryProposalsService {
     const accountId = await this.account(req, raw, planetId);
     const project = treasuryProject(this.flags.flags, body.kind);
     if (!project) throw new CoreException('invalid_args', { status: 400, message: 'Unknown council project.' });
-    await rejectEndedPlanet(this.prisma, planetId);
+    await rejectEndedPlanet(this.prisma, planetId, this.antiCheat);
     const ensured = await this.requireDao(planetId);
     const view = await this.dao.get({ daoAccountId: ensured.daoAccountId });
     assertNoOpenProposal(view, accountId);
@@ -92,6 +95,7 @@ export class TreasuryProposalsService {
   async vote(planetId: string, id: string, raw: unknown, req: IncomingMessage): Promise<TreasuryProposalResponse> {
     const vote = parseVoteBody(raw);
     const proposalId = parseProposalId(id);
+    await rejectEndedPlanet(this.prisma, planetId, this.antiCheat);
     const accountId = await this.account(req, raw, planetId);
     if (await this.callerIsAway(planetId, accountId)) {
       throw new CoreException('away_policy', {
@@ -104,8 +108,9 @@ export class TreasuryProposalsService {
     const view = await this.dao.get({ daoAccountId: ensured.daoAccountId });
     assertNotVoted(view, proposalId, accountId);
     const op = daoVoteOpId(planetId, proposalId, accountId);
-    await this.runChain(op, 'vote', { proposalId, voter: accountId, vote }, async () => {
-      const receipt = await this.dao.vote({ opId: op, daoAccountId: ensured.daoAccountId, proposalId, voter: accountId, vote });
+    const weightBp = await voteWeightBp(this.prisma, (this.env ?? process.env) as unknown as Record<string, string | undefined>, this.flags.has('W28'), accountId);
+    await this.runChain(op, 'vote', { proposalId, voter: accountId, vote, weightBp }, async () => {
+      const receipt = await this.dao.vote({ opId: op, daoAccountId: ensured.daoAccountId, proposalId, voter: accountId, vote, weightBp });
       return { receipt };
     });
     const response = await this.publish(planetId, ensured.daoAccountId, proposalId);
@@ -151,7 +156,7 @@ export class TreasuryProposalsService {
 
   private account(req: IncomingMessage, body: unknown, planetId: string): Promise<string> {
     return resolveColonyAccount({
-      req, body, planetId, nodeEnv: this.env?.NODE_ENV, prisma: this.prisma, tokens: this.tokens,
+      req, body, planetId, nodeEnv: this.env?.NODE_ENV, prisma: this.prisma, tokens: this.tokens, antiCheat: this.antiCheat,
     });
   }
 

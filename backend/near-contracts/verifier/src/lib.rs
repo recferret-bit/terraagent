@@ -310,7 +310,13 @@ impl IntentVerifierContract {
             .unwrap_or_else(|_| env::panic_str("NEAR_INTENT_INVALID_AMOUNT: invalid amount"));
         require!(qty > 0, "NEAR_INTENT_INVALID_AMOUNT: amount must be > 0");
         let k = bal_key(&account_id, &token_id);
-        let next = self.balances.get(&k).copied().unwrap_or(0).saturating_add(qty);
+        let next = self
+            .balances
+            .get(&k)
+            .copied()
+            .unwrap_or(0)
+            .checked_add(qty)
+            .unwrap_or_else(|| env::panic_str("ERR_OVERFLOW"));
         self.balances.insert(k, next);
         next.to_string()
     }
@@ -435,13 +441,6 @@ impl IntentVerifierContract {
         {
             return Ok(true);
         }
-        if is_implicit_hex_account(account_id) {
-            return if hex_encode_32(pub32) == account_id {
-                Ok(true)
-            } else {
-                Err("NEAR_INTENT_KEY_MISMATCH")
-            };
-        }
         let registered_count = self
             .account_key_counts
             .get(account_id)
@@ -449,6 +448,13 @@ impl IntentVerifierContract {
             .unwrap_or(0);
         if registered_count > 0 {
             return Err("NEAR_INTENT_UNREGISTERED_KEY");
+        }
+        if is_implicit_hex_account(account_id) {
+            return if hex_encode_32(pub32) == account_id {
+                Ok(true)
+            } else {
+                Err("NEAR_INTENT_KEY_MISMATCH")
+            };
         }
         Ok(false)
     }

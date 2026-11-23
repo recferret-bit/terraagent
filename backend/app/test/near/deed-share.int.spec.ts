@@ -60,6 +60,10 @@ describe('W20-12 GET /deed/:tokenId & /v1/deed/:tokenId Postgres HTTP integratio
       expect(res.headers.get('content-type')).toContain('text/html');
       const html = await res.text();
       expect(html).toContain('property="og:image" content="/v1/near/deed/deed%3Acol_0/image.png?v=1"');
+      expect(html).toContain('rel="canonical" href="/deed/deed%3Acol_0"');
+      expect(html).toContain('href="/assets/deed-entry.css"');
+      expect(html).toContain('src="/assets/deed-entry.js"');
+      expect(html).toContain('rel="icon" href="/favicon.ico"');
       expect(html).toContain('property="og:title" content="Aurora Citadel — Stage S4 Colony Deed | TerraAgent"');
       expect(html).toContain('property="og:description"');
       expect(html).toContain('Terraform 60%');
@@ -69,6 +73,20 @@ describe('W20-12 GET /deed/:tokenId & /v1/deed/:tokenId Postgres HTTP integratio
       expect(html).toContain('https://twitter.com/intent/tweet?');
       expect(html).not.toContain('secret_share_owner_77');
     }
+
+    const proxiedRes = await fetch(`${url}/deed/deed%3Acol_0`, {
+      headers: {
+        'x-forwarded-proto': 'https',
+        'x-forwarded-host': 'terraagent.fun',
+      },
+    });
+    expect(proxiedRes.status).toBe(200);
+    const proxiedHtml = await proxiedRes.text();
+    expect(proxiedHtml).toContain('rel="canonical" href="https://terraagent.fun/deed/deed%3Acol_0"');
+    expect(proxiedHtml).toContain('property="og:url" content="https://terraagent.fun/deed/deed%3Acol_0"');
+    expect(proxiedHtml).toContain('property="og:image" content="https://terraagent.fun/v1/near/deed/deed%3Acol_0/image.png?v=1"');
+    expect(proxiedHtml).toContain('name="twitter:image" content="https://terraagent.fun/v1/near/deed/deed%3Acol_0/image.png?v=1"');
+    expect(proxiedHtml).toContain('<img src="/v1/near/deed/deed%3Acol_0/image.png?v=1"');
 
     const imgRes = await fetch(`${url}/v1/near/deed/deed%3Acol_0/image.png?v=1`);
     expect(imgRes.status).toBe(200);

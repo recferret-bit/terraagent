@@ -1,6 +1,8 @@
 import { attachInsectAnimator, getInsectAnimator } from '../animation/insects/InsectAnimationController';
 import { INSECT_SPECIES, stampInsectRig } from '../animation/insects/rig';
 import { INSECT_ANIMATION } from '../animation/insects/shader';
+import { getVertebrateConfig, isVertebrateGeometry } from '../animation/vertebrates/rig';
+import { VERTEBRATE_ANIMATION } from '../animation/vertebrates/shader';
 import { attachWeaponRig, getWeaponRig } from '../combat/WeaponRig';
 import { WeaponRigRegistry, stampWeaponRig } from '../combat/weaponRigs';
 import { WEAPON_RIG } from '../combat/weaponShader';
@@ -107,7 +109,34 @@ export interface ArchetypeEntry {
 export const REQUIRED_IDS = ['robot.hero', 'ship.carrier', 'ship.dropPod'] as const;
 
 const entries = new Map<string, ArchetypeEntry>();
+const biosphereEntries = new Map<string, ArchetypeEntry>();
 const geometryCache = new Map<string, THREE.BufferGeometry>();
+const strippedGeometryCache = new Map<string, THREE.BufferGeometry | false>();
+
+/** Priority archetypes encountered during pod deployment, touchdown, and initial colony reveal. */
+export const LANDING_PREWARM_ARCHETYPES: readonly string[] = [
+  'ship.carrier',
+  'ship.dropPod',
+  'robot.hero',
+  'robot.miner',
+  'robot.builder',
+  'robot.recon',
+  'robot.combat',
+  'building.commandHub',
+  'building.mine',
+  'building.solar',
+  'building.supplyDepot',
+  'building.pylon',
+  'building.wind',
+  'building.waterPump',
+  'building.tradeHub',
+  'fauna.blackAnt',
+  'fauna.blueBeetle',
+  'fauna.greenSpitter',
+  'fauna.hive.blackAnt',
+  'fauna.hive.blueBeetle',
+  'fauna.hive.greenSpitter',
+];
 
 const ARCHETYPE_ALIAS_MAP: Readonly<Record<string, string>> = {
   'unit.recon': 'robot.recon',
@@ -124,18 +153,31 @@ export const ArchetypeCatalog = {
   register(entry: ArchetypeEntry) {
     entries.set(entry.id, entry);
     geometryCache.delete(entry.id);
+    strippedGeometryCache.delete(entry.id);
+  },
+  registerBiosphere(entry: ArchetypeEntry) {
+    biosphereEntries.set(entry.id, entry);
+    geometryCache.delete(entry.id);
   },
   /** Forget a baked mesh so the next `getGeometry` rebuilds it (faction preview). */
   dropGeometry(id: string): void {
-    geometryCache.delete(resolveCanonicalArchetypeId(id));
+    const canonical = resolveCanonicalArchetypeId(id);
+    geometryCache.delete(canonical);
+    strippedGeometryCache.delete(canonical);
   },
   list(category?: ArchetypeCategory): ArchetypeEntry[] {
     return [...entries.values()].filter((e) => !category || e.category === category);
   },
+  listBiosphere(): ArchetypeEntry[] {
+    return [...biosphereEntries.values()];
+  },
   get(id: string): ArchetypeEntry {
     const canonical = resolveCanonicalArchetypeId(id);
-    const e = entries.get(canonical) ?? entries.get(resolveDepositArchetype(canonical)?.id ?? '');
-    if (!e) throw new Error(`ArchetypeCatalog: unknown "${id}". Have: ${[...entries.keys()].join(', ')}`);
+    const e =
+      entries.get(canonical) ??
+      biosphereEntries.get(canonical) ??
+      entries.get(resolveDepositArchetype(canonical)?.id ?? '');
+    if (!e) throw new Error(`ArchetypeCatalog: unknown "${id}". Have: ${[...entries.keys(), ...biosphereEntries.keys()].join(', ')}`);
     return e;
   },
   /** Returns a clone of the cached merged BufferGeometry so runtime unit spawns skip procedural generation. */
@@ -158,14 +200,40 @@ export const ArchetypeCatalog = {
       geometryCache.set(canonical, cached);
     }
     const cloned = cached.clone();
-    if (cached.userData?.partRanges) {
-      cloned.userData = { ...cloned.userData, partRanges: cached.userData.partRanges };
+    if (cached.userData && Object.keys(cached.userData).length > 0) {
+      cloned.userData = { ...cached.userData };
     }
     return cloned;
   },
   has: (id: string) => {
     const canonical = resolveCanonicalArchetypeId(id);
-    return entries.has(canonical) || resolveDepositArchetype(canonical) !== null;
+    return entries.has(canonical) || biosphereEntries.has(canonical) || resolveDepositArchetype(canonical) !== null;
+  },
+  /** Warms cached geometries (and plinth-stripped building templates) from `queue` within `budgetMs` per frame. */
+  prewarmStep(queue: string[], budgetMs = 1.8): boolean {
+    if (queue.length === 0) return true;
+    const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
+    const deadline = now() + Math.max(0.2, budgetMs);
+    while (queue.length > 0) {
+      const id = queue.shift()!;
+      const canonical = resolveCanonicalArchetypeId(id);
+      if (this.has(canonical)) {
+        try {
+          let g = geometryCache.get(canonical);
+          if (!g) {
+            g = this.get(canonical).create();
+            geometryCache.set(canonical, g);
+          }
+          if (canonical.startsWith('building.') && !strippedGeometryCache.has(canonical)) {
+            strippedGeometryCache.set(canonical, bakeStrippedGeometry(g) ?? false);
+          }
+        } catch {
+          /* ignore unknown or transient archetype */
+        }
+      }
+      if (now() >= deadline) return queue.length === 0;
+    }
+    return true;
   },
 };
 
@@ -189,16 +257,30 @@ export interface ArchetypeMesh extends THREE.Mesh {
 export function createArchetypeMesh(id: string, biomeKey = 'dune', stage?: DepositVisualStage): ArchetypeMesh {
   const rig = WeaponRigRegistry.get(id);
   const insect = INSECT_SPECIES[id];
+  const geometry = ArchetypeCatalog.getGeometry(id, stage);
+  const vertebrate = isVertebrateGeometry(geometry);
   const made = createUnifiedColonyMaterial({
     biome: biomeKey,
-    shadowNormalBias: id.startsWith('fauna.hive.') ? 0.065 : 0,
-    plugins: [BUILD_SCAFFOLD, SELECTION_PULSE, BUILDING_LIT, RUIN_VARIANT, ...(rig ? [WEAPON_RIG] : []), ...(insect ? [INSECT_ANIMATION] : [])],
+    shadowNormalBias: id.startsWith('fauna.hive.') ? 0.065 : vertebrate ? 0.024 : 0,
+    plugins: [
+      BUILD_SCAFFOLD,
+      SELECTION_PULSE,
+      BUILDING_LIT,
+      RUIN_VARIANT,
+      ...(rig ? [WEAPON_RIG] : []),
+      ...(insect ? [INSECT_ANIMATION] : []),
+      ...(vertebrate ? [VERTEBRATE_ANIMATION] : []),
+    ],
   });
   const { material, depthMaterial } = made;
   const uniforms = made.uniforms as ArchetypeUniforms; // the scaffold plugin adds uBuild*
-  const geometry = ArchetypeCatalog.getGeometry(id, stage);
   if (rig) stampWeaponRig(geometry, rig);
   if (insect) stampInsectRig(geometry);
+  if (vertebrate) {
+    const cfg = getVertebrateConfig(geometry);
+    uniforms.uVertParams?.value?.set(cfg.comY, cfg.sleepDrop, cfg.strideLen, cfg.liftHeight);
+    uniforms.uVertMeta?.value?.set(cfg.gaitFreq, cfg.isBird, cfg.headSleepPitch, cfg.birdSize ?? 0);
+  }
   if (!geometry.boundingBox) geometry.computeBoundingBox();
   // Scaffold cut heights are fractions of the model's own height (RN-14).
   uniforms.uBuildHeight.value = Math.max(0.1, geometry.boundingBox!.max.y);
@@ -298,19 +380,12 @@ export function setArchetypeBuildProgress(mesh: THREE.Object3D, progress: number
   return stage;
 }
 
-/**
- * Removes the square `plinth` / `plinthDetail` foundation slab from a building mesh when placed on the hex terrain
- * so the building stands directly on the hex terrain's metal hexagonal foundation pads without covering them up.
- */
-export function stripBuildingPlinth(mesh: THREE.Object3D): void {
-  const m = mesh as THREE.Mesh;
-  if (!m.isMesh || !m.geometry) return;
-  const ranges = m.geometry.userData?.partRanges as Array<{ role?: string; start: number; count: number }> | undefined;
-  if (!ranges || !ranges.some((r) => r.role === 'plinth' || r.role === 'plinthDetail')) return;
+function bakeStrippedGeometry(oldGeo: THREE.BufferGeometry): THREE.BufferGeometry | null {
+  const ranges = oldGeo.userData?.partRanges as Array<{ role?: string; start: number; count: number }> | undefined;
+  if (!ranges || !ranges.some((r) => r.role === 'plinth' || r.role === 'plinthDetail')) return null;
   const kept = ranges.filter((r) => r.role !== 'plinth' && r.role !== 'plinthDetail');
-  if (kept.length === 0) return;
+  if (kept.length === 0) return null;
 
-  const oldGeo = m.geometry;
   const totalVerts = kept.reduce((acc, r) => acc + r.count, 0);
   const newGeo = new THREE.BufferGeometry();
   for (const name of Object.keys(oldGeo.attributes)) {
@@ -345,8 +420,57 @@ export function stripBuildingPlinth(mesh: THREE.Object3D): void {
   newGeo.computeBoundingSphere();
   // How far the model moved down (model-space anchors such as the grid cable insulators subtract it).
   newGeo.userData = { stripOffsetY: Number.isFinite(minY) && minY > 0 ? minY : 0 };
+  return newGeo;
+}
+
+function adjustHubBeamForStrip(m: THREE.Mesh, oldStrip: number, newStrip: number): void {
+  const delta = newStrip - oldStrip;
+  if (Math.abs(delta) < 1e-6) return;
+  const beamGroup = (m.userData as { hubPrestige?: { beam?: { group?: THREE.Group } | null } })?.hubPrestige?.beam?.group;
+  if (beamGroup) beamGroup.position.y -= delta;
+}
+
+/**
+ * Removes the square `plinth` / `plinthDetail` foundation slab from a building mesh when placed on the hex terrain
+ * so the building stands directly on the hex terrain's metal hexagonal foundation pads without covering them up.
+ */
+export function stripBuildingPlinth(mesh: THREE.Object3D): void {
+  const m = mesh as THREE.Mesh;
+  if (!m.isMesh || !m.geometry) return;
+  const oldStrip = (m.geometry.userData?.stripOffsetY as number | undefined) ?? 0;
+  const archetypeId = typeof m.userData?.archetypeId === 'string' ? resolveCanonicalArchetypeId(m.userData.archetypeId) : null;
+  if (archetypeId && strippedGeometryCache.has(archetypeId)) {
+    const cached = strippedGeometryCache.get(archetypeId);
+    if (cached === false) return;
+    if (cached) {
+      const oldGeo = m.geometry;
+      const cloned = cached.clone();
+      cloned.userData = { ...cached.userData };
+      m.geometry = cloned;
+      oldGeo.dispose();
+      adjustHubBeamForStrip(m, oldStrip, (cloned.userData.stripOffsetY as number | undefined) ?? 0);
+      const u = (m.userData as any)?.uniforms;
+      if (u?.uBuildHeight && cloned.boundingBox) {
+        u.uBuildHeight.value = Math.max(0.1, cloned.boundingBox.max.y);
+      }
+      return;
+    }
+  }
+
+  const newGeo = bakeStrippedGeometry(m.geometry);
+  if (!newGeo) {
+    if (archetypeId) strippedGeometryCache.set(archetypeId, false);
+    return;
+  }
+  const oldGeo = m.geometry;
+  if (archetypeId) {
+    const template = newGeo.clone();
+    template.userData = { ...newGeo.userData };
+    strippedGeometryCache.set(archetypeId, template);
+  }
   m.geometry = newGeo;
   oldGeo.dispose();
+  adjustHubBeamForStrip(m, oldStrip, (newGeo.userData.stripOffsetY as number | undefined) ?? 0);
   const u = (m.userData as any)?.uniforms;
   if (u?.uBuildHeight && newGeo.boundingBox) {
     u.uBuildHeight.value = Math.max(0.1, newGeo.boundingBox.max.y);

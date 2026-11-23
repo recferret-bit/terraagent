@@ -278,7 +278,8 @@ export class HqPanel {
       delete this.tierText.dataset.unlockedTier;
       delete this.tierText.dataset.ringPct;
     }
-    this.cancelBtn.hidden = !isEntityBusy(entity, prog);
+    const isSpec = Boolean((this.controller as { isSpectator?: () => boolean }).isSpectator?.());
+    this.cancelBtn.hidden = isSpec || !isEntityBusy(entity, prog);
   }
 
   dispose(): void {

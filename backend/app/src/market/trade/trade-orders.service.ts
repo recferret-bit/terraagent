@@ -1,19 +1,17 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import {
   pairId, type CancelTradeOrderResponse, type PlaceTradeOrderRequest, type PlaceTradeOrderResponse, type SimCommandV1, type TradeAllowance,
 } from '@terra/contracts';
 import { withTransaction, type PrismaClient } from '@terra/db';
+import { SectorAntiCheatService } from '../../core/anticheat/index.js';
 import { CommandPrechecks } from '../../core/command-prechecks.js';
 import { FlagsService } from '../../flags/flags.service.js';
 import { PRISMA } from '../../db/db.module.js';
 import { APP_ENV, type AppEnv } from '../../core/tokens.js';
 import { kekEnv } from '../../near/identity/colony-accounts.js';
-import { verifyNep413ClaimSignature } from '../../near/identity/nep413-verifier.js';
 import { generateSealedTradingSessionKey } from '../../near/identity/trading-session-key.js';
-import { nearAdapterFor } from '../../near/infrastructure/adapter-selection.js';
-import { resolveActiveNearNetwork, resolveNearNetworkConfig } from '../../near/infrastructure/network/near-network.config.js';
 import { KeyStore, loadKekRing } from '../../near/keystore/index.js';
-import { markWalletSignedOrder } from '../orders/wallet-signed-orders.js';
+import { markWalletSignedOrder, verifyWalletOrderSignature } from '../orders/wallet-signed-orders.js';
 import { InflightGate } from './inflight-gate.js';
 import type { MarketColony } from '../orders/market-colonies.js';
 import { PriceBoardService } from '../board/price-board.service.js';
@@ -52,6 +50,7 @@ export class TradeOrdersService {
     private readonly board: PriceBoardService,
     @Inject(FlagsService) private readonly flags: FlagsService,
     @Inject(APP_ENV) private readonly env: AppEnv,
+    @Optional() @Inject(SectorAntiCheatService) private readonly antiCheat?: SectorAntiCheatService,
   ) {
     this.gateway = InflightGate.fromEnv(env);
   }
@@ -77,9 +76,47 @@ export class TradeOrdersService {
   }
 
   async colonyOrThrow(p: TradePrincipal, planetId: string): Promise<MarketColony> {
+    const livePlanet = this.antiCheat?.index.getPlanet(planetId);
+    if (livePlanet && (livePlanet.status === 'ENDED' || livePlanet.status === 'ARCHIVED')) {
+      this.antiCheat?.recordRejection('http', 'economy', 'planet_ended');
+      throw new TradeError('planet_ended', `Planet ${planetId} has ended.`, { planetId }, 409);
+    }
     const colony = await p.colonyFor(planetId);
     if (!colony) throw new TradeError('no_colony', `No colony on ${planetId}.`, { planetId });
+    const isScenarioSeatId = /^col_\d+$/.test(colony.colonyId);
+    const indexed =
+      (isScenarioSeatId ? undefined : this.antiCheat?.index.getColonyById(colony.colonyId)) ??
+      this.antiCheat?.index.getColonyByPlanetIndex(planetId, colony.colonyIndex);
+    if (indexed) {
+      if (indexed.planetId !== planetId) {
+        this.antiCheat?.recordRejection('http', 'economy', 'wrong_planet');
+        throw new TradeError('wrong_planet', `Colony belongs to ${indexed.planetId}.`, { planetId: indexed.planetId });
+      }
+      if (indexed.status !== 'ACTIVE') {
+        this.antiCheat?.recordRejection('http', 'economy', 'colony_inactive');
+        throw new TradeError('no_colony', `Colony on ${planetId} is inactive.`, { planetId });
+      }
+    } else if (this.antiCheat) {
+      const activeBase = this.antiCheat.index.getActiveBaseByPlayer(p.ownerId);
+      if (activeBase && activeBase.planetId !== planetId && !this.antiCheat.index.hasActiveColonyForPlayerOnPlanet(p.ownerId, planetId)) {
+        this.antiCheat.recordRejection('http', 'economy', 'wrong_planet');
+        throw new TradeError('wrong_planet', `Active colony belongs to ${activeBase.planetId}.`, { planetId: activeBase.planetId });
+      }
+    }
     return colony;
+  }
+
+  assertTradeCommandAllowed(p: TradePrincipal, planetId: string, colony: MarketColony, kind: string, args: unknown): void {
+    if (!this.antiCheat) return;
+    const ac = this.antiCheat.validateCommand({
+      transport: 'http',
+      playerId: p.ownerId,
+      planetId,
+      colony: { id: colony.colonyId, colonyIndex: colony.colonyIndex },
+      kind,
+      args,
+    });
+    if (!ac.ok) throw new TradeError(ac.rejectCode, ac.detail, undefined, ac.httpStatus);
   }
 
   async place(p: TradePrincipal, body: PlaceTradeOrderRequest, idemKey: string | undefined): Promise<HttpResult<PlaceTradeOrderResponse>> {
@@ -159,6 +196,17 @@ export class TradeOrdersService {
       await this.authorizeWalletOrderSignature(colony, row.planetId, row.requestId, body);
     }
     const args = { side: body.side, resource: body.resource, amount: body.amount, price: body.price, ttlS: body.ttlS, ...(body.maxStallFeeBp === undefined ? {} : { maxStallFeeBp: body.maxStallFeeBp }) };
+    if (this.antiCheat) {
+      const ac = this.antiCheat.validateCommand({
+        transport: 'http',
+        playerId: p.ownerId,
+        planetId: row.planetId,
+        colony: { id: colony.colonyId, colonyIndex: colony.colonyIndex },
+        kind: 'market.placeOrder',
+        args,
+      });
+      if (!ac.ok) return this.finish(row.requestId, 'REJECTED', { errorCode: ac.rejectCode, errorDetail: ac.detail });
+    }
     const pre = await this.prechecks.run({ kind: 'market.placeOrder', args, playerId: p.ownerId, planetId: row.planetId, colony: { id: colony.colonyId, colonyIndex: colony.colonyIndex }, dev: false });
     if (pre) return this.finish(row.requestId, 'REJECTED', { errorCode: pre.code, errorDetail: pre.detail ?? pre.code });
     await this.requests.setState(row.requestId, 'SUBMITTED', { commandId: row.requestId });
@@ -180,19 +228,16 @@ export class TradeOrdersService {
       select: { claimedByAccountId: true, publicKey: true, tradingSessionEncryptedSecret: true },
     });
     const envMap = this.env as unknown as Record<string, string | undefined>;
-    const adapterMode = nearAdapterFor('Intents', envMap);
-    const net = resolveActiveNearNetwork('Intents', envMap);
-    const cfg = resolveNearNetworkConfig(envMap, net);
     const expectedWallet = acct?.claimedByAccountId ?? sig.accountId;
-    if (adapterMode !== 'mock' || !sig.accountId.endsWith('.mock')) {
-      verifyNep413ClaimSignature({
-        signature: sig,
-        expectedWalletAccountId: expectedWallet,
-        expectedMessagePrefix: `order:${planetId}:`,
-        allowedRecipients: [cfg.contracts.res, cfg.contracts.intents, cfg.rootAccount, 'terraagent.app'],
-        network: net,
-      });
-    }
+    await verifyWalletOrderSignature({
+      sig,
+      planetId,
+      body,
+      expectedWalletAccountId: expectedWallet,
+      pinnedPublicKey: acct?.publicKey,
+      envMap,
+      prisma: this.prisma,
+    });
     markWalletSignedOrder(requestId);
     if (!acct?.tradingSessionEncryptedSecret) {
       const sealed = generateSealedTradingSessionKey(new KeyStore(loadKekRing(kekEnv(this.env))));
@@ -259,6 +304,7 @@ export class TradeOrdersService {
     const found = await this.ownOrder(p, idOrRef);
     if (!found) throw new TradeError('order_not_found', 'No such order of yours.');
     const { order, colony } = found;
+    this.assertTradeCommandAllowed(p, order.planetId, colony, 'market.cancelOrder', { orderId: order.orderId });
     const row = await this.cancelRow(p, order, colony, key ?? null);
     if (row.fresh && !TERMINAL.has(order.state)) {
       const out = await this.submitSim(p, row.row, 'market.cancelOrder', { orderId: order.orderId });

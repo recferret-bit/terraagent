@@ -316,7 +316,14 @@ describe('ConstructionMenu DOM HUD Component', () => {
 
     expect(mockParent.querySelector('.ta-construction')).not.toBeNull();
     const cardsContainer = mockParent.querySelector('[data-cards]');
-    expect(cardsContainer?.children).toHaveLength(3);
+    expect(cardsContainer?.querySelectorAll('[data-building]')).toHaveLength(3);
+    expect(cardsContainer?.querySelectorAll('.ta-menu-section__title').map((el) => el.textContent)).toEqual([
+      'HQ',
+      'Resources',
+      'Power',
+    ]);
+    expect(cardsContainer?.querySelector('[data-menu-section="hq"]')?.querySelector('.ta-menu-section__text')?.textContent).toMatch(/Trains workers/);
+    expect(cardsContainer?.querySelector('[data-menu-section="resources"]')?.querySelector('.ta-menu-section__text')?.textContent).toMatch(/petroleum/);
 
     const extractorBtn = mockParent.querySelector('[data-building="metalsExtractor"]');
     expect(extractorBtn?.getAttribute('data-disabled')).toBe('false');

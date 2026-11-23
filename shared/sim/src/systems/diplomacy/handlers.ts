@@ -1,6 +1,7 @@
 import { defineCommandHandler } from '../../kernel/commands';
 import { colonyIsAway } from '../away';
 import { checkAiCancelTrucePolicy, resolveColonyAwayRaids } from '../away/gate';
+import { isRivalAiColony } from '../rival-ai/store';
 import { commandColony, parseArgs } from '../command';
 import { cancelTruce, cancelWar, declareWar, devOfferTruce, proposeTruce, respondTruce } from './operations';
 import { resolveColonyIndex } from './store';
@@ -67,7 +68,7 @@ export const declareWarHandler = defineCommandHandler({
     if (awayGate) return awayGate;
     const colIdx = commandColony(cmd);
     if (typeof colIdx === 'string') return colIdx;
-    if (!EXEMPT_AI_SOURCES.has(cmd.source) && !resolveColonyAwayRaids(state, colIdx)) {
+    if (!EXEMPT_AI_SOURCES.has(cmd.source) && !(cmd.source === 'bot' && isRivalAiColony(state, colIdx)) && !resolveColonyAwayRaids(state, colIdx)) {
       return { code: 'away_policy', detail: 'AW-11' };
     }
     const parsed = parseArgs('diplomacy.declareWar', cmd.args);

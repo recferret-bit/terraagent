@@ -1,4 +1,5 @@
 import { defineFeature, type FeatureContext } from '../../core/registry/types';
+import { isReadOnlySpectator } from '../shared/colony';
 import { AwayPanel, type AwayPanelOptions } from './AwayPanel';
 import './away.css';
 
@@ -30,6 +31,7 @@ function optionsFrom(ctx: FeatureContext): AwayPanelOptions {
     onOpenDirector: ctx.flags.has('W16')
       ? () => document.querySelector<HTMLButtonElement>('[data-testid="colony-tab-director"]')?.click()
       : undefined,
+    readOnly: () => isReadOnlySpectator(services),
   };
 }
 

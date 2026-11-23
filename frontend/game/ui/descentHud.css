@@ -1,0 +1,329 @@
+/* Faction Plate Drop-Pod HUD: Frame, Letterbox & Left Kinematics/G-Meter/Thermal Plate.
+   Uses --ta-* tokens exclusively; chamfered plates, zero border-radius, tabular numerals. */
+
+#descent {
+  opacity: 0;
+  transition: opacity 0.75s var(--ta-ease-hydraulic);
+}
+#descent.on {
+  opacity: 1;
+}
+
+#descent .lb {
+  position: absolute;
+  inset-inline: 0;
+  height: 0;
+  background: var(--ta-void);
+  transition: height 0.9s var(--ta-ease-hydraulic);
+}
+#descent .lb.top { top: 0; }
+#descent .lb.bot { bottom: 0; }
+#descent.on .lb { height: 8.2vh; }
+
+#descent .d-panel {
+  position: absolute;
+  background: color-mix(in srgb, var(--ta-void) 84%, transparent);
+  border: 1px solid var(--ta-seam-2);
+  backdrop-filter: blur(8px);
+  font-family: var(--ta-font-mono);
+  color: var(--ta-text-2);
+  font-variant-numeric: tabular-nums;
+  contain: layout style paint;
+  pointer-events: none;
+}
+
+#descent .d-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ta-s2);
+  padding-bottom: 6px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--ta-seam);
+  font-size: 10px;
+  letter-spacing: var(--ta-track-eyebrow);
+  color: var(--ta-steel);
+  text-transform: uppercase;
+}
+
+/* Left Plate: Kinematics, G-Force & TPS Hull Temperature */
+#descent .d-kinematics {
+  left: max(3.2vw, env(safe-area-inset-left, 0px));
+  top: max(10.6vh, env(safe-area-inset-top, 0px));
+  width: min(308px, 42vw);
+  padding: 12px 15px;
+  border-left: 3px solid var(--ta-orange);
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+#descent .d-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+#descent .d-metric-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--ta-s2);
+}
+
+#descent .d-k {
+  font-size: 10px;
+  letter-spacing: var(--ta-track-label);
+  color: var(--ta-steel);
+  text-transform: uppercase;
+}
+
+#descent .d-tag {
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  padding: 1px 5px;
+  border: 1px solid var(--ta-seam-3);
+  color: var(--ta-text-3);
+  background: var(--ta-deep);
+  text-transform: uppercase;
+}
+
+#descent .d-val-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--ta-s2);
+}
+
+#descent .d-val-main {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+}
+
+#descent .d-val-main b {
+  font-family: var(--ta-font-display);
+  font-size: 19px;
+  line-height: 1.05;
+  font-weight: 700;
+  color: var(--ta-hull);
+}
+
+#descent .d-val-main .u {
+  font-size: 11px;
+  color: var(--ta-steel);
+}
+
+#descent .d-sub {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--ta-energy);
+}
+
+#descent .d-bar {
+  position: relative;
+  height: 4px;
+  background: var(--ta-seam);
+}
+
+#descent .d-bar > i {
+  display: block;
+  height: 100%;
+  width: 0%;
+  background: var(--ta-orange);
+  transition: width 80ms linear, background-color 180ms ease;
+}
+
+#descent .d-bar--energy > i {
+  background: var(--ta-energy);
+}
+
+/* Segmented 9-G meter with peak-hold tick */
+#descent .d-g-meter {
+  position: relative;
+  height: 6px;
+  background: repeating-linear-gradient(
+    90deg,
+    var(--ta-seam) 0 calc(11.11% - 1px),
+    var(--ta-void) calc(11.11% - 1px) 11.11%
+  );
+}
+
+#descent .d-g-meter > i {
+  display: block;
+  height: 100%;
+  width: 0%;
+  background: var(--ta-energy);
+  transition: width 70ms linear, background-color 150ms ease;
+}
+
+#descent .d-g-meter > em {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  width: 2px;
+  left: 0%;
+  background: var(--ta-hull);
+  font-style: normal;
+}
+
+#descent .d-g-block[data-band="elevated"] .d-val-main b,
+#descent .d-g-block[data-band="elevated"] .d-tag {
+  color: var(--ta-orange-hi);
+  border-color: var(--ta-orange);
+}
+#descent .d-g-block[data-band="elevated"] .d-g-meter > i {
+  background: var(--ta-orange);
+}
+#descent .d-g-block[data-band="crit"] .d-val-main b,
+#descent .d-g-block[data-band="crit"] .d-tag {
+  color: var(--ta-fault-text);
+  border-color: var(--ta-fault);
+}
+#descent .d-g-block[data-band="crit"] .d-g-meter > i {
+  background: var(--ta-fault);
+}
+
+/* TPS / Hull temperature block */
+#descent .temp {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+}
+
+#descent .temp b {
+  font-family: var(--ta-font-display);
+  font-size: 21px;
+  font-weight: 700;
+  transition: color 0.25s ease, text-shadow 0.25s ease;
+}
+
+#descent .temp .trend {
+  margin-left: 4px;
+  font-size: 11px;
+}
+
+#descent .d-temp-block[data-band="cold"] .temp b,
+#descent .d-temp-block[data-band="cold"] .trend { color: var(--ta-blue-hi); }
+#descent .d-temp-block[data-band="cold"] .d-bar > i { background: var(--ta-blue-hi); }
+#descent .d-temp-block[data-band="nominal"] .temp b,
+#descent .d-temp-block[data-band="nominal"] .trend { color: var(--ta-terra); }
+#descent .d-temp-block[data-band="nominal"] .d-bar > i { background: var(--ta-terra); }
+#descent .d-temp-block[data-band="warm"] .temp b,
+#descent .d-temp-block[data-band="warm"] .trend { color: var(--ta-orange-hi); }
+#descent .d-temp-block[data-band="warm"] .d-bar > i { background: var(--ta-orange-hi); }
+#descent .d-temp-block[data-band="hot"] .temp b,
+#descent .d-temp-block[data-band="hot"] .trend { color: var(--ta-orange); text-shadow: var(--ta-glow-1); }
+#descent .d-temp-block[data-band="hot"] .d-bar > i { background: var(--ta-orange); }
+#descent .d-temp-block[data-band="crit"] .temp b,
+#descent .d-temp-block[data-band="crit"] .trend {
+  color: var(--ta-fault-text);
+  text-shadow: var(--ta-glow-3);
+  animation: dCritPulse 0.48s ease-in-out infinite alternate;
+}
+#descent .d-temp-block[data-band="crit"] .d-bar > i { background: var(--ta-fault); }
+
+@keyframes dCritPulse {
+  to { opacity: 0.78; }
+}
+
+/* 6-cell live pod hardware mechanism indicators (synced to 3D clamps, shield, chute, retro, gear & hatch) */
+#descent .d-sys-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+  padding-top: 6px;
+  border-top: 1px solid var(--ta-seam);
+}
+
+#descent .d-sys-cell {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 3px;
+  padding: 3px 5px;
+  background: var(--ta-deep);
+  border: 1px solid var(--ta-seam);
+  border-left: 2px solid var(--ta-seam-3);
+}
+
+#descent .d-sys-k {
+  font-size: 8px;
+  letter-spacing: 0.06em;
+  color: var(--ta-steel);
+}
+
+#descent .d-sys-v {
+  font-family: var(--ta-font-display);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--ta-text-3);
+}
+
+#descent .d-sys-cell[data-state="act"] {
+  border-color: var(--ta-seam-3);
+  border-left-color: var(--ta-blue-hi);
+}
+#descent .d-sys-cell[data-state="act"] .d-sys-v { color: var(--ta-blue-hi); }
+
+#descent .d-sys-cell[data-state="warn"] {
+  border-color: var(--ta-orange);
+  border-left-color: var(--ta-orange);
+  background: color-mix(in srgb, var(--ta-orange) 12%, var(--ta-deep));
+}
+#descent .d-sys-cell[data-state="warn"] .d-sys-v { color: var(--ta-orange-hi); }
+
+#descent .d-sys-cell[data-state="ok"] {
+  border-color: var(--ta-seam-3);
+  border-left-color: var(--ta-terra);
+}
+#descent .d-sys-cell[data-state="ok"] .d-sys-v { color: var(--ta-terra); }
+
+/* Bottom caption, progress bar & skip hint */
+#descent .caption {
+  position: absolute;
+  inset-inline: 0;
+  bottom: 11.6vh;
+  text-align: center;
+  font-family: var(--ta-font-display);
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: clamp(13px, 1.55vw, 20px);
+  letter-spacing: 0.2em;
+  color: var(--ta-hull);
+  text-shadow: 0 2px 14px var(--ta-void), 0 0 3px var(--ta-void);
+  pointer-events: none;
+}
+
+#descent .progress {
+  position: absolute;
+  inset-inline: 3.2vw;
+  bottom: 9.4vh;
+  height: 3px;
+  background: var(--ta-seam-2);
+  pointer-events: none;
+}
+
+#descent .progress i {
+  display: block;
+  height: 100%;
+  width: 0%;
+  background: var(--ta-orange);
+}
+
+#descent .skip {
+  position: absolute;
+  right: 3.2vw;
+  bottom: 2.6vh;
+  font-family: var(--ta-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  color: var(--ta-steel);
+  animation: dSkipPulse 2.4s infinite;
+  pointer-events: none;
+}
+
+@keyframes dSkipPulse {
+  50% { opacity: 0.35; }
+}

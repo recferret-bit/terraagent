@@ -12,7 +12,7 @@ import { GuildStrategyPort } from '../strategy/port.js';
 import { GuildVisitClock } from './guild-visit.clock.js';
 import { GuildVisitPublisher, type ArrivedInput, type DepartedInput, type GuildPush } from './guild-visit.publisher.js';
 import { GuildVisitRepository, type GuildVisitInsert, type GuildVisitRow } from './guild-visit.repository.js';
-import { cadenceId, dueWindows, extraVisit, extraVisitId, type ScheduleInput, type VisitWindow } from './schedule.js';
+import { cadenceId, dueWindows, extraVisit, extraVisitId, scheduleAt, type ScheduleInput, type VisitWindow } from './schedule.js';
 
 export interface OpenDock {
   readonly id: string;
@@ -79,6 +79,19 @@ export class GuildVisitService implements OnModuleInit, OnModuleDestroy {
 
   tick(planetId: string, npcId?: string): Promise<GuildPush[]> {
     return this.at(planetId, this.clock.now(planetId), npcId);
+  }
+
+  /** The docked or next window of every roster ship on `planetId` at the planet's guild clock (W15 off: none). */
+  upcoming(planetId: string): { readonly nowMs: number; readonly windows: readonly (VisitWindow & { readonly name: string })[] } {
+    const nowMs = this.clock.now(planetId);
+    if (!this.enabled()) return { nowMs, windows: [] };
+    const policy = this.policy();
+    const windows: (VisitWindow & { readonly name: string })[] = [];
+    for (const npc of policy.roster) {
+      const view = scheduleAt(this.input(npc, planetId, policy), nowMs);
+      if (view) windows.push({ npcId: npc.id, planetId, arriveAt: view.arriveAt, departAt: view.departAt, name: npc.name });
+    }
+    return { nowMs, windows };
   }
 
   /**

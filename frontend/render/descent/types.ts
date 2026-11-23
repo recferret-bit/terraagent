@@ -1,20 +1,105 @@
 import type * as THREE from 'three';
 import type { PlanetSpec } from '../planets/PlanetSpec';
 import type { PlanetSurface } from '../planets/surface/types';
+import type { PrecomputedGlobeSpheres } from '../visuals/terrain/TerrainGrid';
 import type { ColonyViewport } from '../core/createColonyViewport';
 
 export type DescentPhase = 'orbit' | 'release' | 'freefall' | 'reentry' | 'chute' | 'approach' | 'retro' | 'touchdown';
+
+export type DescentAtmoLayer =
+  | 'EXOSPHERE'
+  | 'THERMOSPHERE'
+  | 'MESOSPHERE'
+  | 'STRATOSPHERE'
+  | 'TROPOSPHERE'
+  | 'BOUNDARY';
+
+export type DescentThermalState =
+  | 'BAY STANDBY'
+  | 'VACUUM VENT'
+  | 'COLD SOAK'
+  | 'SLIP HEATING'
+  | 'PLASMA ABLATION'
+  | 'SHIELD SEP'
+  | 'CONVECTIVE COOL'
+  | 'RETRO WASH'
+  | 'AMBIENT';
+
+export type DescentCommsState = 'LOCKED' | 'DEGRADED' | 'BLACKOUT';
+export type DescentAtmoStatus = 'VACUUM TRACE' | 'IONIZED INTAKE' | 'ANALYSIS LOCKED';
+export type DescentSolarPeriod = 'DAWN' | 'DAY' | 'DUSK' | 'NIGHT';
+export type DescentMechState = 'stby' | 'act' | 'warn' | 'ok';
+export type DescentGuidanceState =
+  | 'ORBITAL NAV'
+  | 'ENTRY CORRIDOR'
+  | 'PLASMA INERTIAL'
+  | 'RADAR ALT LOCK'
+  | 'PAD CONTACT';
+
+export type DescentBeaconState = 'STANDBY' | 'ORBITAL' | 'BLACKOUT' | 'ACQUIRED' | 'LOCKED';
+
+export interface DescentMechIndicator {
+  readonly code: string;
+  readonly text: string;
+  readonly state: DescentMechState;
+}
+
+export interface DescentPodSystems {
+  readonly clamps: DescentMechIndicator;
+  readonly shield: DescentMechIndicator;
+  readonly chute: DescentMechIndicator;
+  readonly retro: DescentMechIndicator;
+  readonly gear: DescentMechIndicator;
+  readonly hatch: DescentMechIndicator;
+}
+
+export interface DescentGasSample {
+  readonly formula: string;
+  readonly name: string;
+  /** Target planet mole fraction in percent (0..100). */
+  readonly pct: number;
+  readonly role: 'inert' | 'oxidizer' | 'greenhouse' | 'trace';
+}
 
 export interface DescentTelemetry {
   /** Seconds since start (0..duration). */
   t: number; duration: number; progress: number;
   phase: DescentPhase;
-  /** Fake-but-plausible HUD numbers. */
+  /** Flight kinematics & loads. */
   altitudeKm: number; speedKmh: number; gForce: number; heatPct: number;
-  /** Heat-shield / hull skin temperature, °C (space-cold ≈ −40 → ~2000 at peak plasma). */
+  /** Heat-shield / hull skin temperature, °C (conditioned bay -> cold space soak -> ~2000 °C plasma -> ambient). */
   hullTempC: number;
+  /** Instantaneous rate of hull temperature change (°C/s), framerate-independent. */
+  hullTempRateCs?: number;
   /** Short HUD caption for the current beat, e.g. "Atmospheric interface — hold on". */
   caption: string;
+  /** Extended aerospace & planetary environmental telemetry. */
+  mach?: number;
+  verticalSpeedMs?: number;
+  peakG?: number;
+  staticPressureKpa?: number;
+  dynamicPressureKpa?: number;
+  isMaxQ?: boolean;
+  atmoLayer?: DescentAtmoLayer;
+  thermalState?: DescentThermalState;
+  commsState?: DescentCommsState;
+  commsSignalPct?: number;
+  surfaceGravityG?: number;
+  ambientTempC?: number;
+  localSolarClock?: string;
+  localDayPeriod?: DescentSolarPeriod;
+  intakeProgress?: number;
+  atmoStatus?: DescentAtmoStatus;
+  atmoSummary?: string;
+  atmoGases?: readonly DescentGasSample[];
+  atmoDensityKgM3?: number;
+  ppO2Kpa?: number;
+  downrangeKm?: number;
+  guidanceState?: DescentGuidanceState;
+  beaconState?: DescentBeaconState;
+  /** Radar altimeter AGL in meters once heat shield separates (`null` while masked by heat shield). */
+  radarAltM?: number | null;
+  podSystems?: DescentPodSystems;
 }
 
 /**
@@ -34,6 +119,8 @@ export interface DescentHandoff {
   /** Direction TO the sun in carrier-local space. */
   sunLocal: THREE.Vector3;
   sunColor: THREE.Color; sunIntensity: number;
+  /** `0..1` SpaceBackdrop sun-disc visibility at `startAt` (`0` in nightside umbra, `1` on sunlit dayside). */
+  sunDisc?: number;
   hemiColor: THREE.Color; hemiGround: THREE.Color; hemiIntensity: number;
   exposure: number; envIntensity: number; bloom: number;
   bayGlow: number; podYawLocal: number;
@@ -56,6 +143,14 @@ export interface DescentSequence {
   readonly handoff: DescentHandoff;
   /** Orient the descent globe (world quaternion of its spin group + cloud drift) so it matches the menu globe at the cut. */
   alignGlobe(spinQuat: THREE.Quaternion, cloudRotY: number): void;
+  /** Sync sky/fog/telemetry to an authoritative server planet spec if resolved during orbital/entry flight. */
+  syncPlanetSpec?(spec: PlanetSpec): void;
+  /** Refresh orbital entry sun direction & umbra lighting on `handoff` from live `dayNightConfig`; returns true if changed. */
+  syncHandoffSolar?(opts?: { updateEntryDir?: boolean; dtSec?: number }): boolean;
+  /** Use y=0 landing-pad datum when an online HexTerrain replaces the procedural preview surface. */
+  setExternalGround?(active: boolean): void;
+  /** Update the cosmetic prestige while the sequence is prepared but not finished (the own tier may arrive late). */
+  setPrestige?(prestige: DescentPrestigeSource | undefined): void;
   /** Where the camera ends (gameplay diorama pose). Valid immediately after creation. */
   readonly finalPose: { position: THREE.Vector3; target: THREE.Vector3 };
   start(): void;
@@ -66,8 +161,24 @@ export interface DescentSequence {
   onTelemetry(cb: (t: DescentTelemetry) => void): void;
   /** Fired once at touchdown. `hero` is the robot.hero mesh standing at surface.landingSite, already detached from descent objects and added to `scene`. */
   onComplete(cb: (hero: THREE.Object3D) => void): void;
+  /** Detaches scene objects immediately and slices part GPU disposal across idle animation frames. */
+  disposeDeferred?(): void;
   dispose(): void;
 }
+
+/** Cosmetic staking prestige of the player's own colony and target planet (W28-12). Plain flags from the app; render never reads wallets. */
+export interface DescentPrestige {
+  /** Tier 2+: a cyan plasma trail follows the drop pod through re-entry. */
+  plasmaTrail?: boolean;
+  /** Tier 4 King-of-the-Hill Lead Patron on the target planet: parks `ISS <pilot>.near` in the orbital descent skybox. */
+  flagshipCarrierName?: string | null;
+}
+
+/** A fixed prestige, or a getter read every frame (the player's own tier may arrive after the descent is prepared). */
+export type DescentPrestigeSource = DescentPrestige | (() => DescentPrestige | undefined);
+
+export const resolveDescentPrestige = (src: DescentPrestigeSource | undefined): DescentPrestige | undefined =>
+  typeof src === 'function' ? src() : src;
 
 export interface DescentOptions {
   viewport: ColonyViewport;
@@ -79,5 +190,11 @@ export interface DescentOptions {
   duration?: number; // default 35
   /** Authored second to begin at (0 = top; 2 = carrier hand-off with the bay arming). */
   startAt?: number;
+  /** Optional worker-precomputed `PlanetGlobe` high-poly spheres (`@terra/render/planets/prep`). */
+  precomputedGlobeSpheres?: PrecomputedGlobeSpheres;
+  /** When true, `finish()` / `skip()` slices part GPU disposal across idle frames instead of stalling the handoff frame. */
+  deferPartDispose?: boolean;
+  /** Cosmetic prestige of the player's own tier. Omitted = none (tier 0, `?host=local`, W28 off). */
+  prestige?: DescentPrestigeSource;
 }
 export type CreateDescentSequence = (opts: DescentOptions) => DescentSequence;

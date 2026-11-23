@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { GRID_PORTS } from '../../kitbash/archetypes/buildings/gridPorts';
+import { baseHubArchetypeId } from '../../prestige/tierVisuals';
 import { PYLON_CROSSBEAMS, PYLON_INSULATOR_DROP } from '../../kitbash/archetypes/buildings/power';
 
 /** Model-space point `[x, y, z]` a cable ends on. */
@@ -7,7 +8,7 @@ export type CableAnchor = [number, number, number];
 
 /**
  * Where a cable meets a building wall: the box around `(cx, cz)` with half-size `r`, at height `y`. Explicit for the
- * Command Hub (its bounding box includes the landing pad and antenna, which would leave the cable ending in the air);
+ * Command Hub (its bounding box includes the antenna, which would leave the cable ending in the air);
  * any other building uses `boxAnchorFromBounds`.
  */
 interface WallAnchor {
@@ -54,6 +55,7 @@ export function buildingCableAnchor(
   dz: number,
   stripOffsetY = 0,
 ): CableAnchor {
+  archetypeId = baseHubArchetypeId(archetypeId);
   const port = GRID_PORTS[archetypeId];
   if (port) return [port[0], port[1] - stripOffsetY, port[2]];
   const wall = WALL_ANCHORS[archetypeId] ?? (bounds ? boxAnchorFromBounds(bounds) : { cx: 0, cz: 0, r: 0.8, y: 1.0 });

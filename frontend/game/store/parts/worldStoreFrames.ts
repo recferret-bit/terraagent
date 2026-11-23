@@ -14,6 +14,7 @@ import type { ClientView } from '../replica/viewCodec';
 import type { CommandInput, WorkerLike } from '../WorldStore';
 import type { FromWorker } from '../worker/protocol';
 import { SimWorkerController } from '../worker/SimWorkerController';
+import { takePrewarmedSimWorker } from '../worker/simWorkerPrewarm';
 
 export function normalizeWorldCommand(
   input: CommandInput | unknown,
@@ -35,6 +36,8 @@ export function normalizeWorldCommand(
 }
 
 export function createDefaultSimWorker(): WorkerLike {
+  const prewarmed = takePrewarmedSimWorker();
+  if (prewarmed) return prewarmed;
   if (typeof Worker === 'function') {
     return new Worker(new URL('../worker/sim.worker.ts', import.meta.url), {
       type: 'module',

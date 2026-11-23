@@ -9,18 +9,14 @@
  * stripped from client payloads like the hidden tile layers (D-38); the client then does not predict that system's
  * outcome (WE-05).
  */
+import { fnv1a32 } from '../grid/hex';
+
 export const RNG_STREAMS = ['gen', 'weather', 'hazard', 'fauna', 'ai', 'combat', 'misc'] as const;
 export type RngStream = (typeof RNG_STREAMS)[number];
 export type RngState = Record<RngStream, Uint32Array>;
 
 /** FNV-1a over UTF-16 code units: a stable 32-bit hash of a string (no TextEncoder needed). */
-export function hashString(s: string, h = 0x811c9dc5): number {
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 0x01000193) >>> 0;
-  }
-  return h >>> 0;
-}
+export const hashString = fnv1a32;
 
 function splitmix32(seed: number): () => number {
   let s = seed >>> 0;

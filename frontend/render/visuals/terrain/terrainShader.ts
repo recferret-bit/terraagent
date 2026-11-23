@@ -18,6 +18,7 @@ uniform float uRainIntensity, uWetness, uPuddleLevel, uStormDarkness, uWeatherTi
 uniform float uPuddleElectroIntensity;
 uniform vec2 uPuddleElectroOrigin;
 uniform vec3 uLow, uHigh, uRock, uRockDark, uAccent; uniform vec2 uWind;
+uniform sampler2D uMeadowDetailMap, uMeadowRoughMap, uDesertCrustMap, uDesertRoughMap;
 varying vec3 vLP; varying vec3 vLN; varying float vAO; varying float vRock;
 vec3 gBump; vec3 gEmis; float gRough;
 
@@ -110,31 +111,51 @@ const KIND_DUNE = /* glsl */ `    // ---- dune: wind-carved sand, rippled
     float veil = smoothstep(0.35, 0.75, fbm3(p * 0.06 + 2.0));
     vec3 crust = mix(rockCol, mix(uRock, uAccent, 0.35), 0.4);
     col = mix(col, mix(crust, mix(crust, uHigh, 0.6), veil), cap);
-    gRough = mix(0.95, 0.82, cliff);
+    // dry wadi alkali & desert scrub patches on flat/low sand basins + procedural desertPebbleCrust micro-detail
+    vec3 desertTex = texture2D(uDesertCrustMap, p * 0.22).rgb;
+    float desertRough = texture2D(uDesertRoughMap, p * 0.22).r;
+    float sandOpen = (1.0 - cliff) * (1.0 - cap);
+    col *= mix(1.0, 0.86 + 0.28 * dot(desertTex, vec3(0.3333)), sandOpen * 0.45);
+    float alkali = smoothstep(0.62, 0.84, fbm3(p * 0.085 - 4.2)) * (1.0 - smoothstep(0.08, 0.26, sl)) * (1.0 - smoothstep(0.05, 0.3, vRock));
+    col = mix(col, mix(uHigh * 1.12, desertTex, 0.42), alkali * 0.38);
+    gRough = mix(mix(0.95, desertRough, sandOpen * 0.35), 0.82, cliff);
 `;
-const KIND_OCEAN_FOREST = /* glsl */ `    // ---- ocean forest: sand, grass, wet shore
+const KIND_OCEAN_FOREST = /* glsl */ `    // ---- ocean forest: sand, grass, wet shore, tropical clover & wildflower pockets
     float above = y - uLevel;
     float sand = (1.0 - smoothstep(0.35, 1.15 + 0.5*n1, above)) * shoreGate;
     float hgt = smoothstep(0.5, 6.5, y);
     vec3 grass = mix(uLow, uHigh, clamp(hgt + 0.4*(n2-0.5) + 0.2*(nL-0.5), 0.0, 1.0));
     grass = mix(grass, grass*vec3(0.8,0.95,0.7), smoothstep(0.5,0.7,fbm3(p*0.16))*0.7);
+    vec3 meadowTex = texture2D(uMeadowDetailMap, p * 0.28).rgb;
+    float meadowRough = texture2D(uMeadowRoughMap, p * 0.28).r;
+    float lushClover = smoothstep(0.54, 0.76, fbm3(p * 0.24 + 5.1));
+    float tropicBloom = smoothstep(0.77, 0.88, vnoise(p * 2.8 + 1.9)) * lushClover;
+    grass = mix(grass, mix(grass * vec3(0.72, 1.08, 0.78), meadowTex, 0.32), lushClover * 0.48);
+    grass = mix(grass, vec3(0.92, 0.76, 0.32), tropicBloom * 0.35);
     col = mix(grass, uAccent, sand);
     float wet = (1.0 - smoothstep(0.0, 0.55, above)) * shoreGate;
     col = mix(col, col*vec3(0.55,0.58,0.55), wet);
     float under = 1.0 - smoothstep(-2.6, 0.0, above);
     col = mix(col, uAccent*vec3(0.62,0.66,0.62), under*0.8*step(above,0.0)*shoreGate);
     col = mix(col, rockCol, rockMask*smoothstep(0.0,0.5,above));
-    gRough = mix(0.95, 0.55, wet);
+    gRough = mix(mix(0.95, meadowRough, (1.0 - sand) * (1.0 - rockMask) * 0.35), 0.55, wet);
 `;
-const KIND_FOREST_ROCK = /* glsl */ `    // ---- forest rock: moss, meadow, cliffs
+const KIND_FOREST_ROCK = /* glsl */ `    // ---- forest rock: moss, meadow, wildflower hexes, golden sedge & cliffs
     float hgt = smoothstep(0.0, 8.0, y);
     col = mix(uLow, uHigh, clamp(hgt*0.6 + 0.5*(n2-0.4), 0.0, 1.0));
+    vec3 meadowTex = texture2D(uMeadowDetailMap, p * 0.26).rgb;
+    float meadowRough = texture2D(uMeadowRoughMap, p * 0.26).r;
     float meadow = smoothstep(0.52,0.62, fbm3(p*0.055+7.0));
-    col = mix(col, mix(uHigh, uAccent, 0.2), meadow*(1.0-rockMask));
+    col = mix(col, mix(mix(uHigh, uAccent, 0.2), meadowTex, 0.28), meadow*(1.0-rockMask));
     col = mix(col, uLow*0.7, (1.0-meadow)*smoothstep(0.45,0.7,n1)*0.5);
+    float goldenSedge = smoothstep(0.58, 0.78, fbm3(p * 0.14 - 3.3)) * meadow * (1.0 - rockMask);
+    float alpineBloom = smoothstep(0.79, 0.90, vnoise(p * 3.1 - 2.4)) * meadow * (1.0 - rockMask);
+    col = mix(col, mix(col, vec3(0.62, 0.66, 0.32), 0.45), goldenSedge * 0.48);
+    col = mix(col, vec3(0.88, 0.80, 0.44), alpineBloom * 0.32);
     float dirt = smoothstep(0.2,0.32,sl)*(1.0-rockMask);
     col = mix(col, vec3(0.30,0.24,0.17), dirt*0.6);
     col = mix(col, rockCol, rockMask);
+    gRough = mix(gRough, meadowRough, meadow * (1.0 - rockMask) * 0.34);
     float above = y - uLevel;
     float shoreSand = (1.0 - smoothstep(-0.02, 0.08, above)) * smoothstep(-0.32, -0.04, above) * (1.0 - rockMask) * shoreGate;
     col = mix(col, vec3(0.78, 0.68, 0.48) * (0.92 + 0.16 * n2), shoreSand * 0.75);
@@ -201,6 +222,7 @@ void evalTerrainWeather(
     rough = mix(rough, 0.22, wet * 0.75);
   }
   if (uPuddleLevel > 0.01 && steep < 0.22) {
+    float allowPuddles = clamp(step(0.5, uKind) + step(0.05, uRainIntensity), 0.0, 1.0);
     vec2 wp = worldPos.xz;
     float puddleNoise = evalPuddleNoiseField(wp);
     float puddleThreshold = mix(0.76, 0.44, uPuddleLevel);
@@ -208,7 +230,8 @@ void evalTerrainWeather(
       * (1.0 - smoothstep(0.06, 0.22, steep))
       * aboveWater
       * (1.0 - smoothstep(0.25, 0.55, hexShore))
-      * step(0.01, uPuddleLevel);
+      * step(0.01, uPuddleLevel)
+      * allowPuddles;
     if (puddleMask > 0.001) {
       float puddleRim = smoothstep(0.0, 0.35, puddleMask) * (1.0 - smoothstep(0.35, 0.88, puddleMask));
       col *= mix(1.0, 0.70, puddleRim);

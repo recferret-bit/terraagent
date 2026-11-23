@@ -4,6 +4,8 @@ import './signerModal.css';
 export interface SignerModalRequest {
   readonly title?: string;
   readonly subtitle?: string;
+  /** Footer notice; defaults to the W20 "no in-game bonus" copy (W28 callers pass the real-perks copy). */
+  readonly notice?: string;
   readonly actionSummary: string;
   readonly accountId: string;
   readonly recipient: string;
@@ -138,7 +140,7 @@ function createModalElements(req: SignerModalRequest, nonce: string): ModalEleme
 
   const notice = document.createElement('div');
   notice.className = 'ta-signer-modal__notice';
-  notice.textContent = 'Real NEAR from your wallet — not game currency, no in-game bonus';
+  notice.textContent = req.notice ?? 'Real NEAR from your wallet — not game currency, no in-game bonus';
 
   const statusEl = document.createElement('div');
   statusEl.className = 'ta-signer-modal__status';

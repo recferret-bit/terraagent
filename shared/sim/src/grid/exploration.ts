@@ -76,6 +76,22 @@ export function isColonyTileExplored(
   return false;
 }
 
+/** True if any colony (`exploredByColony` or legacy `explored` bitmask) has explored `tileIdx`. */
+export function isAnyColonyTileExplored(
+  tiles: ExplorableTilesLike | undefined,
+  tileIdx: number,
+): boolean {
+  if (!tiles || !Number.isInteger(tileIdx) || tileIdx < 0) return false;
+  if (typeof tiles.count === 'number' && tileIdx >= tiles.count) return false;
+  if (tiles.exploredByColony) {
+    for (const bitset of Object.values(tiles.exploredByColony)) {
+      if (getColonyExploredBit(bitset, tileIdx)) return true;
+    }
+  }
+  if (tiles.explored && (tiles.explored[tileIdx] ?? 0) !== 0) return true;
+  return false;
+}
+
 /** Hydrates per-colony bitsets for colonies `0..7` from a legacy `u8` `explored` bitmask layer. */
 export function hydrateColonyBitsetsFromExploredLayer(
   explored: ArrayLike<number> | undefined,

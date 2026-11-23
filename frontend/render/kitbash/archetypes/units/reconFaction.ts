@@ -55,8 +55,8 @@ export function stampMercenaryMarks(b: KitbashBuilder): void {
   b.addPart(rbox(0.072, thick, 0.072, 0.005), 'hullSecondary', {
     name: 'merc emblem', position: [0, y, 0.155], rotation: [0, Math.PI / 4, 0],
   });
-  const markH = 0.03;
-  const markY = y + thick / 2 + markH / 2 - sink;
+  const markH = 0.036;
+  const markY = roofY + 0.004;
   b.addPart(cyl(0.013, 0.013, markH, 8), 'energyCyan', {
     name: 'merc marker light', position: [0, markY, 0.155], emissiveIntensity: 3.6,
   });

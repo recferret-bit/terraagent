@@ -17,13 +17,17 @@ import { PRISMA } from '../db/db.module';
 import { seatDevScenarioPlayer } from '../near/identity/dev-scenario-seat';
 import { FlagsService } from '../flags/flags.service';
 import { AwayDigestService } from '../game/digest';
+import { SimClusterService } from '../game/cluster/sim-cluster.service';
 import { GameModule } from '../game/game.module';
 import { GamePlanets } from '../game/game-planets.service';
+import { SimHistoryService } from '../game/persistence/sim-history.service';
 import { createPresenceTracker } from '../game/presence';
 import { CommandPrechecks } from '../core/command-prechecks';
+import { SectorAntiCheatService } from '../core/anticheat';
 import { PlanetsService } from '../lobby/planets.service';
 import { COMMAND_INGRESS, type CommandIngress } from './command-ingress';
 import { DbHomeProvider, HOME_PROVIDER, type HomeProvider } from './home-provider';
+import { HttpCommandController } from './http-commands.controller';
 import { LiveStatsTelemetry } from './live-stats-telemetry';
 import { SimCommandIngress } from './sim-command-ingress';
 import { JwtSessionVerifier, SESSION_VERIFIER, type SessionVerifier } from './session-verifier';
@@ -39,6 +43,7 @@ export const env = defineEnv('ws', {
 /** WebSocket gateway on `/ws` (PROTOCOL §4). */
 @Module({
   imports: [CoreModule, GameModule],
+  controllers: [HttpCommandController],
   providers: [
     {
       provide: SESSION_VERIFIER,
@@ -53,7 +58,17 @@ export const env = defineEnv('ws', {
     },
     {
       provide: COMMAND_INGRESS,
-      inject: [APP_ENV, MetricsRegistry, FlagsService, GamePlanets, { token: HomeRepository, optional: true }, { token: CommandPrechecks, optional: true }],
+      inject: [
+        APP_ENV,
+        MetricsRegistry,
+        FlagsService,
+        GamePlanets,
+        { token: HomeRepository, optional: true },
+        { token: CommandPrechecks, optional: true },
+        { token: SectorAntiCheatService, optional: true },
+        { token: SimHistoryService, optional: true },
+        { token: SimClusterService, optional: true },
+      ],
       useFactory: (
         e: AppEnv,
         m: MetricsRegistry,
@@ -61,6 +76,9 @@ export const env = defineEnv('ws', {
         planets: GamePlanets,
         homeRepo?: HomeRepository,
         prechecks?: CommandPrechecks,
+        antiCheat?: SectorAntiCheatService,
+        history?: SimHistoryService,
+        cluster?: SimClusterService,
       ): CommandIngress =>
         new SimCommandIngress({
           planets,
@@ -69,11 +87,29 @@ export const env = defineEnv('ws', {
           production: e.NODE_ENV === 'production',
           homeRepo,
           prechecks,
+          antiCheat,
+          history,
+          submitPlanetCommand: cluster ? (pid, cmd) => cluster.submitAnywhere(pid, cmd) : undefined,
         }),
     },
     {
       provide: WsGateway,
-      inject: [APP_ENV, LOGGER, MetricsRegistry, FlagsService, GamePlanets, SESSION_VERIFIER, COMMAND_INGRESS, HOME_PROVIDER, AwayDigestService, { token: PRISMA, optional: true }, { token: EventBus, optional: true }],
+      inject: [
+        APP_ENV,
+        LOGGER,
+        MetricsRegistry,
+        FlagsService,
+        GamePlanets,
+        SESSION_VERIFIER,
+        COMMAND_INGRESS,
+        HOME_PROVIDER,
+        AwayDigestService,
+        { token: PRISMA, optional: true },
+        { token: EventBus, optional: true },
+        { token: SectorAntiCheatService, optional: true },
+        { token: SimHistoryService, optional: true },
+        { token: SimClusterService, optional: true },
+      ],
       useFactory: (
         e: AppEnv,
         root: RootLogger,
@@ -86,14 +122,18 @@ export const env = defineEnv('ws', {
         digests: AwayDigestService,
         prisma?: PrismaClient,
         bus?: EventBus,
+        antiCheat?: SectorAntiCheatService,
+        simHistory?: SimHistoryService,
+        cluster?: SimClusterService,
       ) =>
         new WsGateway({
-          env: e, planets, verifier, ingress, home, flags: flags.list, registry: m.registry,
+          env: e, planets, cluster, verifier, ingress, home, antiCheat, flags: flags.list, registry: m.registry,
           log: layerLogger(root, 'http', e.LOG_LEVELS as string | undefined),
           helloTimeoutMs: Number(e.WS_HELLO_TIMEOUT_MS), idleTimeoutMs: Number(e.WS_IDLE_TIMEOUT_MS),
           digests,
+          simHistory,
           presence: createPresenceTracker({
-            commands: planets,
+            commands: cluster ? { submit: (pid, cmd) => cluster.submitAnywhere(pid, cmd) } : planets,
             prisma: prisma && databaseEnabled(e) ? prisma : undefined,
             log: layerLogger(root, 'http', e.LOG_LEVELS as string | undefined),
             onTransition: (info) => digests.onPresence(info),
@@ -112,6 +152,7 @@ export const env = defineEnv('ws', {
 })
 export class WsModule implements OnApplicationBootstrap, BeforeApplicationShutdown {
   private unsubSeatTelemetry: (() => void) | null = null;
+  private unsubPlanetTelemetry: (() => void) | null = null;
 
   constructor(
     private readonly gateway: WsGateway,
@@ -131,9 +172,10 @@ export class WsModule implements OnApplicationBootstrap, BeforeApplicationShutdo
       this.unsubSeatTelemetry = this.homeService?.onColonySeated(() => {
         this.telemetry?.invalidate();
       }) ?? null;
-      this.gamePlanets?.onPlanetLoaded(() => {
+      this.unsubPlanetTelemetry?.();
+      this.unsubPlanetTelemetry = this.gamePlanets?.onPlanetLoaded(() => {
         this.telemetry?.invalidate();
-      });
+      }) ?? null;
     }
   }
 
@@ -141,6 +183,8 @@ export class WsModule implements OnApplicationBootstrap, BeforeApplicationShutdo
   async beforeApplicationShutdown(): Promise<void> {
     this.unsubSeatTelemetry?.();
     this.unsubSeatTelemetry = null;
+    this.unsubPlanetTelemetry?.();
+    this.unsubPlanetTelemetry = null;
     this.planetsService?.setLiveTelemetryProvider(undefined);
     await this.gateway.closeAll();
   }

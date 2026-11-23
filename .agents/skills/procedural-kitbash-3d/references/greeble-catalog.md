@@ -21,7 +21,7 @@ This catalog defines the standard parameterized sub-assemblies ("greebles") used
 | :--- | :--- | :--- | :--- |
 | `coolingVentArray` | `{ width, height, slats = 5, tilt = 0.4 }` | Recessed `frameGunmetal` frame populated with angled `RoundedBoxGeometry` louver blades. | `frameGunmetal` |
 | `hydraulicStrut` | `{ start: Vector3, end: Vector3, radius = 0.05 }` | Two coaxial cylinders oriented along `end - start`: thicker painted outer sleeve (`60%` length) + thinner chrome inner piston rod (`40%` length). | `hullSecondary` + `frameGunmetal` |
-| `saggingCable` | `{ p1: Vector3, p2: Vector3, slack = 0.18, radius = 0.03 }` | `CatmullRomCurve3([p1, midPointDown, p2])` swept with `TubeGeometry(curve, 12, radius, 6)`. Breaks rigid box silhouettes immediately. | `frameGunmetal` |
+| `saggingCable` | `{ p1: Vector3, p2: Vector3, slack = 0.18, radius = 0.03 }` | One tube from fitting to fitting. The belly is `slack` metres below the chord, perpendicular to it in the vertical plane (a few percent of the span). A world-Y drop on a steep span is still a straight rod. Not a cylinder and not a frame of bars. | `frameGunmetal` |
 | `pressureTankCluster` | `{ count = 3, radius = 0.22, height = 0.9 }` | Pill-shaped capsule tanks (`CapsuleGeometry`) bound together by two horizontal retaining bands and a manifold pipe. | `hullPrimary` + `hullSecondary` bands |
 
 ---
@@ -60,3 +60,17 @@ KitbashRegistry.registerGreeble('cryoCondenserCoil', (params: { radius: number; 
   builder.addPart(coilGeo, 'energyCyan', { emissiveIntensity: 3.5 });
 });
 ```
+
+---
+
+## 5. Organic Vertebrate, Avian & Botanical Sub-Assemblies
+
+For passive biosphere wildlife (`archetypes/units/warmFauna.ts`, `avianFauna.ts`) and botanical scatter (`visuals/terrain/treeBreeds.ts`, `groundFloraGeos.ts`), use the dedicated organic generators rather than hard-surface mechanical plates:
+
+| Greeble / Builder | Location | Parameters & Anatomy | Tissue / Material |
+| :--- | :--- | :--- | :--- |
+| `sculptedLoft` / `sculptedLimbSegment` | `greebles/organic/vertebrateLoft.ts` | Multi-station asymmetric dorsal/ventral lofts & oriented muscle segments (`buildMammalCore`, `vertebrateLimbs.ts`) | `tissue = 6` (`pelage`) |
+| `sculptedWingFoil` / `sculptedFeather` | `greebles/organic/vertebrateLoft.ts` | Cambered secondary airfoils, upper coverts & shingled primary/rectrix feather blades (`buildAvianCore`, `avianBuilder.ts`) | `tissue = 7` (`plumage`) |
+| `sculptedEar` / `cervineAntlers` / `sweptHorns` | `vertebrateLoft.ts` / `vertebrates.ts` | Cupped concave ear pinnae, multi-tine cervid antlers & swept desert keratin horns | `tissue = 6` / `4` (`keratin`) |
+| `buildBiomeTreeAtlasGeo` | `visuals/terrain/treeBreeds.ts` | `(biome, seed)` — merges biome's 3–4 endemic tree breeds (`aBreed` attribute) into one instancing-ready geometry with `treeBarkFissures` bark detail | `createFoliageMaterial(..., multiBreed = true)` |
+| `makeGrassTuftGeo` / `makeSaguaroCactusGeo` / etc. | `visuals/terrain/groundFloraGeos.ts` | 6 low-poly 3D botanical ground-flora primitives (`grassTuft`, `wildflower`, `bush`, `saguaro`, `barrelCactus`, `reeds`) | `createFoliageMaterial` |

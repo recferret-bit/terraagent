@@ -192,6 +192,13 @@ export class PrioritySliders<K extends string = PriorityKey> {
     this.onChange = cb;
   }
 
+  setDisabled(disabled: boolean): void {
+    this.el.dataset.disabled = String(disabled);
+    for (const row of this.rows.values()) {
+      row.input.disabled = disabled;
+    }
+  }
+
   dispose(): void {
     this.el.remove();
   }

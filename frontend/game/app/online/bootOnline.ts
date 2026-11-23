@@ -349,14 +349,16 @@ export async function bootAuthAndHome(opts: BootAuthOptions = {}): Promise<BootA
   opts.onStatus?.('Contacting orbit…');
   const deviceSecret = getOrCreateDeviceSecret(storage, deviceSecretKey(search));
 
-  if (new URLSearchParams(search).get('host') === 'local') {
-    return createLocalBootFallback(deviceSecret, opts.onStatus, undefined, opts.planetType);
+  const query = new URLSearchParams(search);
+  const seedOverride = query.get('seed')?.trim() || undefined;
+  if (query.get('host') === 'local') {
+    return createLocalBootFallback(deviceSecret, opts.onStatus, undefined, opts.planetType, undefined, seedOverride);
   }
 
   try {
     const auth = opts.tryRefresh ? await refreshOrGuest(deviceSecret, doFetch) : await guestLogin(deviceSecret, doFetch);
     const { accessToken, expiresIn, home } = await fetchHomeWithRetry(auth.accessToken, {
-      deviceSecret, doFetch, colonyId: new URLSearchParams(search).get('colonyId') ?? undefined, planetType: opts.planetType, wait: opts.wait, random: opts.random, onStatus: opts.onStatus,
+      deviceSecret, doFetch, colonyId: query.get('colonyId') ?? undefined, planetType: opts.planetType, wait: opts.wait, random: opts.random, onStatus: opts.onStatus,
     });
     const playerId = auth.player?.id ?? 'pr_guest';
     const handle = auth.player?.handle ?? 'Colonist';
@@ -417,7 +419,7 @@ export async function bootAuthAndHome(opts: BootAuthOptions = {}): Promise<BootA
     };
   } catch (e) {
     if ((opts.allowLocalFallback ?? import.meta.env.DEV) && backendUnreachable(e)) {
-      return createLocalBootFallback(deviceSecret, opts.onStatus, undefined, opts.planetType);
+      return createLocalBootFallback(deviceSecret, opts.onStatus, undefined, opts.planetType, undefined, seedOverride);
     }
     throw e;
   }

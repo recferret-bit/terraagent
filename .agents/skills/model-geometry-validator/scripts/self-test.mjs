@@ -21,11 +21,11 @@ function part(geo, pos, { rot = [0, 0, 0], anim = 0, pivot, zone = 'hullPrimary'
   return { index: i, name: name ?? `${geo.type.replace('Geometry', '')}#${i}`, zone, kind: geo.type, ...(role ? { role } : {}), animType: anim, pivot: pivot ?? pos, emissive: 0, tris: t };
 }
 const box = (w, h, d) => new THREE.BoxGeometry(w, h, d);
-const model = (parts) => { idx = 0; return validateModel({ id: 't', label: 't', source: 'builder', parts: parts() }, { minParts: 1, appearance: false }); };
+const model = (parts, id = 't') => { idx = 0; return validateModel({ id, label: id, source: 'builder', parts: parts() }, { minParts: 1, appearance: false }); };
 const codes = (r) => r.issues.filter((i) => i.severity !== 'info').map((i) => i.code);
 
 const cases = [];
-const t = (name, build, expect) => cases.push({ name, build, expect });
+const t = (name, build, expect, id = 't') => cases.push({ name, build, expect, id });
 const ground = () => part(box(1, 0.2, 1), [0, 0.1, 0], { name: 'base' });
 
 t('clean joint: block sunk 2 cm into the base', () => [ground(), part(box(0.4, 0.4, 0.4), [0, 0.38, 0], { name: 'top' })], (r) => codes(r).length === 0);
@@ -42,6 +42,12 @@ t('cable that ends on two parts and clears the third → clean', () => [ground()
 t('cable with an unanchored end floating in mid-air → CABLE_FLOAT', () => [ground(), part(box(0.2, 0.4, 0.2), [-0.4, 0.4, 0], { name: 'post A' }), part(new THREE.TubeGeometry(new THREE.CatmullRomCurve3([new THREE.Vector3(-0.4, 0.5, 0), new THREE.Vector3(0, 0.4, 0), new THREE.Vector3(0.4, 0.5, 0)]), 16, 0.02, 6), [0, 0, 0], { name: 'cable' })], (r) => codes(r).includes('CABLE_FLOAT'));
 t('cable plunging into foundation plinth instead of a structural part → CABLE_FLOAT', () => [part(box(1, 0.28, 1), [0, 0.04, 0], { name: 'foundation plinth', role: 'plinth' }), part(box(0.2, 0.4, 0.2), [-0.3, 0.36, 0], { name: 'post A' }), part(new THREE.TubeGeometry(new THREE.CatmullRomCurve3([new THREE.Vector3(-0.3, 0.45, 0), new THREE.Vector3(0, 0.3, 0), new THREE.Vector3(0.3, 0.1, 0)]), 16, 0.02, 6), [0, 0, 0], { name: 'cable' })], (r) => codes(r).includes('CABLE_FLOAT'));
 t('cable passing through a block → CABLE_CLIPS', () => [ground(), part(box(0.3, 0.4, 0.3), [0, 0.4, 0], { name: 'block' }), part(new THREE.TubeGeometry(new THREE.CatmullRomCurve3([new THREE.Vector3(-0.5, 0.2, 0), new THREE.Vector3(0, 0.4, 0), new THREE.Vector3(0.5, 0.2, 0)]), 16, 0.02, 6), [0, 0, 0], { name: 'cable' })], (r) => codes(r).includes('CABLE_CLIPS'));
+t('cable that tunnels through the hull it ends on → CABLE_CLIPS', () => [ground(), part(box(0.16, 0.6, 0.16), [-0.75, 0.5, 0], { name: 'mast' }), part(box(1.1, 0.8, 0.7), [0.15, 0.5, 0], { name: 'hull' }), part(new THREE.TubeGeometry(new THREE.CatmullRomCurve3([new THREE.Vector3(-0.75, 0.85, 0), new THREE.Vector3(-0.05, 0.62, 0), new THREE.Vector3(0.45, 0.48, 0)]), 20, 0.015, 5), [0, 0, 0], { name: 'guy cable' })], (r) => codes(r).includes('CABLE_CLIPS'));
+t('straight tube named guy cable → CABLE_TAUT', () => [ground(), part(box(0.24, 0.6, 0.24), [-1.6, 0.45, 0], { name: 'mast' }), part(box(0.24, 0.6, 0.24), [1.6, 0.45, 0], { name: 'column' }), part(new THREE.TubeGeometry(new THREE.QuadraticBezierCurve3(new THREE.Vector3(-1.6, 0.6, 0), new THREE.Vector3(0, 0.6, 0), new THREE.Vector3(1.6, 0.6, 0)), 12, 0.012, 5), [0, 0, 0], { name: 'guy cable' })], (r) => codes(r).includes('CABLE_TAUT'));
+t('guy cable with a small sag → no CABLE_TAUT or CABLE_DROOP', () => [ground(), part(box(0.16, 0.5, 0.16), [-0.7, 0.55, 0], { name: 'mast' }), part(box(0.16, 0.5, 0.16), [0.7, 0.55, 0], { name: 'column' }), part(new THREE.TubeGeometry(new THREE.CatmullRomCurve3([new THREE.Vector3(-0.7, 0.85, 0), new THREE.Vector3(0, 0.78, 0), new THREE.Vector3(0.7, 0.85, 0)]), 12, 0.015, 5), [0, 0, 0], { name: 'guy cable' })], (r) => !codes(r).includes('CABLE_TAUT') && !codes(r).includes('CABLE_DROOP'));
+t('guy cable that loops far below the span → CABLE_DROOP', () => [ground(), part(box(0.16, 0.5, 0.16), [-0.7, 0.55, 0], { name: 'mast' }), part(box(0.16, 0.5, 0.16), [0.7, 0.55, 0], { name: 'column' }), part(new THREE.TubeGeometry(new THREE.CatmullRomCurve3([new THREE.Vector3(-0.7, 0.9, 0), new THREE.Vector3(0, 0.35, 0), new THREE.Vector3(0.7, 0.9, 0)]), 12, 0.015, 5), [0, 0, 0], { name: 'guy cable' })], (r) => codes(r).includes('CABLE_DROOP'));
+t('cylinder named guy cable → CABLE_BAR', () => [ground(), part(new THREE.CylinderGeometry(0.02, 0.02, 1.2, 6), [0, 0.7, 0], { name: 'guy cable', rot: [0, 0, Math.PI / 2] })], (r) => codes(r).includes('CABLE_BAR'));
+t('steep guy whose midpoint is only lowered in world Y → CABLE_TAUT', () => [ground(), part(box(0.24, 0.5, 0.24), [0, 2.45, 0], { name: 'mast' }), part(box(0.24, 0.5, 0.24), [0, 0.45, 0], { name: 'column' }), part(new THREE.TubeGeometry(new THREE.QuadraticBezierCurve3(new THREE.Vector3(0, 2.6, 0), new THREE.Vector3(0, 1.1, 0), new THREE.Vector3(0, 0.4, 0)), 12, 0.012, 5), [0, 0, 0], { name: 'guy cable' })], (r) => codes(r).includes('CABLE_TAUT'));
 // a mast with a spinning arm; at rest the arm clears the wall (it lies along x, the wall is to its side), the sweep decides
 const spinner = (wallZ) => () => [ground(), part(new THREE.CylinderGeometry(0.04, 0.04, 0.6, 10), [0, 0.4, 0], { name: 'mast' }), part(box(0.54, 0.04, 0.06), [0, 0.7, 0], { name: 'arm', anim: 1, pivot: [0, 0.7, 0] }), part(box(0.8, 0.8, 0.1), [0, 0.5, wallZ], { name: 'wall' })];
 t('spinning arm sweeping into a wall → ANIM_COLLISION', spinner(0.3), (r) => codes(r).includes('ANIM_COLLISION'));
@@ -75,6 +81,16 @@ t('recoiling barrel and muzzle sharing pivot.x move as one → clean', gun(0), (
 t('foundation sunk 10 cm below ground is allowed', () => [part(box(1, 0.4, 1), [0, 0.1, 0])], (r) => !codes(r).includes('GROUND_CONTACT'));
 t('foundation sunk 30 cm below ground → GROUND_CONTACT', () => [part(box(1, 0.4, 1), [0, -0.1, 0])], (r) => codes(r).includes('GROUND_CONTACT'));
 t('lowest point 12 cm above the ground → GROUND_CONTACT', () => [part(box(1, 0.2, 1), [0, 0.22, 0])], (r) => codes(r).includes('GROUND_CONTACT'));
+const avian = (wallY) => () => [ground(), part(box(0.22, 0.16, 0.36), [0, 0.55, 0], { name: 'avian torso', anim: 2, pivot: [0, 0.55, 0] }), part(new THREE.SphereGeometry(0.05, 8, 6), [0.11, 0.56, 0], { name: 'wing shoulder', anim: 92, pivot: [0.11, 0.56, 0] }), part(box(0.42, 0.03, 0.14), [0.30, 0.56, 0], { name: 'wing blade', anim: 92, pivot: [0.11, 0.56, 0] }), part(box(0.2, 0.06, 0.2), [0.36, wallY, 0], { name: 'perch' })];
+t('avian wing (anim 92) on bobbing torso (anim 2) flapping into an obstacle → ANIM_COLLISION', avian(0.70), (r) => codes(r).includes('ANIM_COLLISION'));
+t('avian wing (anim 92) on bobbing torso (anim 2) with full flap clearance → clean', avian(0.95), (r) => !codes(r).includes('ANIM_COLLISION') && !codes(r).includes('ANIM_DISTORTION'));
+// Night lights: name + emissive zone. The model id is 't' unless a case passes one (buildings only).
+const statusLight = () => part(new THREE.SphereGeometry(0.08, 12, 8), [0, 0.78, 0], { name: 'status light', zone: 'energyCyan' });
+const cornerLight = (x, z) => part(box(0.08, 0.08, 0.08), [x, 0.16, z], { name: 'plinth corner light', zone: 'warningAmber' });
+t('emissive sphere named "status light" floating above the base → LIGHT_UNMOUNTED', () => [ground(), statusLight()], (r) => codes(r).includes('LIGHT_UNMOUNTED'));
+t('same sphere sunk into a gunmetal post → no LIGHT_UNMOUNTED', () => [ground(), part(box(0.24, 0.8, 0.24), [0, 0.4, 0], { name: 'post', zone: 'frameGunmetal' }), statusLight()], (r) => !codes(r).includes('LIGHT_UNMOUNTED'));
+t('four parts named "plinth corner light" on a building → LIGHT_CORNER_STAMP', () => [ground(), cornerLight(-0.4, -0.4), cornerLight(0.4, -0.4), cornerLight(-0.4, 0.4), cornerLight(0.4, 0.4)], (r) => codes(r).includes('LIGHT_CORNER_STAMP'), 'building.sample');
+t('a building with one mounted beacon and no corner stamp → no LIGHT_CORNER_STAMP', () => [ground(), part(box(0.16, 0.7, 0.16), [0, 0.35, 0], { name: 'mast', zone: 'frameGunmetal' }), part(new THREE.SphereGeometry(0.06, 12, 8), [0, 0.66, 0], { name: 'mast beacon', zone: 'energyCyan' })], (r) => !codes(r).includes('LIGHT_CORNER_STAMP') && !codes(r).includes('LIGHT_UNMOUNTED'), 'building.sample');
 
 // ---- appearance fixtures: colour fit, group separation, surface detail (appearance checks ON; geometry noise ignored)
 const amodel = (parts) => { idx = 0; return validateModel({ id: 't', label: 't', source: 'builder', parts: parts() }, { minParts: 1, appearance: true }); };
@@ -124,7 +140,7 @@ for (const c of at_) {
 }
 cases.length += at_.length;
 for (const c of cases.slice(0, cases.length - at_.length)) {
-  const r = model(c.build);
+  const r = model(c.build, c.id);
   const ok = c.expect(r);
   console.log(`${ok ? 'PASS' : 'FAIL'}  ${c.name}${ok ? '' : `   → got [${codes(r).join(', ') || 'nothing'}]`}`);
   if (!ok) fail++;

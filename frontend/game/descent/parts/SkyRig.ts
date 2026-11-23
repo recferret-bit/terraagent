@@ -1,16 +1,28 @@
 import * as THREE from 'three';
+import { enqueueDeferredDispose } from '@terra/render/core/deferredDispose';
+import { ensureSecondaryShadowLight, isShadowOn, setDescentSunDirection } from '@terra/render/core/shadowConfig';
+import { getColonyVisionUniforms, setColonyLightingBlend } from '@terra/render/lighting/ColonyVisionAndLights';
+import type { PlanetSpec } from '@terra/render/planets/PlanetSpec';
 import { createPlanetGlobe, type PlanetGlobe } from '@terra/render/planets/PlanetGlobe';
+import type { PrecomputedGlobeSpheres } from '@terra/render/visuals/terrain/TerrainGrid';
 import { createSpaceBackdrop, type SpaceBackdrop } from '@terra/render/visuals/space/SpaceBackdrop';
 import { lerp, smoothstep, smoother } from '../math';
 import { createCloudDeck, type CloudDeck } from '../fx/CloudDeck';
 import { DECK, FOGMAX, R } from '../constants';
+import {
+  computeSpaceEntrySolar,
+  createSpaceEntrySolar,
+  DescentSolarEvaluator,
+  SPACE_HEMI,
+  SPACE_HEMI_GROUND,
+  SPACE_SUN,
+  SPACE_SUN_INTENSITY,
+  type DescentSolarTarget,
+  type SpaceEntrySolar,
+} from './descentSolarSync';
 import type { DescentContext, FramePart, FrameState } from './FrameState';
 
-/** Space-side lighting the descent starts from (and the menu stage converges to at the hand-off). */
-export const SPACE_SUN = new THREE.Color(1.0, 0.96, 0.88);
-export const SPACE_HEMI = new THREE.Color(0.45, 0.55, 0.85);
-export const SPACE_HEMI_GROUND = new THREE.Color(0.04, 0.04, 0.07);
-export const SPACE_SUN_INTENSITY = 3.4;
+export { SPACE_HEMI, SPACE_HEMI_GROUND, SPACE_SUN, SPACE_SUN_INTENSITY };
 
 /** Makes sure the scene has a colour background + exponential fog the descent can drive. */
 export function prepareSceneSky(scene: THREE.Scene, spec: DescentContext['spec']) {
@@ -18,31 +30,57 @@ export function prepareSceneSky(scene: THREE.Scene, spec: DescentContext['spec']
   if (!(scene.fog instanceof THREE.FogExp2)) scene.fog = new THREE.FogExp2(spec.sky.fogColor, spec.sky.fogDensity);
 }
 
-/** Starfield/space → atmosphere sky, the planet globe, the cloud deck, fog and the scene lights, blended over the timeline. */
+/** Slerps unit directions `a -> b` without collapsing through zero when nearly antipodal. */
+function slerpUnitDir(a: THREE.Vector3, b: THREE.Vector3, t: number, out: THREE.Vector3): THREE.Vector3 {
+  if (t <= 0) return out.copy(a);
+  if (t >= 1) return out.copy(b);
+  const dot = THREE.MathUtils.clamp(a.dot(b), -1, 1);
+  const theta = Math.acos(dot);
+  if (theta < 1e-4) return out.copy(a).lerp(b, t).normalize();
+  const sinT = Math.sin(theta);
+  if (sinT < 1e-4) {
+    out.set(a.z || 0.7, 0, -a.x || 0.7).normalize();
+    return t < 0.5
+      ? out.multiplyScalar(Math.sin(t * Math.PI)).addScaledVector(a, Math.cos(t * Math.PI)).normalize()
+      : out.multiplyScalar(Math.sin(t * Math.PI)).addScaledVector(b, -Math.cos(t * Math.PI)).normalize();
+  }
+  const wa = Math.sin((1 - t) * theta) / sinT;
+  const wb = Math.sin(t * theta) / sinT;
+  return out.set(a.x * wa + b.x * wb, a.y * wa + b.y * wb, a.z * wa + b.z * wb).normalize();
+}
+
+/** Starfield/space → atmosphere sky, the planet globe, the cloud deck, fog and the scene lights, synced to Day/Night. */
 export class SkyRig implements FramePart {
   readonly globe: PlanetGlobe;
+  readonly solarEval = new DescentSolarEvaluator();
   private backdrop: SpaceBackdrop;
   private deck: CloudDeck;
   private saved: { bloom: number; envI: number };
   private bg: THREE.Color; private fog: THREE.FogExp2;
-  private atmCol: THREE.Color; private cloudCol: THREE.Color; private haze: THREE.Color;
-  private skyZ: THREE.Color; private skyH: THREE.Color; private fogC: THREE.Color; private sunC: THREE.Color; private hemiC: THREE.Color; private hemiG: THREE.Color;
+  private atmCol: THREE.Color; private cloudCol: THREE.Color;
   private tmp = new THREE.Vector3();
+  private tmpSun = new THREE.Vector3();
+  private tmpKeySun = new THREE.Vector3();
+  private tmpAtmBand = new THREE.Color();
+  private tmpBounce = new THREE.Color();
+  private spaceSolar = createSpaceEntrySolar();
+  private disposed = false;
 
-  constructor(private ctx: DescentContext) {
+  constructor(private ctx: DescentContext, precomputedSpheres?: PrecomputedGlobeSpheres) {
     const { spec, viewport, scene, sunDir, traj, root } = ctx, o = spec.orbital;
     this.saved = { bloom: viewport.bloom.strength, envI: scene.environmentIntensity };
     this.bg = scene.background as THREE.Color; this.fog = scene.fog as THREE.FogExp2;
     this.atmCol = new THREE.Color(o.atmosphereColor);
     this.cloudCol = new THREE.Color(o.cloudColor);
-    this.skyZ = new THREE.Color(spec.sky.skyColor); this.skyH = new THREE.Color(spec.sky.horizonColor);
-    this.fogC = new THREE.Color(spec.sky.fogColor); this.sunC = new THREE.Color(spec.sky.sunColor);
-    this.hemiC = new THREE.Color(spec.sky.ambientSky ?? spec.sky.skyColor); this.hemiG = new THREE.Color(spec.sky.ambientGround ?? spec.sky.hemiGround);
-    this.haze = new THREE.Color(spec.sky.horizonColor).lerp(this.cloudCol, 0.5);
 
-    this.backdrop = createSpaceBackdrop({ seed: spec.seed, sunDir, nebulaA: new THREE.Color(o.atmosphereColor).lerp(new THREE.Color(0x2a3f9a), 0.55), nebulaB: 0x3a2a8a });
+    this.backdrop = createSpaceBackdrop({
+      seed: spec.seed,
+      sunDir,
+      nebulaA: new THREE.Color(o.atmosphereColor).lerp(new THREE.Color(0x2a3f9a), 0.55),
+      nebulaB: 0x3a2a8a,
+    });
     root.add(this.backdrop.group);
-    this.globe = createPlanetGlobe(spec, { radius: R, segments: 160, cloudScale: 1 + DECK / R, atmScale: 1.035 });
+    this.globe = createPlanetGlobe(spec, { radius: R, segments: 160, cloudScale: 1 + DECK / R, atmScale: 1.035, precomputedSpheres });
     this.globe.group.position.copy(traj.C);
     this.globe.setSunDirection(sunDir);
     this.globe.spin.rotation.set(1.0, 2.2, 0.0); // landing site (world +Y) maps to a mid-latitude point, not the polar cap
@@ -55,80 +93,159 @@ export class SkyRig implements FramePart {
 
   get savedBloom() { return this.saved.bloom; }
 
-  update(f: FrameState) {
-    this.updateBackdrop(f);
-    this.updateFogAndGlobe(f);
-    this.updateLights(f);
+  reset() { this.solarEval.reset(); }
+
+  syncEntrySun(sunDir: THREE.Vector3) {
+    this.globe.setSunDirection(sunDir);
+    this.deck.u.uSun.value.copy(sunDir);
+    this.backdrop.uniforms.uSunDir.value.copy(sunDir);
   }
 
-  private updateBackdrop(f: FrameState) {
-    const tn = f.tn, { dens, camera } = this.ctx, { uniforms } = this.backdrop, atmCol = this.atmCol;
+  setPlanetSpec(spec: PlanetSpec) {
+    this.ctx.spec = spec;
+    this.ctx.dens = spec.orbital.atmosphereDensity;
+    this.atmCol.set(spec.orbital.atmosphereColor);
+    this.cloudCol.set(spec.orbital.cloudColor);
+  }
+
+  update(f: FrameState) {
+    const target = f.solar ?? this.solarEval.evaluate(this.ctx.spec);
+    const space = computeSpaceEntrySolar(target, this.saved.bloom, this.spaceSolar);
+    if (!this.ctx.globeAligned) {
+      this.ctx.sunDir.copy(space.entrySunDir);
+    }
+    const kTerm = smoother(9.1, 14.8, f.tn);
+    slerpUnitDir(this.ctx.sunDir, target.astroSunDir, kTerm, this.tmpSun);
+    this.updateBackdrop(f, target, space);
+    this.updateFogAndGlobe(f, target, space, kTerm);
+    this.updateLights(f, target, space);
+  }
+
+  private updateBackdrop(f: FrameState, target: DescentSolarTarget, space: SpaceEntrySolar) {
+    const tn = f.tn, { dens, camera } = this.ctx, { uniforms } = this.backdrop;
     const camAlt = Math.max(f.camPos.y, 1);
-    const kSky = smoothstep(26, 31, tn);
-    uniforms.uSpace.value = 1 - smoothstep(15.5, 21, tn);
-    const toSky = smoothstep(17, 25, tn);
-    uniforms.uZenith.value.copy(atmCol).multiplyScalar(0.22).lerp(this.skyZ, toSky).lerp(this.fogC, kSky);
-    uniforms.uHorizon.value.copy(atmCol).lerp(this.skyH, toSky).lerp(this.fogC, kSky);
+    const kSky = smoothstep(24.5, 30.5, tn);
+    const spaceStars = 1 - smoothstep(15.5, 21.5, tn);
+    const nightStars = 0.28 * target.nightFactor * (1 - f.cb) * (1 - kSky);
+    uniforms.uSpace.value = Math.max(spaceStars, nightStars);
+
+    const nightUmbra = 1 - 0.88 * target.nightFactor;
+    this.tmpAtmBand.copy(this.atmCol).multiplyScalar(nightUmbra);
+    const toSky = smoothstep(14.0, 21.5, tn);
+    uniforms.uZenith.value.copy(this.tmpAtmBand).multiplyScalar(0.22).lerp(target.skyTop, toSky).lerp(target.skyHorizon, kSky);
+    uniforms.uHorizon.value.copy(this.tmpAtmBand).lerp(target.skyHorizon, toSky);
     uniforms.uHorizonH.value = -Math.sin(Math.acos(R / (R + camAlt))) * (1 - kSky);
     uniforms.uBandUp.value = 0.35 * smoothstep(8, 19, tn);
-    uniforms.uBandI.value = 0.9 * dens * smoothstep(7, 12, tn) * (1 - smoothstep(21, 26, tn));
-    uniforms.uBandColor.value.copy(atmCol);
-    uniforms.uSunDisc.value = 1 - smoothstep(24, 30, tn);
+    const bandDay = 0.16 + 0.84 * Math.max(target.daylight, target.twilight * 0.9);
+    uniforms.uBandI.value = 0.9 * dens * bandDay * smoothstep(7, 12, tn) * (1 - smoothstep(20, 25, tn));
+    uniforms.uBandColor.value.copy(this.tmpAtmBand);
+    uniforms.uSunDir.value.copy(this.tmpSun);
+    uniforms.uSunColor.value.copy(space.sunColor).lerp(target.sunColor, smoothstep(9.0, 16.0, tn));
+    uniforms.uSunDisc.value = (1 - smoothstep(22, 28, tn)) * lerp(space.spaceLit, target.daylight, smoothstep(9.0, 15.0, tn));
     uniforms.uCloud.value = f.cb * 0.9;
-    uniforms.uCloudColor.value.copy(this.haze);
+    uniforms.uCloudColor.value.copy(target.hazeColor);
     uniforms.uNebI.value = 0.3;
     this.backdrop.update(camera, tn);
   }
 
-  private updateFogAndGlobe(f: FrameState) {
+  private updateFogAndGlobe(f: FrameState, target: DescentSolarTarget, space: SpaceEntrySolar, kTerm: number) {
     const tn = f.tn, { spec, surface } = this.ctx, { fog, globe } = this;
     const camAlt = Math.max(f.camPos.y, 1);
-    const kSky = smoothstep(26, 31, tn);
-    this.bg.copy(this.fogC);
-    fog.color.copy(this.haze).lerp(this.fogC, kSky);
+    const kSky = smoothstep(24.5, 30.5, tn);
+    globe.setSunDirection(this.tmpSun);
+
+    this.bg.copy(target.skyHorizon);
+    fog.color.copy(target.hazeColor).lerp(target.skyHorizon, kSky);
     const dRamp = smoothstep(14, 19, tn) * FOGMAX;
-    fog.density = (tn < 22 ? dRamp : lerp(FOGMAX, spec.sky.fogDensity, smoother(22, 31, tn))) * (1 + 3 * f.cb);
-    if (tn >= 31) fog.density = spec.sky.fogDensity;
+    fog.density = (tn < 22 ? dRamp : lerp(FOGMAX, spec.sky.fogDensity, smoother(22, 30.5, tn))) * (1 + 3 * f.cb);
+    if (tn >= 30.5) fog.density = spec.sky.fogDensity;
     surface.group.visible = tn >= 19;
 
-    globe.setOpacity(1 - smoothstep(27, 31, tn));
-    // once the surface patch is visible the globe around it must dissolve into exactly the fog colour the patch's
-    // edge fades to — otherwise the patch boundary reads as a square/ring against the globe
-    const toFog = smoothstep(20, 27, tn);
-    globe.shared.uSkyBlend.value = Math.min(1, smoothstep(16, 24, tn) * 0.9 + 0.1 * toFog);
+    globe.setOpacity(1 - smoothstep(27, 30.5, tn));
+    const toFog = smoothstep(19, 26.5, tn);
+    globe.shared.uSkyBlend.value = Math.min(1, smoothstep(15, 23, tn) * 0.9 + 0.1 * toFog);
     globe.shared.uSkyColor.value.copy(this.backdrop.uniforms.uHorizon.value).lerp(fog.color, toFog);
     globe.shared.uHazeDist.value.set(lerp(100, 20, toFog), lerp(9000, 260, toFog));
     globe.shared.uCloudNear.value.set(40, 500);
-    globe.shared.uAtmStrength.value = smoothstep(140, 420, camAlt);
+    globe.shared.uAtmStrength.value = smoothstep(140, 420, camAlt) * (1 - 0.65 * target.nightFactor * Math.max(1 - space.spaceLit, kTerm));
     globe.shared.uTime.value = tn;
 
     this.deck.group.visible = tn > 14;
     this.deck.u.uVis.value = smoothstep(16, 21, tn);
-    this.deck.u.uCentre.value.set(f.podCenter.x, f.podCenter.z); this.deck.u.uTime.value = tn;
+    this.deck.u.uSun.value.copy(this.tmpSun);
+    this.deck.u.uColor.value.copy(this.cloudCol).lerp(target.cloudColor, smoother(13.5, 19.0, tn));
+    this.deck.u.uCentre.value.set(f.podCenter.x, f.podCenter.z);
+    this.deck.u.uTime.value = tn;
   }
 
-  private updateLights(f: FrameState) {
-    const tn = f.tn, { viewport, scene, spec } = this.ctx;
-    const kSky = smoothstep(26, 31, tn);
-    viewport.sun.color.copy(SPACE_SUN).lerp(this.sunC, kSky);
-    viewport.sun.intensity = lerp(SPACE_SUN_INTENSITY, spec.sky.sunIntensity, kSky);
-    viewport.hemi.color.copy(SPACE_HEMI).lerp(this.hemiC, kSky);
-    viewport.hemi.groundColor.copy(SPACE_HEMI_GROUND).lerp(this.hemiG, kSky);
-    viewport.hemi.intensity = lerp(0.3, spec.sky.hemiIntensity, kSky);
-    viewport.renderer.toneMappingExposure = lerp(1.0, spec.sky.exposure, kSky);
-    scene.environmentIntensity = lerp(0.3, this.saved.envI, smoothstep(20, 30, tn));
-    viewport.bloom.strength = this.saved.bloom + 0.08 * f.P + 0.06 * f.thr;
+  private updateLights(f: FrameState, target: DescentSolarTarget, space: SpaceEntrySolar) {
+    const tn = f.tn, { viewport, scene, sunDir } = this.ctx;
+    const kAtmo = smoother(12.5, 18.8, tn);
+    slerpUnitDir(sunDir, target.keySunDir, kAtmo, this.tmpKeySun);
+    setDescentSunDirection(viewport, this.tmpKeySun);
+
+    viewport.sun.color.copy(space.sunColor).lerp(target.sunColor, kAtmo);
+    viewport.sun.intensity = lerp(space.sunIntensity, target.sunIntensity, kAtmo);
+    const sec = ensureSecondaryShadowLight(viewport);
+    sec.color.setHex(0x9cc4ff);
+    sec.intensity = lerp(0, target.secondaryIntensity, kAtmo);
+
+    const shadowOn = isShadowOn();
+    viewport.sun.shadow.intensity = shadowOn ? lerp(1.05 * space.spaceLit, target.primaryShadowIntensity, kAtmo) : 0;
+    viewport.sun.shadow.radius = lerp(1.3, target.sunShadowRadius, kAtmo);
+    viewport.sun.shadow.autoUpdate = viewport.sun.shadow.intensity > 0 || viewport.sun.shadow.map === null;
+    sec.shadow.intensity = shadowOn ? lerp(0, target.secondaryShadowIntensity, kAtmo) : 0;
+    sec.shadow.autoUpdate = sec.shadow.intensity > 0 || sec.shadow.map === null;
+
+    // High-altitude plasma sheath bounce onto pod belly (fades before ground fills the frame; local retro uses GroundFx.light)
+    const pyreGlow = 1.15 * f.plasmaI * (1 - smoothstep(18.5, 22.5, tn));
+    this.tmpBounce.copy(space.hemiGround).lerp(target.hemiGround, kAtmo);
+    if (pyreGlow > 0.005) {
+      this.tmpBounce.r += 0.85 * pyreGlow;
+      this.tmpBounce.g += 0.34 * pyreGlow;
+      this.tmpBounce.b += 0.08 * pyreGlow;
+    }
+    viewport.hemi.color.copy(space.hemiColor).lerp(target.hemiSky, kAtmo);
+    viewport.hemi.groundColor.copy(this.tmpBounce);
+    viewport.hemi.intensity = lerp(space.hemiIntensity, target.hemiIntensity, kAtmo) + 0.35 * pyreGlow;
+    viewport.renderer.toneMappingExposure = lerp(space.exposure, target.exposure, smoother(18, 28, tn));
+    scene.environmentIntensity = lerp(space.envIntensity, target.envIntensity, kAtmo);
+    const retroBloom = 0.05 * f.thr * (1 - smoothstep(30.2, 31.8, tn));
+    viewport.bloom.strength = lerp(space.bloom, target.bloomStrength, kAtmo) + 0.08 * f.P + retroBloom;
+
+    const kNight = smoother(13.5, 19.0, tn);
+    setColonyLightingBlend(kNight);
+    getColonyVisionUniforms().uNightFactor.value = target.shaderNightFactor * kNight;
+
     viewport.followShadow(this.tmp.copy(f.podCenter));
   }
 
   /** Restore scene lighting/sky to the gameplay state. */
   restore() {
     const { scene, viewport, spec, traj } = this.ctx;
+    setColonyLightingBlend(1);
     scene.environmentIntensity = this.saved.envI;
     viewport.bloom.strength = this.saved.bloom;
     viewport.applySky(spec);
     viewport.followShadow(traj.L);
   }
 
-  dispose() { this.backdrop.dispose(); this.globe.dispose(); this.deck.dispose(); }
+  disposeDeferred() {
+    if (this.disposed) return;
+    this.disposed = true;
+    if (this.globe.disposeDeferred) this.globe.disposeDeferred();
+    else enqueueDeferredDispose(() => this.globe.dispose());
+    enqueueDeferredDispose(
+      () => this.backdrop.dispose(),
+      () => this.deck.dispose(),
+    );
+  }
+
+  dispose() {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.backdrop.dispose();
+    this.globe.dispose();
+    this.deck.dispose();
+  }
 }

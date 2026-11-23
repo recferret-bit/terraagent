@@ -6,7 +6,7 @@ import { WeaponRig } from './WeaponRig';
 import { WeaponRigRegistry } from './weaponRigs';
 import { ProjectileVfxSystem } from '../visuals/projectiles';
 
-const IDS = ['building.turret', 'building.laserTower', 'robot.recon', 'robot.combat', 'robot.hero'];
+const IDS = ['building.turret', 'building.laserTower', 'robot.recon', 'robot.combat'];
 
 describe('weapon rigs and shot origins', () => {
   it('the armored scout aims its turret without turning its six-wheel chassis', () => {

@@ -50,6 +50,11 @@ describe('missedRestartTicks', () => {
     expect(RESTART_FASTRUN_MAX_TICKS).toBe(24 * 3600 * (1000 / TICK_MS));
     expect(missedRestartTicks(SAVED_AT + 25 * HOUR_MS, SAVED_AT).ticks).toBeLessThan((25 * HOUR_MS) / TICK_MS);
   });
+
+  it('caps at an explicit maxTicks override rounded down to COARSE_DT', () => {
+    expect(missedRestartTicks(SAVED_AT + 10 * MIN_MS, SAVED_AT, 300)).toEqual({ ticks: 300, capped: true });
+    expect(missedRestartTicks(SAVED_AT + 10 * MIN_MS, SAVED_AT, 303)).toEqual({ ticks: 300, capped: true });
+  });
 });
 
 describe('coarse catch-up on a loaded snapshot', () => {
@@ -105,6 +110,24 @@ describe('coarse catch-up on a loaded snapshot', () => {
     });
     expect(ran).toEqual({ steps: 0, advanced: 0, completed: true });
     expect(calls).toBe(0);
+  });
+
+  it('stops cleanly at maxWallMs on yield checkpoints when bounded', async () => {
+    let clock = 1000;
+    let calls = 0;
+    const ran = await runCoarseCatchUp({
+      ticks: 100,
+      yieldEvery: 2,
+      maxWallMs: 50,
+      now: () => clock,
+      step: () => {
+        calls += 1;
+        clock += 30;
+        return true;
+      },
+    });
+    expect(ran).toEqual({ steps: 2, advanced: 2 * COARSE_DT, completed: true });
+    expect(calls).toBe(2);
   });
 });
 
@@ -175,6 +198,61 @@ describe('SnapshotService passes the capped gap', () => {
     expect(byId.pl_zero).toBeUndefined();
     expect(byId.pl_long).toBe(RESTART_FASTRUN_MAX_TICKS);
     expect(requested.sort()).toEqual(['pl_long', 'pl_ten']);
+  });
+
+  it('caps catch-up to 60s in development, honours RESTART_FASTRUN_MAX_S, and restores planets concurrently', async () => {
+    const now = Date.now();
+    const saved = {
+      pl_a: new Date(now - 2 * HOUR_MS),
+      pl_b: new Date(now - 2 * HOUR_MS),
+    };
+    const started: string[] = [];
+    const loads: { id: string; opts: LoadOptions }[] = [];
+    let releaseFirst!: () => void;
+    const firstGate = new Promise<void>((r) => {
+      releaseFirst = r;
+    });
+    const store = {
+      livePlanetIds: async () => Object.keys(saved),
+      latest: async (id: string) => ({ raw: raw(id), savedAt: saved[id as keyof typeof saved] }),
+      wipePlanet: async () => {},
+    } as unknown as SnapshotStore;
+    const planets = {
+      onPlanetLoaded: () => {},
+      onPlanetUnloaded: () => {},
+      onPlanetSnapshot: () => {},
+      loadedIds: () => [],
+      markScenarioColonyPlanet: () => {},
+      requestSnapshot: () => {},
+      load: async (id: string, opts: LoadOptions = {}) => {
+        started.push(id);
+        loads.push({ id, opts });
+        if (id === 'pl_a') await firstGate;
+        return 0;
+      },
+    } as unknown as GamePlanets;
+
+    const devEnv = { SNAPSHOTS: 'on', SNAPSHOT_EVERY_S: 60, NODE_ENV: 'development' } as unknown as AppEnv;
+    const devSvc = new SnapshotService(planets, store, new MetricsRegistry(), devEnv, pino({ level: 'silent' }));
+    devSvc.nowMs = () => now;
+    const restoring = devSvc.restoreAll();
+    await expect.poll(() => started.slice().sort()).toEqual(['pl_a', 'pl_b']);
+    releaseFirst();
+    await restoring;
+    expect(loads.map((l) => l.opts.catchUpTicks)).toEqual([300, 300]);
+
+    loads.length = 0;
+    const overrideEnv = { SNAPSHOTS: 'on', SNAPSHOT_EVERY_S: 60, NODE_ENV: 'development', RESTART_FASTRUN_MAX_S: 120 } as unknown as AppEnv;
+    const overrideSvc = new SnapshotService(
+      { ...planets, load: async (id: string, opts: LoadOptions = {}) => { loads.push({ id, opts }); return 0; } } as unknown as GamePlanets,
+      store,
+      new MetricsRegistry(),
+      overrideEnv,
+      pino({ level: 'silent' }),
+    );
+    overrideSvc.nowMs = () => now;
+    await overrideSvc.restoreAll();
+    expect(loads.map((l) => l.opts.catchUpTicks)).toEqual([600, 600]);
   });
 });
 

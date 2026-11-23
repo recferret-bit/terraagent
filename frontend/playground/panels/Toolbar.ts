@@ -12,9 +12,11 @@ export interface ToolbarHandlers {
   onShot(): void;
   onSheet(): void;
   onBuild(): void;
+  onPose(): void;
   onWorkTarget(): void;
   onDepositStage(stage: DepositVisualStage): void;
   onTileState(preset: TileStatePreset): void;
+  onNight(night: boolean): void;
 }
 
 const TOGGLE_LABEL: Partial<Record<ToggleKey, string>> = { pixel: 'pixel art', wire: 'wireframe', surface: 'planet surface', hexTerrain: 'hex terrain', work: 'work pose', row: 'spawn row', validate: 'validate parts', lights: 'Lights [L]', human: '1.8m human', ruin: 'ruin' };
@@ -43,7 +45,9 @@ function togs(keys: readonly ToggleKey[]): string {
 
 function viewsHtml(): string {
   const buttons = VIEWS.map((v, i) => `<button class="pg-btn" data-v="${v}" title="${i + 1}">${v}</button>`).join('');
-  return `<div id="views" style="display:flex;gap:4px">${buttons}</div>`;
+  const day = `<button class="pg-btn" data-night="0" title="Day. This is for checking building lights">Day</button>`;
+  const night = `<button class="pg-btn" data-night="1" title="Night. This is for checking building lights">Night</button>`;
+  return `<div id="views" style="display:flex;gap:4px">${buttons}${day}${night}</div>`;
 }
 
 function planetsHtml(): string {
@@ -66,7 +70,7 @@ function tileStateHtml(): string {
 }
 
 function workHtml(): string {
-  return '<button class="pg-btn" id="work-target" title="cycle interaction target for 3D work particles">target: tree</button><button class="pg-btn" id="build" title="construction scaffold stage">build</button>';
+  return '<button class="pg-btn" id="ver-pose" title="cycle vertebrate animation pose">pose: auto</button><button class="pg-btn" id="work-target" title="cycle interaction target for 3D work particles">target: tree</button><button class="pg-btn" id="build" title="construction scaffold stage">build</button>';
 }
 
 function page(tab: BarTab, body: string): string {
@@ -113,6 +117,7 @@ export class Toolbar {
     ov.innerHTML = overlayHtml();
     if (showBar) ov.appendChild(showBar);
     ov.querySelectorAll<HTMLElement>('#views [data-v]').forEach((b) => (b.onclick = () => this.on.onView(b.dataset.v as View)));
+    ov.querySelectorAll<HTMLElement>('#views [data-night]').forEach((b) => (b.onclick = () => this.on.onNight(b.dataset.night === '1')));
     ov.querySelectorAll<HTMLElement>('#planet-btns [data-v]').forEach((b) => (b.onclick = () => this.on.onPlanet(b.dataset.v as PlanetKind)));
     ov.querySelectorAll<HTMLElement>('#deposit-stage-btns [data-deposit-stage]').forEach(
       (b) => (b.onclick = () => this.on.onDepositStage(b.dataset.depositStage as DepositVisualStage)),
@@ -123,6 +128,7 @@ export class Toolbar {
     ov.querySelectorAll<HTMLElement>('.tog').forEach((b) => (b.onclick = () => this.on.onToggle(b.dataset.k as ToggleKey)));
     ov.querySelectorAll<HTMLElement>('#bar [data-tab]').forEach((b) => (b.onclick = () => this.showTab(b.dataset.tab as BarTab)));
     $('#build').onclick = () => this.on.onBuild();
+    $('#ver-pose').onclick = () => this.on.onPose();
     $('#work-target').onclick = () => this.on.onWorkTarget();
     this.syncToggles();
     this.showTab(this.tab);
@@ -146,11 +152,17 @@ export class Toolbar {
 
   syncToggles() {
     document.querySelectorAll<HTMLElement>('.tog').forEach((b) => {
-      const k = b.dataset.k as ToggleKey;
-      b.classList.toggle('on', k === 'row' ? !!this.state.row : !!this.state[k]);
+      const k = b.dataset.k as ToggleKey | undefined;
+      if (!k || !TOGGLES.includes(k)) return;
+      b.classList.toggle('on', k === 'row' ? !!(this.state.row || this.state.floraRow) : !!this.state[k]);
+    });
+    document.querySelectorAll<HTMLElement>('#views [data-night]').forEach((b) => {
+      b.classList.toggle('on', (b.dataset.night === '1') === this.state.night);
     });
     const build = document.querySelector<HTMLElement>('#build');
     if (build) { build.textContent = `build ${Math.round(this.state.build * 100)}%`; build.classList.toggle('on', this.state.build !== 1); }
+    const vp = document.querySelector<HTMLElement>('#ver-pose');
+    if (vp) { vp.textContent = `pose: ${this.state.pose}`; vp.classList.toggle('on', this.state.pose !== 'auto'); }
     const wt = document.querySelector<HTMLElement>('#work-target');
     if (wt) { wt.textContent = `target: ${this.state.workTarget}`; wt.classList.toggle('on', this.state.work); }
     setBtn('#deposit-stage-btns', this.state.depositStage);

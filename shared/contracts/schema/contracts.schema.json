@@ -127,8 +127,25 @@
         "d": {
           "additionalProperties": false,
           "properties": {
+            "colonyId": {
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            },
+            "mode": {
+              "enum": [
+                "play",
+                "spectator"
+              ],
+              "type": "string"
+            },
             "planetId": {
               "pattern": "^pl_[A-Za-z0-9_-]{1,64}$",
+              "type": "string"
+            },
+            "sectorId": {
+              "maxLength": 64,
+              "minLength": 1,
               "type": "string"
             }
           },
@@ -3820,6 +3837,7 @@
               "planet_ended",
               "wave_disabled",
               "host_unavailable",
+              "spectator_read_only",
               "internal",
               "rate_limited",
               "already_landed",
@@ -8057,6 +8075,7 @@
               "planet_ended",
               "wave_disabled",
               "host_unavailable",
+              "spectator_read_only",
               "internal",
               "rate_limited",
               "already_landed",
@@ -12065,6 +12084,7 @@
                 "planet_ended",
                 "wave_disabled",
                 "host_unavailable",
+                "spectator_read_only",
                 "internal",
                 "rate_limited",
                 "already_landed",
@@ -13763,6 +13783,364 @@
       ],
       "type": "object"
     },
+    "sim.decision": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "properties": {
+        "d": {
+          "properties": {
+            "items": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "actorId": {
+                    "anyOf": [
+                      {
+                        "maxLength": 120,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "actorSource": {
+                    "maxLength": 64,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "atTick": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "colonyId": {
+                    "anyOf": [
+                      {
+                        "maxLength": 120,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "colonyIndex": {
+                    "anyOf": [
+                      {
+                        "maximum": 255,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "commandId": {
+                    "anyOf": [
+                      {
+                        "maxLength": 120,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "commandKind": {
+                    "anyOf": [
+                      {
+                        "maxLength": 80,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "createdAtMs": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "decisionKind": {
+                    "maxLength": 64,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "id": {
+                    "maxLength": 120,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "isBot": {
+                    "default": false,
+                    "type": "boolean"
+                  },
+                  "outcome": {
+                    "default": "emitted",
+                    "enum": [
+                      "emitted",
+                      "applied",
+                      "rejected",
+                      "skipped"
+                    ],
+                    "type": "string"
+                  },
+                  "payload": {},
+                  "planetId": {
+                    "maxLength": 80,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "rationale": {
+                    "anyOf": [
+                      {
+                        "maxLength": 1000,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "sectorId": {
+                    "default": "sec_0_0",
+                    "maxLength": 64,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "summary": {
+                    "maxLength": 400,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "planetId",
+                  "colonyIndex",
+                  "actorSource",
+                  "decisionKind",
+                  "summary",
+                  "atTick",
+                  "createdAtMs"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "items"
+          ],
+          "type": "object"
+        },
+        "id": {
+          "maxLength": 40,
+          "minLength": 1,
+          "type": "string"
+        },
+        "t": {
+          "const": "sim.decision",
+          "type": "string"
+        },
+        "tick": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "v": {
+          "const": 1,
+          "type": "number"
+        }
+      },
+      "required": [
+        "v",
+        "t",
+        "d"
+      ],
+      "type": "object"
+    },
+    "sim.input": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "properties": {
+        "d": {
+          "properties": {
+            "items": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "actorId": {
+                    "anyOf": [
+                      {
+                        "maxLength": 120,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "args": {},
+                  "atTick": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "colonyId": {
+                    "anyOf": [
+                      {
+                        "maxLength": 120,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "colonyIndex": {
+                    "anyOf": [
+                      {
+                        "maximum": 255,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "commandId": {
+                    "maxLength": 120,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "createdAtMs": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "id": {
+                    "maxLength": 120,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "isBot": {
+                    "default": false,
+                    "type": "boolean"
+                  },
+                  "kind": {
+                    "maxLength": 80,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "planetId": {
+                    "maxLength": 80,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "rejectCode": {
+                    "anyOf": [
+                      {
+                        "maxLength": 80,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "rejectDetail": {
+                    "anyOf": [
+                      {
+                        "maxLength": 400,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "sectorId": {
+                    "default": "sec_0_0",
+                    "maxLength": 64,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "source": {
+                    "enum": [
+                      "player",
+                      "bot",
+                      "ai",
+                      "director",
+                      "near",
+                      "admin",
+                      "system",
+                      "dev",
+                      "module"
+                    ],
+                    "type": "string"
+                  },
+                  "status": {
+                    "default": "applied",
+                    "enum": [
+                      "queued",
+                      "applied",
+                      "rejected"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "planetId",
+                  "colonyIndex",
+                  "source",
+                  "commandId",
+                  "kind",
+                  "args",
+                  "atTick",
+                  "createdAtMs"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "items"
+          ],
+          "type": "object"
+        },
+        "id": {
+          "maxLength": 40,
+          "minLength": 1,
+          "type": "string"
+        },
+        "t": {
+          "const": "sim.input",
+          "type": "string"
+        },
+        "tick": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "v": {
+          "const": 1,
+          "type": "number"
+        }
+      },
+      "required": [
+        "v",
+        "t",
+        "d"
+      ],
+      "type": "object"
+    },
     "treasury.proposal": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "properties": {
@@ -14458,6 +14836,94 @@
               ],
               "type": "object"
             },
+            "buildings": {
+              "items": {
+                "properties": {
+                  "allowUnclaimed": {
+                    "type": "boolean"
+                  },
+                  "archetype": {
+                    "type": "string"
+                  },
+                  "buildS": {
+                    "type": "number"
+                  },
+                  "building": {
+                    "type": "string"
+                  },
+                  "cost": {
+                    "additionalProperties": {
+                      "type": "number"
+                    },
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "type": "object"
+                  },
+                  "footprintD": {
+                    "type": "number"
+                  },
+                  "footprintW": {
+                    "type": "number"
+                  },
+                  "hp": {
+                    "type": "number"
+                  },
+                  "hqOnly": {
+                    "type": "boolean"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "label": {
+                    "type": "string"
+                  },
+                  "maxPerColony": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "powerDrainPerS": {
+                    "type": "number"
+                  },
+                  "powerGenPerS": {
+                    "type": "number"
+                  },
+                  "requiresDeposit": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "tier": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "id",
+                  "building",
+                  "label",
+                  "tier",
+                  "footprintW",
+                  "footprintD",
+                  "buildS",
+                  "hp",
+                  "powerDrainPerS",
+                  "powerGenPerS",
+                  "cost",
+                  "archetype",
+                  "requiresDeposit",
+                  "hqOnly",
+                  "allowUnclaimed",
+                  "maxPerColony"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
             "colonyId": {
               "anyOf": [
                 {
@@ -14490,6 +14956,13 @@
                 "type": "string"
               },
               "type": "array"
+            },
+            "mode": {
+              "enum": [
+                "play",
+                "spectator"
+              ],
+              "type": "string"
             },
             "overrides": {
               "additionalProperties": {},
@@ -14556,6 +15029,290 @@
                 "resync"
               ],
               "type": "string"
+            },
+            "recentDecisions": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "actorId": {
+                    "anyOf": [
+                      {
+                        "maxLength": 120,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "actorSource": {
+                    "maxLength": 64,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "atTick": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "colonyId": {
+                    "anyOf": [
+                      {
+                        "maxLength": 120,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "colonyIndex": {
+                    "anyOf": [
+                      {
+                        "maximum": 255,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "commandId": {
+                    "anyOf": [
+                      {
+                        "maxLength": 120,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "commandKind": {
+                    "anyOf": [
+                      {
+                        "maxLength": 80,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "createdAtMs": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "decisionKind": {
+                    "maxLength": 64,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "id": {
+                    "maxLength": 120,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "isBot": {
+                    "default": false,
+                    "type": "boolean"
+                  },
+                  "outcome": {
+                    "default": "emitted",
+                    "enum": [
+                      "emitted",
+                      "applied",
+                      "rejected",
+                      "skipped"
+                    ],
+                    "type": "string"
+                  },
+                  "payload": {},
+                  "planetId": {
+                    "maxLength": 80,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "rationale": {
+                    "anyOf": [
+                      {
+                        "maxLength": 1000,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "sectorId": {
+                    "default": "sec_0_0",
+                    "maxLength": 64,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "summary": {
+                    "maxLength": 400,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "planetId",
+                  "colonyIndex",
+                  "actorSource",
+                  "decisionKind",
+                  "summary",
+                  "atTick",
+                  "createdAtMs"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "recentInputs": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "actorId": {
+                    "anyOf": [
+                      {
+                        "maxLength": 120,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "args": {},
+                  "atTick": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "colonyId": {
+                    "anyOf": [
+                      {
+                        "maxLength": 120,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "colonyIndex": {
+                    "anyOf": [
+                      {
+                        "maximum": 255,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "commandId": {
+                    "maxLength": 120,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "createdAtMs": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "id": {
+                    "maxLength": 120,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "isBot": {
+                    "default": false,
+                    "type": "boolean"
+                  },
+                  "kind": {
+                    "maxLength": 80,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "planetId": {
+                    "maxLength": 80,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "rejectCode": {
+                    "anyOf": [
+                      {
+                        "maxLength": 80,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "rejectDetail": {
+                    "anyOf": [
+                      {
+                        "maxLength": 400,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "sectorId": {
+                    "default": "sec_0_0",
+                    "maxLength": 64,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "source": {
+                    "enum": [
+                      "player",
+                      "bot",
+                      "ai",
+                      "director",
+                      "near",
+                      "admin",
+                      "system",
+                      "dev",
+                      "module"
+                    ],
+                    "type": "string"
+                  },
+                  "status": {
+                    "default": "applied",
+                    "enum": [
+                      "queued",
+                      "applied",
+                      "rejected"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "planetId",
+                  "colonyIndex",
+                  "source",
+                  "commandId",
+                  "kind",
+                  "args",
+                  "atTick",
+                  "createdAtMs"
+                ],
+                "type": "object"
+              },
+              "type": "array"
             },
             "serverTimeMs": {
               "maximum": 9007199254740991,

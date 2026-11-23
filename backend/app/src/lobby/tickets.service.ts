@@ -11,6 +11,7 @@ import {
 } from '@terra/contracts';
 import { HomeRepository } from '../core/home/home.repository';
 import { HomeService } from '../core/home/home.service';
+import { SectorAntiCheatService } from '../core/anticheat';
 import { WorldLifecycleService } from './lifecycle.service';
 import { LobbyPersistenceService } from './lobby-persistence.service';
 import {
@@ -76,10 +77,12 @@ export class MatchTicketsService {
     @Optional() @Inject(WorldLifecycleService) lifecycle?: WorldLifecycleService,
     @Optional() @Inject(HomeRepository) homeRepo?: HomeRepository,
     @Optional() @Inject(HomeService) homeService?: HomeService,
+    @Optional() @Inject(SectorAntiCheatService) private readonly antiCheat?: SectorAntiCheatService,
   ) {
     this.lifecycle = lifecycle ?? new WorldLifecycleService(this.persistence);
     this.homeRepo = homeRepo ?? new HomeRepository();
     homeService?.setLobbyServices(this.persistence, this.lifecycle);
+    this.antiCheat?.setLobbyPersistence(this.persistence);
   }
 
   /**
@@ -121,6 +124,18 @@ export class MatchTicketsService {
       status,
     };
     this.seededColoniesByPlayer.set(input.playerId, state);
+    this.antiCheat?.index.upsertColonyBase({
+      playerId: state.playerId,
+      colonyId: state.id,
+      planetId: state.planetId,
+      colonyIndex: state.colonyIndex,
+      name: state.name,
+      foundingSectorId: state.foundingSectorId,
+      spawnQ: state.spawnQ,
+      spawnR: state.spawnR,
+      status: state.status,
+      authoritativeStatus: true,
+    });
     if (status !== 'ACTIVE') {
       this.eliminatedColonyIds.add(colonyId);
     } else {
@@ -133,6 +148,7 @@ export class MatchTicketsService {
 
   markColonyEliminated(colonyId: string, playerId?: string): void {
     this.eliminatedColonyIds.add(colonyId);
+    this.antiCheat?.recordColonyStatus(colonyId, 'ELIMINATED');
     if (playerId) {
       const seeded = this.seededColoniesByPlayer.get(playerId);
       if (seeded && seeded.id === colonyId) {
@@ -154,12 +170,30 @@ export class MatchTicketsService {
     const effectiveIdempotencyKey = call.idempotencyKey?.trim() || bodyIdempotencyKey;
 
     return this.withPlayerTicketLock(call.playerId, async () => {
-      if (intent.mode !== 'TRANSFER') {
-        const activeHome = await this.resolveActivePlayerHome(call.playerId);
-        if (activeHome) {
+      const activeHome = await this.resolveActivePlayerHome(call.playerId);
+      if (activeHome) {
+        if (intent.mode !== 'TRANSFER') {
           throw new MatchTicketConflictException(
             'already_has_colony',
             'Player already has an active colony',
+            { home: activeHome },
+            activeHome,
+          );
+        }
+        if (activeHome.planet.id === intent.planetId) {
+          throw new MatchTicketBadRequestException(
+            'same_planet_transfer',
+            'TRANSFER must select an eligible different canonical planet',
+          );
+        }
+        if (
+          !intent.sourcePlanetId ||
+          intent.sourcePlanetId !== activeHome.planet.id ||
+          (intent.sourceColonyId && intent.sourceColonyId !== activeHome.colony.id)
+        ) {
+          throw new MatchTicketConflictException(
+            'already_has_colony',
+            'Transfer source does not match active colony',
             { home: activeHome },
             activeHome,
           );
@@ -259,9 +293,24 @@ export class MatchTicketsService {
     });
   }
 
+  private isLiveTerminalInAntiCheat(colonyId: string, planetId: string, colonyIndex?: number): boolean {
+    if (!this.antiCheat) return false;
+    const livePlanet = this.antiCheat.index.getPlanet(planetId);
+    if (livePlanet && (livePlanet.status === 'ENDED' || livePlanet.status === 'ARCHIVED')) return true;
+    const liveCol =
+      this.antiCheat.index.getColonyById(colonyId) ??
+      (colonyIndex !== undefined ? this.antiCheat.index.getColonyByPlanetIndex(planetId, colonyIndex) : undefined);
+    return Boolean(liveCol?.terminalFromLive && liveCol.status !== 'ACTIVE');
+  }
+
   async resolveActivePlayerHome(playerId: string): Promise<ActiveHomeV1 | null> {
     const seeded = this.seededColoniesByPlayer.get(playerId);
-    if (seeded && seeded.status === 'ACTIVE' && !this.eliminatedColonyIds.has(seeded.id)) {
+    if (
+      seeded &&
+      seeded.status === 'ACTIVE' &&
+      !this.eliminatedColonyIds.has(seeded.id) &&
+      !this.isLiveTerminalInAntiCheat(seeded.id, seeded.planetId, seeded.colonyIndex)
+    ) {
       const world = await this.persistence.getCanonicalWorldById(seeded.planetId);
       if (!world || world.lifecycle !== 'ARCHIVED') {
         const sectors = await this.persistence.listSectors(seeded.planetId);
@@ -273,7 +322,8 @@ export class MatchTicketsService {
     if (
       repoColony &&
       (repoColony.status === 'ACTIVE' || repoColony.status === 'ALIVE' || repoColony.status === 'FOUNDING') &&
-      !this.eliminatedColonyIds.has(repoColony.id)
+      !this.eliminatedColonyIds.has(repoColony.id) &&
+      !this.isLiveTerminalInAntiCheat(repoColony.id, repoColony.planetId, repoColony.colonyIndex)
     ) {
       const repoPlanet = await this.homeRepo.findPlanetById(repoColony.planetId);
       if (!repoPlanet || (repoPlanet.status !== 'ENDED' && repoPlanet.status !== 'PLANET_ENDED')) {
@@ -311,6 +361,7 @@ export class MatchTicketsService {
           r.playerId === playerId &&
           r.state === 'COMMITTED' &&
           !this.eliminatedColonyIds.has(r.colonyId) &&
+          !this.isLiveTerminalInAntiCheat(r.colonyId, r.planetId, r.slotIndex) &&
           (!repoColony || repoColony.id !== r.colonyId || repoColony.status === 'ACTIVE'),
       );
       if (committed) {

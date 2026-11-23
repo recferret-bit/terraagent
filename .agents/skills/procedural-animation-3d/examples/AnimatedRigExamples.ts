@@ -86,3 +86,16 @@ export function addRollingWheel(b: KitbashBuilder, wPivot: V3) {
   b.addPart(cyl(0.105, 0.105, 0.14, 12), 'hullPrimary', { name: 'wheel rim', position: wPivot, rotation: [0, 0, Math.PI / 2], animType: 7, animPivot: wPivot });
   b.addPart(cyl(0.045, 0.045, 0.16, 8), 'hullSecondary', { name: 'wheel hub', position: wPivot, rotation: [0, 0, Math.PI / 2], animType: 7, animPivot: wPivot });
 }
+
+/**
+ * Example 4: Vertebrate Grazing Neck (`78`), Tail Wag (`88`) & Avian Wing Stroke (`92`)
+ * Neck/cranium parts share `neckPivot` (`78` riding `BipedBody 8`); bird wings share shoulder `wingPivot` (`92` synced with `HoverBob 2`).
+ */
+export function addAvianWingPair(b: KitbashBuilder, flyY = 0.65, span = 0.55) {
+  b.addPart(sph(0.16, 10, 8), 'hullPrimary', { name: 'pectoral body', position: [0, flyY, 0], animType: 2, animPivot: [0, flyY, 0] });
+  for (const side of [-1, 1] as const) {
+    const wingPivot: V3 = [0.13 * side, flyY + 0.03, 0.02];
+    b.addPart(sph(0.05), 'hullPrimary', { name: 'wing shoulder', position: wingPivot, animType: 92, animPivot: wingPivot });
+    b.addPart(box(span, 0.024, 0.16), 'hullSecondary', { name: 'flight wing', position: [(0.13 + span * 0.48) * side, flyY + 0.03, -0.02], animType: 92, animPivot: wingPivot });
+  }
+}

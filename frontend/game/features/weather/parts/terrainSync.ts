@@ -108,7 +108,7 @@ function sweepTwisterTreesAt(
   }
   for (const t of checkTiles) {
     const idx = hx.indexOf(t.q, t.r);
-    if (idx >= 0 && terrain.props?.instancesForTile(idx).some((p) => p.kind === 'pine')) {
+    if (idx >= 0 && terrain.props?.instancesForTile(idx).some((p) => p.kind === 'pine' || p.kind === 'duneTree')) {
       twisterFx?.suckTree(id, t.q, t.r);
       terrain.setTileState(t.q, t.r, HEX_TERRAIN.flat, 0);
     }

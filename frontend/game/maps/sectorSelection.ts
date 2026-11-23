@@ -336,6 +336,7 @@ export function buildGlobalMapDrawView(params: {
     clientView: lastClientView,
     simData: ctx.services.store?.simData?.() ?? undefined,
     ownColonySlot: ctx.services.colonyId ?? 0,
+    spectatorAllVision: Boolean(ctx.services.isSpectator?.() && (ctx.services.isSpectatorVisionAll?.() ?? true)),
     axialToPixel: (q, r) =>
       adapter.isAtlas ? adapter.axialToPixel(q, r, size) : axialToCanvasPixel(q, r, size, radius),
     pixelToAxial: (x, y) =>

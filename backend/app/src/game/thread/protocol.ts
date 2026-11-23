@@ -1,6 +1,6 @@
-import type { SimCommandV1 } from '@terra/contracts';
-import type { BalanceOverrides, LedgerPosting, ResolvedRegion, SimEvent } from '@terra/sim';
-import type { TuneRequest } from '@terra/sim';
+import type { AgentDecisionFeedItemV1, SimCommandV1, SimInputFeedItemV1 } from '@terra/contracts';
+import type { BalanceOverrides, LedgerPosting, ResolvedRegion, SimEvent, TuneRequest } from '@terra/sim';
+import type { SectorSyncPayload } from '../persistence/sector-extract';
 
 /** In-process MessagePort protocol between the main thread and a sim thread (PROTOCOL §6). Plain structured-clone data only. */
 
@@ -69,7 +69,7 @@ export const W00_PLANET_TYPE = 'flat';
 
 /** Where the planet's sim would land a colony next (`nextLandingSite` on the live state, LED-14), or why it cannot. */
 export type LandingSiteAnswer =
-  | { readonly ok: true; readonly q: number; readonly r: number; readonly slotIndex?: number }
+  | { readonly ok: true; readonly q: number; readonly r: number; readonly slotIndex?: number; readonly sectorId?: string }
   | { readonly ok: false; readonly code: string };
 
 /** What the server ledger needs from a `loaded` planet (restore consistency, see `PlanetLedgerService`). */
@@ -101,6 +101,7 @@ export type ToThread =
   | { readonly t: 'subscribe'; readonly planetId: string }
   | { readonly t: 'unsubscribe'; readonly planetId: string }
   | { readonly t: 'snapshotNow'; readonly planetId?: string }
+  | { readonly t: 'sectorSyncNow'; readonly planetId?: string }
   | { readonly t: 'fullState'; readonly planetId: string; readonly reqId: number }
   /** Dev `tune` (D-35): set a field live / drop live tunes / export the merged overrides. Answered with `tuned`. */
   | { readonly t: 'tune'; readonly planetId: string; readonly reqId: number; readonly req: TuneRequest }
@@ -152,6 +153,14 @@ export type FromThread =
   /** `detail`: the sim's cause of the rejection when the handler gave one (GP-31), passed on in `cmd.reject.detail`. */
   | { readonly t: 'reject'; readonly planetId: string; readonly commandId: string; readonly code: string; readonly appliedAtTick?: number; readonly detail?: string; readonly unlocksAt?: string }
   | { readonly t: 'snapshot'; readonly planetId: string; readonly tick: number; readonly bytes: Uint8Array }
+  | {
+      readonly t: 'simFeeds';
+      readonly planetId: string;
+      readonly tick: number;
+      readonly inputs: readonly SimInputFeedItemV1[];
+      readonly decisions: readonly AgentDecisionFeedItemV1[];
+    }
+  | { readonly t: 'sectorSync'; readonly planetId: string; readonly payload: SectorSyncPayload }
   | { readonly t: 'warp'; readonly planetId: string; /** effective warp */ readonly k: number; readonly requested: number }
   | { readonly t: 'fullState'; readonly planetId: string; readonly reqId: number; readonly tick: number; readonly warp: number; readonly bytes: Uint8Array; readonly simVersion: number; readonly dataHash: string; readonly planetType: string; readonly overrides?: BalanceOverrides }
   | { readonly t: 'tuned'; readonly planetId: string; readonly reqId: number; readonly ok: boolean; readonly dataHash: string; readonly overrides: BalanceOverrides; readonly text?: string; readonly error?: string }

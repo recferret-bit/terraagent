@@ -49,8 +49,8 @@
   <text x="38" y="168" class="hdr-o">MANAGED STAKER AI OR /me BYOK</text>
   <text x="38" y="190" class="txt">1. Owner closes /play.html WS</text>
   <text x="38" y="208" class="txt">2. World ticks @ 5 Hz continuously</text>
-  <text x="38" y="226" class="txt">3. Uses &gt;=10 NEAR Managed AI or</text>
-  <text x="38" y="242" class="txt">   encrypted /me BYOK API key</text>
+  <text x="38" y="226" class="txt">3. 5 free turns, 10-500+ N Managed</text>
+  <text x="38" y="242" class="txt">   AI (1-12 slots), or /me BYOK</text>
   <text x="38" y="264" class="hdr-c">Model: z-ai/glm-5.3-flash (TEE)</text>
   <rect x="38" y="282" width="244" height="72" fill="#070c17" stroke="#334155"/>
   <text x="48" y="302" class="txt">Limited Key Armed:</text>
@@ -109,11 +109,11 @@
   <text x="914" y="168" class="hdr-g">DIPLOMACY + PLANET COUNCIL</text>
   <text x="914" y="190" class="txt">1. Raid repelled; NEAR.AI signs</text>
   <text x="914" y="206" class="txt">   diplomacy.proposeTruce</text>
-  <text x="914" y="226" class="txt">2. dao.terraagent::vote passes</text>
-  <text x="914" y="242" class="txt">   meteor_shield (&gt;50% quorum)</text>
+  <text x="914" y="226" class="txt">2. dao.terraagent::vote_weighted</text>
+  <text x="914" y="242" class="txt">   meteor_shield (1.5x Tier 3+)</text>
   <rect x="914" y="264" width="244" height="90" fill="#061913" stroke="#22c55e" stroke-width="1"/>
-  <text x="924" y="284" class="hdr-g">STAKING + SETTLED DEED:</text>
-  <text x="924" y="302" class="txt">staking: 7.2% Pilot / 1.8% Proto</text>
+  <text x="924" y="284" class="hdr-g">4-TIER WALLET STAKING + DEED:</text>
+  <text x="924" y="302" class="txt">Wallet-first 7.2% Pilot / 1.8% Proto</text>
   <text x="924" y="320" class="txt">deed.terraagent: Settled Deed NFT</text>
   <text x="924" y="338" class="txt">All txs verified on NearBlocks</text>
   <rect x="914" y="370" width="244" height="86" fill="#07121e" stroke="#22c55e" stroke-width="1.2"/>

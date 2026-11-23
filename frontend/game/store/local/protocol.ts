@@ -3,10 +3,18 @@ import type { Outgoing } from '../../net/types';
 
 /** Boot options of the local host (`?host=local&scenario=<id>&waves=<spec>`). */
 export interface LocalHostOptions {
-  /** Scenario id (`w00`). */
+  /** Scenario id (`w00`, or `spectator` for zero-player local spectator mode). */
   scenario: string;
   /** `?waves=` spec (`..03`, `00,01`, `all`); default `all`, always intersected with the scenario's waves. */
   waves?: string | null;
+  /** Spectator mode: no player spawned, read-only observer seeing all bots + inputs/decisions. */
+  spectator?: boolean;
+  /** Planet archetype (`dune`, `oceanForest`, `forestRock`) when `scenario` is `spectator`. */
+  planetType?: string;
+  /** Seed override for spectator / generated local worlds. */
+  seed?: string;
+  /** Number of initial bot colonies when booting spectator mode (1..6; default 2). */
+  botCount?: number;
 }
 
 /** What the page sends to the local host: the same client messages as `/ws`, plus dev commands and housekeeping. */

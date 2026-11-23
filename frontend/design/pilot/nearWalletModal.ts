@@ -1,4 +1,11 @@
-import type { NearAuthChallengeResponse, NearAuthVerifyRequest } from '@terra/contracts';
+import type { NearAuthChallengeResponse, NearAuthVerifyRequest, SocialAuthResponse } from '@terra/contracts';
+import {
+  buildLocalMockPilotBox,
+  completeOfflineWalletLogin,
+  isLocalMockAuthEnabled,
+  persistLocalMockSessionFallback,
+  type LocalMockFetchFn,
+} from './localMockPilot';
 import type { MockToken } from './mockToken';
 import { encodeNep413SocialToken } from './nearAuthApi';
 import { renderNearCliPanel } from './nearCliPanel';
@@ -29,8 +36,36 @@ export { friendlyWalletError, readSavedNearWallet, saveNearWallet, type SavedNea
 export interface NearWalletSelectorCallbacks {
   readonly initialMode?: 'signin' | 'signup';
   readonly network?: 'testnet' | 'mainnet';
+  readonly allowOfflineLocalAuth?: boolean;
+  readonly localAuthFetch?: LocalMockFetchFn;
   onPopupOpened?(popup: Window | null): void;
   onDirectToken(hit: MockToken): void;
+  onLocalMockSession?(session: SocialAuthResponse): void;
+  getUpgradeBearer?(): string;
+}
+
+function createWalletLocalMockBox(
+  callbacks: NearWalletSelectorCallbacks,
+  initialNetwork: 'testnet' | 'mainnet',
+  getMode: () => 'signin' | 'signup',
+  isBusy: () => boolean,
+  close: () => void,
+) {
+  const offlineOk = Boolean(callbacks.allowOfflineLocalAuth && callbacks.localAuthFetch);
+  if (initialNetwork === 'mainnet' || (!offlineOk && !isLocalMockAuthEnabled())) return null;
+  return buildLocalMockPilotBox({
+    initialMode: getMode(),
+    getMode,
+    getUpgradeBearer: callbacks.getUpgradeBearer,
+    isBusy,
+    fetchImpl: callbacks.localAuthFetch,
+    allowOfflineLocalAuth: callbacks.allowOfflineLocalAuth,
+    onAuthenticated: (session) => {
+      close();
+      if (callbacks.onLocalMockSession) callbacks.onLocalMockSession(session);
+      else persistLocalMockSessionFallback(session);
+    },
+  });
 }
 
 function createOptionButton(testId: string, title: string, subtitle: string, onClick: () => void): HTMLButtonElement {
@@ -326,16 +361,17 @@ function wireModalModeTabs(params: {
   readonly initialNetwork: 'testnet' | 'mainnet';
   readonly panelHost: HTMLElement;
   readonly challengeStore: PrefetchedChallengeStore;
+  readonly allowOfflineLocalAuth?: boolean;
   readonly isBusy: () => boolean;
   readonly getMode: () => 'signin' | 'signup';
   readonly setMode: (next: 'signin' | 'signup') => void;
 }): void {
-  const { chrome, initialNetwork, panelHost, challengeStore, isBusy, getMode, setMode } = params;
+  const { chrome, initialNetwork, panelHost, challengeStore, allowOfflineLocalAuth, isBusy, getMode, setMode } = params;
   const switchTo = (target: 'signin' | 'signup'): void => {
     if (isBusy() || getMode() === target) return;
     setMode(target);
     syncModalModeChrome(chrome, target, initialNetwork, panelHost);
-    void challengeStore.warm(target);
+    if (!allowOfflineLocalAuth) void challengeStore.warm(target);
   };
   chrome.signInTab.onclick = () => switchTo('signin');
   chrome.signUpTab.onclick = () => switchTo('signup');
@@ -375,9 +411,11 @@ export function openNearWalletSelectorModal(callbacks: NearWalletSelectorCallbac
 
   // Pre-warm `@near-wallet-selector/*` modules & server NEP-413 challenge immediately so wallet clicks
   // open browser popups synchronously inside transient user activation (avoiding Safari/Firefox popup blockers).
-  void getNearWalletSelector(initialNetwork).catch(() => undefined);
   const challengeStore = createPrefetchedChallengeStore();
-  void challengeStore.warm(mode);
+  if (!callbacks.allowOfflineLocalAuth) {
+    void getNearWalletSelector(initialNetwork).catch(() => undefined);
+    void challengeStore.warm(mode);
+  }
   const { dialog, close } = createDialogShell(challengeStore);
 
   const chrome = createModalChrome(close);
@@ -404,53 +442,52 @@ export function openNearWalletSelectorModal(callbacks: NearWalletSelectorCallbac
     });
   };
 
+  const offlineFetch = callbacks.allowOfflineLocalAuth ? callbacks.localAuthFetch : undefined;
+  const finishOffline = (label: string): void => {
+    if (!offlineFetch || signingBusy) return;
+    void completeOfflineWalletLogin({
+      walletLabel: label, mode, fetchImpl: offlineFetch, upgradeBearer: callbacks.getUpgradeBearer?.(), setBusy,
+      onDone: (s) => { close(); if (callbacks.onLocalMockSession) callbacks.onLocalMockSession(s); else persistLocalMockSessionFallback(s); },
+    });
+  };
   const suspendTopLayer = createTopLayerSuspender(dialog);
   const startFlow = (def: SelectorWalletDef): void => {
     if (signingBusy) return;
+    if (offlineFetch) { finishOffline(def.name); return; }
     beginNearWalletAuth(def.moduleId);
     void executeSelectorWalletFlow({
-      def,
-      mode,
-      initialNetwork,
-      panelHost,
-      challengeStore,
-      setBusy,
-      suspendTopLayer,
-      onSigned: finishVerified,
+      def, mode, initialNetwork, panelHost, challengeStore, setBusy, suspendTopLayer, onSigned: finishVerified,
     });
   };
   const openCli = (): void => {
     if (signingBusy) return;
+    if (offlineFetch) { finishOffline('NEAR CLI'); return; }
     beginNearWalletAuth('other');
     renderNearCliPanel(panelHost, { mode, network: initialNetwork, savedAccountId: saved?.accountId, onVerifiedPayload: (p) => finishVerified('NEAR CLI', p) });
   };
 
   grid = buildWalletGrid((def) => {
     if (signingBusy) return;
-    if (mode === 'signup' && (def.moduleId === 'near-mobile-wallet' || def.moduleId === 'my-near-wallet' || def.moduleId === 'okx-wallet')) {
+    if (!offlineFetch && mode === 'signup' && (def.moduleId === 'near-mobile-wallet' || def.moduleId === 'my-near-wallet' || def.moduleId === 'okx-wallet')) {
       renderWalletSignUpGuide(def, panelHost, () => startFlow(def));
       return;
     }
     startFlow(def);
   }, openCli);
 
+  const localMock = createWalletLocalMockBox(callbacks, initialNetwork, () => mode, () => signingBusy, close);
+
   wireModalModeTabs({
-    chrome,
-    initialNetwork,
-    panelHost,
-    challengeStore,
-    isBusy: () => signingBusy,
-    getMode: () => mode,
-    setMode: (next) => {
-      mode = next;
-    },
+    chrome, initialNetwork, panelHost, challengeStore, allowOfflineLocalAuth: callbacks.allowOfflineLocalAuth,
+    isBusy: () => signingBusy, getMode: () => mode,
+    setMode: (next) => { mode = next; localMock?.syncMode(next); },
   });
 
   dialog.addEventListener('pointerenter', () => {
-    if (!signingBusy) challengeStore.ensureFresh(mode);
+    if (!signingBusy && !callbacks.allowOfflineLocalAuth) challengeStore.ensureFresh(mode);
   });
   dialog.onclick = (e) => { if (e.target === dialog && !signingBusy) close(); };
-  dialog.append(chrome.head, chrome.tabs, chrome.sub, ...(saved ? [buildSavedWalletBanner(saved, startFlow, openCli)] : []), grid, panelHost);
+  dialog.append(chrome.head, chrome.tabs, chrome.sub, ...(saved ? [buildSavedWalletBanner(saved, startFlow, openCli)] : []), grid, panelHost, ...(localMock ? [localMock.el] : []));
   document.body.appendChild(dialog);
   if (typeof dialog.showModal === 'function') dialog.showModal();
   else dialog.setAttribute('open', '');

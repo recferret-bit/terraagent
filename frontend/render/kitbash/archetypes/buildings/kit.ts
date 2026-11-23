@@ -9,7 +9,7 @@ export type Z = MaterialZoneId;
  * Part options plus geometry budgets: `seg` = the helper's main segment count (radial, lathe, tube length), `r` = bevel
  * radius, `hSeg` = sphere height segments, `tubeSeg` = torus tube segments, `points` = cable control points (3 or 5).
  */
-export type Opt = PartOptions & { seg?: number; r?: number; hSeg?: number; tubeSeg?: number; points?: 3 | 5 };
+export type Opt = PartOptions & { seg?: number; r?: number; hSeg?: number; tubeSeg?: number; points?: 3 | 5; housing?: boolean };
 
 const _q = new THREE.Quaternion();
 const Y = new THREE.Vector3(0, 1, 0);
@@ -51,18 +51,44 @@ export function strut(b: KitbashBuilder, z: Z, a: V3, c: V3, r = 0.05, o: Opt = 
 export function tube(b: KitbashBuilder, pts: readonly THREE.Vector3[], r: number, z: Z = 'frameGunmetal', o: Opt = {}) {
   tubeThrough(b, pts, r, z, { along: o.seg ?? 10, radial: 4 }, o);
 }
-/** Sagging CatmullRom cable (silhouette breaker); `o.points: 3` uses only the sag point between the two ends. */
-export function cable(b: KitbashBuilder, a: V3, c: V3, slack = 0.4, r = 0.04, z: Z = 'frameGunmetal', o: Opt = {}) {
-  const va = new THREE.Vector3(...a), vc = new THREE.Vector3(...c);
-  const m = va.clone().add(vc).multiplyScalar(0.5); m.y -= slack;
-  if (o.points === 3) { tube(b, [va, m, vc], r, z, o); return; }
-  const q1 = va.clone().lerp(m, 0.5); q1.y -= slack * 0.15;
-  const q2 = m.clone().lerp(vc, 0.5); q2.y -= slack * 0.15;
-  tube(b, [va, q1, m, q2, vc], r, z, o);
+/**
+ * A point on a hanging cable. `drop` is the sag at mid-span, in metres, perpendicular to the chord
+ * and in the vertical plane (gravity with the along-cable part removed). A world-Y drop is not a sag:
+ * on a steep span that point still sits on the chord. `t` is 0 at `a` and 1 at `c`.
+ */
+export function hangPoint(a: V3, c: V3, t: number, drop: number): V3 {
+  const dx = c[0] - a[0], dy = c[1] - a[1], dz = c[2] - a[2];
+  const len = Math.hypot(dx, dy, dz) || 1;
+  const uy = dy / len;
+  let px = (dx / len) * uy, py = -1 + uy * uy, pz = (dz / len) * uy;
+  const pl = Math.hypot(px, py, pz) || 1;
+  const s = drop * 4 * t * (1 - t);
+  return [a[0] + dx * t + (px / pl) * s, a[1] + dy * t + (py / pl) * s, a[2] + dz * t + (pz / pl) * s];
 }
-/** Emissive lamp (HDR, >=3). */
+/** Middle of a hanging cable. `drop` is a few percent of the span. */
+export function sagPoint(a: V3, c: V3, drop: number): V3 {
+  return hangPoint(a, c, 0.5, drop);
+}
+/** One hanging tube. `slack` is the mid-span sag in metres. `o.points: 3` keeps only the belly between the ends. */
+export function cable(b: KitbashBuilder, a: V3, c: V3, slack = 0.4, r = 0.04, z: Z = 'frameGunmetal', o: Opt = {}) {
+  const ts = o.points === 3 ? [0, 0.5, 1] : [0, 0.25, 0.5, 0.75, 1];
+  tube(b, ts.map((t) => new THREE.Vector3(...hangPoint(a, c, t, slack))), r, z, o);
+}
+/** Emissive bulb in a gunmetal socket. The socket bites the bulb and reaches into whatever is under it. */
 export function lamp(b: KitbashBuilder, z: 'energyCyan' | 'warningAmber' | 'dangerCrimson' | 'terraformEmerald', r: number, p: V3, o: Opt = {}) {
-  b.addPart(new THREE.SphereGeometry(r, o.seg ?? 6, o.hSeg ?? 5), z, { name: 'status light', ...o, position: p });
+  const { housing = true, seg, hSeg, ...part } = o;
+  const name = part.name ?? 'status light';
+  b.addPart(new THREE.SphereGeometry(r, seg ?? 6, hSeg ?? 5), z, { ...part, name, position: p });
+  if (housing) seatLamp(b, r, p, part, name);
+}
+
+/** Neck under the bulb: 3.5 cm inside the sphere, 4 cm below it. The name must not say light: it is the metal, not the glow. */
+function seatLamp(b: KitbashBuilder, r: number, p: V3, part: Opt, name: string) {
+  const h = 0.075;
+  const base = name.replace(/\b(lights?|lamps?|beacons?|bulbs?)\b/gi, '').replace(/\s+/g, ' ').trim();
+  b.addPart(new THREE.CylinderGeometry(r * 0.62, r * 0.78, h, 6, 1), 'frameGunmetal', {
+    ...part, name: `${base || 'fixture'} bezel`, position: [p[0], p[1] - r - 0.002, p[2]],
+  });
 }
 /** Emissive slab strip; p = [x,bottomY,z]. */
 export function glow(b: KitbashBuilder, z: 'energyCyan' | 'warningAmber' | 'dangerCrimson', s: V3, p: V3, o: Opt = {}) {
@@ -77,7 +103,7 @@ export function dish(b: KitbashBuilder, R: number, p: V3, tilt: number, o: Opt =
   const g = new THREE.LatheGeometry(pts, o.seg ?? 12);
   b.addPart(g, 'hullPrimary', { name: 'radar dish', ...o, position: p, rotation: [tilt, 0, 0] });
 }
-/** Octagonal foundation plinth (-0.1..0.2) with amber hazard trim and corner lamps. Returns top Y. */
+/** Octagonal foundation plinth (-0.1..0.2) with amber hazard trim. No corner lamps: each building lights its own fixtures. Returns top Y. */
 export function plinth(b: KitbashBuilder, w: number, d: number, accent = true): number {
   box(b, 'frameGunmetal', [w, 0.3, d], [0, -0.1, 0], { name: 'foundation plinth', role: 'plinth', r: 0.1, seg: 1 });
   if (accent) {
@@ -86,7 +112,6 @@ export function plinth(b: KitbashBuilder, w: number, d: number, accent = true): 
       box(b, 'hullSecondary', [iw, 0.04, 0.1], [0, 0.18, s * id / 2], { name: 'plinth trim Z', role, r: 0.015, seg: 1 });
       box(b, 'hullSecondary', [0.1, 0.044, id - 0.1], [s * iw / 2, 0.182, 0], { name: 'plinth trim X', role, r: 0.015, seg: 1 });
     }
-    for (const sx of [-1, 1]) for (const sz of [-1, 1]) lamp(b, 'warningAmber', 0.07, [sx * (w / 2 - 0.12), 0.22, sz * (d / 2 - 0.12)], { name: 'plinth corner light', role });
   }
   return 0.2;
 }

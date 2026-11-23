@@ -1,5 +1,6 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import type { SectorId } from '@terra/contracts';
+import { SectorAntiCheatService } from '../core/anticheat';
 import { WorldLifecycleService } from './lifecycle.service';
 import { LobbyPersistenceService } from './lobby-persistence.service';
 import {
@@ -64,7 +65,12 @@ export class SectorReservationService {
     @Optional()
     @Inject(SIM_LANDING_AUTHORITY_VALIDATOR)
     private authorityValidator?: SimLandingAuthorityValidator,
-  ) {}
+    @Optional()
+    @Inject(SectorAntiCheatService)
+    private readonly antiCheat?: SectorAntiCheatService,
+  ) {
+    this.antiCheat?.setLobbyPersistence(this.persistence);
+  }
 
   setAuthorityValidator(validator: SimLandingAuthorityValidator | undefined): void {
     this.authorityValidator = validator;
@@ -156,6 +162,18 @@ export class SectorReservationService {
     const idempotentHit = await this.checkIdempotentReservation(input, ticket);
     if (idempotentHit) return idempotentHit;
 
+    if (!ticket || ticket.mode !== 'TRANSFER') {
+      const existingBase = await this.antiCheat?.resolveAuthoritativeActiveBase(input.playerId);
+      if (existingBase && existingBase.colonyId !== input.colonyId) {
+        this.antiCheat?.recordRejection('http', 'join', 'not_your_sector');
+        return makeFailureResult(
+          'ticket_not_reservable',
+          `Player "${input.playerId}" already owns active colony "${existingBase.colonyId}" in ${existingBase.baseSectorId}`,
+          { ticket },
+        );
+      }
+    }
+
     const world = await this.persistence.getCanonicalWorldById(input.planetId);
     if (!world) {
       return makeFailureResult(
@@ -193,13 +211,15 @@ export class SectorReservationService {
     );
     if (!candidatesOutcome.ok) return candidatesOutcome.failure;
 
-    return this.tryCandidateSlotsWithAuthority(
+    const out = await this.tryCandidateSlotsWithAuthority(
       input,
       world,
       sector,
       candidatesOutcome.slots,
       ticket,
     );
+    await this.antiCheat?.hydratePlanetSectors(input.planetId);
+    return out;
   }
 
   private async checkIdempotentReservation(
@@ -301,6 +321,30 @@ export class SectorReservationService {
     const expectedEpoch = typeof options === 'number' ? options : options?.expectedEpoch;
     return this.runWithReservationMutex(reservationId, async () => {
       const committed = await this.persistence.commitReservation(reservationId, expectedEpoch);
+      if (this.antiCheat) {
+        const ticket = await this.persistence.getTicketById(committed.ticketId);
+        if (ticket?.mode === 'TRANSFER') {
+          const priorSourceColonyId =
+            ticket.sourceColonyId ??
+            ticket.transferCarry?.sourceColonyId ??
+            this.antiCheat.index.getActiveBaseByPlayer(committed.playerId)?.colonyId;
+          if (priorSourceColonyId && priorSourceColonyId !== committed.colonyId) {
+            this.antiCheat.recordColonyStatus(priorSourceColonyId, 'TRANSFERRED');
+          }
+        }
+        this.antiCheat.index.upsertColonyBase({
+          playerId: committed.playerId,
+          colonyId: committed.colonyId,
+          planetId: committed.planetId,
+          colonyIndex: committed.slotIndex,
+          foundingSectorId: committed.sectorId,
+          spawnQ: committed.q,
+          spawnR: committed.r,
+          status: 'ACTIVE',
+          authoritativeStatus: true,
+        });
+        await this.antiCheat.hydratePlanetSectors(committed.planetId);
+      }
       return this.decorateRecord(committed, 'COMMITTED');
     });
   }
@@ -319,6 +363,10 @@ export class SectorReservationService {
         expectedEpoch,
         allowCommitted ? { allowCommitted } : undefined,
       );
+      if (allowCommitted && out.released) {
+        this.antiCheat?.recordColonyRemoved(out.reservation.colonyId);
+      }
+      await this.antiCheat?.hydratePlanetSectors(out.reservation.planetId);
       const ticket = await this.persistence.getTicketById(out.reservation.ticketId);
       return {
         released: out.released,

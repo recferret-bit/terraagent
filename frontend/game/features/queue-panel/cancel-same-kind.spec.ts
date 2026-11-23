@@ -49,6 +49,8 @@ describe('queue panel: the cancel click ends every order of the same kind', () =
     btn?.click();
     expect(commands).toEqual([{ kind: 'cancelTask', args: { taskId: 'tf#2', scope: 'sameKind' } }]);
     expect(panel.getEntries('terraform')).toHaveLength(0);
+    panel.update(view); // a stale host view must not paint the cancelled orders back
+    expect(panel.getEntries('terraform')).toHaveLength(0);
     panel.dispose();
   });
 });

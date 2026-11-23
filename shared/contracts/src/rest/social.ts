@@ -51,3 +51,63 @@ export const NearAuthVerifyRequest = z.strictObject({
 });
 export const NearAuthVerifyRequestSchema = NearAuthVerifyRequest;
 export type NearAuthVerifyRequest = z.infer<typeof NearAuthVerifyRequest>;
+
+export const LOCAL_MOCK_PLAYER_NAME_MIN = 2;
+export const LOCAL_MOCK_PLAYER_NAME_MAX = 32;
+export const LOCAL_MOCK_PLAYER_NAME_RE = /^[A-Za-z0-9](?:[A-Za-z0-9 _.-]{0,30}[A-Za-z0-9])?$/;
+
+/** Trims surrounding whitespace from a localhost mock player name without collapsing single spaces. */
+export function normalizeLocalMockPlayerName(raw: string): string {
+  return raw.trim();
+}
+
+/** Validates a localhost mock player name (2–32 chars, letters/digits/space/`_`/`.`/`-`, >= 2 alphanumerics). */
+export function validateLocalMockPlayerName(
+  raw: unknown,
+): { readonly ok: true; readonly value: string } | { readonly ok: false; readonly message: string } {
+  if (typeof raw !== 'string') {
+    return { ok: false, message: 'Enter a player name.' };
+  }
+  // eslint-disable-next-line no-control-regex -- intentionally rejects ASCII control characters
+  if (/[\x00-\x1f\x7f\t\r\n]/.test(raw)) {
+    return { ok: false, message: 'Player name cannot contain tabs, newlines, or control characters.' };
+  }
+  const value = normalizeLocalMockPlayerName(raw);
+  if (value.length < LOCAL_MOCK_PLAYER_NAME_MIN || value.length > LOCAL_MOCK_PLAYER_NAME_MAX) {
+    return {
+      ok: false,
+      message: `Player name must be ${LOCAL_MOCK_PLAYER_NAME_MIN}–${LOCAL_MOCK_PLAYER_NAME_MAX} characters.`,
+    };
+  }
+  if (/ {2,}/.test(value)) {
+    return { ok: false, message: 'Player name cannot contain consecutive spaces.' };
+  }
+  if (!LOCAL_MOCK_PLAYER_NAME_RE.test(value)) {
+    return {
+      ok: false,
+      message: 'Use letters, digits, single spaces, _, ., or - (start and end with a letter or digit).',
+    };
+  }
+  if ((value.match(/[A-Za-z0-9]/g)?.length ?? 0) < 2) {
+    return { ok: false, message: 'Player name must contain at least 2 letters or digits.' };
+  }
+  return { ok: true, value };
+}
+
+export const LocalMockPlayerNameSchema = z
+  .string()
+  .superRefine((raw, ctx) => {
+    const res = validateLocalMockPlayerName(raw);
+    if (!res.ok) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: res.message });
+    }
+  })
+  .transform((raw) => normalizeLocalMockPlayerName(raw));
+
+/** `POST /v1/dev/mock-oauth/login` — localhost-only dev mock login/signup by player name. */
+export const LocalMockAuthRequest = z.strictObject({
+  playerName: LocalMockPlayerNameSchema,
+  mode: z.enum(['signin', 'signup']).optional(),
+});
+export const LocalMockAuthRequestSchema = LocalMockAuthRequest;
+export type LocalMockAuthRequest = z.infer<typeof LocalMockAuthRequest>;

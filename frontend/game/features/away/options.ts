@@ -19,4 +19,5 @@ export interface AwayPanelOptions {
   /** Cross-links inside ColonyBook (`AWAY` -> `HQ AI` / `DIRECTOR`). */
   onOpenHq?: () => void;
   onOpenDirector?: () => void;
+  readOnly?: () => boolean;
 }

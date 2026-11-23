@@ -278,8 +278,12 @@ describe('Landing HTML 01..10 structure & anti-slop copy audit', () => {
       'NEAR-SDK 5.7',
       '11 / 11 PORTS',
       '0 Burst Re-Trigger Tokens',
+      'WebCrypto ECDSA',
+      'standalone intent verifier crate',
+      'Bitte AI, HOT, HERE, Nightly, or Sender',
     ]) {
       expect(renderedText).not.toContain(banned);
     }
+    expect(document.querySelectorAll('#contracts-board .acct-pill')).toHaveLength(4);
   });
 });

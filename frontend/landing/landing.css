@@ -55,7 +55,7 @@ main section[id] { scroll-margin-top: 96px; }
 .viewport { position: relative; width: 100%; background: var(--ta-black-hole); border: 1px solid var(--ta-seam-2); }
 .viewport canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
 .viewport-hero { flex: 1 1 480px; min-width: 0; aspect-ratio: 1 / 1; max-height: 600px; }
-.viewport-tag { position: absolute; font-family: var(--ta-font-mono); font-size: 11px; letter-spacing: 0.14em; color: var(--ta-steel); line-height: 1.7; }
+.viewport-tag { position: absolute; z-index: 3; font-family: var(--ta-font-mono); font-size: 11px; letter-spacing: 0.14em; color: var(--ta-steel); line-height: 1.7; }
 .viewport-tag.tl { left: 18px; top: 16px; }
 .viewport-tag.br { right: 18px; bottom: 16px; text-align: right; }
 
@@ -122,7 +122,7 @@ main section[id] { scroll-margin-top: 96px; }
 .example-note { margin: 40px 0 12px; }
 .planet-grid { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
 .planet { background: var(--ta-plate-2); border: 1px solid var(--ta-seam); overflow: hidden; }
-.planet-art { height: 140px; }
+.planet-art { position: relative; height: 140px; }
 .planet-art.desert { background: radial-gradient(circle at 35% 40%, #E08A3C 0 18%, #A4521C 32%, #3A1C0A 52%, var(--ta-void) 53%), var(--ta-void); }
 .planet-art.temperate { background: radial-gradient(circle at 35% 40%, #6FB37A 0 16%, #2D6B57 30%, #0E2A3A 52%, var(--ta-void) 53%), var(--ta-void); }
 .planet-art.ice { background: radial-gradient(circle at 35% 40%, #D7E6F5 0 14%, #7CA3C7 28%, #1C2B3E 52%, var(--ta-void) 53%), var(--ta-void); opacity: .55; }
@@ -281,7 +281,7 @@ button.res[aria-selected="true"] .res-use { color: var(--ta-text-2); }
 .rv-view { position: relative; flex: 1 1 520px; min-width: 0; min-height: 500px; background: var(--ta-deep); border: 1px solid var(--ta-ink); }
 .rv-stage { position: absolute; inset: 0; }
 .rv-stage canvas { width: 100%; height: 100%; }
-.rv-tag { position: absolute; left: 18px; top: 14px; font-family: var(--ta-font-mono); font-size: 11px; letter-spacing: 0.12em; color: var(--ta-steel); }
+.rv-tag { position: absolute; left: 18px; top: 14px; z-index: 3; font-family: var(--ta-font-mono); font-size: 11px; letter-spacing: 0.12em; color: var(--ta-steel); }
 .rv-stage-bar { position: absolute; right: 16px; top: 12px; z-index: 3; display: inline-flex; align-items: center; gap: 4px; padding: 4px 6px; background: rgba(7,8,10,0.86); border: 1px solid var(--ta-seam-2); font-family: var(--ta-font-mono); font-size: 10px; letter-spacing: 0.12em; }
 .rv-stage-lbl { color: var(--ta-steel); padding: 0 4px; }
 .rv-stage-btn { background: var(--ta-plate); border: 1px solid var(--ta-seam-2); color: var(--ta-text-2); padding: 4px 8px; font: 600 10px/1 var(--ta-font-mono); letter-spacing: 0.1em; cursor: pointer; clip-path: polygon(4px 0, 100% 0, 100% calc(100% - 4px), calc(100% - 4px) 100%, 0 100%, 0 4px); }
@@ -375,4 +375,59 @@ button.res[aria-selected="true"] .res-use { color: var(--ta-text-2); }
 @media (prefers-reduced-motion: reduce) {
   .m-flame, .leg.is-next.reached .leg-node::after, .sc-vec, .sc-ring { animation: none; }
   .scenario-card, .chain-pillars .card, .chain-feature { opacity: 1 !important; transform: none !important; }
+  .stage-preloader-reticle, .stage-preloader-bar i { animation: none; }
 }
+
+/* ───────── 3D / canvas Faction-Plate preloaders ───────── */
+.stage-preloader {
+  position: absolute; inset: 0; z-index: 2; pointer-events: none;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 20px;
+  background: radial-gradient(circle at 50% 48%, rgba(30, 91, 255, 0.14), transparent 62%), linear-gradient(180deg, rgba(11, 13, 17, 0.72), rgba(5, 6, 8, 0.9));
+  opacity: 1; visibility: visible; transition: opacity var(--ta-dur-base) ease, visibility var(--ta-dur-base) ease;
+}
+.stage-preloader::before { content: attr(data-preloader-label); font-family: var(--ta-font-mono); font-size: 11px; font-weight: 600; letter-spacing: 0.16em; color: var(--ta-text-2); text-align: center; }
+.stage-preloader::after { content: attr(data-preloader-sub); font-family: var(--ta-font-mono); font-size: 10px; letter-spacing: 0.12em; color: var(--ta-steel); text-align: center; }
+.stage-preloader-reticle {
+  width: 44px; height: 44px; position: relative; border: 1.5px solid var(--ta-seam-3); background: var(--ta-plate);
+  clip-path: polygon(25% 0, 75% 0, 100% 50%, 75% 100%, 25% 100%, 0 50%); box-shadow: inset 0 0 0 4px var(--ta-void);
+  animation: ta-preloader-pulse 1.8s ease-in-out infinite;
+}
+.stage-preloader-reticle::before {
+  content: ""; position: absolute; inset: 11px; border: 1.5px solid var(--ta-orange);
+  clip-path: polygon(25% 0, 75% 0, 100% 50%, 75% 100%, 25% 100%, 0 50%);
+}
+.stage-preloader-bar { width: min(190px, 68%); height: 4px; position: relative; overflow: hidden; background: var(--ta-plate-3); border: 1px solid var(--ta-seam-2); }
+.stage-preloader-bar i {
+  position: absolute; inset: 0 auto 0 -45%; width: 45%;
+  background: linear-gradient(90deg, transparent, var(--ta-orange), var(--ta-blue-hi));
+  animation: ta-preloader-scan 1.3s var(--ta-ease-hydraulic) infinite;
+}
+.stage-preloader-sm { gap: 8px; padding: 10px; }
+.stage-preloader-sm .stage-preloader-reticle { width: 30px; height: 30px; }
+.stage-preloader-sm .stage-preloader-reticle::before { inset: 7px; }
+.stage-preloader-sm::before { font-size: 10px; letter-spacing: 0.14em; }
+.stage-preloader-sm::after { display: none; }
+.stage-preloader-sm .stage-preloader-bar { width: min(120px, 64%); height: 3px; }
+[data-stage-state="loading"] > .stage-preloader .stage-preloader-bar i,
+[data-stage-state="loading"] ~ .stage-preloader .stage-preloader-bar i { animation-duration: 0.85s; }
+.is-live > .stage-preloader, .is-fallback > .stage-preloader,
+[data-stage-state="live"] > .stage-preloader, [data-stage-state="fallback"] > .stage-preloader,
+#hero-stage.is-live ~ .stage-preloader, #hero-stage.is-fallback ~ .stage-preloader,
+#hero-stage[data-stage-state="live"] ~ .stage-preloader, #hero-stage[data-stage-state="fallback"] ~ .stage-preloader,
+#rv-stage.is-live ~ .stage-preloader, #rv-stage.is-fallback ~ .stage-preloader,
+#rv-stage[data-stage-state="live"] ~ .stage-preloader, #rv-stage[data-stage-state="fallback"] ~ .stage-preloader {
+  opacity: 0; visibility: hidden;
+}
+@keyframes ta-preloader-pulse { 0%, 100% { transform: scale(0.95); border-color: var(--ta-seam-3); } 50% { transform: scale(1.04); border-color: var(--ta-orange); } }
+@keyframes ta-preloader-scan { 0% { transform: translateX(0); } 100% { transform: translateX(325%); } }
+
+/* ───────── Below-the-fold layout/paint deferral ───────── */
+#colony { content-visibility: auto; contain-intrinsic-size: auto none auto 780px; }
+#economy { content-visibility: auto; contain-intrinsic-size: auto none auto 980px; }
+#planets { content-visibility: auto; contain-intrinsic-size: auto none auto 640px; }
+#director { content-visibility: auto; contain-intrinsic-size: auto none auto 760px; }
+#economics { content-visibility: auto; contain-intrinsic-size: auto none auto 860px; }
+#protocol { content-visibility: auto; contain-intrinsic-size: auto none auto 920px; }
+#chain { content-visibility: auto; contain-intrinsic-size: auto none auto 820px; }
+#roadmap { content-visibility: auto; contain-intrinsic-size: auto none auto 960px; }
+#faq { content-visibility: auto; contain-intrinsic-size: auto none auto 560px; }

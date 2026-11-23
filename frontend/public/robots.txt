@@ -1,0 +1,15 @@
+User-agent: *
+Allow: /
+Allow: /v1/near/deed/
+Allow: /v1/deeds/
+Allow: /v1/mcp/agent-market.json
+Allow: /v1/near/protocol
+Allow: /v1/near/status
+Disallow: /v1/
+Disallow: /ws
+Disallow: /index.html
+Disallow: /dev/mock-oauth
+Disallow: /dev/parity
+Disallow: /dev/chain
+
+Sitemap: https://terraagent.fun/sitemap.xml

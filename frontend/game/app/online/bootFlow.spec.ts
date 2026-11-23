@@ -245,7 +245,9 @@ describe('W01-38: /play.html fresh profile boot flow & conditional descent', () 
     expect(descentEl.hidden).toBe(true);
     expect(colonyEl.hidden).toBe(false);
     expect(colonyEl.dataset.planetId).toBe('pl_dev');
-    expect(session.getSelectedEntityId()).not.toBeNull();
+    expect(session.getSelectedEntityId()).toBeNull();
+    expect(body.querySelector('[data-testid="command-dock"]')?.getAttribute('data-collapsed')).toBe('true');
+    expect(body.querySelector('[data-testid="colony-book"]')?.getAttribute('data-collapsed')).toBe('true');
 
     session.dispose();
   });
@@ -287,7 +289,9 @@ describe('W01-38: returning profile & local fallback', () => {
     expect(colonyEl.hidden).toBe(false);
     expect(colonyEl.dataset.planetId).toBe('pl_dev');
     expect(session.cameraTargetTile).toEqual({ q: 4, r: -2 });
-    expect(session.getSelectedEntityId()).toBe(statusBefore.hqEntityId);
+    expect(session.cam?.isOrbitalDropping()).toBe(true);
+    expect(body.querySelector<HTMLElement>('.ta-hud')?.hidden).toBe(true);
+    expect(session.getSelectedEntityId()).toBeNull();
 
     session.dispose();
   });
@@ -372,5 +376,121 @@ describe('W01-38: 3D pod descent handoff & return to orbit', () => {
     expect(returnedKind).toBe('oceanForest');
 
     session.dispose();
+  });
+});
+
+describe('W01-38: returning colony orbital drop', () => {
+  it('5. returning colony (HQ already on planet) triggers HQ orbital camera drop with no pod descent and supports deferReveal handoff', async () => {
+    const { body, app } = setupDom();
+    const existingSecret = '0123456789abcdef0123456789abcdef';
+    const storage = createMemoryStorage({ [DEVICE_SECRET_KEY]: existingSecret });
+    const { fetch: mockFetch } = createMockAuthFetch('jwt_returning_drop', existingSecret);
+    const { serverSim } = createServerSimWithColony(35);
+    const { wsDeps, wsFramesSent } = createMockWsHarness(serverSim);
+
+    const directSession = new OnlineSession(app, 'boot', {
+      uiParent: body,
+      fetch: mockFetch,
+      storage,
+      search: '',
+      planetKind: 'forestRock',
+      makeMesh: stubMeshFactory,
+      wsDeps,
+    });
+    await directSession.whenBooted;
+    await flush(6);
+
+    expect(directSession.bootOverlay?.descentShownCount).toBe(0);
+    expect(directSession.bootPhase).toBe('colony');
+    expect(directSession.cam?.isOrbitalDropping()).toBe(true);
+    expect(directSession.viewport.camera.fov).toBeCloseTo(36, 4);
+    expect(body.querySelector<HTMLElement>('.ta-hud')?.hidden).toBe(true);
+    expect(directSession.getSelectedEntityId()).toBeNull();
+    expect(wsFramesSent.filter((m) => m.t === 'cmd')).toEqual([]);
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    expect(directSession.cam?.isOrbitalDropping()).toBe(false);
+    expect(directSession.viewport.camera.fov).toBe(28);
+    directSession.stepFrame(0);
+    expect(body.querySelector<HTMLElement>('.ta-hud')?.hidden).toBe(false);
+    expect(directSession.getSelectedEntityId()).toBeNull();
+    expect(body.querySelector('[data-testid="command-dock"]')?.getAttribute('data-collapsed')).toBe('true');
+    directSession.dispose();
+
+    const { body: body2, app: app2 } = setupDom();
+    const deferredSession = new OnlineSession(app2, 'boot', {
+      uiParent: body2,
+      fetch: mockFetch,
+      storage,
+      search: '',
+      planetKind: 'forestRock',
+      freshDeployment: false,
+      fromSpaceDescent: false,
+      orbitalCameraDrop: true,
+      deferReveal: true,
+      makeMesh: stubMeshFactory,
+      wsDeps,
+    });
+    await deferredSession.whenBooted;
+    await flush(6);
+
+    expect(deferredSession.isColonyReady()).toBe(true);
+    expect(body2.querySelector<HTMLElement>('[data-testid="colony-view"]')?.hidden).toBe(true);
+    expect(deferredSession.cam?.isOrbitalDropping()).toBe(false);
+
+    deferredSession.revealFromOrbitalDive(false);
+    expect(body2.querySelector<HTMLElement>('[data-testid="colony-view"]')?.hidden).toBe(false);
+    expect(deferredSession.cam?.isOrbitalDropping()).toBe(true);
+    expect(body2.querySelector<HTMLElement>('.ta-hud')?.hidden).toBe(true);
+    expect(deferredSession.getSelectedEntityId()).toBeNull();
+    deferredSession.stepFrame(2);
+    expect(deferredSession.cam?.isOrbitalDropping()).toBe(false);
+    expect(body2.querySelector<HTMLElement>('.ta-hud')?.hidden).toBe(false);
+    expect(deferredSession.getSelectedEntityId()).toBeNull();
+    expect(body2.querySelector('[data-testid="command-dock"]')?.getAttribute('data-collapsed')).toBe('true');
+    deferredSession.dispose();
+  });
+});
+
+describe('W01-38: explicit ColonyLoadMode ("direct" / "pod" / "instant")', () => {
+  it('6. explicit loadMode "direct" disables pod touchdown and camera shake even when the server pod is still descending', async () => {
+    const { body, app } = setupDom();
+    const existingSecret = '0123456789abcdef0123456789abcdef';
+    const storage = createMemoryStorage({ [DEVICE_SECRET_KEY]: existingSecret });
+    const { fetch: mockFetch } = createMockAuthFetch('jwt_direct_reland', existingSecret);
+    const { serverSim } = createServerSimWithColony(0); // pod still descending on server (e.g. after server reland)
+    const { wsDeps, wsFramesSent, stepServer } = createMockWsHarness(serverSim);
+
+    const directReland = new OnlineSession(app, 'boot', {
+      uiParent: body,
+      fetch: mockFetch,
+      storage,
+      search: '',
+      planetKind: 'dune',
+      loadMode: 'direct',
+      orbitalCameraDrop: true,
+      makeMesh: stubMeshFactory,
+      wsDeps,
+    });
+    await directReland.whenBooted;
+    await flush(6);
+
+    expect(directReland.loadMode).toBe('direct');
+    expect(directReland.bootOverlay?.descentShownCount).toBe(0);
+    expect(directReland.bootPhase).toBe('colony');
+    expect(directReland.entities.podTouchdown.getMode()).toBe('skip');
+    expect(directReland.entities.getCameraShake()).toBe(0);
+    expect(directReland.cam?.getShake()).toBe(0);
+    expect(directReland.cam?.isOrbitalDropping()).toBe(true);
+    expect(wsFramesSent.filter((m) => m.t === 'cmd').map((m) => m.d)).toEqual([{ kind: 'landPod', args: {} }]);
+
+    // Advancing server sim until HQ deploys attaches HQ follow cleanly with zero touchdown shake
+    stepServer(30);
+    await flush(4);
+    directReland.entities.update(0.1, directReland.terrain, 0.1);
+    expect(directReland.entities.getCameraShake()).toBe(0);
+    expect(directReland.cam?.followTarget).not.toBeNull();
+    expect(directReland.getSelectedEntityId()).toBeNull();
+
+    directReland.dispose();
   });
 });

@@ -1,4 +1,4 @@
-import { canonicalPlanetById, type SimCommandV1 } from '@terra/contracts';
+import { canonicalPlanetById, type AgentDecisionFeedItemV1, type SimCommandV1, type SimInputFeedItemV1 } from '@terra/contracts';
 import type { BalanceOverrides, LedgerPosting, SimEvent, TuneRequest } from '@terra/sim';
 import { noteAwayPolicyRejection } from './away-rejections';
 import {
@@ -6,9 +6,12 @@ import {
   collectThreadPlanetIds,
   normalizeCanonicalSpawnCmd,
   normalizeLoadOptions,
+  PlanetFeedBuffers,
+  PlanetUnloadWaiters,
   type HostLoadInfo,
   type LoadOptions,
 } from './parts/game-planets-ops';
+import type { SectorSyncPayload } from './persistence/sector-extract';
 import type { SimThreadPool } from './sim-thread-pool';
 import { ThreadRequests } from './thread-requests';
 import type { FromThread, LandingSiteAnswer, LoadedInfo } from './thread/protocol';
@@ -68,6 +71,15 @@ export type PlanetEventsListener = (planetId: string, events: readonly SimEvent[
 /** Ledger postings of one step leaving a thread (host-side only, see `PlanetLedgerService`). */
 export type PlanetLedgerListener = (planetId: string, tick: number, postings: readonly LedgerPosting[]) => void;
 
+export type PlanetSimFeedsListener = (
+  planetId: string,
+  tick: number,
+  inputs: readonly SimInputFeedItemV1[],
+  decisions: readonly AgentDecisionFeedItemV1[],
+) => void;
+
+export type PlanetSectorSyncListener = (planetId: string, payload: SectorSyncPayload) => void;
+
 interface Waiter<T> { resolve(v: T): void; reject(e: Error): void }
 
 /**
@@ -94,6 +106,10 @@ export class GamePlanets {
   private readonly eventListeners = new Set<PlanetEventsListener>();
   private readonly downListeners = new Set<PlanetDownListener>();
   private readonly threadDownListeners = new Set<(thread: number, planetIds: readonly string[]) => void>();
+  private readonly feedBuffers = new PlanetFeedBuffers();
+  private readonly simFeedsListeners = new Set<PlanetSimFeedsListener>();
+  private readonly sectorSyncListeners = new Set<PlanetSectorSyncListener>();
+  private readonly unloadWaiters = new PlanetUnloadWaiters();
   /** Restores whose coarse catch-up has not posted `fastRan` yet. `load` stays pending until then. */
   private readonly catchingUp = new Set<string>();
   private readonly fastRunStartListeners: ((planetId: string) => void)[] = [];
@@ -155,7 +171,13 @@ export class GamePlanets {
   }
 
   /** Global listeners (persistence): a planet finished loading / was unloaded / a snapshot arrived (subscribed or not). */
-  onPlanetLoaded(fn: (planetId: string, tick: number, info: LoadedInfo) => void): void { this.loadedListeners.push(fn); }
+  onPlanetLoaded(fn: (planetId: string, tick: number, info: LoadedInfo) => void): () => void {
+    this.loadedListeners.push(fn);
+    return () => {
+      const idx = this.loadedListeners.indexOf(fn);
+      if (idx >= 0) this.loadedListeners.splice(idx, 1);
+    };
+  }
   /** Fires when a restart fast-run is marked, before the worker steps the gap. A gap of 0 does not fire. */
   onFastRunStart(fn: (planetId: string) => void): void { this.fastRunStartListeners.push(fn); }
   /** Fires when a restart fast-run finishes (`restart_fastrun_seconds`). */
@@ -164,7 +186,13 @@ export class GamePlanets {
   onFastRunAbort(fn: (planetId: string) => void): void { this.fastRunAbortListeners.push(fn); }
   /** Every step's ledger postings of every planet, in order, subscribed or not. */
   onPlanetLedger(fn: PlanetLedgerListener): void { this.ledgerListeners.push(fn); }
-  onPlanetUnloaded(fn: (planetId: string) => void): void { this.unloadedListeners.push(fn); }
+  onPlanetUnloaded(fn: (planetId: string) => void): () => void {
+    this.unloadedListeners.push(fn);
+    return () => {
+      const idx = this.unloadedListeners.indexOf(fn);
+      if (idx >= 0) this.unloadedListeners.splice(idx, 1);
+    };
+  }
   onPlanetSnapshot(fn: (planetId: string, s: { tick: number; bytes: Uint8Array }) => void): void { this.snapshotListeners.push(fn); }
 
   private sendSingleCmd(planetId: string, cmd: SimCommandV1): Promise<CommandOutcomeMsg> {
@@ -212,7 +240,22 @@ export class GamePlanets {
 
   /** CT-14. The thread keeps the planet's due time; the new `dt` applies on the next step. */
   setMode(planetId: string, mode: 'active' | 'coarse'): boolean {
-    return this.loaded.has(planetId) && this.pool.sendToPlanet(planetId, { t: 'ctl', op: 'mode', planetId, mode });
+    if (!this.loaded.has(planetId)) return false;
+    this.feedBuffers.setMode(planetId, mode);
+    return this.pool.sendToPlanet(planetId, { t: 'ctl', op: 'mode', planetId, mode });
+  }
+
+  modeOf(planetId: string): 'active' | 'coarse' {
+    return this.feedBuffers.modeOf(planetId);
+  }
+
+  unload(planetId: string): Promise<void> {
+    if (!this.loaded.has(planetId) && !this.loading.has(planetId)) return Promise.resolve();
+    return this.unloadWaiters.wait(
+      planetId,
+      () => this.pool.sendToPlanet(planetId, { t: 'unload', planetId }),
+      () => { this.loaded.delete(planetId); this.feedBuffers.clearPlanet(planetId); },
+    );
   }
 
   /** One synthetic event to joined sockets. Not tapped: the caller emits `planet.event` itself. */
@@ -253,6 +296,16 @@ export class GamePlanets {
   onEvents(l: PlanetEventsListener): () => void {
     this.eventListeners.add(l);
     return () => this.eventListeners.delete(l);
+  }
+
+  onSimFeeds(l: PlanetSimFeedsListener): () => void { this.simFeedsListeners.add(l); return () => this.simFeedsListeners.delete(l); }
+  onSectorSync(l: PlanetSectorSyncListener): () => void { this.sectorSyncListeners.add(l); return () => this.sectorSyncListeners.delete(l); }
+  recentInputs(planetId: string, limit?: number): SimInputFeedItemV1[] { return this.feedBuffers.recentInputs(planetId, limit); }
+  recentDecisions(planetId: string, limit?: number): AgentDecisionFeedItemV1[] { return this.feedBuffers.recentDecisions(planetId, limit); }
+  latestSectorSync(planetId: string): SectorSyncPayload | undefined { return this.feedBuffers.latestSectorSync(planetId); }
+  requestSectorSync(planetId?: string): void {
+    if (planetId) this.pool.sendToPlanet(planetId, { t: 'sectorSyncNow', planetId });
+    else for (let t = 0; t < this.pool.size; t++) this.pool.send(t, { t: 'sectorSyncNow' });
   }
 
   private tap(planetId: string, events: readonly SimEvent[]): void {
@@ -329,7 +382,9 @@ export class GamePlanets {
     }
     this.failLoad(planetId, err);
     this.requests.failAll(err, planetId);
-    if (wasLoaded) for (const fn of this.unloadedListeners) fn(planetId);
+    this.feedBuffers.clearPlanet(planetId);
+    this.unloadWaiters.resolve(planetId);
+    if (wasLoaded) for (const fn of [...this.unloadedListeners]) fn(planetId);
     for (const fn of this.downListeners) fn(planetId, reason, detail);
   }
 
@@ -354,7 +409,7 @@ export class GamePlanets {
           const host = this.hostInfo.get(msg.planetId);
           this.hostInfo.delete(msg.planetId);
           const info: LoadedInfo = { restored: msg.restored ?? false, genesis: msg.genesis ?? false, stocks: msg.stocks ?? [], ...host };
-          for (const fn of this.loadedListeners) fn(msg.planetId, msg.tick, info);
+          for (const fn of [...this.loadedListeners]) fn(msg.planetId, msg.tick, info);
         }
         return;
       case 'fastRan':
@@ -395,6 +450,22 @@ export class GamePlanets {
       case 'snapshot':
         for (const fn of this.snapshotListeners) fn(msg.planetId, msg);
         return this.each(msg.planetId, (s) => s.onSnapshot?.(msg));
+      case 'simFeeds':
+        this.feedBuffers.pushFeeds(msg.planetId, msg.inputs, msg.decisions);
+        for (const fn of this.simFeedsListeners) fn(msg.planetId, msg.tick, msg.inputs, msg.decisions);
+        return;
+      case 'sectorSync':
+        this.feedBuffers.setSectorSync(msg.planetId, msg.payload);
+        for (const fn of this.sectorSyncListeners) fn(msg.planetId, msg.payload);
+        return;
+      case 'unloaded': {
+        const wasLoaded = this.loaded.delete(msg.planetId);
+        this.warps.delete(msg.planetId);
+        this.feedBuffers.clearPlanet(msg.planetId);
+        this.unloadWaiters.resolve(msg.planetId);
+        if (wasLoaded) for (const fn of [...this.unloadedListeners]) fn(msg.planetId);
+        return;
+      }
       case 'error':
         if (msg.planetId && this.loading.has(msg.planetId)) this.failLoad(msg.planetId, new Error(msg.message));
         return;

@@ -4,6 +4,7 @@ import {
   cancelConstructionOrder,
   ENTITY_STATE,
   getColonyStock,
+  getColonyTerraformOrders,
   getConstructionOrders,
   getHqView,
   getHubFootprintTiles,
@@ -188,7 +189,7 @@ describe('W01-16: Command Hub 20.0 s construction progress & buildingCompleted e
 });
 
 describe('W01-16: Pay-on-start after linked prep & waiting_resources behavior (UO-Q-01..03)', () => {
-  it('pays nothing while waiting_site during linked prep, then spends 200/100/50/50 gradually once 9/9 tiles are prepared and builds in 20 s', () => {
+  it('starts the build on flat ground without a terraform pass, and pays as the HQ works', () => {
     const host = createW01Host();
     const state = host.state;
     spawnHqUnit(state, { owner: 0, q: 0, r: 0 });
@@ -199,35 +200,14 @@ describe('W01-16: Pay-on-start after linked prep & waiting_resources behavior (U
       'bio.water': 200,
     });
 
-    // Place on 9 unprepared Flat tiles -> 9 Grade jobs * 10 ticks = 90 ticks (18.0 s) of work, plus the HQ's walks
-    // between tiles (it is never teleported onto a tile).
     host.submit(mkCmd('placeBuilding', { building: 'commandHub', q: 3, r: 0 }, 0, 'prep_then_pay'));
-    const prepared = () => getConstructionOrders(state, 0)[0]?.preparedCount ?? 0;
-    let ticks = 0;
-    for (; ticks < 80 && prepared() < 4; ticks++) host.step(1);
-
-    const waitingOrder = getConstructionOrders(state, 0)[0]!;
-    expect(waitingOrder.status).toBe('waiting_site');
-    expect(waitingOrder.preparedCount).toBe(4);
-    expect(waitingOrder.costPaid).toBe(false);
-    // Stock untouched while still preparing site (UO-Q-01)
-    expect(getColonyStock(state, 0)).toEqual(fullStock({
-      'metals.t1': 600,
-      'minerals.t1': 350,
-      'bio.biomass': 200,
-      'bio.water': 200,
-    }));
-
-    // Finish the site prep -> 9/9 prepared, cost paid on start. The HQ works every tile from outside the footprint
-    // (buildings block ground movement), so walking around the site adds a few seconds to the 18 s of work.
-    for (; ticks < 200 && prepared() < 9; ticks++) host.step(1);
-    expect(ticks).toBeGreaterThanOrEqual(90);
-    expect(ticks).toBeLessThanOrEqual(135);
+    host.step(1);
     const startedOrder = getConstructionOrders(state, 0)[0]!;
-    expect(startedOrder.preparedCount).toBe(9);
     expect(startedOrder.status).toBe('in_progress');
+    expect(startedOrder.preparedCount).toBe(9);
     expect(startedOrder.costPaid).toBe(true);
-    expect(getColonyStock(state, 0)['metals.t1']).toBeGreaterThan(590);
+    expect(getColonyTerraformOrders(state, 0)).toHaveLength(0);
+    expect(getColonyStock(state, 0)['metals.t1']).toBeLessThan(600);
 
     // 20.0 s (100 ticks) of building completes the Hub, after a short walk out of the footprint
     const buildEvents = [];

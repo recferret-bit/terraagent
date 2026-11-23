@@ -180,6 +180,15 @@ export function ensureFxBar(): HTMLElement {
   return bar;
 }
 
+/** On unless `?crt=0` or a saved `terraagent.crt` of `0`. A missing preference stays on. */
+export function resolveInitialCrt(urlValue: string | null, saved: string | null): boolean {
+  if (urlValue === '1' || urlValue === 'true') return true;
+  if (urlValue === '0' || urlValue === 'false') return false;
+  if (saved === '0' || saved === 'false') return false;
+  if (saved === '1' || saved === 'true') return true;
+  return true;
+}
+
 export interface InitCrtOptions {
   showControls?: boolean;
   showFps?: boolean;
@@ -199,7 +208,11 @@ export function initCrt(targets: HTMLElement[], opts?: InitCrtOptions) {
     setPixelArt(true, false);
     setShadow(true);
   } else {
-    on = store.get(KEY, '1') === '1';
+    let urlCrt: string | null = null;
+    try { urlCrt = new URLSearchParams(location.search).get('crt'); } catch { /* ignore */ }
+    let savedCrt: string | null = null;
+    try { savedCrt = localStorage.getItem(KEY); } catch { /* ignore */ }
+    on = resolveInitialCrt(urlCrt, savedCrt);
   }
   document.head.insertAdjacentHTML('beforeend', `<style id="crt-css">${CSS}</style>`);
   for (const h of hosts) {

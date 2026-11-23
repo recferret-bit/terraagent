@@ -33,6 +33,7 @@ export function formatTicketFeeTier(policy: MarketPolicyView | null): { readonly
 export interface TicketDeps {
   client: TradeClient;
   state(): TradeState;
+  network?: () => 'testnet' | 'mainnet';
   /** Called after an order was sent so the page refreshes orders / balances. */
   onSent(): void;
 }
@@ -270,9 +271,11 @@ export class OrderTicket {
       for (const b of nonceBytes) bin += String.fromCharCode(b);
       const nonce = btoa(bin);
       const message = `order:${baseReq.planetId ?? 'planet'}:${baseReq.side}:${baseReq.resource}:${baseReq.amount}:${baseReq.price.token}:${totalStr}`;
-      const net = typeof location !== 'undefined' && location.hostname.endsWith('.near') ? 'mainnet' : 'testnet';
+      const net =
+        this.d.network?.() ??
+        (typeof location !== 'undefined' && location.hostname.endsWith('.near') ? 'mainnet' : 'testnet');
       const selector = await getNearWalletSelector(net);
-      const wallet = await selector.wallet('meteor-wallet').catch(() => selector.wallet());
+      const wallet = await selector.wallet();
       if (wallet.type === 'hardware') {
         throw new Error('Hardware wallets are not supported in browser popup mode.');
       }

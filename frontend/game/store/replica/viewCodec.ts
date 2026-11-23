@@ -62,7 +62,7 @@ export interface ClientView {
   tick: number;
   /** Estimated server time at this tick (filled by `WorldStore`, not the worker). */
   serverTimeMs?: number;
-  planet: { id: string; type: PlanetType; radius: number };
+  planet: { id: string; type: PlanetType; radius: number; seed?: string };
   tiles?: ClientTiles;
   entities: Float32Array;
   count: number;

@@ -25,7 +25,10 @@ export function rocket() {
   for (const y of [3.0, 5.2]) cyl(b, 'hullSecondary', 0.92, 0.92, 0.14, [0, y, 0], { seg: 12, name: 'interstage ring' });
   cyl(b, 'frameGunmetal', 0.91, 0.91, 0.1, [0, 4.1, 0], { seg: 12, name: 'tankage weld band' });
   // porthole + glow strip
-  ball(b, 'energyCyan', 0.2, [0, 6.2, 0.8], { seg: 8, scale: [1, 1, 0.5], emissiveIntensity: 3.8, name: 'crew porthole light' } as any);
+  b.addPart(new THREE.CylinderGeometry(0.14, 0.14, 0.42, 6), 'frameGunmetal', {
+    name: 'crew porthole frame', position: [0, 5.27, 0.72], rotation: [PI / 2, 0, 0],
+  });
+  ball(b, 'energyCyan', 0.12, [0, 5.27, 0.96], { seg: 8, emissiveIntensity: 3.8, name: 'crew porthole light' });
   cyl(b, 'warningAmber', 0.05, 0.05, 1.8, [0, 2.5, 0.88], { seg: 6, emissiveIntensity: 3.6, name: 'stage telemetry strip light' });
   // fins
   for (let k = 0; k < 4; k++) {
@@ -48,7 +51,7 @@ export function rocket() {
     // swing beam to rocket
     strut(b, 'hullSecondary', [gx - 0.52, y + 0.08, gz], [0.82, y + 0.08, gz], 0.07, { name: 'umbilical swing beam' });
     strut(b, 'frameGunmetal', [gx - 0.52, y + 0.58, gz], [0.95, y + 0.08, gz], 0.035, { name: 'swing beam tension stay' });
-    lamp(b, 'warningAmber', 0.07, [gx + 0.48, y + 0.15, gz + 0.48], { name: 'deck edge light' });
+    lamp(b, 'warningAmber', 0.07, [gx + 0.48, y + 0.15, gz + 0.48], { housing: false, name: 'deck edge light' });
   }
   glow(b, 'energyCyan', [0.05, 8.0, 0.05], [gx - 0.52, 0.6, gz + 0.52], { name: 'gantry elevator strip light' });
   // LOX fuel sphere + pipes
@@ -58,8 +61,8 @@ export function rocket() {
   strut(b, 'hullSecondary', [-1.45, 1.0, 1.45], [-0.8, 1.4, 0.6], 0.09, { name: 'cryo feed line' });
   // ground umbilical junction box + sagging umbilical cables tower -> rocket
   cyl(b, 'hullSecondary', 0.24, 0.26, 0.55, [gx, 0.18, 1.45], { seg: 8, name: 'umbilical terminal unit' });
-  cable(b, [gx - 0.65, 7.46, gz], [0.68, 6.8, 0.0], 0.35, 0.045, 'frameGunmetal', { name: 'upper umbilical cable' });
-  cable(b, [gx - 0.65, 5.26, gz + 0.2], [0.76, 4.6, 0.15], 0.28, 0.04, 'frameGunmetal', { name: 'mid umbilical cable' });
+  cable(b, [gx - 0.65, 7.46, gz], [0.68, 6.8, 0.0], 0.1, 0.045, 'frameGunmetal', { points: 3, name: 'upper umbilical cable' });
+  cable(b, [gx - 0.65, 5.26, gz + 0.2], [0.76, 4.6, 0.15], 0.08, 0.04, 'frameGunmetal', { points: 3, name: 'mid umbilical cable' });
   cable(b, [gx, 3.04, gz + 0.68], [gx, 0.68, 1.35], 0.18, 0.055, 'frameGunmetal', { name: 'ground feeder cable' });
   return b.build();
 }

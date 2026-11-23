@@ -1,51 +1,15 @@
-import type { DescentTelemetry } from '@terra/render/descent/types';
+import { FPS_LIMITS, getFpsCap, onFpsCapChange, setFpsCap } from '@terra/render/core/perfConfig';
+import '../core/ui/scrim.css';
 
-/** Cinematic descent overlay (telemetry, letterbox, progress, skip hint). */
-export class DescentHud {
-  readonly el = document.createElement('div');
-  private q: Record<string, HTMLElement> = {};
-  private lastTemp = -40;
-  constructor(parent: HTMLElement) {
-    this.el.id = 'descent'; this.el.className = 'ui-layer';
-    this.el.innerHTML = `<div class="lb top"></div><div class="lb bot"></div>
-      <div class="telemetry plate-sm">
-        <div><span class="k">ALTITUDE</span><b id="d-alt">—</b> km</div>
-        <div><span class="k">SPEED</span><b id="d-spd">—</b> km/h</div>
-        <div><span class="k">G-FORCE</span><b id="d-g">—</b> g</div>
-        <div class="temp" id="d-temp"><span class="k">HULL TEMP</span><b id="d-tc">−40</b> <span class="u">°C</span><span class="trend" id="d-trend"></span></div>
-      </div>
-      <div class="phase plate-sm" id="d-phase"></div>
-      <div class="caption" id="d-cap"></div>
-      <div class="progress"><i id="d-prog"></i></div>
-      <div class="skip">PRESS ESC / SPACE TO SKIP</div>`;
-    parent.appendChild(this.el);
-    for (const id of ['alt', 'spd', 'g', 'temp', 'tc', 'trend', 'phase', 'cap', 'prog']) this.q[id] = this.el.querySelector('#d-' + id)!;
-  }
-  show() { requestAnimationFrame(() => this.el.classList.add('on')); }
-  hide() { this.el.classList.remove('on'); }
-  update(t: DescentTelemetry) {
-    const f = (n: number, d = 0) => n.toLocaleString('en-US', { maximumFractionDigits: d, minimumFractionDigits: d });
-    this.q.alt.textContent = f(t.altitudeKm, t.altitudeKm < 10 ? 2 : 0);
-    this.q.spd.textContent = f(t.speedKmh);
-    this.q.g.textContent = f(t.gForce, 1);
-    // hull temperature in °C: colour band + rising/falling arrow (replaces the old heat bar)
-    const c = Math.round(t.hullTempC);
-    this.q.tc.textContent = (c < 0 ? '−' : '') + f(Math.abs(c));
-    this.q.temp.dataset.band = c > 1100 ? 'crit' : c > 450 ? 'hot' : c > 60 ? 'warm' : 'cold';
-    const d = c - this.lastTemp; this.lastTemp = c;
-    this.q.trend.textContent = d > 2 ? '▲' : d < -2 ? '▼' : '';
-    this.q.phase.textContent = t.phase;
-    this.q.cap.textContent = t.caption;
-    this.q.prog.style.width = (t.progress * 100).toFixed(1) + '%';
-  }
-  dispose() { this.el.remove(); }
-}
+export { DescentHud } from './descentHud';
+
 
 /** Minimal gameplay HUD + pause menu. */
 export class GameHud {
   readonly el = document.createElement('div');
   readonly pause = document.createElement('div');
   private res: Record<string, HTMLElement> = {};
+  private readonly offFpsCap: () => void;
   constructor(parent: HTMLElement, planetName: string, seed: number, cb: { onResume(): void; onReturn(): void }) {
     this.el.id = 'hud'; this.el.className = 'ui-layer';
     this.el.innerHTML = `<div class="hud-top">
@@ -78,9 +42,19 @@ export class GameHud {
       </div></div>
       <div class="hud-hint plate-sm">LMB move hero · WASD / edge pan · MMB drag · wheel zoom · Q/E rotate · Home hero · ESC menu</div>`;
     parent.appendChild(this.el);
+    const fpsBtns = FPS_LIMITS.map((c) => `<button type="button" class="ta-pause-fps__btn" data-fps-cap="${c}" aria-pressed="${c === getFpsCap()}">${c === 0 ? 'MAX' : c}</button>`).join('');
     this.pause.id = 'pause';
-    this.pause.innerHTML = `<div class="box plate"><div class="hazard"></div><h2>PAUSED</h2><button class="btn btn-primary" id="p-resume">Resume</button><button class="btn btn-ghost" id="p-return">Return to orbit</button></div>`;
+    this.pause.innerHTML = `<div class="box plate"><div class="hazard"></div><h2>PAUSED</h2><div class="ta-pause-fps"><div class="ta-pause-fps__label">MAX FPS</div><div class="ta-pause-fps__options">${fpsBtns}</div></div><button class="btn btn-primary" id="p-resume">Resume</button><button class="btn btn-ghost" id="p-return">Return to orbit</button></div>`;
     parent.appendChild(this.pause);
+    const syncFps = (cap = getFpsCap()) => {
+      this.pause.querySelectorAll<HTMLButtonElement>('[data-fps-cap]').forEach((b) => {
+        b.setAttribute('aria-pressed', String(Number(b.dataset.fpsCap) === cap));
+      });
+    };
+    this.pause.querySelectorAll<HTMLButtonElement>('[data-fps-cap]').forEach((b) => {
+      b.onclick = () => { setFpsCap(Number(b.dataset.fpsCap) as typeof FPS_LIMITS[number]); syncFps(); };
+    });
+    this.offFpsCap = onFpsCapChange((cap) => syncFps(cap));
     (this.pause.querySelector('#p-resume') as HTMLElement).onclick = cb.onResume;
     (this.pause.querySelector('#p-return') as HTMLElement).onclick = cb.onReturn;
     for (const id of ['energy', 'metal', 'water', 'bio']) this.res[id] = this.el.querySelector('#r-' + id)!;
@@ -163,5 +137,5 @@ export class GameHud {
   }
   setPaused(p: boolean) { this.pause.classList.toggle('on', p); }
   get paused() { return this.pause.classList.contains('on'); }
-  dispose() { this.el.remove(); this.pause.remove(); }
+  dispose() { this.offFpsCap(); this.el.remove(); this.pause.remove(); }
 }

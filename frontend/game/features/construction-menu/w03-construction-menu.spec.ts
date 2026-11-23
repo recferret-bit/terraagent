@@ -159,3 +159,29 @@ describe('Power Pylon placement (Protoss-style power zone)', () => {
     menu.dispose();
   });
 });
+
+describe('buildConstructionCatalog welcome specs', () => {
+  it('overlays footprint, time, cost and power from a matching welcome row', () => {
+    const flags = new Set(['W00', 'W01', 'W02']);
+    const specs = [{
+      building: 'solar', tier: 1, footprintW: 4, footprintD: 3, buildS: 40,
+      powerDrainPerS: 2, powerGenPerS: 0, cost: { 'metals.t1': 9 },
+    }];
+    const cards = buildConstructionCatalog(flags, undefined, 0, specs);
+    const solar = cards.find((c) => c.building === 'solar')!;
+    expect(solar.footprintText).toBe('4×3');
+    expect(solar.footprintW).toBe(4);
+    expect(solar.designBuildS).toBe(40);
+    expect(solar.hqBuildS).toBe(26.7);
+    expect(solar.cost).toEqual({ 'metals.t1': 9 });
+    expect(solar.powerText).toBe('−2 E/s');
+    expect(cards.find((c) => c.building === 'commandHub')!.designBuildS).toBe(30);
+    const withHub = buildConstructionCatalog(flags, undefined, 0, [{
+      building: 'commandHub', tier: 1, footprintW: 3, footprintD: 3, buildS: 30,
+      powerDrainPerS: 7, powerGenPerS: 16, cost: { 'metals.t1': 200 }, hqOnly: true,
+    }]);
+    expect(withHub.find((c) => c.building === 'commandHub')!.powerText).toBe('+16 / −7 E/s');
+    const otherTier = buildConstructionCatalog(flags, undefined, 0, [{ ...specs[0]!, tier: 2, buildS: 1 }]);
+    expect(otherTier.find((c) => c.building === 'solar')!.designBuildS).toBe(18);
+  });
+});

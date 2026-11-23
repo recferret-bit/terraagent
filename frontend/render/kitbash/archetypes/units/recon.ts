@@ -53,8 +53,8 @@ function turret(b: KitbashBuilder): void {
   b.addPart(rbox(0.46, 0.22, 0.50, 0.055), 'hullPrimary', { name: 'recon turret housing', position: [0, 0.88, 0.03] });
   b.addPart(cyl(0.10, 0.10, 0.04, 10), 'hullSecondary', { name: 'turret commander hatch', position: [0, 0.995, -0.03] });
   b.addPart(rbox(0.15, 0.09, 0.055, 0.014), 'glassVisor', { name: 'turret sight visor', position: [-0.135, 0.93, 0.275] });
-  b.addPart(cyl(0.024, 0.024, 0.03, 8), 'energyCyan', {
-    name: 'turret rangefinder light', position: [-0.135, 0.93, 0.31], rotation: [Math.PI / 2, 0, 0], emissiveIntensity: 3.5,
+  b.addPart(cyl(0.024, 0.024, 0.04, 8), 'energyCyan', {
+    name: 'turret rangefinder light', position: [-0.135, 0.93, 0.295], rotation: [Math.PI / 2, 0, 0], emissiveIntensity: 3.5,
   });
   b.addPart(rbox(0.13, 0.13, 0.17, 0.025), 'hullSecondary', { name: 'recon gun mantlet', position: [0.06, 0.87, 0.29] });
   b.addPart(cyl(0.033, 0.04, 0.55, 10), 'frameGunmetal', {

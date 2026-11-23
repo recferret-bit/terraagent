@@ -1,0 +1,50 @@
+# TerraAgent
+
+> Autonomous 3D planetary colony RTS in your browser (Three.js + WebGL2) on NEAR Protocol and hardware-attested NEAR.AI. Drop one robot, configure colony priorities, and let your settlement mine, terraform, trade, form treaties, and defend 24/7 on a deterministic 5 Hz simulation server.
+
+## Gameplay Loop
+- **Three Biomes:** Desert (`Kharon Dunes`, solar-rich, water-scarce), Ocean (`Thalassa Verde`, water/biomass-rich, hydro-friendly), and Temperate (`Granite Hollow`, mineral-dense, forested).
+- **24-Hour Matchmaking Window:** Planets accept new colonies until sector seats fill or 24 hours pass since first landing, then seal and run up to 14 days toward the S10 Ascension Rocket.
+- **10 Surface & Orbital Commodities (`NEP-245` on `res.terraagent.testnet`):** Iron (`metals.t1`), Light Alloys (`metals.t2`), Titanium (`metals.t3`), Silica (`minerals.t1`), Rare Earths (`minerals.t2`), Exotic Crystal (`minerals.t3`), Water (`bio.water`), Biomass (`bio.biomass`), Petroleum (`bio.t2`), and Gene-stock (`bio.t3`).
+- **Continuous Rule Engine + Governed AI:** 90–95% of tick logic runs deterministically at 5 Hz on `@terra/sim`; emergencies and offline sweeps route to bounded `NEAR.AI` Directors.
+
+## 4 Organic Income Lanes (Zero Token Printing / Zero Pay-to-Win)
+1. **Cargo Exports (100% to Seller):** Refine commodities across MK.I–MK.III buildings, ship surplus via Trade Hub to mint 1:1 `NEP-245` cargo, and sell for USDC, NEAR, or barter cargo on `/trade.html`.
+2. **Trade Hub Stall Royalties (0–1.00%):** Every Trade Hub operates as an orderbook storefront earning 0–100 bp maker royalties on filled orders.
+3. **Scoped Trading Bots (24/7):** Mint revocable `ta_bot_...` API keys with daily spend caps and price-band checks to run automated market-making and arbitrage on the planet CLOB.
+4. **Mercenary Bounties & Bonded Diplomacy (90% / 10% Slashes):** Claim raid-defense bounties or lock NEAR / cargo escrows for Peace Treaties (2h–72h) and 6h War Bonds (`2x` Raider carry cap). Honored treaties and completed war goals refund 100%; early betrayal or failed sieges slash 90% to the counterparty and 10% to Protocol.
+
+## Wallet-First 4-Tier Orbital Patronage & TerraAgent Protocol Treasury
+- **Lossless Staking (`staking.terraagent.testnet`, Human-Only):** Any connected NEAR wallet can stake native `NEAR`, `stNEAR`, or `LiNEAR` on `/me.html#staking` with zero Colony Deed required (`100%` principal safe, `7.20%` net APY, `0%`-fee `compound_yield`, `<7d` `25 bp` early-exit fee; `20%` of yield funds `TerraAgent Protocol`).
+- **4-Tier Perks (`10 / 50 / 200 / 500+ NEAR`):** Verified pilots get `5` free `NEAR.AI` TEE turns; staking unlocks `1 / 3 / 6 / 12` managed `z-ai/glm-5.3-flash` colony slots (capped at `35%` of protocol income for a `>= 65%` margin), `0.65% -> 0.50% / 0.35% / 0.25%` taker fees (`24h` warmup), and a King-of-the-Hill Tier 4 Lead Patron seat (`15%` of Protocol fee share + orbital `ISS <pilot>.near` flagship) with zero combat or harvesting buffs.
+- **4-Way Atomic `NEP-413` Settlement:** Buyer notional clears atomically across Seller Principal (`100%`), Trade Hub Stall (`0–1.00%`), Planet Council DAO (`20%` of platform fee), and `protocol.terraagent.*` (`80%` of platform fee).
+- **Self-Funded Operating Budgets:** Organic trade shares, validator yield slices, and bond slashes cover `NEP-366` gasless player meta-transactions (`relayer.terraagent.*`) and batched `NEAR AI Cloud` TEE turns (`~$0.03–$0.05/planet/day`, breaking even at `~$7/day` trade volume or `200 NEAR` staked TVL).
+
+## 6 Deployed NEAR Rust Smart Contracts (`near-sdk 5.7`)
+- `res.terraagent.testnet` — `NEP-245` Orbital Resource Multi-Token (`mt_mint`, `mt_burn`, `mt_batch_transfer`, `mt_transfer_call`, `mt_withdraw`)
+- `deed.terraagent.testnet` — `NEP-171` Soulbound Colony Deeds (`mint_deed`, `update_metadata`, `prune_history`, `NEP-181` pagination)
+- `bounty.terraagent.testnet` — Mercenary Bounties, Bonded Peace Treaties & 6h War Escrows (`open_near_escrow`, `slash_escrow`, `claim_expired_refund`)
+- `staking.terraagent.testnet` — Wallet-First 4-Tier Staking Vault (`stake_payable`, `compound_yield`, `withdraw_lst`, LST `ft_on_transfer`, `<7d` `25 bp` exit fee, Option A share-price solvency)
+- `dao.terraagent.testnet` — Planet Council Treasury & Voting (`propose`, `vote`, `finalize`, SputnikDAO v2 export)
+- `pilots.terraagent.testnet` — Cold-Root Pilot Sub-Account Factory (`create_pilot_account`)
+
+## Verifiable NEAR.AI TEE Commander & Agent Commerce
+- **Hardware-Attested Enclaves:** Rival AI directors and Managed Staker Autopilot batch `z-ai/glm-5.3-flash` sweeps on `cloud-api.near.ai/v1` with staker prompt isolation and `<untrusted_player_label>` injection filtering.
+- **Browser-Verifiable Proofs:** `/v1/signature/{chat_id}` (`SHA-256` `model:request:response` `secp256k1` EIP-191 / `Ed25519`) persists to `DirectorTeeAttestation` and verifies directly in-browser (`TEE ✓` HUD modal and `/me.html` live enclave probe).
+- **Encrypted BYOK Vault:** Pilots can save personal `AES-256-GCM` encrypted NEAR AI Cloud keys on `/me.html` across `z-ai/glm-5.3-flash`, `z-ai/glm-5.3`, `deepseek/deepseek-v3.2`, `deepseek-ai/DeepSeek-V4.1-Flash-1017`, `Qwen/Qwen3.8-27B`, `openai/gpt-5-mini`, `anthropic/claude-sonnet-4-6`, or custom models.
+- **Hosted MCP Server & Shade MPC:** External agents discover pair specs via `GET /v1/mcp/agent-market.json`, call JSON-RPC 2.0 tools on `POST /v1/mcp` or `POST /v1/trade/agent/rfq`, and run decentralized Shade Agents signing with `v1.signer`.
+
+## Canonical URLs & Machine-Readable Endpoints
+- Landing Page: https://terraagent.fun/
+- Play Live (3D Colony Game): https://play.terraagent.fun/
+- Exchange & CLOB Orderbook: https://play.terraagent.fun/trade.html
+- Staking & Wealth Dashboard: https://play.terraagent.fun/me.html#staking
+- 7-Day Multi-Agent Economy Simulator: https://play.terraagent.fun/dev/economy-sim/
+- Whitepaper: https://whitepaper.terraagent.fun/
+- Investor & Judge Pitch Deck: https://pitchdeck.terraagent.fun/
+- 3D Procedural Kitbash Playground: https://playground.terraagent.fun/
+- Faction Plate Design System: https://design.terraagent.fun/
+- Hosted MCP Agent Market Spec: https://api.terraagent.fun/v1/mcp/agent-market.json
+- Live Protocol Treasury Telemetry: https://api.terraagent.fun/v1/near/protocol
+- Live NEAR Chain & Contract Status: https://api.terraagent.fun/v1/near/status
+- Sitemap: https://terraagent.fun/sitemap.xml

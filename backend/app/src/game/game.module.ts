@@ -1,9 +1,9 @@
 import { availableParallelism } from 'node:os';
 import { Inject, Module, Optional, type OnApplicationBootstrap, type OnApplicationShutdown } from '@nestjs/common';
-import { ModuleRef } from '@nestjs/core';
+import { HttpAdapterHost, ModuleRef } from '@nestjs/core';
 import type { PrismaClient } from '@terra/db';
 import { defineEnv } from '@terra/config';
-import { DEV_PLANET_CAPACITY, DEV_PLANET_RADIUS, DEV_PLANET_SEED, DEV_PLANET_TYPE, mergeOverrides, type BalanceOverrides } from '@terra/sim';
+import { DEV_PLANET_CAPACITY, DEV_PLANET_RADIUS, DEV_PLANET_TYPE, devPlanetSeedFor, mergeOverrides, type BalanceOverrides } from '@terra/sim';
 import type { Logger } from 'pino';
 import { Counter, Gauge } from 'prom-client';
 import { z } from 'zod';
@@ -11,8 +11,10 @@ import { EventBus } from '../bus/event-bus';
 import { AiModule } from '../ai/ai.module';
 import { ColonyAgentLoopService } from '../ai/colony-agent/colony-agent-loop.service';
 import { AiAttestationController } from '../ai/colony-agent/ai-attestation.controller';
+import { AiAccessController } from '../ai/colony-agent/ai-access.controller';
 import { TeeAttestationStore } from '../ai/colony-agent/tee-attestation.store';
 import { EconomySimService } from '../ai/economy-sim/economy-sim.service';
+import { SectorAntiCheatService } from '../core/anticheat';
 import { HomeService } from '../core/home/home.service';
 import { PRISMA } from '../db/db.module';
 import { FlagsService } from '../flags/flags.service';
@@ -33,6 +35,9 @@ import { loadBalanceOverrides } from './balance-overrides';
 import { bridgePlanetEvents } from './bus-bridge';
 import { attachAwayDigest, AwayDigestService, createDigestStory, installDigestRowsGauge, liveBaselineReader, MemoryDigestStore, PrismaDigestStore } from './digest';
 import { DevPlanetsController } from './dev-planets.controller';
+import { InternalSimController } from './cluster/internal-sim.controller';
+import { SimClusterService } from './cluster/sim-cluster.service';
+import { PlanetLiveStateController } from './planet-live-state.controller';
 import { devPlanetIds, devPlanetsToGenerate } from './dev-planets';
 import { GamePlanets } from './game-planets.service';
 import { DevPresence } from './presence/dev-presence';
@@ -47,6 +52,9 @@ import { PrismaLedgerStore } from './ledger/prisma-ledger-store';
 import { persistenceEnabled } from '../core/persistence';
 import { PlanetHeldError, SnapshotService } from './persistence/snapshot.service';
 import { SnapshotStore } from './persistence/snapshot-store';
+import { SectorStateService } from './persistence/sector-state.service';
+import { SimHistoryService } from './persistence/sim-history.service';
+import { SimLeaseService } from './persistence/sim-lease.service';
 import { ProgressionEventForwarder } from './progression-events.service';
 import { wirePlanetRecovery } from './planet-recovery';
 import { installRestartFastRunMetric } from './restart/metric';
@@ -72,6 +80,8 @@ export const env = defineEnv('game', {
   }),
   /** Number of dev planets loaded at boot, spread evenly over the threads (desert with W01, the flat W00 planet without). */
   GAME_DEV_PLANETS: z.coerce.number().int().min(0).default(0),
+  /** Max wall seconds of missed ticks fast-forwarded on snapshot restore; unset = 60s in development, 24h in test/production. */
+  RESTART_FASTRUN_MAX_S: z.coerce.number().min(0).max(86_400).optional(),
   /** Default real-world hours for 1 full planetary day (24 solar hours); unset = data table default (0.25 h). */
   PLANET_DAY_HOURS: z.coerce.number().min(0.005).max(168).optional(),
   /** Default planetary time-scale multiplier; unset = data table default (1). */
@@ -86,13 +96,21 @@ export const env = defineEnv('game', {
     .refine((v) => v === undefined || v === '' || v === 'true' || v === 'false', { message: 'must be true or false' }),
   /** When `'1'`, auto-seeds 2 Stage-4 Rival AI Colonies (`Iron Guild Outpost` + `Crimson Vanguard`) on freshly loaded W18+ planets. */
   TA_SEED_RIVAL_AI: z.string().optional(),
+  /** Replica role (`all` | `sim-worker` | `api`). `api` serves HTTP/WS without owning local sim planet leases. */
+  TA_SIM_ROLE: z.enum(['all', 'sim-worker', 'api']).default('all'),
+  /** Explicit worker/replica identifier for `SimWorkerLease`; defaults to host:pid:uuid. */
+  TA_WORKER_ID: z.string().optional(),
+  /** Internal HTTP base URL advertised by this worker/replica in `SimWorkerLease` & `SimWorkerNode`. */
+  TA_INTERNAL_URL: z.string().optional(),
+  /** Shared internal secret authenticating cluster RPC calls (`/v1/internal/sim/*`). */
+  TA_INTERNAL_SECRET: z.string().optional(),
 });
 
 const POOL = Symbol('SIM_THREAD_POOL');
 
 @Module({
   imports: [EconomyModule, AiModule],
-  controllers: [DevPlanetsController, DevLedgerController, AiAttestationController],
+  controllers: [DevPlanetsController, PlanetLiveStateController, DevLedgerController, AiAttestationController, AiAccessController, InternalSimController],
   providers: [
     {
       provide: POOL,
@@ -134,7 +152,11 @@ const POOL = Symbol('SIM_THREAD_POOL');
     },
     PlanetLedgerService,
     EconomyTelemetry,
+    SectorStateService,
+    SimHistoryService,
+    SimLeaseService,
     SnapshotService,
+    SimClusterService,
     ProgressionEventForwarder,
     HardModeClock,
     DevPresence,
@@ -152,13 +174,27 @@ const POOL = Symbol('SIM_THREAD_POOL');
       }),
     },
   ],
-  exports: [GamePlanets, ProgressionEventForwarder, SnapshotService, AwayDigestService, HardModeClock, DevPresence, ColonyAgentLoopService, EconomySimService],
+  exports: [
+    GamePlanets,
+    ProgressionEventForwarder,
+    SectorStateService,
+    SimHistoryService,
+    SimLeaseService,
+    SnapshotService,
+    SimClusterService,
+    AwayDigestService,
+    HardModeClock,
+    DevPresence,
+    ColonyAgentLoopService,
+    EconomySimService,
+  ],
 })
 export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown {
   private unsubBridge: (() => void) | undefined;
   private unsubDigest: (() => void) | undefined;
   private unsubHomeSeat: (() => void) | undefined;
   private unsubRecovery: (() => void) | undefined;
+  private unsubAntiCheat: (() => void) | undefined;
   private readonly log: Logger;
 
   constructor(
@@ -176,7 +212,13 @@ export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown
     private readonly modules: ModuleRef,
     private readonly hardMode: HardModeClock,
     private readonly colonyAgentLoop: ColonyAgentLoopService,
+    private readonly sectorState: SectorStateService,
+    private readonly simHistory: SimHistoryService,
+    private readonly simLease: SimLeaseService,
+    private readonly simCluster: SimClusterService,
+    @Optional() private readonly httpAdapterHost?: HttpAdapterHost,
     @Optional() private readonly homeService?: HomeService,
+    @Optional() private readonly antiCheat?: SectorAntiCheatService,
   ) {
     this.log = layerLogger(root, 'sim', env.LOG_LEVELS as string | undefined);
   }
@@ -189,15 +231,13 @@ export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown
     }
     this.wireSnapshotSavePoints();
     const seedRivalAi = this.env.TA_SEED_RIVAL_AI === '1' || this.env.TA_SEED_RIVAL_AI === 'true';
-    if (this.flags.has('W18')) {
-      if (seedRivalAi) {
-        this.planets.onPlanetLoaded((planetId, _tick, info) => {
-          if (!info.restored) void this.colonyAgentLoop.seedRivalsOnPlanet(planetId, 2);
-        });
-      }
-      if (this.env.NODE_ENV !== 'test') this.colonyAgentLoop.start();
+    if (this.flags.has('W18') && seedRivalAi) {
+      this.planets.onPlanetLoaded((planetId, _tick, info) => {
+        if (!info.restored) void this.colonyAgentLoop.seedRivalsOnPlanet(planetId, 2);
+      });
     }
     await this.pool.start();
+    this.unsubAntiCheat = this.wireAntiCheat();
     this.unsubBridge = bridgePlanetEvents(
       this.planets,
       this.bus,
@@ -205,16 +245,71 @@ export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown
       this.log,
       this.resolveReconciliation(),
     );
-    const home = this.homeService;
-    if (home) {
-      const host = gameSeatHost(this.snapshots, this.planets, this.log, (a) => home.adoptLateLanding(a));
-      this.unsubHomeSeat = home.onColonySeated((assignment) => seatAndRegisterColony(this.progressionForwarder, host, assignment));
-      home.setLandingHost(gameLandingHost(this.snapshots, this.planets, host));
-      home.setAwayHeadline(this.digests);
-      home.setHardModeClock(this.hardMode);
-    }
+    this.wireHomeAndCluster();
     this.unsubRecovery = wirePlanetRecovery(this.planets, this.pool, this.snapshots, this.log);
-    const pool = this.pool;
+    this.registerPoolMetrics(this.pool);
+    installRestartFastRunMetric(this.planets, this.metrics.registry);
+    this.wireFastRunAlerts();
+    this.colonyAgentLoop.setDecisionRecorder((d) => this.simHistory.recordExternalDecision(d));
+    this.simCluster.attachHttpServer(this.httpAdapterHost?.httpAdapter?.getHttpServer());
+    if (this.simLease.canHostSim()) {
+      const restored = await this.snapshots.restoreAll();
+      const ids = devPlanetsToGenerate(devPlanetIds(Number(this.env.GAME_DEV_PLANETS), this.pool.size), this.planets.loadedIds(), restored);
+      const devOptsFor = (id: string) =>
+        this.flags.has('W01')
+          ? { params: { type: DEV_PLANET_TYPE, seed: devPlanetSeedFor(id), radius: DEV_PLANET_RADIUS, capacity: DEV_PLANET_CAPACITY } }
+          : { params: { type: W00_PLANET_TYPE } };
+      // `loadNew` refuses (logged) a planet that has snapshots, e.g. only an END one: it is not generated over them
+      await Promise.all(ids.map((id) => this.snapshots.loadNew(id, devOptsFor(id)).catch((e: unknown) => { if (!(e instanceof PlanetHeldError)) throw e; })));
+      this.simLease.startLoop({
+        onReclaim: async (planetId) => {
+          const outcome = await this.snapshots.restore(planetId);
+          if (outcome !== 'restored') await this.simLease.releasePlanet(planetId);
+        },
+        onLeaseLost: async (planetId) => {
+          await this.snapshots.capture(planetId, 'SEAL', 5_000).catch(() => undefined);
+          await this.sectorState.flushPlanet(planetId).catch(() => undefined);
+          await this.planets.unload(planetId);
+        },
+      });
+      if (this.flags.has('W18') && this.env.NODE_ENV !== 'test') this.colonyAgentLoop.start();
+    }
+  }
+
+  private wireHomeAndCluster(): void {
+    const home = this.homeService;
+    if (!home) return;
+    const localHost = gameSeatHost(this.snapshots, this.planets, this.log, (a) => home.adoptLateLanding(a));
+    const seatHost = this.simLease.canHostSim()
+      ? localHost
+      : {
+          ensureLoaded: (pid: string, opts: Parameters<typeof localHost.ensureLoaded>[1]) =>
+            this.simCluster.forwardLoadNew(pid, opts),
+          submit: (pid: string, cmd: Parameters<typeof localHost.submit>[1]) =>
+            this.simCluster.submitAnywhere(pid, cmd),
+          onLateLanding: localHost.onLateLanding,
+        };
+    this.unsubHomeSeat = home.onColonySeated((assignment) => seatAndRegisterColony(this.progressionForwarder, seatHost, assignment));
+    home.setLandingHost(
+      gameLandingHost(
+        this.snapshots,
+        this.planets,
+        seatHost,
+        undefined,
+        this.simLease.canHostSim()
+          ? undefined
+          : {
+              remoteOnly: true,
+              forwardLandingSite: (pid, opts, idx, ms) => this.simCluster.forwardLandingSite(pid, opts, idx, ms),
+              forwardLoadHome: (pid, opts) => this.simCluster.forwardLoadHome(pid, opts),
+            },
+      ),
+    );
+    home.setAwayHeadline(this.digests);
+    home.setHardModeClock(this.hardMode);
+  }
+
+  private registerPoolMetrics(pool: SimThreadPool): void {
     const reg = this.metrics.registry;
     new Gauge({ name: 'ta_game_threads', help: 'Live sim threads', registers: [reg], collect() { this.set(pool.live); } });
     new Gauge({
@@ -254,15 +349,6 @@ export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown
       if (pool.live < pool.size) throw new Error(`${pool.size - pool.live} of ${pool.size} sim threads down`); // BE-11
       return pool.live;
     });
-    installRestartFastRunMetric(this.planets, this.metrics.registry);
-    this.wireFastRunAlerts();
-    const restored = await this.snapshots.restoreAll();
-    const ids = devPlanetsToGenerate(devPlanetIds(Number(this.env.GAME_DEV_PLANETS), pool.size), this.planets.loadedIds(), restored);
-    const devOpts = this.flags.has('W01')
-      ? { params: { type: DEV_PLANET_TYPE, seed: DEV_PLANET_SEED, radius: DEV_PLANET_RADIUS, capacity: DEV_PLANET_CAPACITY } }
-      : { params: { type: W00_PLANET_TYPE } };
-    // `loadNew` refuses (logged) a planet that has snapshots, e.g. only an END one: it is not generated over them
-    await Promise.all(ids.map((id) => this.snapshots.loadNew(id, devOpts).catch((e: unknown) => { if (!(e instanceof PlanetHeldError)) throw e; })));
   }
 
   /** Notify is a sibling module. A test that boots Game alone has no router; live play does. */
@@ -292,8 +378,29 @@ export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown
     }
   }
 
+  private wireAntiCheat(): (() => void) | undefined {
+    const ac = this.antiCheat;
+    if (!ac) return undefined;
+    this.planets.onPlanetLoaded((planetId) => {
+      void this.planets.fullState(planetId, 2000).then(
+        (full) => ac.syncFromSnapshotBytes(planetId, full.bytes),
+        () => undefined,
+      );
+    });
+    this.planets.onPlanetSnapshot((planetId, s) => ac.syncFromSnapshotBytes(planetId, s.bytes));
+    this.planets.onPlanetUnloaded((planetId) => ac.removePlanet(planetId));
+    const offEvents = this.planets.onEvents((planetId, events) => ac.applyPlanetEvents(planetId, events));
+    const offDown = this.planets.onPlanetDown((planetId) => ac.removePlanet(planetId));
+    return () => {
+      offEvents();
+      offDown();
+    };
+  }
+
   async onApplicationShutdown(): Promise<void> {
     this.colonyAgentLoop.stop();
+    this.unsubAntiCheat?.();
+    this.unsubAntiCheat = undefined;
     this.unsubBridge?.();
     this.unsubBridge = undefined;
     this.unsubDigest?.();

@@ -363,6 +363,13 @@ function resolveWorkerTargetFromView(
   return { q: rec.q, r: rec.r, targetKind: inspectTileTargetKind(tiles, planetRadius, rec.q, rec.r, biomeKey, rec.state === ENTITY_STATE.harvesting) };
 }
 
+function matchesTargetPropKind(targetKind: InteractionTargetKind, propKind: string): boolean {
+  if (targetKind === 'tree') return propKind === 'pine' || propKind === 'duneTree';
+  if (targetKind === 'rock') return propKind === 'boulder' || propKind === 'spire';
+  if (targetKind === 'metals' || targetKind === 'minerals' || targetKind === 'oil') return propKind === targetKind;
+  return false;
+}
+
 function resolveTargetWorldPosition(
   info: ResolvedTargetInfo,
   bx: number,
@@ -376,7 +383,9 @@ function resolveTargetWorldPosition(
   if (terrain?.props && tiles) {
     const tileIdx = resolveTileIndex(tiles as unknown as Record<string, unknown>, planetRadius, info.q, info.r);
     if (tileIdx >= 0) {
-      const instances = terrain.props.instancesForTile(tileIdx);
+      const allInstances = terrain.props.instancesForTile(tileIdx);
+      const preferred = allInstances.filter((p) => matchesTargetPropKind(info.targetKind, p.kind));
+      const instances = preferred.length > 0 ? preferred : allInstances;
       if (instances.length > 0) {
         let nearest = instances[0];
         let bestD2 = (nearest.x - bx) ** 2 + (nearest.z - bz) ** 2;

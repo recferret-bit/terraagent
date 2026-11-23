@@ -240,3 +240,78 @@ fn council_members_can_propose_and_vote_directly_without_operator() {
         "Approved"
     );
 }
+
+#[test]
+#[should_panic(expected = "only operator may override quorum parameters")]
+fn blocks_council_member_from_overriding_quorum_to_self_approve_proposal() {
+    let mut contract = new_contract();
+    testing_env!(ctx("minter.terraagent.testnet").build());
+    let dao_id = contract.create_dao(
+        "op-q-c".into(),
+        "dune.dao.terraagent.testnet".into(),
+        "Dune Council".into(),
+        vec!["alice.testnet".into(), "bob.testnet".into(), "carol.testnet".into()],
+    );
+
+    testing_env!(ctx("alice.testnet").build());
+    let pid = contract.propose(
+        "op-q-p".into(),
+        dao_id.clone(),
+        "alice.testnet".into(),
+        "Drain treasury".into(),
+        "guild_subsidy".into(),
+        "{}".into(),
+        None,
+        None,
+    );
+    contract.vote(
+        "op-q-v".into(),
+        dao_id,
+        pid,
+        "alice.testnet".into(),
+        "approve".into(),
+        Some(0),
+        Some(1),
+    );
+}
+
+#[test]
+fn weighted_vote_1_5x_archon_breaks_4_member_deadlock_and_rejects_non_operator_weight_spoof() {
+    let mut contract = new_contract();
+    testing_env!(ctx("minter.terraagent.testnet").build());
+    let dao_id = contract.create_dao(
+        "op-w-create".into(),
+        "archon.dao.testnet".into(),
+        "Archon Council".into(),
+        vec!["archon.testnet".into(), "ally.testnet".into(), "nay.testnet".into(), "silent.testnet".into()],
+    );
+    let pid = contract.propose(
+        "op-w-prop".into(),
+        dao_id.clone(),
+        "archon.testnet".into(),
+        "Shield".into(),
+        "meteor_shield".into(),
+        "{}".into(),
+        None,
+        None,
+    );
+    // One reject blocks the `yes >= 2 && no == 0` clause; 2 unweighted yes votes would be 20_000 == 5_000 * 4 (not >).
+    assert_eq!(contract.vote("op-w-nay".into(), dao_id.clone(), pid, "nay.testnet".into(), "reject".into(), None, None), "InProgress");
+    // Non-operator cannot spoof `weight_bp` on `vote_weighted`.
+    testing_env!(ctx("archon.testnet").build());
+    assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        contract.vote_weighted("op-w-spoof".into(), dao_id.clone(), pid, "archon.testnet".into(), "approve".into(), Some(15_000), None, None);
+    })).is_err());
+
+    // Operator records Tier 3+ 1.5x (15_000 bp) + 1.0x (10_000 bp) = 25_000 > 20_000 -> Approved!
+    testing_env!(ctx("minter.terraagent.testnet").build());
+    assert_eq!(
+        contract.vote_weighted("op-w-archon".into(), dao_id.clone(), pid, "archon.testnet".into(), "approve".into(), Some(15_000), None, None),
+        "InProgress"
+    );
+    assert_eq!(
+        contract.vote("op-w-ally".into(), dao_id.clone(), pid, "ally.testnet".into(), "approve".into(), None, None),
+        "Approved"
+    );
+    assert_eq!(contract.get_dao_weights(dao_id).get("0:archon.testnet").copied(), Some(15_000));
+}

@@ -23,7 +23,7 @@ export function makeSandbox() {
   mkdirSync(root, { recursive: true });
   mkdirSync(join(base, 'TerraAgent-wt'));
   cpSync(join(repo, 'scripts', 'plan'), join(root, 'scripts', 'plan'), { recursive: true });
-  if (existsSync(join(repo, 'docs', 'plan'))) {
+  if (existsSync(join(repo, 'docs', 'plan', 'waves', 'W00-platform-skeleton.md'))) {
     cpSync(join(repo, 'docs', 'plan'), join(root, 'docs', 'plan'), { recursive: true });
   } else {
     seedSandboxPlan(root);

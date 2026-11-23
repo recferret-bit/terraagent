@@ -4,7 +4,8 @@ import { computeSolarState, getDayNightParams, isDayNightOn, setDayNight, setDay
 import { computeSunOffset, getShadowParams, isShadowOn, setShadow, setShadowParams } from '../core/shadowConfig';
 import { getWindParams, isWindOn, setWind, setWindParams } from '../core/windConfig';
 import {
-  getPerfParams, getRenderScaleMode, isPerfOn, perfTelemetry, RENDER_SCALES, setPerf, setPerfParams,
+  FPS_LIMITS, getFpsCap, getPerfParams, getRenderScaleMode, isPerfOn, onFpsCapChange, perfTelemetry,
+  RENDER_SCALES, setFpsCap, setPerf, setPerfParams, type FpsLimit,
 } from '../core/perfConfig';
 import { targetRefreshMs } from '../core/renderScale';
 import { getViewFocus, isViewFocusFrozen } from '../core/viewFocus';
@@ -199,6 +200,7 @@ export const WIND_HEAD: VisualLabHead = {
 
 const READOUT_MS = 250;
 const readoutTimers = new WeakMap<HTMLElement, number>();
+const capUnsubscribers = new WeakMap<HTMLElement, () => void>();
 
 function perfReadout(): [string, string] {
   const t = perfTelemetry;
@@ -208,15 +210,17 @@ function perfReadout(): [string, string] {
   const focus = f.enabled && f.radius < 1e5
     ? `FOCUS ${Math.round(f.radius)} M (VIS ${Math.round(f.visibleRadius)})${isViewFocusFrozen() ? ' FROZEN' : ''}` : 'FOCUS OFF';
   const modeName = mode === 'auto' ? 'AUTO' : mode === 'native' ? 'NATIVE' : 'FIXED';
+  const cap = getFpsCap();
+  const capLabel = cap > 0 ? ` (CAP ${cap})` : '';
   const target = targetRefreshMs();
   const aim = mode === 'auto' && target ? ` → ${Math.round(1000 / Math.max(target, 1000 / 120))}` : '';
   return [
     `×${t.dpr.toFixed(2)} ${modeName} · ${t.canvasW}×${t.canvasH} PX`,
-    `${fps}${aim} FPS · ${t.frameMs.toFixed(1)} MS · ${focus}`,
+    `${fps}${aim} FPS${capLabel} · ${t.frameMs.toFixed(1)} MS · ${focus}`,
   ];
 }
 
-/** PERF: live render scale / canvas / frame time / focus readout (polled while open) + render-scale quick picks. */
+/** PERF: live render scale / canvas / frame time / focus readout (polled while open) + render-scale & FPS cap quick picks. */
 export const PERF_HEAD: VisualLabHead = {
   html: () => `
     <div class="pd-sun-box" id="pd-perf-box">
@@ -224,6 +228,10 @@ export const PERF_HEAD: VisualLabHead = {
       <span class="pd-lbl"><span></span><b id="pd-perf-read2"></b></span>
       <div class="pd-sun-presets" style="grid-template-columns:repeat(5,1fr)">
         ${RENDER_SCALES.map((s, i) => `<button type="button" class="pd-sun-btn" data-perf-scale="${i}">${s === 'auto' ? 'AUTO' : `×${s}`}</button>`).join('')}
+      </div>
+      <span class="pd-lbl" style="margin-top:6px"><span>MAX FPS CAP</span><b id="pd-fps-cap-read"></b></span>
+      <div class="pd-sun-presets" style="grid-template-columns:repeat(5,1fr)">
+        ${FPS_LIMITS.map((c) => `<button type="button" class="pd-sun-btn" data-fps-cap="${c}">${c === 0 ? 'MAX' : `${c}`}</button>`).join('')}
       </div>
     </div>`,
   bind(box) {
@@ -233,9 +241,23 @@ export const PERF_HEAD: VisualLabHead = {
         setPerfParams({ renderScale: Number(btn.dataset.perfScale ?? 0) });
       });
     });
+    box.querySelectorAll<HTMLButtonElement>('[data-fps-cap]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        setFpsCap(Number(btn.dataset.fpsCap ?? 0) as FpsLimit);
+        PERF_HEAD.sync(box);
+      });
+    });
+    capUnsubscribers.get(box)?.();
+    capUnsubscribers.set(box, onFpsCapChange(() => PERF_HEAD.sync(box)));
     clearInterval(readoutTimers.get(box));
     const id = window.setInterval(() => {
-      if (!box.querySelector('#pd-perf-read')) { clearInterval(id); readoutTimers.delete(box); return; }
+      if (!box.querySelector('#pd-perf-read')) {
+        clearInterval(id);
+        readoutTimers.delete(box);
+        capUnsubscribers.get(box)?.();
+        capUnsubscribers.delete(box);
+        return;
+      }
       if (box.classList.contains('open')) PERF_HEAD.sync(box);
     }, READOUT_MS);
     readoutTimers.set(box, id);
@@ -244,11 +266,17 @@ export const PERF_HEAD: VisualLabHead = {
     const [a, b] = perfReadout();
     const r1 = box.querySelector<HTMLElement>('#pd-perf-read');
     const r2 = box.querySelector<HTMLElement>('#pd-perf-read2');
+    const capRead = box.querySelector<HTMLElement>('#pd-fps-cap-read');
+    const cap = getFpsCap();
     if (r1) r1.textContent = a;
     if (r2) r2.textContent = b;
+    if (capRead) capRead.textContent = cap === 0 ? 'UNCAPPED' : `${cap} FPS`;
     const cur = Math.round(getPerfParams().renderScale);
     box.querySelectorAll<HTMLElement>('[data-perf-scale]').forEach((btn) => {
       btn.classList.toggle('on', isPerfOn() && Number(btn.dataset.perfScale) === cur);
+    });
+    box.querySelectorAll<HTMLElement>('[data-fps-cap]').forEach((btn) => {
+      btn.classList.toggle('on', Number(btn.dataset.fpsCap) === cap);
     });
   },
 };

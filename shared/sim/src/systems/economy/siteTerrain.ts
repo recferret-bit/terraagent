@@ -3,42 +3,35 @@ import { DEPOSIT } from '../../grid/layers';
 import type { CompiledDataLike } from '../../kernel/config';
 import type { PlanetState } from '../../kernel/state';
 import { occupiedGroundTiles } from '../construction/occupancy';
-import { evaluatePlacement, geoBuildOptionsFor, linkedPrepActive, resolvePlacementRule, type PlacementBlock } from '../construction/placement';
+import { evaluatePlacement, resolvePlacementRule, type PlacementBlock } from '../construction/placement';
 import { placementWorldFromState } from '../construction/placementWorld';
 import { getFootprintTileIndices, resolveBuildingRow } from './construction';
 
 /**
- * Terrain rule for every building (D-37): in W01..W04, nothing is built on ground the player has not terraformed;
- * in W05 (`W05-09`), trees, rock, slope, holes and shallow water are linked-prep-able (and deep water once the colony has
- * a worker of `deepReclaim`'s tier: `geoBuildOptionsFor`, the options `evaluatePlacement` uses). Resource deposits are
- * allowed here (extractors stand on them; the deposit rule is the building row's).
+ * Terrain rule for a footprint with no placement row (D-37). Flat ground is a foundation.
+ * Trees, rock, slope, hole, water, ridge and moat reject. Linked prep does not make them placeable.
+ * Resource deposits are not judged here (an extractor's deposit rule lives on its placement row).
  */
 export function footprintTerrainBlock(
   state: PlanetState,
   indices: readonly number[],
-  data?: CompiledDataLike,
-  colonyId?: number,
-  geo: GeoBuildOptions = colonyGeoOptions(state, colonyId, data),
+  _data?: CompiledDataLike,
+  _colonyId?: number,
+  geo: GeoBuildOptions = { linkedPrep: false },
 ): { block: GeoBlock; text: string } | null {
   const { terrain, prep } = state.grid.layers;
+  const strict: GeoBuildOptions = { ...geo, linkedPrep: false };
   for (const i of indices) {
-    const block = geoBuildBlock(terrain[i], prep[i], DEPOSIT.none, 'any', geo);
+    const block = geoBuildBlock(terrain[i], prep[i], DEPOSIT.none, 'any', strict);
     if (block) return { block, text: GEO_BLOCK_TEXT[block] };
   }
   return null;
 }
 
-/** `geoBuildOptionsFor` on authoritative state (no colony: linked prep alone, no deep water). */
-function colonyGeoOptions(state: PlanetState, colonyId: number | undefined, data?: CompiledDataLike): GeoBuildOptions {
-  if (!linkedPrepActive(data)) return { linkedPrep: false, canDeepReclaim: false };
-  if (colonyId === undefined) return { linkedPrep: true, canDeepReclaim: false };
-  return geoBuildOptionsFor(placementWorldFromState(state), colonyId, data);
-}
-
 /**
  * Input check of a `build` task (D-37): the reject (code + text) when its site can never take the building, or `null`.
- * W02 rows run `evaluatePlacement` with the colony; a site that only waits (another building stands there, which a
- * demolish frees) is accepted and waits `site`. The Hub keeps the terrain-only check. Unknown sites pass here.
+ * A known row runs `evaluatePlacement`. A site that only waits (another building stands there, which a demolish frees)
+ * is accepted and waits `site`. Unknown buildings are not rejected here.
  */
 export function buildSiteReject(
   state: PlanetState,
@@ -56,13 +49,13 @@ export function buildSiteReject(
 }
 
 
-/** The W02 build path's own words for two blocks (queue `waiting: site (…)` texts and tests read them). */
+/** The build path's own words for two blocks (queue `waiting: site (…)` texts and tests read them). */
 const SITE_DETAIL: Partial<Record<PlacementBlock, string>> = { occupied: 'tile occupied', noDeposit: 'no deposit' };
 
 /**
- * Site check of a W02 build (D-37): a W02 building row (Extractor, Solar) runs the shared `evaluatePlacement` (the rule
- * the `placeBuilding` handler and the Hub ghost use: map, foreign territory, other buildings, terrain, deposits, uneven
- * ground, the extractor's deposit); the Hub on this path keeps the footprint terrain + occupancy check. `null` = ok.
+ * Site check of a build (D-37): a known row (Hub or not) runs the shared `evaluatePlacement` (map, territory, other
+ * buildings, terrain, deposits, uneven ground). Flat ground is a foundation; obstacles are not. An unknown building
+ * falls back to the terrain check with linked prep off, so obstacles still reject. `null` = ok.
  */
 export function buildingSiteBlock(
   state: PlanetState,
@@ -71,13 +64,13 @@ export function buildingSiteBlock(
   data?: CompiledDataLike,
 ): { code: string; detail?: string } | null {
   const rule = resolvePlacementRule(site.building, data);
-  if (rule && !rule.isHub) {
+  if (rule) {
     const res = evaluatePlacement(placementWorldFromState(state), { colonyId: site.owner, building: site.building, q: site.q, r: site.r, requireBuilder: false, data });
     if (res.ok) return null;
     return { code: res.code ?? 'site_blocked', detail: (res.block && SITE_DETAIL[res.block]) ?? res.text };
   }
   const occupied = occupiedGroundTiles(state, data); // buildings, not `anchors` (territory claim count)
-  const geo = colonyGeoOptions(state, site.owner, data);
+  const geo: GeoBuildOptions = { linkedPrep: false };
   for (const tileIdx of fpIndices) {
     const tb = footprintTerrainBlock(state, [tileIdx], data, site.owner, geo);
     if (tb) return { code: 'terrain_unbuildable', detail: tb.text };

@@ -104,8 +104,12 @@ export class LocalTransport implements Transport {
   }
 
   private onServer(m: ServerMessage): void {
-    if (m.t === 'ready') this.link.post({ t: 'client', msg: { t: 'join', d: { planetId: 'local' } } }); // one planet: the id is not looked at
-    else if (m.t === 'welcome') this.setState({ phase: 'welcomed', downSinceMs: null });
+    if (m.t === 'ready') {
+      this.link.post({
+        t: 'client',
+        msg: { t: 'join', d: { planetId: 'local', ...(this.opts.spectator ? { mode: 'spectator' as const } : {}) } },
+      });
+    } else if (m.t === 'welcome') this.setState({ phase: 'welcomed', downSinceMs: null });
     else if (m.t === 'delta' && this.current.phase === 'welcomed') this.setState({ phase: 'streaming' });
     this.msgs.emit(m);
   }

@@ -1,6 +1,6 @@
 import { parentPort, workerData } from 'node:worker_threads';
 import { PlanetScheduler, type SimModule } from '@terra/sim';
-import { runCoarseCatchUp } from '../restart/fast-run';
+import { FAST_RUN_MAX_WALL_MS, runCoarseCatchUp } from '../restart/fast-run';
 import { PlanetHost } from './planet-host';
 import type { FromThread, PassStat, ThreadInit, ToThread } from './protocol';
 
@@ -54,6 +54,7 @@ async function finishCatchUp(planetId: string, ticks: number): Promise<void> {
   const ran = await runCoarseCatchUp({
     ticks,
     step: (dt) => host.planets.has(planetId) && host.stepPlanet(planetId, dt),
+    ...(init.autoStep ? { maxWallMs: FAST_RUN_MAX_WALL_MS } : {}),
   });
   if (!host.planets.has(planetId)) {
     post({ t: 'error', thread: init.thread, planetId, message: `fast-run of ${planetId} stopped` });

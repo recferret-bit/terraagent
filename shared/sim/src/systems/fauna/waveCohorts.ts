@@ -11,6 +11,7 @@ import {
 } from '../combat/events';
 import { threatOf } from '../progression/threat';
 import { issueUnitCommand } from '../units/registry';
+import { computeColonyPlanetDamage } from './planetDamage';
 import { getFaunaHivesState, saveFaunaHivesState } from './state';
 import {
   resolveSpeciesConfig,
@@ -247,6 +248,8 @@ export function stepScheduledHiveWaves(state: PlanetState, ctx: StepContext): vo
 
     const threat = threatOf(state, colonyIndex);
     if (!threat.raidsAllowed) continue;
+    const planetDamage = computeColonyPlanetDamage(state, colonyIndex, ctx.data);
+    if (!planetDamage.damagedEnough) continue;
 
     const fauna = getFaunaHivesState(state);
     const s3Tick = typeof col.s3ReachedAtTick === 'number' ? col.s3ReachedAtTick : 0;
@@ -260,7 +263,7 @@ export function stepScheduledHiveWaves(state: PlanetState, ctx: StepContext): vo
 
     const chance = Math.min(
       1,
-      waveCfg.baseChance + waveCfg.perThermalChance * threat.thermalGenerators,
+      waveCfg.baseChance + waveCfg.perThermalChance * threat.thermalGenerators + planetDamage.scheduledRaidBonus,
     );
     const rng = seedStream(
       String(state.meta.seed),

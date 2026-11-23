@@ -3,6 +3,8 @@ import type { FeatureContext } from '../../../core/registry/types';
 import { formatPlanetDisplayLabel } from '../../shared/planetLabel';
 import { buildDeedShareUrl, buildDeedTwitterIntentUrl, buildNearSocialPostTx } from '../deedShare';
 import { createDeedTracker } from '../deedTracker';
+import { createRealSignerWalletSelector } from './realNearWalletDriver';
+import { detectStakingNetwork } from './stakingPanelParts';
 
 export function defaultFallbackDeed(planetId = 'planet_w20', colonyId = 'col_0'): DeedView {
   const tokenId = `deed:${colonyId}`;
@@ -195,6 +197,7 @@ export function buildDeedReceiptAndActions(opts: {
 
 function createNearSocialShareButton(opts: {
   getCurrentDeed: () => DeedView | null;
+  ctx: FeatureContext;
   openWindow?: (url: string) => void;
 }): HTMLButtonElement {
   const btn = document.createElement('button');
@@ -203,26 +206,64 @@ function createNearSocialShareButton(opts: {
   btn.dataset.testid = 'deed-share-social-btn';
   btn.textContent = 'Post NEAR Social';
   btn.onclick = () => {
-    const deed = opts.getCurrentDeed();
-    if (!deed) return;
-    const origin = typeof window !== 'undefined' ? window.location.origin : '';
-    const tx = buildNearSocialPostTx(
-      {
-        tokenId: deed.tokenId,
-        colonyName: deed.metadata.colonyName ?? deed.colonyId,
+    void (async () => {
+      const deed = opts.getCurrentDeed();
+      if (!deed) return;
+      const origin = typeof window !== 'undefined' ? window.location.origin : '';
+      const net = detectStakingNetwork([deed.contractId, deed.claimedByAccountId, deed.ownerAccountId], []);
+      const accountId = deed.claimedByAccountId ?? deed.ownerAccountId ?? (net === 'mainnet' ? 'pilot.near' : 'pilot.testnet');
+      const tx = buildNearSocialPostTx(
+        {
+          tokenId: deed.tokenId,
+          colonyName: deed.metadata.colonyName ?? deed.colonyId,
+          planetId: deed.planetId,
+          stage: deed.metadata.stage ?? 4,
+          terraformBp: deed.metadata.terraformBp ?? 0,
+          settled: deed.settled,
+          origin,
+          network: net === 'mainnet' ? 'mainnet' : 'testnet',
+        },
+        accountId,
+      );
+      btn.dataset.lastSocialTx = JSON.stringify({
+        contractId: tx.contractId,
+        methodName: tx.methodName,
+        attachedDepositYocto: tx.attachedDepositYocto,
+        gasTgas: tx.gasTgas,
+      });
+      if (net !== 'mock' && !opts.openWindow) {
+        try {
+          const [{ actionCreators }, selector] = await Promise.all([
+            import('@near-wallet-selector/core'),
+            createRealSignerWalletSelector(net),
+          ]);
+          const wallet = await selector.wallet();
+          await wallet.signAndSendTransaction({
+            receiverId: tx.contractId,
+            actions: [
+              actionCreators.functionCall(
+                tx.methodName,
+                tx.args,
+                BigInt(`${tx.gasTgas}000000000000`),
+                BigInt(tx.attachedDepositYocto),
+              ),
+            ],
+          });
+        } catch {
+          // Fall back to opening the NEAR Social profile view when no browser wallet is connected.
+        }
+      }
+      createDeedTracker(opts.ctx.services.track).deedShared({
+        colonyId: deed.colonyId,
         planetId: deed.planetId,
-        stage: deed.metadata.stage ?? 4,
-        terraformBp: deed.metadata.terraformBp ?? 0,
-        settled: deed.settled,
-        origin,
-      },
-      deed.claimedByAccountId ?? deed.ownerAccountId ?? 'pilot.testnet',
-    );
-    btn.dataset.lastSocialTx = JSON.stringify({ contractId: tx.contractId, methodName: tx.methodName });
-    if (opts.openWindow) opts.openWindow(tx.nearSocialUrl);
-    else if (typeof window !== 'undefined' && typeof window.open === 'function') {
-      window.open(tx.nearSocialUrl, '_blank', 'noopener,noreferrer');
-    }
+        tokenId: deed.tokenId,
+        channel: 'near_social',
+      });
+      if (opts.openWindow) opts.openWindow(tx.nearSocialUrl);
+      else if (typeof window !== 'undefined' && typeof window.open === 'function') {
+        window.open(tx.nearSocialUrl, '_blank', 'noopener,noreferrer');
+      }
+    })();
   };
   return btn;
 }

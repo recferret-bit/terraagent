@@ -43,7 +43,4 @@ export function applyActiveColonyToMenuDom(el: HTMLElement, active: ActiveHomeCo
       ? `ACTIVE COLONY · ${PLANET_SPECS[active.kind].name.toUpperCase()} (${active.colonyName})`
       : DEFAULT_SUBTITLE;
   }
-
-  const sectorHost = el.querySelector<HTMLElement>('#sector-picker-host');
-  if (sectorHost) sectorHost.hidden = Boolean(active);
 }

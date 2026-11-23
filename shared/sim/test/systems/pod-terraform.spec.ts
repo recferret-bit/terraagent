@@ -55,6 +55,41 @@ function jobsMap(host: SimHost): Record<string, WorkJobRecord> {
   return getWorkJobsMap(host.state);
 }
 
+function submitPodTerraform(host: SimHost, commandId: string, q: number, r: number) {
+  host.submit({
+    commandId,
+    colonyIndex: 0,
+    source: 'player',
+    kind: 'enqueueTask',
+    args: { terraform: { op: 'work', intent: 'terraform', tiles: [{ q, r }] } },
+  });
+  return host.step(1);
+}
+
+function findAndFlattenFarTile(host: SimHost, pq: number, pr: number, dist: number): { q: number; r: number } {
+  const idxMap = hexIndex(host.state.grid.radius);
+  let farTile = { q: 0, r: 0 };
+  for (let i = 0; i < idxMap.count; i++) {
+    const q = idxMap.q[i]!;
+    const r = idxMap.r[i]!;
+    if (inHex(q, r, host.state.grid.radius) && hexDistance(q, r, pq, pr) === dist) {
+      farTile = { q, r };
+      break;
+    }
+  }
+  for (let dr = -1; dr <= 1; dr++) {
+    for (let dq = -1; dq <= 1; dq++) {
+      const ti = idxMap.indexOf(farTile.q + dq, farTile.r + dr);
+      if (ti >= 0) {
+        host.state.grid.layers.terrain[ti] = TERRAIN.flat;
+        host.state.grid.layers.deposit[ti] = 0;
+        host.state.grid.layers.height[ti] = 0;
+      }
+    }
+  }
+  return farTile;
+}
+
 describe('Terraforming the landed drop pod (pre-Hub & post-Hub)', () => {
   it('allows terraforming a landed pod pre-Hub, prepares the hex, removes the pod, and refuses a second terraform', () => {
     const host = createBootedHost('..05', 'pod-tf-prehub', true);
@@ -64,27 +99,13 @@ describe('Terraforming the landed drop pod (pre-Hub & post-Hub)', () => {
     const pr = host.state.entities.cols.r[podRow]!;
     const podId = host.state.entities.cols.id[podRow]!;
 
-    host.submit({
-      commandId: 'tf_pod_1',
-      colonyIndex: 0,
-      source: 'player',
-      kind: 'enqueueTask',
-      args: { terraform: { op: 'work', intent: 'terraform', tiles: [{ q: pq, r: pr }] } },
-    });
-    const res1 = host.step(1);
+    const res1 = submitPodTerraform(host, 'tf_pod_1', pq, pr);
     expect(res1.outcomes[0]?.code).toBeUndefined();
     const job = jobsMap(host).tf_pod_1;
     expect(job).toMatchObject({ mode: 'terraform', terrainKey: 'pod', targetEntityId: podId, q: pq, r: pr });
 
     // Re-queuing the same pod tile while work is open is rejected cleanly as already_queued.
-    host.submit({
-      commandId: 'tf_pod_dup',
-      colonyIndex: 0,
-      source: 'player',
-      kind: 'enqueueTask',
-      args: { terraform: { op: 'work', intent: 'terraform', tiles: [{ q: pq, r: pr }] } },
-    });
-    expect(host.step(1).outcomes[0]?.code).toBe('already_queued');
+    expect(submitPodTerraform(host, 'tf_pod_dup', pq, pr).outcomes[0]?.code).toBe('already_queued');
 
     for (let i = 0; i < 200; i++) host.step(1);
 
@@ -95,14 +116,7 @@ describe('Terraforming the landed drop pod (pre-Hub & post-Hub)', () => {
     expect(getLandingPods(host.state).some((p) => p.colonyId === 0 && p.deployed)).toBe(true);
 
     // Repeating terraform on the cleared, prepared tile is now a no-op reject.
-    host.submit({
-      commandId: 'tf_pod_again',
-      colonyIndex: 0,
-      source: 'player',
-      kind: 'enqueueTask',
-      args: { terraform: { op: 'work', intent: 'terraform', tiles: [{ q: pq, r: pr }] } },
-    });
-    expect(host.step(1).outcomes[0]?.code).toBe('already_terraformed');
+    expect(submitPodTerraform(host, 'tf_pod_again', pq, pr).outcomes[0]?.code).toBe('already_terraformed');
   });
 
   it('enforces landing distance and lets HQ build Hub after terraforming the pod away pre-Hub', () => {
@@ -111,26 +125,11 @@ describe('Terraforming the landed drop pod (pre-Hub & post-Hub)', () => {
     const pq = host.state.entities.cols.q[podRow]!;
     const pr = host.state.entities.cols.r[podRow]!;
 
-    host.submit({
-      commandId: 'tf_pod_build',
-      colonyIndex: 0,
-      source: 'player',
-      kind: 'enqueueTask',
-      args: { terraform: { op: 'work', intent: 'terraform', tiles: [{ q: pq, r: pr }] } },
-    });
+    submitPodTerraform(host, 'tf_pod_build', pq, pr);
     for (let i = 0; i < 200; i++) host.step(1);
     expect(findEntityRow(host, ENTITY_KIND.pod, 0)).toBe(-1);
 
-    const idxMap = hexIndex(host.state.grid.radius);
-    let farTile = { q: 0, r: 0 };
-    for (let i = 0; i < idxMap.count; i++) {
-      const q = idxMap.q[i]!;
-      const r = idxMap.r[i]!;
-      if (inHex(q, r, host.state.grid.radius) && hexDistance(q, r, pq, pr) === 15) {
-        farTile = { q, r };
-        break;
-      }
-    }
+    const farTile = findAndFlattenFarTile(host, pq, pr, 15);
     const farSite = evaluatePlacement(placementWorldFromState(host.state), {
       colonyId: 0,
       building: 'commandHub',

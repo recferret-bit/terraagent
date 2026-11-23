@@ -35,6 +35,7 @@ export interface MinimalHudOptions {
   transport?: Pick<Transport, 'onMessage'>;
   ownerColonyIndex?: number;
   getOwnerColonyIndex?: () => number | undefined;
+  isSpectator?: () => boolean;
   /**
    * Whether wave `wave` is on (the live client flags). The planet time of day and the grid supply / demand lines are
    * W02 (power-core, environment): with W02 off (`?waves=..01`) they are hidden. Default: every wave on.
@@ -193,6 +194,8 @@ export class MinimalHud {
 
     const colonyIdx = this.colonyIndex();
     const col = viewColony(view, colonyIdx);
+    const spec = Boolean(this.opts.isSpectator?.() || (view as { isSpectator?: boolean }).isSpectator);
+    this.colonyEl.classList.toggle('ta-hud-min__sr-only', !spec);
     this.colonyEl.textContent = col?.name ?? `Colony ${colonyIdx}`;
     this.renderStocks(col, view as unknown as Record<string, unknown>, colonyIdx);
 

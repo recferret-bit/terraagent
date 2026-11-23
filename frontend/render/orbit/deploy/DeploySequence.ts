@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import type { DescentHandoff } from '../../descent/types';
 import { tickArchetypeMesh } from '../../visuals/space/placeholders';
 import { win } from '../stage/math';
-import { planDeploy } from './DeployPlan';
+import { planDeploy, retargetDeployPlan } from './DeployPlan';
 import { stepHold, stepDive } from './DeployFlight';
 import { TB, TC, type Deploy, type DeployHost } from './types';
 
@@ -21,6 +21,11 @@ export class DeploySequence {
     return result;
   }
 
+  retarget(h: DescentHandoff) {
+    if (!this.deploy) return null;
+    return retargetDeployPlan(this.host, this.deploy, h);
+  }
+
   progress() { return this.deploy ? Math.min(1, this.deploy.T / TC) : 0; }
 
   tn() {
@@ -33,7 +38,7 @@ export class DeploySequence {
     const d = this.deploy; if (!d) return;
     d.T = Math.min(TC, d.T + dt);
     const T = d.T;
-    if (T <= TB) stepHold(this.host, d, T); else stepDive(this.host, d, T);
+    if (T <= TB) stepHold(this.host, d, T, dt); else stepDive(this.host, d, T);
     this.host.camera.updateMatrixWorld();
     tickArchetypeMesh(d.rig.pod.mesh, time);
     this.grade(d, T);
@@ -41,11 +46,14 @@ export class DeploySequence {
 
   /** Lighting / grading converge to the descent's frame (sun direction already identical by construction). */
   private grade(d: Deploy, T: number) {
-    const { scene, viewport, sun } = this.host;
+    const { scene, viewport, sun, backdrop } = this.host;
     const { sunLight, hemi, rim } = sun;
-    const l = win(0.5, TC - 0.5, T);
+    const endT = Math.max(d.gradeT0 + 0.35, TC - 0.35);
+    const l = win(d.gradeT0, endT, T);
     sunLight.intensity = THREE.MathUtils.lerp(d.sunI0, d.h.sunIntensity, l);
     sunLight.color.copy(d.sunC0).lerp(d.h.sunColor, l);
+    backdrop.uniforms.uSunDisc.value = THREE.MathUtils.lerp(d.sunDisc0, d.h.sunDisc ?? 1, l);
+    backdrop.uniforms.uSunColor.value.copy(d.sunColBd0).lerp(d.h.sunColor, l);
     hemi.color.copy(d.hemi0[0]).lerp(d.h.hemiColor, l); hemi.groundColor.copy(d.hemi0[1]).lerp(d.h.hemiGround, l);
     hemi.intensity = THREE.MathUtils.lerp(d.hemi0[2], d.h.hemiIntensity, l);
     rim.intensity = d.rim0 * (1 - l);

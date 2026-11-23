@@ -22,6 +22,16 @@ export function makeGroundRing(innerR: number, outerR: number, color: number, na
   return ring;
 }
 
+export function findOwnedPodMesh(entries: Iterable<EntityMeshRecord>, ownerColonyIndex: number): THREE.Object3D | null {
+  let best: EntityMeshRecord | undefined;
+  for (const rec of entries) {
+    if (rec.kind === ENTITY_KIND.pod && rec.owner === ownerColonyIndex) {
+      if (!best || rec.state === ENTITY_STATE.descending || rec.id > best.id) best = rec;
+    }
+  }
+  return best?.mesh ?? null;
+}
+
 export function stepPodTouchdownForEntries(
   podTouchdown: PodTouchdownFx,
   entries: Iterable<EntityMeshRecord>,

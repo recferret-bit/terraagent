@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { enqueueDeferredDispose } from '@terra/render/core/deferredDispose';
 import { getColonyVisionUniforms } from '@terra/render/lighting/ColonyVisionAndLights';
 import { applyColonyProjectorLight } from '@terra/render/lighting/projectorLitMaterial';
 import { clamp, smoothstep } from '../../descent/math';
@@ -50,8 +51,10 @@ export class PodImpactRig {
   readonly waveGroup = new THREE.Group();
   readonly egressGroup = new THREE.Group();
 
-  private readonly geos: THREE.BufferGeometry[] = [];
-  private readonly mats: THREE.Material[] = [];
+  private readonly waveGeos: THREE.BufferGeometry[] = [];
+  private readonly waveMats: THREE.Material[] = [];
+  private readonly egressGeos: THREE.BufferGeometry[] = [];
+  private readonly egressMats: THREE.Material[] = [];
   private shockwaveMesh!: THREE.Mesh;
   private shockwaveMat!: THREE.MeshBasicMaterial;
   private dustRingMesh!: THREE.Mesh;
@@ -60,8 +63,10 @@ export class PodImpactRig {
   private readonly petals: PetalHinge[] = [];
   private rampPivot!: THREE.Group;
   private coreLightMat!: THREE.MeshStandardMaterial;
+  private wavesBuilt = false;
+  private egressBuilt = false;
 
-  constructor(private readonly scene: THREE.Scene) {
+  constructor(private readonly scene: THREE.Scene, deferBuild = false) {
     this.root.name = 'pod-impact-rig';
     this.craterGroup.name = 'pod-impact-crater';
     this.waveGroup.name = 'pod-impact-waves';
@@ -70,25 +75,59 @@ export class PodImpactRig {
     this.waveGroup.visible = false;
     this.egressGroup.visible = false;
 
-    this.buildWaves();
-    this.buildEgressPod();
+    if (!deferBuild) this.ensureBuilt();
 
     this.root.add(this.craterGroup, this.waveGroup, this.egressGroup);
     this.scene.add(this.root);
   }
 
+  get isWavesBuilt(): boolean {
+    return this.wavesBuilt;
+  }
+
+  get isEgressBuilt(): boolean {
+    return this.egressBuilt;
+  }
+
+  ensureWavesBuilt(): void {
+    if (this.wavesBuilt) return;
+    this.buildWaves();
+    this.wavesBuilt = true;
+  }
+
+  ensureEgressBuilt(): void {
+    if (this.egressBuilt) return;
+    this.buildEgressPod();
+    this.egressBuilt = true;
+  }
+
+  ensureBuilt(): void {
+    this.ensureWavesBuilt();
+    this.ensureEgressBuilt();
+  }
+
+  private trackWaveGeo<T extends THREE.BufferGeometry>(g: T): T {
+    this.waveGeos.push(g);
+    return g;
+  }
+
+  private trackWaveMat<T extends THREE.Material>(m: T): T {
+    this.waveMats.push(m);
+    return m;
+  }
+
   private trackGeo<T extends THREE.BufferGeometry>(g: T): T {
-    this.geos.push(g);
+    this.egressGeos.push(g);
     return g;
   }
 
   private trackMat<T extends THREE.Material>(m: T): T {
-    this.mats.push(m);
+    this.egressMats.push(m);
     return m;
   }
 
   private buildWaves(): void {
-    this.shockwaveMat = this.trackMat(
+    this.shockwaveMat = this.trackWaveMat(
       new THREE.MeshBasicMaterial({
         color: 0xff8a36,
         transparent: true,
@@ -100,12 +139,12 @@ export class PodImpactRig {
       }),
     );
     this.shockwaveMesh = new THREE.Mesh(
-      this.trackGeo(new THREE.RingGeometry(0.85, 1.35, 36).rotateX(-Math.PI / 2)),
+      this.trackWaveGeo(new THREE.RingGeometry(0.85, 1.35, 36).rotateX(-Math.PI / 2)),
       this.shockwaveMat,
     );
     this.shockwaveMesh.position.y = 0.1;
 
-    this.dustRingMat = this.trackMat(
+    this.dustRingMat = this.trackWaveMat(
       new THREE.MeshBasicMaterial({
         color: 0xd7b996,
         transparent: true,
@@ -116,14 +155,14 @@ export class PodImpactRig {
       }),
     );
     this.dustRingMesh = new THREE.Mesh(
-      this.trackGeo(new THREE.RingGeometry(0.7, 1.6, 32).rotateX(-Math.PI / 2)),
+      this.trackWaveGeo(new THREE.RingGeometry(0.7, 1.6, 32).rotateX(-Math.PI / 2)),
       this.dustRingMat,
     );
     this.dustRingMesh.position.y = 0.08;
     this.waveGroup.add(this.shockwaveMesh, this.dustRingMesh);
 
-    const chunkGeo = this.trackGeo(new RoundedBoxGeometry(0.2, 0.14, 0.18, 1, 0.03));
-    const chunkMat = this.trackMat(
+    const chunkGeo = this.trackWaveGeo(new RoundedBoxGeometry(0.2, 0.14, 0.18, 1, 0.03));
+    const chunkMat = this.trackWaveMat(
       new THREE.MeshStandardMaterial({ color: 0x383c46, roughness: 0.82, metalness: 0.25 }),
     );
     for (let i = 0; i < 10; i++) {
@@ -267,11 +306,13 @@ export class PodImpactRig {
     const waveActive = u.craterVisible && u.sinceTouchdown >= 0 && u.sinceTouchdown < 1.6;
     this.waveGroup.visible = waveActive;
     if (waveActive) {
+      this.ensureWavesBuilt();
       this.updateWaves(u.sinceTouchdown);
     }
 
     this.egressGroup.visible = u.egressRigVisible;
     if (u.egressRigVisible) {
+      this.ensureEgressBuilt();
       this.updateEgress(u.yaw, u.podOpenProgress, u.podDismantleProgress);
     }
   }
@@ -283,6 +324,9 @@ export class PodImpactRig {
     this.shockwaveMat.opacity = 0.9 * (1 - sw) * (1 - sw);
 
     const dw = clamp(t / 1.45, 0, 1);
+    const nightFactor = clamp((getColonyVisionUniforms().uNightFactor.value as number) ?? 0, 0, 1);
+    const dustScale = 1 - 0.78 * nightFactor * smoothstep(0.1, 0.85, dw);
+    this.dustRingMat.color.setRGB(0.84 * dustScale, 0.72 * dustScale, 0.59 * dustScale);
     this.dustRingMesh.visible = dw < 1;
     this.dustRingMesh.scale.setScalar(0.65 + 4.1 * smoothstep(0, 1, dw));
     this.dustRingMat.opacity = 0.68 * Math.sin(dw * Math.PI) * (1 - 0.5 * dw);
@@ -321,8 +365,13 @@ export class PodImpactRig {
     if (pos) this.root.position.copy(pos);
     this.waveGroup.visible = false;
     this.craterGroup.visible = false;
-    this.egressGroup.visible = true;
-    this.updateEgress(POD_EGRESS_YAW, 1, 0);
+    if (pos !== undefined) {
+      this.ensureEgressBuilt();
+      this.egressGroup.visible = true;
+      this.updateEgress(POD_EGRESS_YAW, 1, 0);
+    } else {
+      this.egressGroup.visible = false;
+    }
   }
 
   hide(): void {
@@ -331,11 +380,50 @@ export class PodImpactRig {
     this.egressGroup.visible = false;
   }
 
+  /** Unloads transient touchdown shockwave rings and flying debris once the impact burst completes (`>= 1.6s`). */
+  unloadWaves(): void {
+    if (!this.wavesBuilt) return;
+    this.waveGroup.visible = false;
+    this.waveGroup.clear();
+    this.flyingDebris.length = 0;
+    const geos = this.waveGeos.splice(0);
+    const mats = this.waveMats.splice(0);
+    this.wavesBuilt = false;
+    enqueueDeferredDispose(
+      ...geos.map((g) => () => g.dispose()),
+      ...mats.map((m) => () => m.dispose()),
+    );
+  }
+
+  /** Unloads the opened 4-petal pod shell geometries/materials once the pod entity leaves the world (`podRemoved`). */
+  unloadAll(): void {
+    this.unloadWaves();
+    if (!this.egressBuilt) return;
+    this.hide();
+    this.egressGroup.clear();
+    this.petals.length = 0;
+    const geos = this.egressGeos.splice(0);
+    const mats = this.egressMats.splice(0);
+    this.egressBuilt = false;
+    enqueueDeferredDispose(
+      ...geos.map((g) => () => g.dispose()),
+      ...mats.map((m) => () => m.dispose()),
+    );
+  }
+
   dispose(): void {
     this.scene.remove(this.root);
-    for (const g of this.geos) g.dispose();
-    for (const m of this.mats) m.dispose();
-    this.geos.length = 0;
-    this.mats.length = 0;
+    this.waveGroup.clear();
+    this.egressGroup.clear();
+    this.flyingDebris.length = 0;
+    this.petals.length = 0;
+    this.wavesBuilt = false;
+    this.egressBuilt = false;
+    for (const g of [...this.waveGeos, ...this.egressGeos]) g.dispose();
+    for (const m of [...this.waveMats, ...this.egressMats]) m.dispose();
+    this.waveGeos.length = 0;
+    this.waveMats.length = 0;
+    this.egressGeos.length = 0;
+    this.egressMats.length = 0;
   }
 }

@@ -1,9 +1,11 @@
-import type { SimCommandV1 } from '@terra/contracts';
+import { W11_DEFAULT_SECTOR_RADIUS, type SimCommandV1 } from '@terra/contracts';
 import {
   allModules,
   applyTunedEntityHealth,
   buildPipeline,
   effectiveOverrides,
+  getAtlasBlob,
+  globalTileToSector,
   mergeOverrides,
   nextLandingSite,
   regionForNewPlanet,
@@ -50,6 +52,10 @@ export interface Planet {
   deltaBytes: number;
   /** Stockpile `resourceProduced` batches (W02-28); only when the planet runs with W02 on. */
   production?: ProductionBatches;
+  lastInputTickByColony: Map<number, number>;
+  seenAutopilotTickByColony: Map<number, number>;
+  lastSectorSyncTick: number;
+  feedSeq: number;
 }
 
 /** New planets with W13 on get the server's resolved region (`params.region`) or, without one, the bootstrap-table region. */
@@ -80,6 +86,7 @@ export function applyDueProfile(
       p.tuning.flags,
       mergeOverrides(base, p.tuning.live),
       extraModules ? [...allModules(), ...extraModules] : undefined,
+      'authority_external_bots',
     );
     p.pipeline = pipeline;
     p.tuning = { flags: p.tuning.flags, base, live: p.tuning.live };
@@ -102,8 +109,17 @@ export function replyLandingSite(
 ): void {
   if (!p) return post({ t: 'landingSite', planetId, reqId, answer: { ok: false, code: 'planet_not_loaded' } });
   const next = nextLandingSite(p.state, colony, { slotIndex: colony, data: p.pipeline.config.data });
+  const atlas = getAtlasBlob(p.state);
+  const secRadius = atlas?.sectorRadius ?? W11_DEFAULT_SECTOR_RADIUS;
+  const hasMultiSector = Boolean(atlas) && p.state.grid.radius > secRadius;
   const answer = next.ok
-    ? { ok: true as const, q: next.site.q, r: next.site.r, ...(next.site.slot ? { slotIndex: next.site.slot.index } : {}) }
+    ? {
+        ok: true as const,
+        q: next.site.q,
+        r: next.site.r,
+        ...(next.site.slot ? { slotIndex: next.site.slot.index } : {}),
+        ...(hasMultiSector ? { sectorId: globalTileToSector(next.site.q, next.site.r, secRadius).sectorId } : {}),
+      }
     : { ok: false as const, code: next.code };
   post({ t: 'landingSite', planetId, reqId, answer });
 }
@@ -122,7 +138,12 @@ export function runPlanetTune(
   const reply = (extra: { ok: boolean; text?: string; error?: string }) =>
     post({ t: 'tuned', planetId, reqId, dataHash: p.pipeline.config.data.hash, overrides: effectiveOverrides(p.tuning), ...extra });
   try {
-    const out = tune(p.tuning, req, extraModules ? [...allModules(), ...extraModules] : undefined);
+    const out = tune(
+      p.tuning,
+      req,
+      extraModules ? [...allModules(), ...extraModules] : undefined,
+      'authority_external_bots',
+    );
     if (out.next) {
       applyTunedEntityHealth(p.state, p.pipeline.config.data, out.next.pipeline.config.data);
       p.pipeline = out.next.pipeline;

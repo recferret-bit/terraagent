@@ -1,5 +1,6 @@
 import type { DevCommandDef, FeatureContext } from '../../core/registry/types';
 import { serverFor, usage } from '../shared/devCommand';
+import { stakeNominateCmd } from './patronCommand';
 
 const SHOW_USAGE = 'deed.show [colony]';
 const BUMP_USAGE = 'deed.bump <field> <value>';
@@ -170,4 +171,5 @@ export const DEED_DEV_COMMANDS: readonly DevCommandDef[] = [
   stakeFundCmd,
   accountClaimCmd,
   timeWarpCmd,
+  stakeNominateCmd,
 ];

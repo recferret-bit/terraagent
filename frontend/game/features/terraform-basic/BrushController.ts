@@ -51,6 +51,8 @@ export interface BrushCommandSink extends CommandSink {
   getWorkerId?: () => number | undefined;
   /** Another map mode owns the pointer (a placement ghost): the armed brush leaves clicks alone. */
   isBlocked?: () => boolean;
+  /** Read-only spectator mode: blocks arming, strokes, and cancels. */
+  isReadOnly?: () => boolean;
   /** The host's live balance data (`WorldStore.simData`), so the preview runs the same numbers. */
   simData?: () => CompiledDataLike | null | undefined;
   onStroke?: (summary: BrushStrokeSummary) => void;
@@ -85,6 +87,7 @@ export class BrushController {
 
   /** Chooses the op and arms the brush. */
   selectOp(op: TerraformPrimaryOp): void {
+    if (this.sink.isReadOnly?.()) return;
     this.selectedOp = op;
     this.armed = true;
     this.sink.onChange?.();
@@ -153,6 +156,10 @@ export class BrushController {
   strokeTile(q: number, r: number, opts?: BrushStrokeOptions): BrushStrokeSummary {
     const tile = { q: Math.trunc(q), r: Math.trunc(r) };
     const op = opts?.op ?? this.selectedOp;
+    if (this.sink.isReadOnly?.()) {
+      const outcome: BrushStrokeOutcome = { ok: false, op, reason: 'spectator_read_only', status: 'Spectator mode is read-only' };
+      return { strokeId: `tf_stroke_${++strokeSeq}`, op, tiles: [tile], jobs: [], queuedCount: 0, skippedCount: 1, statusText: outcome.status, outcome };
+    }
     const colonyId = this.colonyId(opts);
     const view = this.resolveView();
     const hostState = this.sink.host?.state;
@@ -212,7 +219,7 @@ export class BrushController {
    * a wildcard or an id the host does not know (FF-09). Returns whether a command was sent.
    */
   cancelOrder(orderId: string | undefined): boolean {
-    if (!orderId) return false;
+    if (!orderId || this.sink.isReadOnly?.()) return false;
     dispatchCommand(this.sink, 'cancelTask', { taskId: orderId }, this.colonyId());
     this.sink.onChange?.();
     return true;
@@ -220,7 +227,7 @@ export class BrushController {
 
   /** Map clicks belong to the brush: armed and not blocked (another map mode, or its dock tab hidden). */
   isPointerActive(): boolean {
-    return this.armed && !this.sink.isBlocked?.();
+    return this.armed && !this.sink.isReadOnly?.() && !this.sink.isBlocked?.();
   }
 
   /**

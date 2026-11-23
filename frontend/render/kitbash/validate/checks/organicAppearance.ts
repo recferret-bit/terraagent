@@ -1,6 +1,7 @@
 import { labOfHex } from '../appearance';
 import { triArea } from '../math';
 import type { CheckStage } from '../context';
+import { vertebrateAnatomyStage } from './vertebrateAnatomy';
 
 /** Organic surfaces intentionally do not inherit mechanical color-group / mounted-panel requirements. */
 export const organicAppearanceStage: CheckStage = (ctx) => {
@@ -9,7 +10,7 @@ export const organicAppearanceStage: CheckStage = (ctx) => {
   for (const p of ctx.parts) {
     const d = p.def, t = d.tissue ?? 0;
     tissues.add(t);
-    if (t < 1 || t > 5) ctx.add('error', 'ORGANIC_TISSUE', `${p.label} has no valid anatomical surface profile.`, [d.index]);
+    if (t < 1 || t > 7) ctx.add('error', 'ORGANIC_TISSUE', `${p.label} has no valid anatomical surface profile.`, [d.index]);
     if ((d.metalness ?? 0) > 0.05) ctx.add('warn', 'ORGANIC_METAL', `${p.label} uses metallic tissue; chitin and soil need dielectric highlights.`, [d.index]);
     if (!Number.isFinite(d.roughness) || (d.roughness ?? 0) < 0.1 || (d.roughness ?? 1) > 1)
       ctx.add('error', 'ORGANIC_ROUGHNESS', `${p.label} has an invalid biological roughness.`, [d.index]);
@@ -22,4 +23,5 @@ export const organicAppearanceStage: CheckStage = (ctx) => {
   ctx.meanL = lightness / Math.max(total, 1e-8);
   if (ctx.meanL < 23) ctx.add('warn', 'ORGANIC_TOO_DARK', 'The anatomical surfaces are too dark to read; check the actual biome render.', []);
   if (tissues.size < 2) ctx.add('warn', 'ORGANIC_UNIFORM', 'Use at least two tissue responses (shell/membrane, earth/shell, or resin/soil).', []);
+  vertebrateAnatomyStage(ctx);
 };

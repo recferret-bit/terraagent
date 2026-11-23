@@ -1,12 +1,9 @@
 import { runtimeLabel } from './context';
 import { trackProduct } from './trackSafe';
 
-const PLANETS = ['dune', 'oceanForest', 'forestRock'] as const;
-const BOOT_REASONS = ['boot', 'socket', 'auth', 'timeout', 'rejected', 'webgl', 'unknown'] as const;
-const COMMANDS = ['move', 'build', 'terraform', 'attack', 'stop', 'other'] as const;
-type Planet = (typeof PLANETS)[number];
-type BootReason = (typeof BOOT_REASONS)[number];
-type CommandKind = (typeof COMMANDS)[number];
+type Planet = 'dune' | 'oceanForest' | 'forestRock';
+type BootReason = 'boot' | 'socket' | 'auth' | 'timeout' | 'rejected' | 'webgl' | 'unknown';
+type CommandKind = 'move' | 'build' | 'terraform' | 'attack' | 'stop' | 'other';
 type PlayHost = 'local' | 'online';
 
 let lastPlanet: Planet | undefined;

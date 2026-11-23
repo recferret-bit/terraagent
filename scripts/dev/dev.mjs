@@ -9,6 +9,10 @@ import { devDir, loadEnv, root } from './env.mjs';
 const { env, appPort, clientPort, dbName } = loadEnv();
 // `/play.html?scenario=w00` needs a planet to join: load one flat dev planet unless the env says otherwise.
 env.GAME_DEV_PLANETS ??= '1';
+// Seed active Rival AI bots on dev planets so live multi-colony behavior & telemetry run out of the box.
+env.TA_SEED_RIVAL_AI ??= '1';
+// Local dev staking runs 1-minute warmup / unbonding / early-exit / accelerated yield unless overridden (`0`).
+env.TA_LOCAL_STAKING_TIMINGS ??= '1';
 const colors = { dev: 36, app: 32, client: 35 };
 const out = (tag, line) => console.log(`\x1b[${colors[tag] ?? 0}m[${tag}]\x1b[0m ${line}`);
 
@@ -103,8 +107,10 @@ process.on('SIGTERM', () => shutdown());
 startApp();
 console.log(`
   TerraAgent dev stack (worktree base port ${env.TA_PORT_BASE})
-    game      http://127.0.0.1:${clientPort}/play.html
-    hub       http://127.0.0.1:${clientPort}/
+    game              http://127.0.0.1:${clientPort}/play.html
+    local spectator   http://127.0.0.1:${clientPort}/play.html?spectator=1
+    server spectator  http://127.0.0.1:${clientPort}/play.html?spectator=1&host=server
+    hub               http://127.0.0.1:${clientPort}/
     app       http://127.0.0.1:${appPort}/v1/healthz   (proxied: http://127.0.0.1:${clientPort}/v1, /ws)
     postgres  127.0.0.1:${env.TA_PG_PORT ?? 15434}/${dbName}
     restart   npm run dev:restart   (app only; Vite keeps running)   Ctrl-C stops app + Vite

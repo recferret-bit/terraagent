@@ -1,5 +1,12 @@
 import * as THREE from 'three';
-import { getViewFocus, isViewFocusEnabled, VIEW_FOCUS_MAX_RADIUS, type ViewFocus } from '../../core/viewFocus';
+import {
+  getViewFocus,
+  getViewFocusEdgesUniform,
+  isViewFocusEnabled,
+  VIEW_FOCUS_MAX_RADIUS,
+  viewFocusQuadDistance,
+  type ViewFocus,
+} from '../../core/viewFocus';
 
 /**
  * Per-instance view-focus culling for the bucketed prop meshes (`propBuckets.ts`). A bucket whose bounds touch the
@@ -48,23 +55,48 @@ interface CompactState {
   /** Focus circle (+ slack) the current order is valid for; NaN = never classified. */
   cx: number; cz: number; cr: number;
   lightKey: number;
+  isIdentity: boolean;
 }
 
 const states = new WeakMap<THREE.InstancedMesh, CompactState>();
-/** Horizontal shadow offset per metre of height, per directional shadow camera seen (filled by `onBeforeShadow`). */
+/** Horizontal shadow offset per metre of height, per active directional shadow camera. */
 const lightDirs = new Map<THREE.Camera, THREE.Vector3>();
 const tmpDir = new THREE.Vector3();
 let lightKey = 0;
 
-/** Remembers a directional (ortho) shadow camera's direction; spot/point shadows keep the directional set. */
-function recordShadowLight(cam: THREE.Camera): void {
-  if (!(cam as THREE.OrthographicCamera).isOrthographicCamera) return;
+/** Updates `lightDirs` from a single directional shadow camera (used by `onBeforeShadow`). */
+function recordShadowLight(cam: THREE.Camera): boolean {
+  if (!(cam as THREE.OrthographicCamera).isOrthographicCamera) return false;
   const e = cam.matrixWorld.elements;
   const d = tmpDir.set(-e[8]!, -e[9]!, -e[10]!).normalize(); // a camera looks down its -Z
   const prev = lightDirs.get(cam);
-  if (prev && prev.dot(d) >= LIGHT_COS_EPS) return;
+  if (prev && prev.dot(d) >= LIGHT_COS_EPS) return false;
   lightDirs.set(cam, d.clone()); // allocate only when the direction is new (this runs per bucket per shadow pass)
   lightKey++;
+  return true;
+}
+
+/** Keeps only the currently active shadow cameras in `lightDirs`, evicting disabled daytime/night casters. */
+export function syncActivePropShadowLights(
+  activeLights: ReadonlyArray<{ readonly cam: THREE.Camera; readonly dir: Readonly<THREE.Vector3> }>,
+): void {
+  let changed = false;
+  for (const cam of [...lightDirs.keys()]) {
+    if (!activeLights.some((entry) => entry.cam === cam)) {
+      lightDirs.delete(cam);
+      changed = true;
+    }
+  }
+  for (const { cam, dir } of activeLights) {
+    if (!(cam as THREE.OrthographicCamera).isOrthographicCamera) continue;
+    tmpDir.copy(dir).normalize();
+    const prev = lightDirs.get(cam);
+    if (!prev || prev.dot(tmpDir) < LIGHT_COS_EPS) {
+      lightDirs.set(cam, tmpDir.clone());
+      changed = true;
+    }
+  }
+  if (changed) lightKey++;
 }
 
 const tmpM = new THREE.Matrix4();
@@ -102,7 +134,7 @@ function makeState(im: THREE.InstancedMesh): CompactState | null {
   for (let i = 0; i < n; i++) order[i] = i;
   const st: CompactState = {
     n, xzrh: new Float32Array(n * 4), hMax: 0, wx: 0, wz: 0, order, nMain: n, nShadow: n,
-    cx: NaN, cz: NaN, cr: NaN, lightKey: -1,
+    cx: NaN, cz: NaN, cr: NaN, lightKey: -1, isIdentity: true,
     matrices: (im.instanceMatrix.array as Float32Array).slice(0, n * 16),
     colors: im.instanceColor ? (im.instanceColor.array as Float32Array).slice(0, n * 3) : null,
   };
@@ -119,18 +151,41 @@ function segDist2(px: number, pz: number, ax: number, az: number, ux: number, uz
   return dx * dx + dz * dz;
 }
 
-function castsInto(st: CompactState, i: number, fx: number, fz: number, r: number): boolean {
+/** True when segment `(ax, az) + t*(ux, uz)` (`t in [0,1]`) clips inside the focus quad padded by `pad`. */
+function segIntersectsQuad(ax: number, az: number, ux: number, uz: number, pad: number): boolean {
+  const e = getViewFocusEdgesUniform().value.elements;
+  let t0 = 0;
+  let t1 = 1;
+  for (let k = 0; k < 16; k += 4) {
+    const nx = e[k]!, nz = e[k + 1]!, c = e[k + 2]!;
+    const num = pad - (nx * ax + nz * az + c);
+    const den = nx * ux + nz * uz;
+    if (Math.abs(den) < 1e-8) {
+      if (num < 0) return false;
+    } else if (den > 0) {
+      t1 = Math.min(t1, num / den);
+    } else {
+      t0 = Math.max(t0, num / den);
+    }
+    if (t0 > t1) return false;
+  }
+  return true;
+}
+
+function castsInto(st: CompactState, i: number, fx: number, fz: number, r: number, slack: number, useQuad: boolean): boolean {
   if (lightDirs.size === 0) return true; // no shadow pass seen yet: keep every caster
-  const x = st.xzrh[i * 4]!, z = st.xzrh[i * 4 + 1]!, rr = r + st.xzrh[i * 4 + 2]!, h = st.xzrh[i * 4 + 3]!;
+  const x = st.xzrh[i * 4]!, z = st.xzrh[i * 4 + 1]!, ri = st.xzrh[i * 4 + 2]!, rr = r + ri, h = st.xzrh[i * 4 + 3]!;
   for (const d of lightDirs.values()) {
     const hl = Math.hypot(d.x, d.z) || 1;
     const k = Math.min(PROP_SHADOW_REACH_MAX, (h * hl) / Math.max(1e-3, -d.y)); // h · cot(sun elevation)
-    if (segDist2(fx, fz, x, z, (d.x / hl) * k, (d.z / hl) * k) <= rr * rr) return true;
+    const ux = (d.x / hl) * k, uz = (d.z / hl) * k;
+    if (segDist2(fx, fz, x, z, ux, uz) <= rr * rr && (!useQuad || segIntersectsQuad(x, z, ux, uz, slack + ri))) return true;
   }
   return false;
 }
 
 function writeOrder(im: THREE.InstancedMesh, st: CompactState): void {
+  if (st.nShadow <= 0) return;
   const m = im.instanceMatrix.array as Float32Array, c = im.instanceColor?.array as Float32Array | undefined;
   for (let s = 0; s < st.nShadow; s++) {
     const o = st.order[s]!;
@@ -147,13 +202,15 @@ function writeOrder(im: THREE.InstancedMesh, st: CompactState): void {
   }
 }
 
-/** Sorts the instances into [focus | shadow-only | culled] for the circle (fx, fz, r). */
-function classify(st: CompactState, fx: number, fz: number, r: number): void {
+/** Sorts the instances into [focus | shadow-only | culled] for the focus quad + circle (fx, fz, r). */
+function classify(st: CompactState, fx: number, fz: number, r: number, slack: number): void {
+  const useQuad = r > 28;
   const main: number[] = [], shadow: number[] = [], culled: number[] = [];
   for (let i = 0; i < st.n; i++) {
-    const dx = st.xzrh[i * 4]! - fx, dz = st.xzrh[i * 4 + 1]! - fz, rr = r + st.xzrh[i * 4 + 2]!;
-    if (dx * dx + dz * dz <= rr * rr) main.push(i);
-    else if (castsInto(st, i, fx, fz, r)) shadow.push(i);
+    const x = st.xzrh[i * 4]!, z = st.xzrh[i * 4 + 1]!, ri = st.xzrh[i * 4 + 2]!;
+    const dx = x - fx, dz = z - fz, rr = r + ri;
+    if (dx * dx + dz * dz <= rr * rr && (!useQuad || viewFocusQuadDistance(x, z) <= slack + ri)) main.push(i);
+    else if (castsInto(st, i, fx, fz, r, slack, useQuad)) shadow.push(i);
     else culled.push(i);
   }
   st.nMain = main.length;
@@ -163,12 +220,28 @@ function classify(st: CompactState, fx: number, fz: number, r: number): void {
   st.order.set(culled, st.nShadow); // keeps `order` a permutation (placedIndex of any slot stays meaningful)
 }
 
-function setFull(im: THREE.InstancedMesh, st: CompactState): void {
-  if (st.nMain === st.n && st.nShadow === st.n && Number.isNaN(st.cx)) return;
-  for (let i = 0; i < st.n; i++) st.order[i] = i;
+function restoreIdentity(im: THREE.InstancedMesh, st: CompactState): void {
   st.nMain = st.nShadow = st.n;
+  if (!st.isIdentity) {
+    for (let i = 0; i < st.n; i++) st.order[i] = i;
+    writeOrder(im, st);
+    st.isIdentity = true;
+  }
+}
+
+function setFull(im: THREE.InstancedMesh, st: CompactState): void {
+  if (st.nMain === st.n && st.nShadow === st.n && Number.isNaN(st.cx) && st.isIdentity) return;
   st.cx = st.cz = st.cr = NaN;
-  writeOrder(im, st);
+  restoreIdentity(im, st);
+}
+
+const tmpBucketSphere = new THREE.Sphere();
+function isBucketInsideFocus(im: THREE.InstancedMesh, f: Readonly<ViewFocus>): boolean {
+  const bs = im.boundingSphere;
+  if (!bs) return false;
+  tmpBucketSphere.copy(bs).applyMatrix4(im.matrixWorld);
+  const bx = tmpBucketSphere.center.x, bz = tmpBucketSphere.center.z, br = tmpBucketSphere.radius;
+  return Math.hypot(bx - f.x, bz - f.z) + br <= f.radius && viewFocusQuadDistance(bx, bz) <= -br;
 }
 
 function installHooks(im: THREE.InstancedMesh, st: CompactState): void {
@@ -204,13 +277,14 @@ export function bucketShadowPad(im: THREE.InstancedMesh): number {
   return Math.min(PROP_SHADOW_REACH_MAX, st.hMax * cot);
 }
 
+const slackFor = (r: number) => Math.max(SLACK_MIN_M, r * (r > 35 ? 0.16 : SLACK_FRAC));
+
 /** True when the classified circle still contains the focus and is not much looser than needed. */
 function stillValid(st: CompactState, f: Readonly<ViewFocus>): boolean {
   if (Number.isNaN(st.cx) || st.lightKey !== lightKey) return false;
   const moved = Math.hypot(f.x - st.cx, f.z - st.cz);
-  return moved + f.radius <= st.cr && st.cr <= f.radius + slackFor(f.radius) * 2;
+  return moved + f.radius <= st.cr && st.cr <= f.radius + slackFor(f.radius) * 3.5;
 }
-const slackFor = (r: number) => Math.max(SLACK_MIN_M, r * SLACK_FRAC);
 
 /**
  * Updates one bucket for the current view focus (call after the bucket-level visibility test, for visible buckets).
@@ -225,10 +299,20 @@ export function compactBucketToFocus(im: THREE.InstancedMesh): boolean {
   if (!enabled || !isViewFocusEnabled() || f.radius >= VIEW_FOCUS_MAX_RADIUS) {
     setFull(im, st);
   } else if (!stillValid(st, f)) {
-    const cr = f.radius + slackFor(f.radius);
-    classify(st, f.x, f.z, cr);
+    const slack = slackFor(f.radius);
+    const cr = f.radius + slack;
+    if (isBucketInsideFocus(im, f)) {
+      restoreIdentity(im, st);
+    } else {
+      classify(st, f.x, f.z, cr, slack);
+      if (st.nMain === st.n && st.nShadow === st.n) {
+        restoreIdentity(im, st);
+      } else {
+        st.isIdentity = false;
+        writeOrder(im, st);
+      }
+    }
     st.cx = f.x; st.cz = f.z; st.cr = cr; st.lightKey = lightKey;
-    writeOrder(im, st);
   }
   im.count = st.nMain;
   return st.nShadow > 0;
@@ -247,3 +331,10 @@ export function bucketDrawCounts(im: THREE.InstancedMesh): { main: number; shado
 
 /** Forgets the shadow lights seen so far (terrain dispose: a new session brings new lights; tests). */
 export function resetPropShadowLights(): void { lightDirs.clear(); lightKey++; }
+
+/** Clears cached focus-compaction state when a pooled `InstancedMesh` bucket is rewritten with new instances. */
+export function resetCompactedBucket(im: THREE.InstancedMesh): void {
+  states.delete(im);
+  im.onBeforeShadow = () => {};
+  im.onAfterShadow = () => {};
+}

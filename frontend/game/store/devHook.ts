@@ -1,4 +1,4 @@
-import { compileData, createPlanet, SIM_VERSION, SimHost, TICK_MS } from '@terra/sim';
+import { buildingCatalog, compileData, createPlanet, SIM_VERSION, SimHost, TICK_MS } from '@terra/sim';
 import { flagsFromList, type ServerMessage } from '@terra/contracts';
 import { Emitter } from '../net/emitter';
 import type { Transport } from '../net/types';
@@ -10,6 +10,7 @@ import { WorldStore } from './WorldStore';
  */
 export function installWorldDevHook(): void {
   const flags = ['W00'];
+  const data = compileData(flagsFromList(flags));
   const msgs = new Emitter<ServerMessage>();
   const sent: unknown[] = [];
   const transport: Transport = {
@@ -24,7 +25,7 @@ export function installWorldDevHook(): void {
   const feed = (n = 1) => {
     if (!welcomed) {
       welcomed = true;
-      msgs.emit({ v: 1, t: 'welcome', d: { reason: 'join', colonyId: null, planet: { id: 'pl_dev', type: 'temperate', name: 'dev' }, state: auth.snapshot({ forClient: true }), simVersion: SIM_VERSION, dataHash: compileData(flagsFromList(flags)).hash, tick: auth.tick, serverTimeMs: Date.now(), tickMs: TICK_MS, deltaHz: 5, flags } } as ServerMessage);
+      msgs.emit({ v: 1, t: 'welcome', d: { reason: 'join', colonyId: null, planet: { id: 'pl_dev', type: 'temperate', name: 'dev' }, state: auth.snapshot({ forClient: true }), simVersion: SIM_VERSION, dataHash: data.hash, tick: auth.tick, serverTimeMs: Date.now(), tickMs: TICK_MS, deltaHz: 5, flags, buildings: buildingCatalog(data) } } as ServerMessage);
     }
     for (let i = 0; i < n; i++) {
       const from = auth.tick;

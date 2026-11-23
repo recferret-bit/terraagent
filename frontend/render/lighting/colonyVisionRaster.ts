@@ -63,18 +63,20 @@ export function colonyVisionSignature(input: ColonyVisionTextureInput): string {
   if (bitset && col >= 8) {
     for (let b = 0; b < bitset.length; b++) {
       const byte = bitset[b]!;
-      if (byte === 0) continue;
-      for (let bit = 0; bit < 8; bit++) {
-        if (byte & (1 << bit)) hash = (hash * 31 + (b << 3) + bit + 1) | 0;
-      }
+      if (byte !== 0) hash = (Math.imul(hash ^ (b + 1), 16777619) ^ byte) | 0;
     }
   } else if (col >= 0 && col < 8 && (bitset || input.explored)) {
-    const tileLen = Math.max(input.explored?.length ?? 0, (bitset?.length ?? 0) << 3);
+    const explored = input.explored;
+    const mask = 1 << col;
+    const tileLen = Math.max(explored?.length ?? 0, (bitset?.length ?? 0) << 3);
     for (let i = 0; i < tileLen; i++) {
-      if (isVisionTileExplored(input, i)) hash = (hash * 31 + i + 1) | 0;
+      const inBitset = bitset && (i >> 3) < bitset.length && (bitset[i >> 3]! & (1 << (i & 7))) !== 0;
+      const inLegacy = explored && (explored[i]! & mask) !== 0;
+      if (inBitset || inLegacy) hash = (Math.imul(hash, 31) + i + 1) | 0;
     }
   }
+  const q = (v: number) => (Math.round(v * 2) * 0.5).toFixed(1);
   const sources = [...(input.baseCenters ?? []), ...(input.visionSources ?? [])];
-  const key = sources.map(c => `${c.x.toFixed(1)},${c.z.toFixed(1)},${c.innerRadius},${c.outerRadius}`).join(';');
+  const key = sources.map(c => `${q(c.x)},${q(c.z)},${c.innerRadius},${c.outerRadius}`).join(';');
   return `${input.radius}:${input.colonyIndex}:${hash}:${key}`;
 }

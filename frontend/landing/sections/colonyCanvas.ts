@@ -6,11 +6,15 @@ export function initColonyCanvas(): void {
   const stageEl = document.getElementById('colony-stage');
   if (!stageEl) return;
 
+  stageEl.dataset.stageState = 'loading';
   try {
-    const stage = new ColonyStage3D(stageEl);
+    const stage = new ColonyStage3D(stageEl, undefined, { prewarmOnInit: false });
     (window as unknown as { __colony?: ColonyStage3D }).__colony = stage;
     stage.start();
+    stageEl.dataset.stageState = 'live';
   } catch (e) {
     console.warn('colony 3D stage unavailable', e);
+    stageEl.classList.add('is-fallback');
+    stageEl.dataset.stageState = 'fallback';
   }
 }

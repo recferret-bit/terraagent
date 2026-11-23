@@ -51,7 +51,10 @@ export class CameraRig {
     const size = box.getSize(new THREE.Vector3());
     const c = opts.target ?? box.getCenter(new THREE.Vector3());
     let r = opts.radius ?? Math.max(size.length() / 2, 0.9);
-    if (this.isRow() && !opts.radius) r = Math.max(size.x / 2 / Math.max(this.camera.aspect * 0.8, 0.8), size.y, 1.5);
+    if (this.isRow() && !opts.radius) {
+      const span = Math.max(size.x, size.z);
+      r = Math.max(span / 2 / Math.max(this.camera.aspect * 0.8, 0.8), size.z * 0.62, size.y, 1.5);
+    }
     const dist = Math.min(this.controls.maxDistance, r / Math.sin(THREE.MathUtils.degToRad(14)) * 1.15);
     const toPos = c.clone().addScaledVector(DIRS[view], dist);
     if (opts.instant) {

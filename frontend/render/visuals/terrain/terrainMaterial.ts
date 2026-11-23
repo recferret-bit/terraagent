@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { PlanetKind, PlanetSpec } from '../../planets/PlanetSpec';
+import { ProceduralTextureRegistry } from '../ProceduralTextureRegistry';
 import { createTerraformMapTexture, resolveTerraformPalette } from '../TerrainAndWaterShaders';
 import { applyTerrainShader } from './terrainShader';
 
@@ -16,6 +17,8 @@ export function terrainUniforms(
   const p = spec.palette;
   const tfPalette = resolveTerraformPalette(spec.kind);
   const terraformTexture = terraformMap ?? createTerraformMapTexture(128).terraformTexture;
+  const meadowPbr = ProceduralTextureRegistry.get('meadowGrassClover', 128);
+  const desertPbr = ProceduralTextureRegistry.get('desertPebbleCrust', 128);
   const c = (n: number) => new THREE.Color(n);
   return {
     uTime: { value: 0 },
@@ -29,6 +32,10 @@ export function terrainUniforms(
     uTerraformedLush: { value: c(tfPalette.terraformedLush) },
     uFrontierGlow: { value: c(tfPalette.frontierGlow) },
     uWind: { value: new THREE.Vector2(wind[0], wind[1]) },
+    uMeadowDetailMap: { value: meadowPbr.map! },
+    uMeadowRoughMap: { value: meadowPbr.roughnessMap! },
+    uDesertCrustMap: { value: desertPbr.map! },
+    uDesertRoughMap: { value: desertPbr.roughnessMap! },
   };
 }
 

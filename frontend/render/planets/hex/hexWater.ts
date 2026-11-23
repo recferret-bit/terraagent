@@ -4,11 +4,14 @@ import type { PlanetSpec } from '../PlanetSpec';
 import { createWaterMaterial } from '../../visuals/water/WaterMaterial';
 import { createWaterFauna, type WaterFauna } from '../../visuals/water/fauna';
 import {
-  bakeShoreField, createShoreField, createShoreFieldTexture, writeShoreFieldTexture, type WaterCodeAt,
+  bakeShoreField, createShoreField, createShoreFieldTexture, packShoreFieldHalf, writeShoreFieldTexture,
+  type ShoreField, type WaterCodeAt,
 } from '../../visuals/water/shoreField';
 import { HEX_TERRAIN, isClearedPrep, type HexTileLayers } from './chunkMesh';
 import { TILE_M, planetExtent } from './hexMath';
 import { createWaterBucketSet } from './waterBuckets';
+import { createHexWaterfallSet, type HexWaterfallSet } from './hexWaterfall';
+import { createWaterfallMaterial } from './waterfallMaterial';
 import { registerReflectiveWater } from '../../visuals/water/reflection/reflectionRegistry';
 
 export const HEX_WATER_LEVEL = 0.0;
@@ -25,6 +28,8 @@ export interface HexWater {
   readonly waterTriangleCount: number;
   /** Fish and jellies under the surface (a child of `group`; placed from the shore field, bucketed per cell). */
   readonly fauna: WaterFauna;
+  /** Perimeter/corner waterfalls where water reaches the outer boundary of the ground hexagon. */
+  readonly waterfalls: HexWaterfallSet;
   /**
    * Re-reads the water tiles. With `changed` (tile indices), nothing is rebuilt unless one of them gained, lost or
    * changed its water (shallow / deep), and then only the surface buckets around those tiles; without it, the bed
@@ -44,9 +49,34 @@ function isWaterTile(layers: HexTileLayers, i: number): boolean {
 }
 
 /** 0 = dry, 1 = shallow water, 2 = deep water: everything the bed texture and the surface read from a tile. */
-function waterCode(layers: HexTileLayers, i: number): number {
+export function waterCode(layers: HexTileLayers, i: number): number {
   if (!isWaterTile(layers, i)) return 0;
   return layers.terrain![i] === HEX_TERRAIN.deep ? 2 : 1;
+}
+
+export interface PrecomputedHexWater {
+  codes: Uint8Array;
+  waterTileCount: number;
+  field: ShoreField;
+  shoreFieldHalf: Uint16Array;
+}
+
+export function computeHexWaterField(radius: number, look: PlanetSpec, layers: HexTileLayers): PrecomputedHexWater | null {
+  if (look.kind === 'dune') return null;
+  const count = hexIndex(radius).count;
+  const codes = new Uint8Array(count);
+  let waterTileCount = 0;
+  for (let i = 0; i < count; i++) {
+    const c = waterCode(layers, i);
+    codes[i] = c;
+    if (c !== 0) waterTileCount++;
+  }
+  const ext = planetExtent(radius);
+  const span = Math.max(16, ext.x * 2.2);
+  const field = createShoreField(span);
+  bakeShoreField(hexWaterCodeAt(radius, codes), field);
+  const shoreFieldHalf = packShoreFieldHalf(field);
+  return { codes, waterTileCount, field, shoreFieldHalf };
 }
 
 /**
@@ -64,11 +94,10 @@ export function hexWaterCodeAt(radius: number, codes: ArrayLike<number>): WaterC
   };
 }
 
-/** Creates the animated hydro water over Shallow and Deep hex tiles: spatial surface buckets sharing one material. */
-export function createHexWater(radius: number, look: PlanetSpec, initialLayers: HexTileLayers): HexWater {
+function createHexWaterRig(radius: number, look: PlanetSpec, precomputed?: PrecomputedHexWater | null) {
   const ext = planetExtent(radius);
   const span = Math.max(16, ext.x * 2.2);
-  const field = createShoreField(span);
+  const field = precomputed?.field ?? createShoreField(span);
   const fieldTex = createShoreFieldTexture(field.res);
   const deepCol = look.palette.waterDeep ?? 0x10344a;
   const water = createWaterMaterial({
@@ -76,13 +105,34 @@ export function createHexWater(radius: number, look: PlanetSpec, initialLayers: 
     level: HEX_WATER_LEVEL, shoreField: true,
   });
   const surface = createWaterBucketSet(radius, water.material);
+  const waterfallMat = createWaterfallMaterial({
+    shallow: look.palette.water ?? 0x38858f, deep: deepCol, sky: look.sky.skyColor, span, sharedTime: water.uniforms.uTime,
+  });
+  const waterfalls = createHexWaterfallSet(radius, waterfallMat.material);
   const group = new THREE.Group();
   group.name = 'hexWater';
   group.position.y = HEX_WATER_LEVEL;
-  const fauna = createWaterFauna({ time: water.uniforms.uTime!, deepColor: { value: new THREE.Color(deepCol) }, seed: look.seed });
-  group.add(surface.group, fauna.group);
-  // Mirror pass: plane = the group's y (the level); hides surface + fauna; bounds = the buckets `cullToFocus` left shown.
+  const fauna = createWaterFauna({
+    time: water.uniforms.uTime!,
+    deepColor: { value: new THREE.Color(deepCol) },
+    seed: look.seed,
+    planetSpan: span,
+    biomeKind: look.kind,
+  });
+  group.add(surface.group, fauna.group, waterfalls.group);
   const offReflect = registerReflectiveWater({ object: group, parts: () => surface.meshes });
+  return { field, fieldTex, water, surface, waterfallMat, waterfalls, group, fauna, offReflect };
+}
+
+/** Creates the animated hydro water over Shallow and Deep hex tiles: spatial surface buckets sharing one material. */
+export function createHexWater(
+  radius: number,
+  look: PlanetSpec,
+  initialLayers: HexTileLayers,
+  precomputed?: PrecomputedHexWater | null,
+): HexWater {
+  const { field, fieldTex, water, surface, waterfallMat, waterfalls, group, fauna, offReflect } =
+    createHexWaterRig(radius, look, precomputed);
 
   const hasWater = look.kind !== 'dune';
   let waterTileCount = 0;
@@ -111,11 +161,26 @@ export function createHexWater(radius: number, look: PlanetSpec, initialLayers: 
     for (let i = 0; i < codes.length; i++) setCode(i, waterCode(layers, i));
     bakeField();
     surface.rebuild(isWater);
+    waterfalls.rebuild(codes);
     group.visible = waterTileCount > 0;
   };
 
-  if (hasWater) rebuildAll(initialLayers);
-  else group.visible = false;
+  if (hasWater) {
+    if (precomputed && precomputed.codes.length === codes.length) {
+      codes.set(precomputed.codes);
+      waterTileCount = precomputed.waterTileCount;
+      writeShoreFieldTexture(fieldTex, field, precomputed.shoreFieldHalf);
+      if (water.uniforms.uHeightTex) water.uniforms.uHeightTex.value = fieldTex;
+      fauna.rebuild(field);
+      surface.rebuild(isWater);
+      waterfalls.rebuild(codes);
+      group.visible = waterTileCount > 0;
+    } else {
+      rebuildAll(initialLayers);
+    }
+  } else {
+    group.visible = false;
+  }
 
   return {
     group,
@@ -125,6 +190,7 @@ export function createHexWater(radius: number, look: PlanetSpec, initialLayers: 
     get waterTileCount() { return waterTileCount; },
     get waterTriangleCount() { return surface.triangleCount; },
     fauna,
+    waterfalls,
     update(layers, changed) {
       if (!hasWater) return;
       if (!changed) { rebuildAll(layers); return; }
@@ -133,16 +199,20 @@ export function createHexWater(radius: number, look: PlanetSpec, initialLayers: 
       for (const i of touched) setCode(i, waterCode(layers, i));
       bakeField();
       surface.rebuild(isWater, surface.cellsTouchedBy(touched));
+      waterfalls.rebuild(codes, touched);
       group.visible = waterTileCount > 0;
     },
     cullToFocus() {
       surface.cullToFocus();
       fauna.cullToFocus();
+      waterfalls.cullToFocus();
     },
     dispose() {
       offReflect();
       fauna.dispose();
       surface.dispose();
+      waterfalls.dispose();
+      waterfallMat.dispose();
       fieldTex.dispose();
       water.dispose();
       group.removeFromParent();

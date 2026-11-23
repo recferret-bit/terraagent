@@ -136,3 +136,70 @@ export function extractPodDescentStatus(
 
   return { descending: false, hqLanded: false, progress: 1, q, r, podEntityId: null, hqEntityId: null };
 }
+
+interface RawLandingHistoryEntry {
+  colony?: number;
+  tick?: number;
+}
+
+function unwrapLandingHistory(blobs?: Record<string, unknown>): readonly RawLandingHistoryEntry[] | null {
+  const raw = blobs?.landingHistory;
+  if (Array.isArray(raw)) return raw as RawLandingHistoryEntry[];
+  if (raw && typeof raw === 'object' && Array.isArray((raw as { value?: unknown }).value)) {
+    return (raw as { value: RawLandingHistoryEntry[] }).value;
+  }
+  return null;
+}
+
+/**
+ * Detects a freshly founded orbital colony whose `6.0s` (`30` ticks) server `podDescentS` timer already completed during
+ * a slow HTTP/WebSocket handshake (`> 6s`), while still rejecting returning/developed colonies and HQ-only fixtures.
+ */
+export function isUnplayedFreshColonyLanding(
+  rawView: unknown,
+  colonyIndex: number,
+  spawn: { readonly q: number; readonly r: number },
+  firstObservedTick: number,
+): boolean {
+  if (!rawView || typeof rawView !== 'object') return false;
+  const view = rawView as {
+    entities?: Float32Array | ViewEntity[];
+    count?: number;
+    blobs?: Record<string, unknown>;
+  };
+  let hasPod = false;
+  let podQ = spawn.q;
+  let podR = spawn.r;
+  let hasHq = false;
+  let hqQ = 0;
+  let hqR = 0;
+  let hqState = ENTITY_STATE.idle as number;
+  let ownStructuresOrExtraUnits = false;
+  forEachEntity(view.entities, view.count, (e) => {
+    if (e.owner !== colonyIndex) return;
+    if (e.kind === ENTITY_KIND.pod) {
+      hasPod = true;
+      podQ = e.q;
+      podR = e.r;
+    } else if (e.kind === ENTITY_KIND.hq) {
+      hasHq = true;
+      hqQ = e.q;
+      hqR = e.r;
+      hqState = e.state;
+    } else {
+      ownStructuresOrExtraUnits = true;
+    }
+  });
+  if (!hasPod || ownStructuresOrExtraUnits) return false;
+  if (hasHq && (hqQ !== podQ || hqR !== podR || hqState !== ENTITY_STATE.idle)) {
+    return false;
+  }
+  const history = unwrapLandingHistory(view.blobs);
+  if (history) {
+    const rec = [...history].reverse().find((r) => r.colony === colonyIndex && typeof r.tick === 'number');
+    if (rec && typeof rec.tick === 'number' && firstObservedTick - rec.tick > 300) {
+      return false;
+    }
+  }
+  return true;
+}

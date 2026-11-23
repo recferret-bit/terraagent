@@ -116,7 +116,8 @@ export class ConstructionGhostRig3D {
     this.pulse += dt;
     const k = 0.85 + 0.15 * Math.sin(this.pulse * 5);
     const water = (t: number) => t === TERRAIN.shallow || t === TERRAIN.deep;
-    this.footprint.update(state.tiles.map((t) => ({ q: t.q, r: t.r, valid: state.valid, water: water(t.terrain) })));
+    const shown = state.valid ? [] : state.tiles;
+    this.footprint.update(shown.map((t) => ({ q: t.q, r: t.r, valid: false, water: water(t.terrain) })));
     this.footprint.setPulse(k);
     let sumX = 0;
     let sumZ = 0;

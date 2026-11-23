@@ -14,12 +14,13 @@ export function renderStageSuggestion(
   accept: (goal: GoalKind) => void,
   dismiss: () => void,
   flags?: ReadonlySet<string>,
+  readOnly = false,
 ): void {
   const goal = getSuggestedGoalForStage(stage);
   const executable = isGoalExecutable(goal, flags);
   const hasW03 = !flags || flags.has('W03');
   const shipped = !flags || flags.has('W21');
-  const key = `${stage}:${dismissed}:${goals.some((g) => g.goal === goal)}:${executable}:${hasW03}:${shipped}`;
+  const key = `${stage}:${dismissed}:${goals.some((g) => g.goal === goal)}:${executable}:${hasW03}:${shipped}:${readOnly}`;
   if (host.dataset.key === key) return;
   host.dataset.key = key;
   host.replaceChildren();
@@ -55,18 +56,19 @@ export function renderStageSuggestion(
   button.type = 'button';
   button.className = 'ta-goal-suggestion-card__accept-btn';
   button.dataset.testid = 'goal-suggestion-accept';
-  button.disabled = !executable;
+  button.disabled = readOnly || !executable;
   button.textContent = !executable
     ? (shipped ? 'MANUAL / DIRECTOR' : 'COMING IN A FUTURE WAVE')
     : 'ACCEPT';
-  button.onclick = () => accept(goal);
+  button.onclick = () => { if (!readOnly) accept(goal); };
 
   const close = document.createElement('button');
   close.type = 'button';
   close.className = 'ta-goal-suggestion-card__dismiss-btn';
   close.dataset.testid = 'goal-suggestion-dismiss';
+  close.disabled = readOnly;
   close.textContent = 'DO IT MYSELF';
-  close.onclick = dismiss;
+  close.onclick = () => { if (!readOnly) dismiss(); };
 
   card.append(title, desc, button, close);
   host.append(card);

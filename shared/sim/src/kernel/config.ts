@@ -9,6 +9,8 @@ export interface CompiledDataLike {
 
 export const EMPTY_DATA: CompiledDataLike = { hash: 'empty', tables: {} };
 
+export type SimHostRole = 'standalone' | 'authority_external_bots' | 'replica';
+
 /**
  * Engine configuration: which waves are on, the compiled data and the registered systems / command handlers.
  * Identical on every host of a planet (server thread, client replica, local host), so the same commands produce
@@ -19,4 +21,5 @@ export interface EngineConfig {
   readonly data: CompiledDataLike;
   readonly systems: readonly SimSystem[];
   readonly handlers: readonly CommandHandlerDef[];
+  readonly hostRole?: SimHostRole;
 }

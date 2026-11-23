@@ -13,15 +13,20 @@ export interface MissedRestartTicks {
 
 /**
  * Wall gap `nowMs − savedAtMs` as missed active ticks (one tick per {@link TICK_MS}, 5 per wall second).
- * A non-positive gap is 0. Past 24 h is capped. The count is a multiple of coarse `dt` (5), so the
- * fast-run stays within one coarse step of the raw gap.
+ * A non-positive gap is 0. Past `maxTicks` (defaults to 24 h) is capped. The count is a multiple of coarse `dt` (5),
+ * so the fast-run stays within one coarse step of the raw gap.
  */
-export function missedRestartTicks(nowMs: number, savedAtMs: number): MissedRestartTicks {
+export function missedRestartTicks(
+  nowMs: number,
+  savedAtMs: number,
+  maxTicks = RESTART_FASTRUN_MAX_TICKS,
+): MissedRestartTicks {
   if (!Number.isFinite(nowMs) || !Number.isFinite(savedAtMs)) return { ticks: 0, capped: false };
   const gapMs = nowMs - savedAtMs;
   if (gapMs <= 0) return { ticks: 0, capped: false };
+  const cap = Math.max(0, Math.min(RESTART_FASTRUN_MAX_TICKS, Math.floor(maxTicks)));
   const raw = Math.floor(gapMs / TICK_MS);
-  const capped = raw > RESTART_FASTRUN_MAX_TICKS;
-  const limited = capped ? RESTART_FASTRUN_MAX_TICKS : raw;
+  const capped = raw > cap;
+  const limited = capped ? cap : raw;
   return { ticks: limited - (limited % COARSE_DT), capped };
 }

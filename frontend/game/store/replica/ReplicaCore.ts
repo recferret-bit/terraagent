@@ -68,7 +68,7 @@ export class ReplicaCore {
     if (w.simVersion !== SIM_VERSION) return this.fail('simVersion', `server sim ${w.simVersion}, client ${SIM_VERSION}`);
     const data = clientDataFor(flagsFromList(w.flags), w.overrides);
     if (data.hash !== w.dataHash) return this.fail('dataHash', `server data ${w.dataHash}, client ${data.hash}`);
-    const host = new SimHost({ flags: w.flags, data, modules: this.opts.modules ?? allModules() });
+    const host = new SimHost({ flags: w.flags, data, hostRole: 'replica', modules: this.opts.modules ?? allModules() });
     try {
       host.load(w.state);
       if (w.flags.includes('W07')) {
@@ -97,7 +97,7 @@ export class ReplicaCore {
     if (!overrides) return false;
     const data = clientDataFor(flagsFromList(this.flags), overrides);
     if (data.hash !== t.dataHash) return false;
-    const next = new SimHost({ flags: this.flags, data, modules: this.opts.modules ?? allModules() });
+    const next = new SimHost({ flags: this.flags, data, hostRole: 'replica', modules: this.opts.modules ?? allModules() });
     next.load(host.state);
     this.host = next;
     this.overrides = overrides;

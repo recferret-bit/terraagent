@@ -77,10 +77,11 @@ export function drawTerrainLayer(
   const adapter = resolveMapAdapterForView(view);
   const drawableTiles = adapter.getDrawableTiles(tiles.count);
   const r = view.tilePixelRadius * 1.08;
+  const viewerColony = view.spectatorAllVision ? -1 : (view.ownColonySlot ?? 0);
   for (let idx = 0; idx < drawableTiles.length; idx++) {
     const t = drawableTiles[idx]!;
     const { x, y } = view.axialToPixel(t.q, t.r);
-    ctx.fillStyle = resolveTileColorFromTokens(tiles, t.bufferIndex, view.ownColonySlot ?? 0);
+    ctx.fillStyle = resolveTileColorFromTokens(tiles, t.bufferIndex, viewerColony);
     drawHexPolygonPath(ctx, x, y, r);
     ctx.fill();
   }

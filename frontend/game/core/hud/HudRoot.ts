@@ -21,8 +21,10 @@ export class HudRoot {
   private dock: CommandDock | null = null;
   private colony: ColonyBook | null = null;
   private readonly closers = new Set<() => void>();
+  private readonly ctx: FeatureContext;
 
   constructor(parent: HTMLElement, features: readonly Feature[], ctx: FeatureContext) {
+    this.ctx = ctx;
     this.el = document.createElement('div');
     this.el.className = 'ta-hud';
     for (const s of HUD_SLOTS) {
@@ -201,10 +203,11 @@ export class HudRoot {
     };
   }
 
-  /** Folds both books and runs every registered closer (one failing closer does not stop the others). */
+  /** Folds both books, closes blocking dialogs, and runs every registered closer (one failing closer does not stop the others). */
   closeAll(): void {
     this.dock?.setCollapsed(true);
     this.colony?.book.setCollapsed(true);
+    this.closeBlockingDialogs(this.ctx);
     this.runClosers();
   }
 
@@ -228,6 +231,16 @@ export class HudRoot {
 
   setVisible(visible: boolean) {
     this.el.hidden = !visible;
+  }
+
+  /** True when all mounted tab books are currently collapsed. */
+  areBooksCollapsed(): boolean {
+    return (this.dock?.isCollapsed() ?? true) && (this.colony?.book.isCollapsed() ?? true);
+  }
+
+  /** Folds the Command Dock so Build / Production / Terraform start closed. */
+  collapseDock(): void {
+    this.dock?.setCollapsed(true);
   }
 
   update(view: GameView) {

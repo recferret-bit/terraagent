@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { PlayerAchievementEntrySchema } from '../progression';
+import { LocalMockPlayerNameSchema } from '../rest/social';
 
 export const PROFILE_STAT_KEYS = [
   'coloniesFounded',
@@ -155,6 +156,16 @@ export const UpdatePlayerAiSettingsSchema = z.strictObject({
     }),
 });
 export type UpdatePlayerAiSettings = z.infer<typeof UpdatePlayerAiSettingsSchema>;
+
+export const UpdatePilotHandleSchema = z.strictObject({
+  handle: LocalMockPlayerNameSchema,
+});
+export type UpdatePilotHandle = z.infer<typeof UpdatePilotHandleSchema>;
+
+export const PilotHandleResponseSchema = z.strictObject({
+  handle: z.string().min(1),
+});
+export type PilotHandleResponse = z.infer<typeof PilotHandleResponseSchema>;
 
 /** Response of `GET /v1/me/profile` (W12-09). */
 export const MeProfileResponseSchema = z.strictObject({

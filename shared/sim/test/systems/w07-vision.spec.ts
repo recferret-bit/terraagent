@@ -13,6 +13,7 @@ import {
   computeColonySpottedTileIndices,
   getEntitySpottingRadius,
   isTargetSpottedByColony,
+  isColonyVisionSourceKind,
   isTileSpottedByColony,
   updateColonyVisionCache,
 } from '../../src/systems/combat/vision';
@@ -59,7 +60,8 @@ describe('W07-08: Entity spotting radii and 5-tick vision cache', () => {
 
     expect(getEntitySpottingRadius(ENTITY_KIND.hub, data)).toBe(9);
     expect(getEntitySpottingRadius(BEACON_ENTITY_KIND, data)).toBe(7);
-    expect(getEntitySpottingRadius(ENTITY_KIND.pod, data)).toBe(7);
+    expect(getEntitySpottingRadius(ENTITY_KIND.pod, data)).toBe(0);
+    expect(getEntitySpottingRadius(ENTITY_KIND.devProbe, data)).toBe(0);
 
     expect(getEntitySpottingRadius(ENTITY_KIND.recon, data)).toBe(10);
     expect(getEntitySpottingRadius(ENTITY_KIND.hq, data)).toBe(9);
@@ -164,6 +166,32 @@ describe('W07-08: Long-range weapon spotting acceptance check', () => {
   });
 });
 
+
+describe('pods and spawn events do not grant sight', () => {
+  it('keeps a landed or descending pod dark, and current sight follows the spawned unit', () => {
+    const state = createState({ planetId: 'fog', planetType: 'temperate', seed: 'fog', radius: 24 });
+    const pod = spawnTestEntity(state, { kind: ENTITY_KIND.pod, owner: 0, q: 0, r: 0, entityState: ENTITY_STATE.idle });
+    expect(isColonyVisionSourceKind(ENTITY_KIND.pod)).toBe(false);
+    expect(isColonyVisionSourceKind(ENTITY_KIND.solar)).toBe(true);
+    expect(isColonyVisionSourceKind(ENTITY_KIND.hq)).toBe(true);
+    expect(computeColonySpottedTileIndices(state, 0, data).size).toBe(0);
+
+    state.entities.cols.state[pod] = ENTITY_STATE.descending;
+    expect(computeColonySpottedTileIndices(state, 0, data).size).toBe(0);
+
+    const bot = spawnTestEntity(state, { kind: ENTITY_KIND.hq, owner: 0, q: 4, r: 0 });
+    updateColonyVisionCache(state, 0, data, true);
+    expect(isTileSpottedByColony(state, 0, 0, 0, data)).toBe(true);
+    expect(isTileSpottedByColony(state, 0, 4, 0, data)).toBe(true);
+
+    adminRelocateEntity(state.entities, bot, 18, 0, 5);
+    state.meta.tick = 5;
+    updateColonyVisionCache(state, 5, data, true);
+    expect(isTileSpottedByColony(state, 0, 0, 0, data)).toBe(false);
+    expect(isTileSpottedByColony(state, 0, 18, 0, data)).toBe(true);
+    expect(isTileExplored(state.grid, hexIndex(24).indexOf(0, 0), 0)).toBe(true);
+  });
+});
 
 describe('stationary units explore and departed units lose current sight', () => {
   it.each([ENTITY_KIND.recon, ENTITY_KIND.hq, ENTITY_KIND.worker, ENTITY_KIND.demoTank, ENTITY_KIND.demoArtillery])('uses unit kind %i as a real vision source', kind => {

@@ -1,3 +1,5 @@
+import { validateLocalMockPlayerName } from '@terra/contracts';
+import { isLocalMockAuthEnabled } from '../../../design/pilot/localMockPilot';
 import { deliverMintedToken } from './deliverToken';
 import './mock-oauth.css';
 
@@ -42,18 +44,32 @@ function setBusy(busy: boolean): void {
   if (useBtn instanceof HTMLButtonElement) useBtn.disabled = busy;
 }
 
+const allowLocalMock = isLocalMockAuthEnabled();
+if (!allowLocalMock) {
+  if (preset instanceof HTMLButtonElement) preset.disabled = true;
+  if (useBtn instanceof HTMLButtonElement) useBtn.disabled = true;
+  if (nameInput instanceof HTMLInputElement) nameInput.disabled = true;
+  say('Mock login is only available on localhost in development mode.');
+}
+
 async function pick(subject: string): Promise<void> {
-  if (subject.length < 1 || subject.length > 64) {
-    say('Use 1–64 characters.');
+  if (!isLocalMockAuthEnabled()) {
+    say('Mock login is only available on localhost in development mode.');
     return;
   }
+  const checked = validateLocalMockPlayerName(subject);
+  if (!checked.ok) {
+    say(checked.message);
+    return;
+  }
+  const clean = checked.value;
   say('');
   setBusy(true);
   try {
     const res = await fetch('/v1/dev/mock-oauth/token', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ provider, subject }),
+      body: JSON.stringify({ provider, subject: clean }),
     });
     if (!res.ok) {
       say('That sign-in could not be confirmed.');
@@ -72,8 +88,10 @@ async function pick(subject: string): Promise<void> {
   }
 }
 
-preset?.addEventListener('click', () => { void pick('test-pilot'); });
-useBtn?.addEventListener('click', () => {
-  const value = nameInput instanceof HTMLInputElement ? nameInput.value : '';
-  void pick(value);
-});
+if (allowLocalMock) {
+  preset?.addEventListener('click', () => { void pick('test-pilot'); });
+  useBtn?.addEventListener('click', () => {
+    const value = nameInput instanceof HTMLInputElement ? nameInput.value : '';
+    void pick(value);
+  });
+}

@@ -56,6 +56,7 @@ export function mountMinimalHud(ctx: MountMinimalHudCtx): MountedMinimalHud {
     transport: ctx.transport ?? ctx.services?.transport,
     ownerColonyIndex: ctx.ownerColonyIndex,
     getOwnerColonyIndex: () => ctx.ownerColonyIndex ?? ctx.services?.landfall?.getOwnerColonyIndex(),
+    isSpectator: () => Boolean(ctx.services?.isSpectator?.() || ctx.services?.store?.isSpectator?.()),
     isWaveOn: ctx.flags ? (wave) => ctx.flags!.has(wave) : undefined,
   });
   if (ctx.services && !ctx.services.hudMin) {

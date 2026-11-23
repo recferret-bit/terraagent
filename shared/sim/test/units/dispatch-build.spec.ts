@@ -66,7 +66,7 @@ function buildWatched(host: SimHost, hqId: number, site: { q: number; r: number 
 }
 
 describe('dispatch v1: W02 buildings are built by the HQ on site, one after the other (W02-16, UO-D-03)', () => {
-  it('two queued builds with only the HQ: it preps and builds A, then walks to B and builds it; nothing advances from afar', () => {
+  it('two queued builds with only the HQ: it builds A on flat ground, then walks to B and builds it; nothing advances from afar', () => {
     const { host, hqId } = rig();
     const state = host.state;
     const cols = state.entities.cols;
@@ -76,20 +76,21 @@ describe('dispatch v1: W02 buildings are built by the HQ on site, one after the 
     host.submit(cmd('enqueueTask', { taskId: 'b', task: { kind: 'build', building: 'solar', ...B } }));
     expect(host.step(1).outcomes.map((o) => o.code)).toEqual([undefined, undefined]);
     watch.sample();
-    // A starts with its linked prep (its footprint is not prepared); B waits for the only builder
-    expect(entry(state, 'a')).toMatchObject({ state: 'in_progress', waitReason: 'site' });
+    // Flat wild ground is a foundation: A builds, it does not wait on a linked prep. B waits for the only builder.
+    expect(entry(state, 'a')?.state).toBe('in_progress');
+    expect(entry(state, 'a')?.waitReason).not.toBe('site');
     expect(entry(state, 'b')).toMatchObject({ state: 'waiting', waitReason: 'worker' });
     const aId = entry(state, 'a')!.entityId!;
-    expect(getColonyTerraformOrders(state, 0).find((o) => o.isLinkedPrep)).toMatchObject({ linkedBuildingEntityId: aId, totalJobs: 4 });
+    expect(getColonyTerraformOrders(state, 0).find((o) => o.isLinkedPrep)).toBeUndefined();
 
     buildWatched(host, hqId, A, () => aId, watch, 400, () => {
       expect(entry(state, 'b')?.entityId).toBeUndefined(); // B is not started while A is being built
     });
     const hqRow = rowOf(state.entities, hqId);
     expect(hexDistance(cols.q[hqRow], cols.r[hqRow], B.q, B.r)).toBeGreaterThan(3); // still at A
-    expect(getColonyTerraformOrders(state, 0).find((o) => o.isLinkedPrep)).toBeUndefined(); // A's prep is finished, none left over
+    expect(getColonyTerraformOrders(state, 0).find((o) => o.isLinkedPrep)).toBeUndefined();
 
-    // B: the HQ walks there (no progress on the way), preps and builds it
+    // B: the HQ walks there (no progress on the way) and builds it
     buildWatched(host, hqId, B, () => entry(state, 'b')?.entityId, watch, 500);
     host.step(1); // the queue marks the entry done in its next step
     expect(getColonyQueue(state, 0, 'construction')).toEqual([]);
@@ -124,9 +125,9 @@ describe('dispatch v1: W02 buildings are built by the HQ on site, one after the 
 
 describe('dispatch v1: who builds, and builds across snapshots (W02-16)', () => {
   it.each([
-    ['unprepared', false, 'terraform'],
+    ['unprepared', false, 'build'],
     ['prepared', true, 'build'],
-  ])('a T1 worker drone takes a T1 %s site', (_label, prepared, commandKind) => {
+  ])('a T1 worker drone takes a T1 %s flat site with a build, not a terraform', (_label, prepared, commandKind) => {
     const host = new SimHost({ flags: parseWaves('..02') });
     host.load(createPlanet({ type: 'flat', seed: 'w02-dispatch', radius: 16 }));
     setColonyStock(host.state, 0, { 'metals.t1': 400, 'minerals.t1': 400, 'bio.biomass': 100, 'bio.water': 100 });
@@ -144,9 +145,9 @@ describe('dispatch v1: who builds, and builds across snapshots (W02-16)', () => 
 
 describe('dispatch v1: a build no eligible worker can take waits and pays nothing (W02-16, W05-02)', () => {
   it.each([
-    ['unprepared (its linked prep waits too)', false, 'waiting: site (prep 0/4)'],
+    ['unprepared', false, 'waiting: worker (none free)'],
     ['prepared', true, 'waiting: worker (none free)'],
-  ])('with no worker at all a started build on a %s site never advances and pays nothing', (_label, prepared, detail) => {
+  ])('with no worker at all a started build on a %s flat site never advances and pays nothing', (_label, prepared, detail) => {
     const host = new SimHost({ flags: parseWaves('..02') });
     host.load(createPlanet({ type: 'flat', seed: 'w02-dispatch', radius: 16 }));
     setColonyStock(host.state, 0, { 'metals.t1': 400, 'minerals.t1': 400, 'bio.biomass': 100, 'bio.water': 100 });
@@ -201,20 +202,14 @@ describe('dispatch v1: builds across snapshots (W02-16)', () => {
     expect(copyDoneAt).toBe(doneAt);
   });
 
-  it.each([
-    ['its queue entry', 'a'],
-    ['its linked prep order', 'job:PREP'],
-    ['the HQ task (`unit:<hq>`)', 'unit:HQ'],
-  ])('cancelling a build during its linked prep through %s removes the building, the prep order and the entry', (_label, id) => {
-    const { host, hqId } = rig();
+  it('cancelling a build through its queue entry removes the building and the entry', () => {
+    const { host } = rig();
     const state = host.state;
     host.submit(cmd('enqueueTask', { taskId: 'a', task: { kind: 'build', building: 'solar', ...A } }));
-    for (let t = 0; t < 15; t++) host.step(1); // the HQ is grading the footprint
+    for (let t = 0; t < 15; t++) host.step(1); // the HQ walks to the flat site; there is no prep order
     const aId = entry(state, 'a')!.entityId!;
-    const prep = getColonyTerraformOrders(state, 0).find((o) => o.isLinkedPrep)!;
-    expect(prep.orderId).toBe(`job:${aId}/prep`);
-    const taskId = id === 'job:PREP' ? prep.orderId : id === 'unit:HQ' ? `unit:${hqId}` : id;
-    host.submit(cmd('cancelTask', { taskId }));
+    expect(getColonyTerraformOrders(state, 0).some((o) => o.isLinkedPrep || o.orderId === `job:${aId}/prep`)).toBe(false);
+    host.submit(cmd('cancelTask', { taskId: 'a' }));
     expect(host.step(1).outcomes.map((o) => o.code)).toEqual([undefined]);
     host.step(1);
     expect(rowOf(state.entities, aId)).toBe(-1);

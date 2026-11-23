@@ -50,10 +50,70 @@ function floorY(P_: P[], grounded: boolean, minParts: number): number {
   return P_.reduce((y, p) => (p.def.role === 'plinth' ? Math.max(y, p.box[4]) : y), 0);
 }
 
+/** A cable may bite this far into its socket. Farther inside a solid is a line run through the part. */
+const ANCHOR_BITE_M = 0.12;
+
+function triMid(tris: Float32Array, i: number): [number, number, number] {
+  const o = i * 9;
+  return [(tris[o] + tris[o + 3] + tris[o + 6]) / 3, (tris[o + 1] + tris[o + 4] + tris[o + 7]) / 3, (tris[o + 2] + tris[o + 5] + tris[o + 8]) / 3];
+}
+
+function endPoint(tris: Float32Array, atEnd: boolean): [number, number, number] {
+  const o = atEnd ? tris.length - 3 : 0;
+  return [tris[o]!, tris[o + 1]!, tris[o + 2]!];
+}
+
+/** Tube samples inside `solid` that are not the short bite at either end. */
+function tunnelSamples(cable: P, solid: P): number {
+  const a = endPoint(cable.tris, false);
+  const c = endPoint(cable.tris, true);
+  let n = 0;
+  for (let i = 0; i < cable.n; i += 2) {
+    const p = triMid(cable.tris, i);
+    const bite = Math.min(Math.hypot(p[0] - a[0], p[1] - a[1], p[2] - a[2]), Math.hypot(p[0] - c[0], p[1] - c[1], p[2] - c[2]));
+    if (bite <= ANCHOR_BITE_M) continue;
+    if (pointInsideMesh(p[0], p[1], p[2], solid.tris)) n++;
+  }
+  return n;
+}
+
+const HANGING = /\b(cable|guy|rope)\b/i;
+const RIGID_BUS = /\bbus cable\b/i;
+/** Below this, a named cable is a straight bar. Above it, the slack is a loop, not a small sag. */
+const SAG_MIN = 0.02;
+const SAG_MAX = 0.16;
+const SAG_SPAN = 0.8;
+
+function hangOf(tris: Float32Array, nTris: number): { span: number; sag: number } {
+  const pts: [number, number, number][] = [];
+  for (let i = 0; i < nTris; i += 4) pts.push(triMid(tris, i));
+  let a = pts[0] ?? [0, 0, 0], c = a, span = 0;
+  for (let i = 0; i < pts.length; i++) for (let j = i + 1; j < pts.length; j++) {
+    const d = Math.hypot(pts[i]![0] - pts[j]![0], pts[i]![1] - pts[j]![1], pts[i]![2] - pts[j]![2]);
+    if (d > span) { span = d; a = pts[i]!; c = pts[j]!; }
+  }
+  const ab = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
+  const span2 = span * span || 1;
+  let sag = 0;
+  for (const p of pts) {
+    if (Math.hypot(p[0] - a[0], p[1] - a[1], p[2] - a[2]) < 0.08) continue;
+    if (Math.hypot(p[0] - c[0], p[1] - c[1], p[2] - c[2]) < 0.08) continue;
+    const t = Math.min(1, Math.max(0, ((p[0] - a[0]) * ab[0] + (p[1] - a[1]) * ab[1] + (p[2] - a[2]) * ab[2]) / span2));
+    const qx = a[0] + t * ab[0], qy = a[1] + t * ab[1], qz = a[2] + t * ab[2];
+    if (qy - p[1] <= 0) continue;
+    sag = Math.max(sag, Math.hypot(p[0] - qx, p[1] - qy, p[2] - qz));
+  }
+  return { span, sag };
+}
+
 export const cableStage: CheckStage = (ctx) => {
-  const { parts: P_, o, add, R } = ctx;
+  const { parts: P_, o, add } = ctx;
   const plinthY = floorY(P_, o.grounded, o.minParts);
   for (const T of P_) {
+    const hanging = HANGING.test(T.def.name) && !RIGID_BUS.test(T.def.name) && T.def.role !== 'whip';
+    if (hanging && T.def.kind === 'CylinderGeometry') {
+      add('error', 'CABLE_BAR', `${T.label} is a straight bar. A cable is a tube a little longer than the span, so it sags.`, [T.def.index], at(T.box), 'Replace the cylinder with a sagging tube from one fitting to the other. Do not build a cable out of right-angle struts.');
+    }
     if (T.def.kind !== 'TubeGeometry') continue;
     const cap = Math.max(6, Math.floor(T.n * 0.14));
     const sCap = prepare(T.def, T.tris.subarray(0, cap * 9));
@@ -62,15 +122,8 @@ export const cableStage: CheckStage = (ctx) => {
     const anchors = (end: P) => P_.filter((Y) => Y !== T && Y.def.kind !== 'TubeGeometry' && !isPlinthPart(Y, P_.length, o.minParts, o.grounded) && boxGap(end.box, Y.box) <= o.contactTol && inOrTouch(end, Y));
     const sA = anchors(sCap), eA = anchors(eCap);
     for (const Y of P_) {
-      if (Y === T || !Y.closed || !R(T.def.index, Y.def.index).crossing) continue;
-      const isAnchor = sA.includes(Y) || eA.includes(Y);
-      const lo = Math.floor(T.n * (isAnchor ? 0.28 : 0.15)), hi = Math.ceil(T.n * (isAnchor ? 0.72 : 0.85));
-      let mid = 0;
-      for (let i = lo; i < hi; i += 2) {
-        const o9 = i * 9;
-        if (pointInsideMesh((T.tris[o9] + T.tris[o9 + 3] + T.tris[o9 + 6]) / 3, (T.tris[o9 + 1] + T.tris[o9 + 4] + T.tris[o9 + 7]) / 3, (T.tris[o9 + 2] + T.tris[o9 + 5] + T.tris[o9 + 8]) / 3, Y.tris)) mid++;
-      }
-      if (mid >= 3) add('warn', 'CABLE_CLIPS', `${T.label} passes through ${Y.label} mid-span instead of ending on it.`, [T.def.index, Y.def.index], R(T.def.index, Y.def.index).at, 'Reduce the sag or re-route the cable so it clears the part, and let it end exactly on its two anchors.');
+      if (Y === T || !Y.closed || boxGap(T.box, Y.box) > 0) continue;
+      if (tunnelSamples(T, Y) >= 2) add('warn', 'CABLE_CLIPS', `${T.label} runs through ${Y.label} instead of stopping at its face. An anchor may swallow about ${Math.round(ANCHOR_BITE_M * 100)} cm; the rest of the line must be in open air.`, [T.def.index, Y.def.index], at(Y.box), 'Re-route the cable outside the solid and end it on a cleat, column, or mast. Do not let it enter a wall and keep going.');
     }
     if (T.def.role === 'whip') continue; // a free end is the point of a whip or tendril
     if (!sA.length || !eA.length) {
@@ -79,5 +132,11 @@ export const cableStage: CheckStage = (ctx) => {
     if (T.box[1] < plinthY + 0.005) {
       add('warn', 'CABLE_CLIPS', `${T.label} sags into the ground or foundation plinth (lowest y = ${T.box[1].toFixed(2)} m).`, [T.def.index], at(T.box), 'Reduce the cable slack or raise its anchors so it hangs cleanly above the floor.');
     }
+    if (!hanging) continue;
+    const { span, sag } = hangOf(T.tris, T.n);
+    if (span < SAG_SPAN) continue;
+    const ratio = sag / span;
+    if (ratio < SAG_MIN) add('warn', 'CABLE_TAUT', `${T.label} hangs ${fmt(sag)} on a ${fmt(span)} span (${Math.round(ratio * 100)}%). A cable is a little longer than the straight line, so the middle sags.`, [T.def.index], at(T.box), 'Drop the midpoint a few percent of the span. From the top of one fitting to the top of the other, with a small sag.');
+    else if (ratio > SAG_MAX) add('warn', 'CABLE_DROOP', `${T.label} sags ${fmt(sag)} on a ${fmt(span)} span (${Math.round(ratio * 100)}%). That is a loop, not a slightly long cable.`, [T.def.index], at(T.box), 'Use a small sag, a few percent of the span, between the two fittings.');
   }
 };

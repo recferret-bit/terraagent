@@ -394,10 +394,11 @@ export class MapsController {
     const tiles = (view.tiles ?? cv.tiles) as ClientTiles | undefined;
     if (cv && typeof cv.count === 'number' && cv.entities) this.lastClientView = cv as ClientView;
 
-    const planetId =
-      cv.planet?.id ?? view.planet?.id ?? this.ctx.services.session?.planetId?.() ?? 'default';
+    const planetId = cv.planet?.id ?? view.planet?.id ?? this.ctx.services.session?.planetId?.() ?? 'default';
     const radius = cv.planet?.radius ?? view.planet?.radius;
     const viewerColony = this.ctx.services.colonyId ?? 0;
+    const spectatorAllVision = Boolean(this.ctx.services.isSpectator?.() && (this.ctx.services.isSpectatorVisionAll?.() ?? true));
+    const rasterViewerColony = spectatorAllVision ? -1 : viewerColony;
     const w11Enabled = this.ctx.flags.has('W11');
     const atlasBlob = extractViewAtlasBlob(cv, view);
     const manifest = this.sectorSelection.atlasManifest ?? atlasBlob?.manifest ?? null;
@@ -405,38 +406,41 @@ export class MapsController {
       manifest?.atlasHash ?? atlasBlob?.atlasHash ?? this.sectorSelection.planetSummary?.atlasHash ?? null;
     const atlasVersion =
       manifest?.atlasVersion ?? atlasBlob?.atlasVersion ?? this.sectorSelection.planetSummary?.atlasVersion ?? null;
-    const worldContextKey = `${planetId}|${atlasHash ?? ''}|${atlasVersion ?? ''}|${viewerColony}|${w11Enabled ? 1 : 0}`;
-    if (worldContextKey !== this.lastWorldContextKey) {
-      if (
-        (this.lastPlanetId !== null && this.lastPlanetId !== planetId) ||
-        (this.lastAtlasHash !== null && this.lastAtlasHash !== atlasHash) ||
-        !w11Enabled
-      ) {
+    const worldContextKey = `${planetId}|${atlasHash ?? ''}|${atlasVersion ?? ''}|${rasterViewerColony}|${w11Enabled ? 1 : 0}`;
+    const planetOrAtlasChanged =
+      (this.lastPlanetId !== null && this.lastPlanetId !== planetId) ||
+      (this.lastAtlasHash !== null && this.lastAtlasHash !== atlasHash);
+    const contextChanged = worldContextKey !== this.lastWorldContextKey;
+    if (contextChanged) {
+      if (planetOrAtlasChanged || !w11Enabled) {
         this.sectorSelection.reset();
       }
       this.lastWorldContextKey = worldContextKey;
       this.lastPlanetId = planetId;
       this.lastAtlasHash = atlasHash;
       this.currentAdapter = null;
-      this.lastTiles = null;
+      if (planetOrAtlasChanged) {
+        this.lastTiles = null;
+      }
     }
 
-    if (tiles && tiles !== this.lastTiles && tiles.terrain && tiles.prep && tiles.owner) {
-      this.lastTiles = tiles;
+    const activeTiles = tiles ?? this.lastTiles ?? this.ctx.services.store?.latestTiles ?? null;
+    if (activeTiles && (activeTiles !== this.lastTiles || contextChanged || !this.lastEntry) && activeTiles.terrain && activeTiles.prep && activeTiles.owner) {
+      this.lastTiles = activeTiles;
       this.currentAdapter = createAtlasMapAdapter({
         w11Enabled,
         radius,
-        tileCount: tiles.count,
+        tileCount: activeTiles.count,
         manifest,
         atlasBlob,
         planetSummary: this.sectorSelection.planetSummary,
       });
-      const useMetaKeys = Boolean(this.currentAdapter.isAtlas || atlasHash || viewerColony !== 0);
-      const { entry } = this.rasterCache.update(tiles, {
+      const useMetaKeys = Boolean(this.currentAdapter.isAtlas || atlasHash || rasterViewerColony !== 0);
+      const { entry } = this.rasterCache.update(activeTiles, {
         planetId,
         radius,
         ...(useMetaKeys
-          ? { atlasHash, atlasVersion, viewerColony, flagKey: w11Enabled ? 'W11' : 'W04' }
+          ? { atlasHash, atlasVersion, viewerColony: rasterViewerColony, flagKey: w11Enabled ? 'W11' : 'W04' }
           : {}),
         adapter: this.currentAdapter.isAtlas ? this.currentAdapter : null,
       });
@@ -450,6 +454,7 @@ export class MapsController {
       clientView: this.lastClientView,
       simData: this.ctx.services.store?.simData?.() ?? undefined,
       ownColonySlot: viewerColony,
+      spectatorAllVision,
       atlasAdapter: this.currentAdapter?.isAtlas ? this.currentAdapter : null,
     });
 

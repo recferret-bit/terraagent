@@ -1,4 +1,5 @@
 import type { PrismaClient } from '@terra/db';
+import type { SectorAntiCheatService } from '../../core/anticheat/index.js';
 import { CoreException } from '../../core/errors/core-exception.js';
 
 /** Lobby archive and the home `ENDED` / `PLANET_ENDED` labels. A missing planet row is not ended. */
@@ -13,19 +14,33 @@ export function planetLifecycleEnded(row: {
 }
 
 /**
- * Council `propose` stops when `core.planet` is ended or archived.
+ * Council `propose` and `vote` stop when `SectorAntiCheatService` or `core.planet` is ended or archived.
  * No row (a dev DAO with no planet record) is still open.
  */
-export async function rejectEndedPlanet(prisma: PrismaClient | undefined, planetId: string): Promise<void> {
-  if (!prisma) return;
+export async function rejectEndedPlanet(
+  prisma: PrismaClient | undefined,
+  planetId: string,
+  antiCheat?: SectorAntiCheatService,
+): Promise<void> {
+  const trimmed = planetId.trim();
+  const livePlanet = antiCheat?.index.getPlanet(trimmed);
+  if (livePlanet && (livePlanet.status === 'ENDED' || livePlanet.status === 'ARCHIVED')) {
+    antiCheat?.recordRejection('http', 'economy', 'planet_ended');
+    throw new CoreException('planet_ended', {
+      status: 409,
+      message: 'This planet has ended.',
+      details: { planetId: trimmed },
+    });
+  }
+  if (!prisma?.planet?.findUnique) return;
   const row = await prisma.planet.findUnique({
-    where: { id: planetId.trim() },
+    where: { id: trimmed },
     select: { lifecycle: true, state: true },
   });
   if (!row || !planetLifecycleEnded(row)) return;
   throw new CoreException('planet_ended', {
     status: 409,
     message: 'This planet has ended.',
-    details: { planetId: planetId.trim() },
+    details: { planetId: trimmed },
   });
 }

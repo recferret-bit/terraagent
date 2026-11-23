@@ -26,12 +26,25 @@
 .ta-me-header-inner {
   max-width: 1120px;
   margin: 0 auto;
-  padding: 10px 16px;
+  padding: 8px 14px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: 12px;
   flex-wrap: wrap;
+}
+
+.ta-me-header-inner .pilot-access-bar {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.ta-me-header-inner .pilot-access-bar .btn {
+  min-height: 32px;
+  padding: 6px 12px;
+  font-size: 11px;
 }
 
 .ta-me-brand {
@@ -67,6 +80,25 @@
   background: color-mix(in srgb, var(--ta-orange) 8%, transparent);
 }
 
+.ta-me-tab--staking {
+  font-weight: 700;
+  color: var(--ta-hull);
+  border-color: var(--ta-orange);
+  background: color-mix(in srgb, var(--ta-orange) 14%, var(--ta-plate));
+  text-shadow:
+    0 0 10px var(--ta-orange),
+    0 1px 4px color-mix(in srgb, var(--ta-orange) 85%, transparent);
+  box-shadow: var(--ta-glow-1);
+}
+
+.ta-me-tab--staking:hover,
+.ta-me-tab--staking:focus-visible {
+  color: var(--ta-hull);
+  border-color: var(--ta-orange-hi);
+  background: color-mix(in srgb, var(--ta-orange) 22%, var(--ta-plate));
+  box-shadow: var(--ta-glow-3);
+}
+
 .ta-me-main {
   max-width: 1120px;
   margin: 20px auto 0;
@@ -84,7 +116,7 @@
   display: flex;
   flex-direction: column;
   gap: 16px;
-  scroll-margin-top: 76px;
+  scroll-margin-top: 112px;
 }
 
 .ta-me-section-head {

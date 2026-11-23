@@ -1,10 +1,11 @@
 import type { IncomingMessage, Server } from 'node:http';
 import type { Duplex } from 'node:stream';
-import { CLOSE_CODES, encodeWire } from '@terra/contracts';
+import { CLOSE_CODES, encodeWire, type AgentDecisionFeedItemV1, type SimInputFeedItemV1 } from '@terra/contracts';
 import type { Logger } from 'pino';
 import { Counter, Gauge, type Registry } from 'prom-client';
 import { WebSocketServer } from 'ws';
 import { corsOrigin } from '../core/cors';
+import type { SectorAntiCheatService } from '../core/anticheat';
 import type { EventBus } from '../bus/event-bus';
 import type { MarketBookBusEvent } from '../market/api/market-book-push.service';
 import type { MarketTradeBusEvent } from '../market/settlement/trade-settlement.service';
@@ -14,12 +15,16 @@ import type { DirectorStatusBusEvent } from '../near/director-key/director-key.s
 import type { GuildArrivedBusEvent, GuildDepartedBusEvent } from '../market/guild/visit/guild-visit.publisher';
 import type { NearTreasuryProposalBusEvent } from '../near/treasury/proposal-push';
 import type { AppEnv } from '../core/tokens';
+import type { InternalAuthEnv } from '../game/cluster/internal-auth';
+import type { SimClusterService } from '../game/cluster/sim-cluster.service';
 import type { GamePlanets } from '../game/game-planets.service';
+import type { SimHistoryService } from '../game/persistence/sim-history.service';
 import { presenceClosed, presenceJoined } from '../game/presence/planet-mode';
 import type { PresenceTracker } from '../game/presence/tracker';
 import type { CommandIngress } from './command-ingress';
 import { Connection, type ConnectionDeps } from './connection';
 import type { HomeProvider } from './home-provider';
+import { encodeWarpFrame, InternalSimRelayServer } from './parts/cluster-relay';
 import { PlayingSockets } from './playing-sockets';
 import { PlanetRooms } from './rooms';
 import type { SessionVerifier } from './session-verifier';
@@ -27,11 +32,13 @@ import type { SessionVerifier } from './session-verifier';
 export const WS_PATH = '/ws';
 
 export interface GatewayOptions {
-  readonly env: Pick<AppEnv, 'CORS_ORIGINS' | 'NODE_ENV'>;
+  readonly env: Pick<AppEnv, 'CORS_ORIGINS' | 'NODE_ENV'> & InternalAuthEnv;
   readonly planets: GamePlanets;
+  readonly cluster?: SimClusterService;
   readonly verifier: SessionVerifier;
   readonly ingress: CommandIngress;
   readonly home?: HomeProvider;
+  readonly antiCheat?: SectorAntiCheatService;
   readonly digests?: ConnectionDeps['digests'];
   readonly flags: readonly string[];
   readonly seatDevScenario?: ConnectionDeps['seatDevScenario'];
@@ -42,6 +49,8 @@ export interface GatewayOptions {
   readonly bus?: EventBus;
   /** In-memory away timer (CT-10). Absent in gateway unit fixtures that do not boot the game module. */
   readonly presence?: PresenceTracker;
+  readonly simHistory?: Pick<SimHistoryService, 'onExtraFeeds' | 'recentInputsSync' | 'recentDecisionsSync'> &
+    Partial<Pick<SimHistoryService, 'recentInputsAsync' | 'recentDecisionsAsync'>>;
 }
 
 /** `/ws` upgrade handling, origin allow-list, connection registry and one playing socket per colony (CT-41). */
@@ -50,6 +59,7 @@ export class WsGateway {
   private readonly conns = new Set<Connection>();
   private readonly playing = new PlayingSockets();
   private readonly rooms: PlanetRooms;
+  private readonly relayServer: InternalSimRelayServer;
   private readonly originOk: ReturnType<typeof corsOrigin>;
   private readonly welcomes: Counter;
   private detach: (() => void) | undefined;
@@ -63,19 +73,26 @@ export class WsGateway {
   private readonly untreasury: (() => void) | undefined;
   private readonly unmarket: (() => void) | undefined;
   private readonly unbook: (() => void) | undefined;
+  private readonly unsimfeeds: (() => void) | undefined;
+  private readonly unextrafeeds: (() => void) | undefined;
   private readonly presenceIds = new WeakMap<Connection, string>();
+  private readonly spectatorPlanet = new WeakMap<Connection, string>();
   private presenceSeq = 0;
 
   constructor(private readonly o: GatewayOptions) {
-    this.rooms = new PlanetRooms(o.planets);
+    this.rooms = new PlanetRooms(o.planets, o.antiCheat);
+    this.relayServer = new InternalSimRelayServer(
+      o.planets,
+      o.env,
+      (planetId) => this.maybeDropToCoarse(planetId),
+      o.simHistory,
+    );
     this.originOk = corsOrigin(o.env);
     this.unwarp = o.planets.onWarp((planetId, k) => this.rooms.broadcast(planetId, encodeWire({
       v: 1, t: 'event', tick: 0, d: { kind: 'dev.warp', severity: 'info', atTick: 0, colonyIds: [], data: { k } },
     })));
     // BE-11/BE-12: a planet whose thread died or whose step threw gets no more deltas; its sockets reconnect and rejoin.
-    this.undown = o.planets.onPlanetDown((planetId) => {
-      for (const c of [...this.conns]) if (c.planetId === planetId) c.bye(CLOSE_CODES.server_restarting, 'planet_down');
-    });
+    this.undown = o.planets.onPlanetDown((planetId) => this.kickPlanetDown(planetId));
     this.uncargo = o.bus?.on('near.cargo.status', (ev) => this.broadcastCargoStatus(ev), { module: 'WsGateway' });
     this.undeed = o.bus?.on('near.deed.updated', (ev) => this.broadcastDeedUpdated(ev), { module: 'WsGateway' });
     this.undirector = o.bus?.on('director.status', (ev) => this.broadcastDirectorStatus(ev), { module: 'WsGateway' });
@@ -85,6 +102,11 @@ export class WsGateway {
     this.unmarket = o.bus?.on('market.trade', (ev: MarketTradeBusEvent) => this.rooms.broadcastMarket(ev.planetId, ev.payload.trade.pair, encodeWire({ v: 1, t: 'market.trade', d: ev.payload })), { module: 'WsGateway' });
     // Per-socket market topics (LED-25): a socket gets the pairs it subscribed to, or all pairs if it never subscribed.
     this.unbook = o.bus?.on('market.book', (ev: MarketBookBusEvent) => this.rooms.broadcastMarket(ev.planetId, ev.payload.pair, encodeWire({ v: 1, t: 'market.book', d: ev.payload })), { module: 'WsGateway' });
+    this.unsimfeeds = o.planets.onSimFeeds?.((planetId, tick, inputs, decisions) => this.broadcastSimFeeds(planetId, tick, inputs, decisions));
+    this.unextrafeeds = o.simHistory?.onExtraFeeds?.((planetId, inputs, decisions) => {
+      const tick = inputs[0]?.atTick ?? decisions[0]?.atTick ?? 0;
+      this.broadcastSimFeeds(planetId, tick, inputs, decisions);
+    });
     const conns = this.conns;
     new Gauge({ name: 'ta_ws_connections', help: 'Open WebSocket connections', registers: [o.registry], collect() { this.set(conns.size); } });
     this.welcomes = new Counter({ name: 'ta_planet_ws_welcome_total', help: 'welcome messages sent', registers: [o.registry] });
@@ -129,6 +151,7 @@ export class WsGateway {
   }
 
   private upgrade(req: IncomingMessage, socket: Duplex, head: Buffer): void {
+    if (this.relayServer.handleUpgrade(req, socket, head)) return;
     const path = (req.url ?? '').split('?')[0];
     if (path !== WS_PATH) return refuse(socket, '404 Not Found');
     this.originOk(req.headers.origin, (_err, allow) => {
@@ -137,9 +160,23 @@ export class WsGateway {
     });
   }
 
+  private kickPlanetDown(planetId: string): void {
+    for (const c of [...this.conns]) {
+      if (c.planetId === planetId) c.bye(CLOSE_CODES.server_restarting, 'planet_down');
+    }
+  }
+
+  private maybeDropToCoarse(planetId: string): void {
+    if (this.rooms.size(planetId) > 0) return;
+    if ((this.o.presence?.socketsOn(planetId) ?? 0) > 0) return;
+    if (this.relayServer.hasWatchers(planetId)) return;
+    this.o.planets.setMode(planetId, 'coarse');
+  }
+
   private accept(ws: import('ws').WebSocket): void {
+    const cluster = this.o.cluster;
     const deps: ConnectionDeps = {
-      verifier: this.o.verifier, planets: this.o.planets, rooms: this.rooms, ingress: this.o.ingress, home: this.o.home, digests: this.o.digests, flags: this.o.flags,
+      verifier: this.o.verifier, planets: this.o.planets, rooms: this.rooms, ingress: this.o.ingress, home: this.o.home, antiCheat: this.o.antiCheat, digests: this.o.digests, flags: this.o.flags,
       seatDevScenario: this.o.seatDevScenario,
       log: this.o.log, helloTimeoutMs: this.o.helloTimeoutMs, idleTimeoutMs: this.o.idleTimeoutMs,
       onWelcome: () => this.welcomes.inc(),
@@ -150,6 +187,30 @@ export class WsGateway {
         this.playing.forget(c);
         this.notePresenceClose(c);
       },
+      ensureHosted: cluster ? (planetId) => cluster.ensureHosted(planetId) : undefined,
+      fullState: cluster ? (planetId) => cluster.fullStateAnywhere(planetId) : undefined,
+      joinRoom: (planetId, member, loc) => {
+        if (loc.kind === 'remote') {
+          this.rooms.join(planetId, member, {
+            internalUrl: loc.internalUrl,
+            env: this.o.env,
+            onSimFeeds: (tick, inputs, decisions) => this.broadcastSimFeeds(planetId, tick, inputs, decisions),
+            onWarp: (k) => this.rooms.broadcast(planetId, encodeWarpFrame(k)),
+            onDown: () => this.kickPlanetDown(planetId),
+            log: this.o.log,
+          });
+        } else {
+          this.rooms.join(planetId, member);
+        }
+      },
+      recentInputs: (planetId) => this.o.simHistory?.recentInputsSync?.(planetId, 100) ?? this.o.planets.recentInputs?.(planetId, 100) ?? [],
+      recentDecisions: (planetId) => this.o.simHistory?.recentDecisionsSync?.(planetId, 100) ?? this.o.planets.recentDecisions?.(planetId, 100) ?? [],
+      recentInputsAsync: (planetId) =>
+        this.o.simHistory?.recentInputsAsync?.(planetId, 100) ??
+        Promise.resolve(this.o.simHistory?.recentInputsSync?.(planetId, 100) ?? this.o.planets.recentInputs?.(planetId, 100) ?? []),
+      recentDecisionsAsync: (planetId) =>
+        this.o.simHistory?.recentDecisionsAsync?.(planetId, 100) ??
+        Promise.resolve(this.o.simHistory?.recentDecisionsSync?.(planetId, 100) ?? this.o.planets.recentDecisions?.(planetId, 100) ?? []),
     };
     this.conns.add(new Connection(ws, deps));
   }
@@ -162,6 +223,11 @@ export class WsGateway {
 
   /** `leaveRoom` clears colonyId before `onClosed`, so the colony is captured here, at welcome. */
   private notePresenceJoin(c: Connection): void {
+    if (c.mode === 'spectator' && c.planetId) {
+      this.spectatorPlanet.set(c, c.planetId);
+      this.planetModes().setMode(c.planetId, 'active');
+      return;
+    }
     const presence = this.o.presence;
     if (!presence || !c.playerId || !c.planetId || !c.colonyId) return;
     const planetId = c.planetId;
@@ -172,6 +238,11 @@ export class WsGateway {
 
   /** `leaveRoom` has already cleared `planetId`. The tracker still knows which planet the socket was on. */
   private notePresenceClose(c: Connection): void {
+    const specPlanet = this.spectatorPlanet.get(c);
+    if (specPlanet) {
+      this.spectatorPlanet.delete(c);
+      this.maybeDropToCoarse(specPlanet);
+    }
     const presence = this.o.presence;
     if (!presence) return;
     const id = this.presenceId(c);
@@ -180,12 +251,44 @@ export class WsGateway {
 
   private planetModes() {
     const planets = this.o.planets;
-    return { setMode: (planetId: string, mode: 'active' | 'coarse') => { planets.setMode(planetId, mode); } };
+    const rooms = this.rooms;
+    const cluster = this.o.cluster;
+    const relayServer = this.relayServer;
+    return {
+      setMode: (planetId: string, mode: 'active' | 'coarse') => {
+        if (mode === 'coarse' && (rooms.size(planetId) > 0 || relayServer.hasWatchers(planetId))) return;
+        if (planets.isLoaded(planetId)) {
+          planets.setMode(planetId, mode);
+          return;
+        }
+        if (cluster) {
+          void cluster.resolveLocation(planetId).then((loc) => {
+            if (loc?.kind === 'remote') return cluster.setModeRemotely(loc.internalUrl, planetId, mode);
+          });
+        }
+      },
+    };
   }
 
   /** The new welcome is already sent. Close the older socket for this colony with 4001. */
   private replaceOlder(c: Connection): void {
+    if (c.mode === 'spectator') return;
     this.playing.replace(c);
+  }
+
+  private broadcastSimFeeds(
+    planetId: string,
+    tick: number,
+    inputs: readonly SimInputFeedItemV1[],
+    decisions: readonly AgentDecisionFeedItemV1[],
+  ): void {
+    if (this.rooms.size(planetId) === 0) return;
+    if (inputs.length) {
+      this.rooms.broadcast(planetId, encodeWire({ v: 1, t: 'sim.input', tick, d: { items: inputs } }));
+    }
+    if (decisions.length) {
+      this.rooms.broadcast(planetId, encodeWire({ v: 1, t: 'sim.decision', tick, d: { items: decisions } }));
+    }
   }
 
   private broadcastCargoStatus(ev: NearCargoStatusBusEvent): void {
@@ -232,6 +335,7 @@ export class WsGateway {
   /** Shutdown: `bye 4012` to everyone, then wait briefly for the closing handshakes. Must run before the sim threads stop. */
   async closeAll(graceMs = 1000): Promise<void> {
     this.detach?.();
+    this.relayServer.closeAll();
     this.unwarp();
     this.undown();
     this.uncargo?.();
@@ -242,6 +346,8 @@ export class WsGateway {
     this.untreasury?.();
     this.unmarket?.();
     this.unbook?.();
+    this.unsimfeeds?.();
+    this.unextrafeeds?.();
     const all = [...this.conns];
     for (const c of all) c.bye(CLOSE_CODES.server_restarting, 'server_restarting');
     this.o.presence?.stop();

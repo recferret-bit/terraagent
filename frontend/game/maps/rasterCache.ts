@@ -1,4 +1,4 @@
-import { isColonyTileExplored } from '@terra/sim';
+import { isAnyColonyTileExplored, isColonyTileExplored } from '@terra/sim';
 import { axialToPlane, hexCount, hexIndex, planeToAxial } from '@terra/sim/grid/hex';
 import { PREP_CODES, TERRAIN_CODES } from '@terra/contracts/tiles/codes';
 import type { ClientTiles } from '../store/replica/viewCodec';
@@ -18,7 +18,10 @@ export const defaultTileColorResolver: TileColorResolver = (
   index,
   viewerColony = 0,
 ) => {
-  if ((tiles.explored || tiles.exploredByColony) && !isColonyTileExplored(tiles, index, viewerColony)) {
+  const explored = viewerColony < 0
+    ? isAnyColonyTileExplored(tiles, index)
+    : isColonyTileExplored(tiles, index, viewerColony);
+  if ((tiles.explored || tiles.exploredByColony) && !explored) {
     return '#3B4C6B';
   }
   const prep = tiles.prep[index] ?? PREP_CODES.wild;

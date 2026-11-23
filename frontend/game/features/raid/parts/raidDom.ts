@@ -56,6 +56,7 @@ export function renderRaidTargetRow(
   target: RaidTargetOption,
   onDispatch: (target: RaidTargetOption, forceGoal: boolean) => void,
   onRowClick: (target: RaidTargetOption) => void,
+  readOnly = false,
 ): HTMLElement {
   const row = document.createElement('div');
   row.className = 'ta-raid-target-row plate-sm' + (target.disabled ? ' is-disabled' : '');
@@ -94,11 +95,11 @@ export function renderRaidTargetRow(
   dispatchBtn.className = 'ta-raid-target-btn ta-raid-target-btn--dispatch';
   dispatchBtn.setAttribute('data-testid', 'raid-target-dispatch');
   dispatchBtn.setAttribute('data-action', 'dispatch-raid');
-  dispatchBtn.disabled = target.disabled;
+  dispatchBtn.disabled = readOnly || target.disabled;
   dispatchBtn.textContent = 'Dispatch';
   dispatchBtn.onclick = (e) => {
     e.stopPropagation();
-    onDispatch(target, false);
+    if (!readOnly) onDispatch(target, false);
   };
 
   const goalBtn = document.createElement('button');
@@ -106,15 +107,15 @@ export function renderRaidTargetRow(
   goalBtn.className = 'ta-raid-target-btn';
   goalBtn.setAttribute('data-testid', 'raid-target-goal-btn');
   goalBtn.setAttribute('data-action', 'queue-goal');
-  goalBtn.disabled = target.disabled;
+  goalBtn.disabled = readOnly || target.disabled;
   goalBtn.textContent = 'HQ Goal';
   goalBtn.onclick = (e) => {
     e.stopPropagation();
-    onDispatch(target, true);
+    if (!readOnly) onDispatch(target, true);
   };
 
   actions.append(dispatchBtn, goalBtn);
   row.append(info, actions);
-  row.onclick = () => onRowClick(target);
+  row.onclick = () => { if (!readOnly) onRowClick(target); };
   return row;
 }

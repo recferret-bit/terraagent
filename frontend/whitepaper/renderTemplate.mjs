@@ -1,11 +1,57 @@
 import { escapeHtml } from './md-inline.mjs';
 
+const WP_DESC =
+  'TerraAgent technical and economic whitepaper: 5 Hz deterministic colony RTS, 4 organic income lanes, wallet-first 4-tier lossless NEAR & LST staking, bonded diplomacy, 6 Rust contracts, and verifiable NEAR.AI commanders.';
+
+function buildWhitepaperJsonLd(safeTitle) {
+  const schema = {
+    '@context': 'https://schema.org',
+    '@type': 'TechArticle',
+    headline: safeTitle,
+    description: WP_DESC,
+    url: 'https://whitepaper.terraagent.fun/',
+    mainEntityOfPage: 'https://whitepaper.terraagent.fun/',
+    datePublished: '2026-10-31',
+    dateModified: '2026-11-21',
+    inLanguage: 'en',
+    image: 'https://terraagent.fun/og-cover.png',
+    author: { '@type': 'Organization', name: 'TerraAgent', url: 'https://terraagent.fun/' },
+    publisher: {
+      '@type': 'Organization',
+      name: 'TerraAgent',
+      url: 'https://terraagent.fun/',
+      logo: { '@type': 'ImageObject', url: 'https://terraagent.fun/icon-512.png' },
+    },
+  };
+  return JSON.stringify(schema).replace(/</g, '\\u003c');
+}
+
 function renderHeadAndTopBar(safeTitle) {
+  const safeDesc = escapeHtml(WP_DESC);
+  const jsonLd = buildWhitepaperJsonLd(safeTitle);
   return `<head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${safeTitle}</title>
+<meta name="description" content="${safeDesc}">
+<link rel="canonical" href="https://whitepaper.terraagent.fun/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="TerraAgent">
+<meta property="og:title" content="${safeTitle}">
+<meta property="og:description" content="${safeDesc}">
+<meta property="og:url" content="https://whitepaper.terraagent.fun/">
+<meta property="og:image" content="https://terraagent.fun/og-cover.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="${safeTitle}">
+<meta name="twitter:description" content="${safeDesc}">
+<meta name="twitter:image" content="https://terraagent.fun/og-cover.png">
+<link rel="icon" href="/favicon.ico" sizes="48x48">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="icon" type="image/png" sizes="96x96" href="/favicon-96x96.png">
+<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+<link rel="manifest" href="/site.webmanifest">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600;700&family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
@@ -15,6 +61,7 @@ function renderHeadAndTopBar(safeTitle) {
 <link rel="stylesheet" href="./rail.css">
 <link rel="stylesheet" href="./cards.css">
 <link rel="stylesheet" href="./schemas.css">
+<script type="application/ld+json">${jsonLd}</script>
 </head>
 <body>
 <div class="wp-progress"><div id="wpScrollProgress" class="wp-progress-fill"></div></div>
@@ -26,6 +73,7 @@ function renderHeadAndTopBar(safeTitle) {
   <nav class="wp-top-links" aria-label="Primary destinations">
     <a class="btn btn-ghost btn-sm" href="/playground.html">3D Playground</a>
     <a class="btn btn-ghost btn-sm" href="/trade.html">Exchange</a>
+    <a class="btn btn-ghost btn-sm" href="/me.html#staking">Staking</a>
     <a class="btn btn-primary btn-sm" href="/play.html?planet=dune&amp;skip=1">Play Live</a>
   </nav>
 </header>`;
@@ -72,7 +120,7 @@ function renderHeroHeader(safeTitle) {
         <div class="wp-kpi"><span class="wp-kpi-val">0% Mint / 0% P2W</span><span class="wp-kpi-lbl">Organic Fee &amp; Yield Economy</span></div>
         <div class="wp-kpi"><span class="wp-kpi-val">6 NEAR Contracts</span><span class="wp-kpi-lbl">NEP-245 · 171 · 366 · 413</span></div>
         <div class="wp-kpi"><span class="wp-kpi-val">TEE + Guardrails</span><span class="wp-kpi-lbl">Verifiable NEAR.AI Autopilot</span></div>
-        <div class="wp-kpi"><span class="wp-kpi-val">68 Live 3D Assets</span><span class="wp-kpi-lbl">Interactive WebGL2 Previews</span></div>
+        <div class="wp-kpi"><span class="wp-kpi-val">67 Live 3D Assets</span><span class="wp-kpi-lbl">Interactive WebGL2 Previews</span></div>
       </div>
     </header>`;
 }

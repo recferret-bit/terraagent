@@ -61,6 +61,9 @@ export const WAVE_PRESETS = {
   W25: { runner: 'grok', model: 'grok-4.7', advisor: null, subagents: 'subagents', mode: 'auto', parallel: 3, tags: ['H'], plan: 'contract-first', skills: ['diorama-viewport-auditor'], track: 'Ops/Launch' },
   W26: { runner: 'grok', model: 'grok-4.7', advisor: null, subagents: 'subagents', mode: 'auto', parallel: 4, tags: ['H'], plan: 'contract-first', skills: [], track: 'Ops/Sites' },
   W27: { runner: 'agy', model: 'argon', advisor: null, subagents: 'flash (S) + inherit (M)', mode: 'auto', parallel: 4, tags: [], postponed: true, plan: 'contract-first', skills: ['diorama-viewport-auditor'], track: 'Client/Streaming' },
+  W28: { runner: 'claude', model: 'opus', advisor: 'fable', subagents: 'sonnet (M) + flash (S)', mode: 'auto', parallel: 4, tags: ['H'], plan: 'contract-first', skills: ['procedural-kitbash-3d', 'model-geometry-validator', 'particle-effect-validator', 'diorama-viewport-auditor'], track: 'NEAR/Staking' },
+  W29: { runner: 'claude', model: 'opus', advisor: 'fable', subagents: 'sonnet (M) + flash (S)', mode: 'auto', parallel: 4, tags: ['H'], plan: 'contract-first', skills: ['shader-texture-tuning', 'planetary-lighting-and-lightning', 'procedural-kitbash-3d', 'model-geometry-validator', 'diorama-viewport-auditor'], track: 'NEAR/Planets' },
+  W30: { runner: 'claude', model: 'opus', advisor: 'fable', subagents: 'sonnet (M) + flash (S)', mode: 'auto', parallel: 4, tags: ['H'], plan: 'contract-first', skills: ['procedural-kitbash-3d', 'shader-texture-tuning', 'model-geometry-validator', 'particle-effect-validator', 'diorama-viewport-auditor'], track: 'NEAR/Skins' },
 };
 
 const CLAUDE_PAIR = {

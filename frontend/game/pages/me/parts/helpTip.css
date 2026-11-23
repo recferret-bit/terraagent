@@ -1,0 +1,110 @@
+.ta-help-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.ta-help-title-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.ta-help-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  flex: none;
+  font-family: var(--ta-font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--ta-blue-hi);
+  background: color-mix(in srgb, var(--ta-blue) 18%, var(--ta-deep));
+  border: 1px solid var(--ta-blue-hi);
+  cursor: pointer;
+  clip-path: polygon(4px 0, 100% 0, 100% calc(100% - 4px), calc(100% - 4px) 100%, 0 100%, 0 4px);
+  transition: background-color var(--ta-dur-quick) ease, color var(--ta-dur-quick) ease, border-color var(--ta-dur-quick) ease, transform var(--ta-dur-quick) ease;
+}
+
+.ta-help-btn:hover,
+.ta-help-btn:focus-visible {
+  background: var(--ta-orange);
+  color: var(--ta-void);
+  border-color: var(--ta-orange);
+  transform: translateY(-1px);
+}
+
+.ta-help-btn[aria-expanded='true'] {
+  background: var(--ta-orange);
+  color: var(--ta-void);
+  border-color: var(--ta-orange-hi);
+  box-shadow: var(--ta-glow-1);
+}
+
+.ta-help-tip {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  background: color-mix(in srgb, var(--ta-blue) 12%, var(--ta-deep));
+  border: 1px solid color-mix(in srgb, var(--ta-blue-hi) 45%, var(--ta-seam-3));
+  border-left: 3px solid var(--ta-orange);
+  color: var(--ta-text-2);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.ta-help-tip[hidden] {
+  display: none;
+}
+
+.ta-help-tip-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.ta-help-tip-eyebrow {
+  font-family: var(--ta-font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ta-orange-hi);
+}
+
+.ta-help-tip-text {
+  margin: 0;
+  color: var(--ta-text-2);
+}
+
+.ta-help-tip-close {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid var(--ta-seam-3);
+  background: transparent;
+  color: var(--ta-steel);
+  font-family: var(--ta-font-mono);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.ta-help-tip-close:hover,
+.ta-help-tip-close:focus-visible {
+  border-color: var(--ta-orange);
+  color: var(--ta-orange-hi);
+}

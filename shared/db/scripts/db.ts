@@ -89,6 +89,7 @@ async function gen(slug: string) {
 function migrate() {
   ensureDb(dbName);
   if (prisma(['migrate', 'deploy', '--schema', SCHEMA], url.toString()).status) throw new Error('migrate deploy failed');
+  if (prisma(['generate', '--schema', SCHEMA], url.toString()).status) throw new Error('prisma generate failed');
 }
 
 const [cmd, ...rest] = process.argv.slice(2);

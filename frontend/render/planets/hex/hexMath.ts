@@ -18,6 +18,68 @@ export function tileAt(radius: number, x: number, z: number): { q: number; r: nu
 /** Planet half-extents in metres: x (corner to corner) and z (flat to flat). */
 export const planetExtent = (radius: number) => ({ x: radius * TILE_M, z: (radius * TILE_M * Math.sqrt(3)) / 2 });
 
+const SQRT3_2 = Math.sqrt(3) / 2;
+
+/**
+ * Minimum inward clearance (m) from the 6 outer edges of the ground hexagon for scattered props
+ * (trees, boulders, spires, deposit nodes) so canopies and rock bases never protrude beyond the rim.
+ */
+export const HEX_PROP_EDGE_MARGIN_M = 1.15;
+
+/**
+ * Signed inward distance (m) from `(x, z)` to the nearest outer edge of the ground hexagon of `radius`.
+ * Positive inside the ground hexagon, `0` on the perimeter, negative outside.
+ */
+export function hexEdgeMarginM(radius: number, x: number, z: number): number {
+  const h = planetExtent(radius).z;
+  const u0 = Math.abs(z);
+  const u1 = Math.abs(SQRT3_2 * x + 0.5 * z);
+  const u2 = Math.abs(SQRT3_2 * x - 0.5 * z);
+  return h - Math.max(u0, u1, u2);
+}
+
+/**
+ * Projects `(x, z)` inside the ground hexagon of `radius` inset by `marginM` metres.
+ * Points already inside the inset hexagon are returned untouched.
+ */
+export function clampToGroundHexagon(
+  radius: number,
+  x: number,
+  z: number,
+  marginM = HEX_PROP_EDGE_MARGIN_M,
+): [number, number] {
+  const h = planetExtent(radius).z;
+  if (h <= 0) return [x, z];
+  const margin = Math.min(Math.max(0, marginM), h * 0.45);
+  const limit = h - margin;
+  let px = x;
+  let pz = z;
+  const maxSlab = () => Math.max(Math.abs(pz), Math.abs(SQRT3_2 * px + 0.5 * pz), Math.abs(SQRT3_2 * px - 0.5 * pz));
+  if (maxSlab() <= limit) return [px, pz];
+  for (let iter = 0; iter < 4; iter++) {
+    if (Math.abs(pz) > limit) pz = Math.sign(pz) * limit;
+    const u1 = SQRT3_2 * px + 0.5 * pz;
+    if (Math.abs(u1) > limit) {
+      const d1 = u1 - Math.sign(u1) * limit;
+      px -= SQRT3_2 * d1;
+      pz -= 0.5 * d1;
+    }
+    const u2 = SQRT3_2 * px - 0.5 * pz;
+    if (Math.abs(u2) > limit) {
+      const d2 = u2 - Math.sign(u2) * limit;
+      px -= SQRT3_2 * d2;
+      pz += 0.5 * d2;
+    }
+  }
+  const rem = maxSlab();
+  if (rem > limit) {
+    const s = limit / rem;
+    px *= s;
+    pz *= s;
+  }
+  return [px, pz];
+}
+
 /**
  * Ray → first hit on the height field: march in 1 m steps from `y` above the field to below it, then bisect.
  * Pure (no three.js) so it is unit-testable; `heightAt` is the same function the camera uses.

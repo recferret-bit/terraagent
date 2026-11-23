@@ -2,10 +2,12 @@ import type { Disposable, FeatureContext, GameView } from '../../core/registry/t
 import { isGameInputBlocked } from '../../core/input/gameInputBlock';
 import { releaseArchetypeThumbs, retainArchetypeThumbs } from '../shared/archetypeThumb';
 import { type MenuTier, presentTiers, rememberTier, renderTierBar, setTierVisible } from '../shared/menuCards';
+import { BUILD_GROUPS, layoutMenuGroups } from '../shared/menuSections';
 import { createBuildingCard, syncBuildingCard, type BuildingCardRefs } from './buildingCard';
 import { buildConstructionCatalog, type BuildingKind } from './catalog';
 import { PlacementGhostController, type PlacementGhostState } from './PlacementGhost';
 import { ownColonyIndex } from './sitePlacement';
+import { isReadOnlySpectator } from '../shared/colony';
 
 export { formatResourceLabel } from './catalog';
 
@@ -17,6 +19,7 @@ export class ConstructionMenu implements Disposable {
   private readonly tierBar: HTMLElement;
   private readonly cardsContainer: HTMLElement;
   private readonly cardRefs = new Map<BuildingKind, BuildingCardRefs>();
+  private readonly sectionHeads = new Map<string, HTMLElement>();
   private pickedTier: MenuTier | null = null;
   private isOpen = true;
   private view?: GameView;
@@ -105,7 +108,12 @@ export class ConstructionMenu implements Disposable {
     this.renderCards();
   }
 
+  private isReadOnly(): boolean {
+    return isReadOnlySpectator(this.ctx.services);
+  }
+
   startPlacement(building: BuildingKind | string): void {
+    if (this.isReadOnly()) return;
     if (this.ctx.services.hubPlacement?.isPlacementActive?.()) {
       this.ctx.services.hubPlacement.cancelPlacement();
     }
@@ -159,6 +167,7 @@ export class ConstructionMenu implements Disposable {
   }
 
   private activateCard(building: BuildingKind): void {
+    if (this.isReadOnly()) return;
     this.startPlacement(building);
     if (this.externalStartPlacement && this.externalStartPlacement !== this.ctx.services.startPlacement) {
       this.externalStartPlacement(building);
@@ -166,7 +175,12 @@ export class ConstructionMenu implements Disposable {
   }
 
   private renderCards(): void {
-    const cards = buildConstructionCatalog(this.ctx.flags, this.view, ownColonyIndex(this.ctx.services));
+    const cards = buildConstructionCatalog(
+      this.ctx.flags,
+      this.view,
+      ownColonyIndex(this.ctx.services),
+      this.ctx.services.store?.buildingCatalog?.() ?? null,
+    );
     const tier = rememberTier(this.pickedTier, cards);
     this.pickedTier = tier;
     renderTierBar(this.tierBar, 'build', presentTiers(cards), tier, (next) => {
@@ -181,16 +195,23 @@ export class ConstructionMenu implements Disposable {
         this.cardRefs.delete(kind);
       }
     }
+    const ro = this.isReadOnly();
+    const placed: { key: string; el: HTMLElement }[] = [];
     for (const card of cards) {
       let ref = this.cardRefs.get(card.building);
       if (!ref) {
         ref = createBuildingCard(card, (building) => this.activateCard(building));
         this.cardRefs.set(card.building, ref);
-        this.cardsContainer.appendChild(ref.btn);
       }
-      syncBuildingCard(ref, card, this.selectedBuilding === card.building);
+      syncBuildingCard(ref, card, !ro && this.selectedBuilding === card.building);
+      if (ro) {
+        ref.btn.disabled = true;
+        ref.btn.setAttribute('data-disabled', 'true');
+      }
       setTierVisible(ref.btn, card.tier === tier);
+      placed.push({ key: card.building, el: ref.btn });
     }
+    layoutMenuGroups(this.cardsContainer, BUILD_GROUPS, placed, this.sectionHeads);
   }
 
   dispose(): void {

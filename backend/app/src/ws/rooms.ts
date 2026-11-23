@@ -1,5 +1,23 @@
-import { encodeWire, hasEventKind } from '@terra/contracts';
+import {
+  encodeWire,
+  hasEventKind,
+  type AgentDecisionFeedItemV1,
+  type SimInputFeedItemV1,
+} from '@terra/contracts';
+import type { Logger } from 'pino';
+import type { SectorAntiCheatService } from '../core/anticheat';
+import type { InternalAuthEnv } from '../game/cluster/internal-auth';
 import type { GamePlanets, PlanetSubscriber } from '../game/game-planets.service';
+import { subscribeRemotePlanetStream } from './parts/cluster-relay';
+
+export interface RemoteRoomSubscription {
+  readonly internalUrl: string;
+  readonly env: InternalAuthEnv;
+  readonly onSimFeeds: (tick: number, inputs: readonly SimInputFeedItemV1[], decisions: readonly AgentDecisionFeedItemV1[]) => void;
+  readonly onWarp: (k: number) => void;
+  readonly onDown: () => void;
+  readonly log?: Logger;
+}
 
 /** A socket as a room sees it. */
 export interface RoomMember {
@@ -27,13 +45,41 @@ interface Room { readonly members: Set<RoomMember>; readonly unsubscribe: () => 
 export class PlanetRooms {
   private readonly rooms = new Map<string, Room>();
 
-  constructor(private readonly planets: GamePlanets) {}
+  constructor(
+    private readonly planets: GamePlanets,
+    private readonly antiCheat?: Pick<SectorAntiCheatService, 'applyPlanetDelta' | 'applyPlanetEvents'>,
+  ) {}
 
-  join(planetId: string, m: RoomMember): void {
+  join(planetId: string, m: RoomMember, remote?: RemoteRoomSubscription): void {
     let room = this.rooms.get(planetId);
     if (!room) {
       const members = new Set<RoomMember>();
-      room = { members, unsubscribe: this.planets.subscribe(planetId, this.fanout(members)) };
+      const subscriber = this.fanout(planetId, members);
+      let created: Room | undefined;
+      const onRemoteDown = () => {
+        if (created && this.rooms.get(planetId) === created) {
+          this.rooms.delete(planetId);
+          try {
+            created.unsubscribe();
+          } catch {
+            // ignore
+          }
+        }
+        remote?.onDown();
+      };
+      const unsubscribe = remote
+        ? subscribeRemotePlanetStream({
+            internalUrl: remote.internalUrl,
+            planetId,
+            env: remote.env,
+            subscriber,
+            onSimFeeds: remote.onSimFeeds,
+            onWarp: remote.onWarp,
+            onDown: onRemoteDown,
+            log: remote.log,
+          })
+        : this.planets.subscribe(planetId, subscriber);
+      room = created = { members, unsubscribe };
       this.rooms.set(planetId, room);
     }
     room.members.add(m);
@@ -72,16 +118,18 @@ export class PlanetRooms {
     return true;
   }
 
-  private fanout(members: Set<RoomMember>): PlanetSubscriber {
+  private fanout(planetId: string, members: Set<RoomMember>): PlanetSubscriber {
     const send = (frame: string | Uint8Array, minTick: number) => {
       for (const m of members) if (m.welcomeTick !== undefined && minTick > m.welcomeTick && this.writable(m)) m.send(frame);
     };
     return {
       onDelta: (d) => {
+        this.antiCheat?.applyPlanetDelta(planetId, d.diff, d.events);
         if (members.size === 0) return;
         send(encodeWire({ v: 1, t: 'delta', tick: d.toTick, d: { fromTick: d.fromTick, toTick: d.toTick, diff: d.diff, events: d.events } }), d.toTick);
       },
       onEvent: (events) => {
+        this.antiCheat?.applyPlanetEvents(planetId, events);
         // Until the delta builder fills `delta`, the thread sends bare events: forward the kinds the contract knows.
         for (const e of events) if (hasEventKind(e.kind)) send(encodeWire({ v: 1, t: 'event', tick: e.atTick, d: e }), e.atTick);
       },

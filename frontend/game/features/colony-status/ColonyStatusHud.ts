@@ -1,5 +1,5 @@
 import type { FeatureContext, HudPanelInstance } from '../../core/registry/types';
-import { ownColonyIndex } from '../shared/colony';
+import { isReadOnlySpectator, ownColonyIndex } from '../shared/colony';
 import { createColonyStatusDom } from './parts/statusDom';
 import {
   applyColonyStatusSimEvent,
@@ -110,6 +110,9 @@ export class ColonyStatusHud implements ColonyStatusHudInstance {
   }
 
   private render(): void {
+    const ro = isReadOnlySpectator(this.ctx.services);
+    this.placeHubBtn.disabled = ro;
+    this.foundNewColonyBtn.disabled = ro;
     const { status, hqDown, criticalRemainingSeconds } = this.currentView;
 
     if (hqDown && status !== 'eliminated') {
@@ -180,6 +183,7 @@ export class ColonyStatusHud implements ColonyStatusHudInstance {
   }
 
   private handlePlaceHub(): void {
+    if (isReadOnlySpectator(this.ctx.services)) return;
     this.options.onPlaceHub?.();
     const services = this.ctx.services;
     if (typeof services.startHubPlacement === 'function') {
@@ -195,6 +199,7 @@ export class ColonyStatusHud implements ColonyStatusHudInstance {
   }
 
   private handleFoundNewColony(): void {
+    if (isReadOnlySpectator(this.ctx.services)) return;
     this.options.onFoundNewColony?.();
     if (typeof this.options.navigate === 'function') {
       this.options.navigate('/play.html');

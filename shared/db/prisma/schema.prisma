@@ -357,11 +357,14 @@ model Colony {
   landingSlotId    String?  @map("landing_slot_id")
   spawnQ           Int       @default(0) @map("spawn_q")
   spawnR           Int       @default(0) @map("spawn_r")
+  isBot            Boolean   @default(false) @map("is_bot")
+  botPersona       String?   @map("bot_persona")
   createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   lastSeenAt       DateTime? @map("last_seen_at") @db.Timestamptz(3)
 
   @@unique([planetId, colonyIndex])
   @@index([playerId])
+  @@index([planetId, foundingSectorId])
   @@map("colony")
   @@schema("core")
 }
@@ -912,10 +915,14 @@ model PlanetSector {
   radius            Int      @default(24)
   foundingCapacity  Int      @default(4) @map("founding_capacity")
   validatedCapacity Int      @default(4) @map("validated_capacity")
-  reservedSeats     Int      @default(0) @map("reserved_seats")
-  foundedSeats      Int      @default(0) @map("founded_seats")
-  mainResource      String?  @map("main_resource")
-  scarceResources   Json?    @map("scarce_resources")
+  reservedSeats     Int       @default(0) @map("reserved_seats")
+  foundedSeats      Int       @default(0) @map("founded_seats")
+  activeHumans      Int       @default(0) @map("active_humans")
+  activeBots        Int       @default(0) @map("active_bots")
+  lastSyncedTick    Int       @default(0) @map("last_synced_tick")
+  lastSyncedAt      DateTime? @map("last_synced_at") @db.Timestamptz(3)
+  mainResource      String?   @map("main_resource")
+  scarceResources   Json?     @map("scarce_resources")
   createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt         DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -1422,6 +1429,10 @@ model StakingPosition {
   unbondingReadyAt     DateTime? @map("unbonding_ready_at") @db.Timestamptz(3)
   withdrawableSnapshot Decimal   @default(0) @map("withdrawable_snapshot") @db.Decimal(40, 0)
   rewardsSnapshot      Decimal   @default(0) @map("rewards_snapshot") @db.Decimal(40, 0)
+  /// W28: start of the continuous stake (24h fee warmup) and last deposit (7-day early-exit clock).
+  stakedSinceAt        DateTime? @map("staked_since_at") @db.Timestamptz(3)
+  lastStakedAt         DateTime? @map("last_staked_at") @db.Timestamptz(3)
+  asset                String    @default("near") @db.VarChar(16)
   updatedAt            DateTime  @default(now()) @map("updated_at") @db.Timestamptz(3)
 
   @@id([colonyId, poolId])
@@ -1440,11 +1451,96 @@ model MockChainStaking {
   withdrawable     Decimal   @default(0) @db.Decimal(40, 0)
   rewardsAccrued   Decimal   @default(0) @map("rewards_accrued") @db.Decimal(40, 0)
   lastAccruedAt    DateTime  @default(now()) @map("last_accrued_at") @db.Timestamptz(3)
+  /// W28: continuous-stake start (fee warmup) and last deposit (7-day early-exit fee; compounding keeps it).
+  stakedSinceAt    DateTime? @map("staked_since_at") @db.Timestamptz(3)
+  lastStakedAt     DateTime? @map("last_staked_at") @db.Timestamptz(3)
+  asset            String    @default("near") @db.VarChar(16)
   updatedAt        DateTime  @default(now()) @map("updated_at") @db.Timestamptz(3)
 
   @@id([accountId, poolId])
   @@map("mock_chain_staking")
   @@schema("chain")
+}
+
+// --- near-staking.prisma ---
+/// W28 wallet staking history (NearBlocks-style tx table, `30d/90d/1y` chart). Written by `StakingService`.
+model StakingTx {
+  id         String   @id @db.VarChar(120)
+  accountId  String   @map("account_id") @db.VarChar(64)
+  poolId     String   @map("pool_id") @db.VarChar(64)
+  /// stake | unstake | withdraw | compound | stake_profits | early_exit_fee
+  kind       String   @db.VarChar(24)
+  asset      String   @default("near") @db.VarChar(16)
+  amountYocto Decimal @map("amount_yocto") @db.Decimal(40, 0)
+  txHash     String   @map("tx_hash") @db.VarChar(160)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([accountId, createdAt])
+  @@map("staking_tx")
+  @@schema("chain")
+}
+
+/// W28 King-of-the-Hill Tier 4 seat: the highest active `≥500 NEAR` staker nominating a public planet.
+model StakingPatronSeat {
+  planetId       String   @id @map("planet_id") @db.VarChar(80)
+  accountId      String   @map("account_id") @db.VarChar(64)
+  activeStaked   Decimal  @map("active_staked") @db.Decimal(40, 0)
+  sinceAt        DateTime @default(now()) @map("since_at") @db.Timestamptz(3)
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  @@index([accountId])
+  @@map("staking_patron_seat")
+  @@schema("chain")
+}
+
+/// W28 planet nomination: which public planet a wallet's stake backs for the Lead Patron race (one per wallet).
+model StakingPatronNomination {
+  accountId  String   @id @map("account_id") @db.VarChar(64)
+  planetId   String   @map("planet_id") @db.VarChar(80)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([planetId])
+  @@map("staking_patron_nomination")
+  @@schema("chain")
+}
+
+/// W28 Lead Patron payouts: `15 %` of the Protocol's trade-fee cut on the patron's planet.
+model StakingPatronPayout {
+  id               String   @id @db.VarChar(120)
+  planetId         String   @map("planet_id") @db.VarChar(80)
+  accountId        String   @map("account_id") @db.VarChar(64)
+  amountUsdcAtomic Decimal  @map("amount_usdc_atomic") @db.Decimal(40, 0)
+  sourceTradeId    String?  @map("source_trade_id") @db.VarChar(120)
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([accountId, createdAt])
+  @@map("staking_patron_payout")
+  @@schema("chain")
+}
+
+/// W28 one-time 5-turn managed TEE trial per verified (`!isGuest`) pilot identity.
+model AiFreeTrial {
+  playerId   String   @id @map("player_id") @db.VarChar(64)
+  turnsUsed  Int      @default(0) @map("turns_used")
+  grantedAt  DateTime @default(now()) @map("granted_at") @db.Timestamptz(3)
+  updatedAt  DateTime @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  @@map("ai_free_trial")
+  @@schema("ai")
+}
+
+/// W28 wallet-wide daily managed AI usage (`glm-5.3-flash` calls + USD), shared across every colony of the wallet.
+model AiWalletUsage {
+  walletKey  String   @map("wallet_key") @db.VarChar(80)
+  /// UTC day `YYYY-MM-DD`
+  day        String   @db.VarChar(10)
+  callsUsed  Int      @default(0) @map("calls_used")
+  usdMicros  BigInt   @default(0) @map("usd_micros")
+  updatedAt  DateTime @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  @@id([walletKey, day])
+  @@map("ai_wallet_usage")
+  @@schema("ai")
 }
 
 // --- near-treasury.prisma ---
@@ -1655,6 +1751,139 @@ model PlayerNotification {
   @@index([playerId, createdAt])
   @@map("player_notification")
   @@schema("core")
+}
+
+// --- sector-state.prisma ---
+/// Relational live & persisted state of every player AND bot inside each planet sector.
+/// Synced continuously by the backend simulation workers and snapshots so Postgres always holds
+/// queryable per-sector occupancy, stocks, queues, goals, power, and entity counts.
+model SectorParticipantState {
+  id              String   @id
+  planetId        String   @map("planet_id")
+  sectorId        String   @map("sector_id")
+  colonyId        String   @map("colony_id")
+  colonyIndex     Int      @map("colony_index")
+  playerId        String?  @map("player_id")
+  actorKind       String   @default("player") @map("actor_kind")
+  isBot           Boolean  @default(false) @map("is_bot")
+  handle          String
+  botPersona      String?  @map("bot_persona")
+  status          String   @default("ACTIVE")
+  stage           Int      @default(1)
+  aiEnabled       Boolean  @default(false) @map("ai_enabled")
+  alive           Boolean  @default(true)
+  hqQ             Int?     @map("hq_q")
+  hqR             Int?     @map("hq_r")
+  unitCount       Int      @default(0) @map("unit_count")
+  buildingCount   Int      @default(0) @map("building_count")
+  stockJson       Json     @default("{}") @map("stock_json")
+  capsJson        Json     @default("{}") @map("caps_json")
+  powerJson       Json     @default("{}") @map("power_json")
+  queueJson       Json     @default("[]") @map("queue_json")
+  goalsJson       Json     @default("[]") @map("goals_json")
+  entitiesJson    Json     @default("[]") @map("entities_json")
+  lastInputAtTick Int?     @map("last_input_at_tick")
+  lastTick        Int      @default(0) @map("last_tick")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([planetId, colonyId])
+  @@index([planetId, sectorId])
+  @@index([planetId, isBot])
+  @@index([playerId])
+  @@map("sector_participant_state")
+  @@schema("world")
+}
+
+/// Complete history of all simulation inputs/commands from ALL actors (players, bots, dev, system, NEAR).
+model SimInputHistory {
+  id            String   @id
+  planetId      String   @map("planet_id")
+  sectorId      String   @default("sec_0_0") @map("sector_id")
+  colonyId      String?  @map("colony_id")
+  colonyIndex   Int?     @map("colony_index")
+  actorId       String?  @map("actor_id")
+  isBot         Boolean  @default(false) @map("is_bot")
+  source        String
+  commandId     String   @map("command_id")
+  kind          String
+  argsJson      Json     @default("{}") @map("args_json")
+  status        String   @default("queued")
+  rejectCode    String?  @map("reject_code")
+  rejectDetail  String?  @map("reject_detail")
+  issuedAtTick  Int?     @map("issued_at_tick")
+  appliedAtTick Int?     @map("applied_at_tick")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([planetId, createdAt])
+  @@index([planetId, sectorId, createdAt])
+  @@index([planetId, colonyIndex, createdAt])
+  @@index([planetId, isBot, createdAt])
+  @@index([commandId])
+  @@map("sim_input_history")
+  @@schema("world")
+}
+
+/// Complete history of decisions across ALL actors (bot governors, autopilot, colony agents, director, players).
+model AgentDecisionHistory {
+  id           String   @id
+  planetId     String   @map("planet_id")
+  sectorId     String   @default("sec_0_0") @map("sector_id")
+  colonyId     String?  @map("colony_id")
+  colonyIndex  Int?     @map("colony_index")
+  actorId      String?  @map("actor_id")
+  isBot        Boolean  @default(false) @map("is_bot")
+  actorSource  String   @map("actor_source")
+  decisionKind String   @map("decision_kind")
+  summary      String
+  rationale    String?
+  commandId    String?  @map("command_id")
+  commandKind  String?  @map("command_kind")
+  payloadJson  Json     @default("{}") @map("payload_json")
+  outcome      String   @default("emitted")
+  atTick       Int      @default(0) @map("at_tick")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([planetId, createdAt])
+  @@index([planetId, sectorId, createdAt])
+  @@index([planetId, colonyIndex, atTick])
+  @@index([commandId])
+  @@map("agent_decision_history")
+  @@schema("ai")
+}
+
+/// Distributed lease coordinating active simulation ownership across backend worker & app replicas.
+model SimWorkerLease {
+  planetId     String   @id @map("planet_id")
+  workerId     String   @map("worker_id")
+  role         String   @default("all")
+  internalUrl  String?  @map("internal_url")
+  mode         String   @default("active")
+  lastTick     Int      @default(0) @map("last_tick")
+  alivePlayers Int      @default(0) @map("alive_players")
+  aliveBots    Int      @default(0) @map("alive_bots")
+  leasedAt     DateTime @default(now()) @map("leased_at") @db.Timestamptz(3)
+  expiresAt    DateTime @map("expires_at") @db.Timestamptz(3)
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@index([workerId, expiresAt])
+  @@index([expiresAt])
+  @@map("sim_worker_lease")
+  @@schema("world")
+}
+
+/// Active simulation-capable nodes (`all` or `sim-worker`) registered for cluster routing & landing delegation.
+model SimWorkerNode {
+  workerId    String   @id @map("worker_id")
+  role        String   @default("all")
+  internalUrl String   @map("internal_url")
+  loadCount   Int      @default(0) @map("load_count")
+  expiresAt   DateTime @map("expires_at") @db.Timestamptz(3)
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@index([role, expiresAt])
+  @@map("sim_worker_node")
+  @@schema("world")
 }
 
 // --- trade-api.prisma ---

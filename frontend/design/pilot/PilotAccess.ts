@@ -2,7 +2,9 @@ import { SocialAuthResponseSchema } from '@terra/contracts';
 import {
   consentedAuthHeaders, failAuthHttp, failAuthThrown, failOAuthMessage, rememberAuthProvider, stopProviderWatch, succeedAuth, trackProviderPopup,
 } from '../analytics/auth';
-import { buildPilotEmailBox } from './pilotEmailBox';
+import { buildLocalMockPilotBox, isLocalMockAuthEnabled, type LocalMockFetchFn } from './localMockPilot';
+import { ensurePilotDialogStyles } from './pilotDialogCss';
+import { buildPilotEmailFastAuthBox } from './pilotEmailBox';
 import {
   buildFastAuthLoginUrl,
   consumeNearWalletCallback,
@@ -20,6 +22,7 @@ import {
   extractAuthApiErrorMessage,
   jwtStillValid,
   PENDING_NEP413_STORAGE_KEY,
+  persistActivePilotSession,
   readStoredGuestUpgradeBearer,
   RECENT_NEP413_POPUP_KEY,
 } from './nearAuthApi';
@@ -27,20 +30,6 @@ import { openNearWalletSelectorModal } from './nearWalletModal';
 import { signOutNearWalletSelector } from './walletSelectorRuntime';
 
 export { jwtStillValid };
-
-const PILOT_DIALOG_CSS = `
-.pilot-access-bar{display:inline-flex;align-items:center;gap:var(--ta-s2);flex-wrap:wrap}
-.pilot-dialog{margin:auto;padding:var(--ta-s5);min-width:320px;max-width:390px;background:var(--ta-plate);color:var(--ta-text);border:1px solid var(--ta-seam-2);overscroll-behavior:contain}
-.pilot-dialog::backdrop{background:color-mix(in srgb,var(--ta-black-hole) 74%,transparent);backdrop-filter:blur(4px)}
-.pilot-dialog-head{display:flex;align-items:center;justify-content:space-between;gap:var(--ta-s3);margin-bottom:var(--ta-s3)}
-.pilot-dialog-tabs{display:grid;grid-template-columns:1fr 1fr;gap:var(--ta-s2);margin-bottom:var(--ta-s3)}
-.pilot-dialog-sub{font-size:var(--ta-fs-eyebrow);color:var(--ta-text-3);margin:0 0 var(--ta-s3);line-height:1.4}
-.pilot-dialog-list{display:flex;flex-direction:column;gap:var(--ta-s2)}
-.pilot-dialog-list .btn{width:100%;justify-content:center}
-.pilot-email-box{display:flex;flex-direction:column;gap:var(--ta-s2);padding:var(--ta-s2);background:var(--ta-plate-2);border:1px solid var(--ta-seam)}
-.pilot-email-box input{width:100%;box-sizing:border-box}
-.pilot-status{font-family:var(--ta-font-mono);font-size:var(--ta-fs-label);color:var(--ta-fault-text)}
-`;
 
 const PROVIDERS = [
   { id: 'google', label: 'Google', testId: 'continue-google' },
@@ -59,6 +48,9 @@ export interface PilotAccessOptions {
   readonly triggerLabel?: string;
   readonly initialSession?: PilotAccessSession | null;
   readonly skipRestore?: boolean;
+  readonly fetch?: LocalMockFetchFn;
+  readonly profileHref?: string;
+  readonly allowOfflineLocalAuth?: boolean;
 }
 
 let inFlightRefresh: Promise<PilotAccessSession | null> | null = null;
@@ -90,14 +82,6 @@ export function refreshPilotSession(
   return p;
 }
 
-function ensureDialogStyles(): void {
-  if (typeof document === 'undefined' || document.getElementById('pilot-dialog-css')) return;
-  const style = document.createElement('style');
-  style.id = 'pilot-dialog-css';
-  style.textContent = PILOT_DIALOG_CSS;
-  document.head.appendChild(style);
-}
-
 /** Shared landing/orbit/profile/trade sign-in, sign-up & sign-out control (NEAR Testnet). */
 export class PilotAccess {
   readonly el = document.createElement('div');
@@ -112,7 +96,7 @@ export class PilotAccess {
     parent: HTMLElement,
     private readonly opts: PilotAccessOptions = {},
   ) {
-    ensureDialogStyles();
+    ensurePilotDialogStyles();
     this.el.className = 'plate-sm pilot-access-bar';
     this.el.dataset.testid = 'pilot-access';
     parent.append(this.el);
@@ -138,6 +122,18 @@ export class PilotAccess {
 
   getSession(): PilotAccessSession | null {
     return this.session;
+  }
+
+  setHandle(nextHandle: string): void {
+    const clean = nextHandle.trim();
+    if (!clean || !this.session) return;
+    this.session = { ...this.session, player: { ...this.session.player, handle: clean } };
+    const link = this.el.querySelector<HTMLAnchorElement>('a');
+    if (link) link.textContent = `${clean} · PILOT / ME ↗`;
+  }
+
+  private doFetch(input: string, init?: RequestInit) {
+    return this.opts.fetch ? this.opts.fetch(input, init) : fetch(input, init);
   }
 
   resolveUpgradeBearer(nowMs = Date.now()): string {
@@ -214,6 +210,22 @@ export class PilotAccess {
     const sub = document.createElement('p');
     sub.className = 'pilot-dialog-sub';
     const list = this.buildProviderButtons(dialog, () => mode);
+    const showLocalMock = isLocalMockAuthEnabled() || Boolean(this.opts.allowOfflineLocalAuth && this.opts.fetch);
+    const localMock = showLocalMock
+      ? buildLocalMockPilotBox({
+          initialMode: mode,
+          getMode: () => mode,
+          getUpgradeBearer: () => this.resolveUpgradeBearer(),
+          isBusy: () => this.busy,
+          fetchImpl: this.opts.fetch,
+          allowOfflineLocalAuth: this.opts.allowOfflineLocalAuth,
+          onAuthenticated: (session) => {
+            this.closeDialog(dialog);
+            this.loginEpoch += 1;
+            this.linked(session, true);
+          },
+        })
+      : null;
 
     const syncMode = (): void => {
       title.textContent = mode === 'signup' ? 'CREATE PILOT · NEAR TESTNET' : 'SIGN IN · NEAR TESTNET';
@@ -223,6 +235,7 @@ export class PilotAccess {
         mode === 'signup'
           ? 'Mint a gasless *.terraagent.testnet Pilot with Google, X, or Email/Passkey, or create & link a NEAR Testnet wallet.'
           : 'Sign in with NEAR FastAuth (Google, X, Email/Passkey) or verify your NEAR Testnet wallet via NEP-413.';
+      localMock?.syncMode(mode);
     };
     signInTab.onclick = () => {
       mode = 'signin';
@@ -237,7 +250,7 @@ export class PilotAccess {
     dialog.onclick = (e) => {
       if (e.target === dialog) this.closeDialog(dialog);
     };
-    dialog.append(head, tabs, sub, list);
+    dialog.append(head, tabs, sub, list, ...(localMock ? [localMock.el] : []));
     return dialog;
   }
 
@@ -259,13 +272,24 @@ export class PilotAccess {
         if (p.id === 'fastauth') {
           openNearWalletSelectorModal({
             initialMode: mode,
+            allowOfflineLocalAuth: this.opts.allowOfflineLocalAuth,
+            localAuthFetch: this.opts.fetch,
+            getUpgradeBearer: () => this.resolveUpgradeBearer(),
             onPopupOpened: (pop) => {
               this.popup = pop;
             },
             onDirectToken: (hit) => {
               this.triggerLogin(hit);
             },
+            onLocalMockSession: (session) => {
+              this.loginEpoch += 1;
+              this.linked(session, true);
+            },
           });
+          return;
+        }
+        if (this.opts.allowOfflineLocalAuth) {
+          this.triggerLogin({ provider: p.id, token: `local-${p.id}` });
           return;
         }
         this.popup = trackProviderPopup(p.id, window.open(
@@ -277,13 +301,17 @@ export class PilotAccess {
       list.append(btn);
     }
 
-    list.append(buildPilotEmailBox({
-      busy: () => this.busy,
-      close: (d) => this.closeDialog(d),
-      login: (hit) => this.triggerLogin(hit),
-      showGuest: (message) => this.guest(message),
-      isDisposed: () => this.disposed,
-    }, dialog, getMode));
+    list.append(
+      buildPilotEmailFastAuthBox({
+        isBusy: () => this.busy,
+        isDisposed: () => this.disposed,
+        getMode,
+        allowOfflineLocalAuth: this.opts.allowOfflineLocalAuth,
+        onCloseDialog: () => this.closeDialog(dialog),
+        onToken: (hit) => this.triggerLogin(hit),
+        onGuestError: (msg) => this.guest(msg),
+      }),
+    );
     return list;
   }
 
@@ -297,33 +325,12 @@ export class PilotAccess {
     this.bearer = body.accessToken;
     const isGuest = body.player.isGuest !== false;
     this.session = isGuest ? null : body;
-    if (body.accessToken && !body.accessToken.startsWith('dev:') && !body.accessToken.startsWith('player:')) {
-      try {
-        localStorage.setItem(
-          'ta_active_pilot',
-          JSON.stringify({
-            playerId: body.player.id,
-            accessToken: body.accessToken,
-            updatedAt: Date.now(),
-            isGuest,
-            handle: body.player.handle,
-            ...(body.accountId ? { accountId: body.accountId } : {}),
-          }),
-        );
-        if (!isGuest) {
-          localStorage.setItem('ta_trade_token', body.accessToken);
-        } else {
-          localStorage.removeItem('ta_trade_token');
-        }
-      } catch {
-        /* Refresh cookie remains usable when storage is unavailable. */
-      }
-    }
+    persistActivePilotSession(body, this.opts.allowOfflineLocalAuth);
     if (isGuest) return;
     const link = document.createElement('a');
     link.className = 'btn btn-primary btn-sm';
     link.textContent = `${body.player.handle} · PILOT / ME ↗`;
-    link.href = '/me.html';
+    link.href = this.opts.profileHref ?? '/me.html';
     link.target = '_blank';
     link.rel = 'noopener noreferrer';
 
@@ -345,8 +352,16 @@ export class PilotAccess {
     this.bearer = '';
     this.session = null;
     try {
-      localStorage.removeItem('ta_active_pilot');
-      localStorage.removeItem('ta_trade_token');
+      const keepServerPilot =
+        this.opts.allowOfflineLocalAuth &&
+        (() => {
+          const raw = localStorage.getItem('ta_active_pilot');
+          return Boolean(raw && (JSON.parse(raw) as { accessToken?: unknown }).accessToken !== 'local-mode-token');
+        })();
+      if (!keepServerPilot) {
+        localStorage.removeItem('ta_active_pilot');
+        localStorage.removeItem('ta_trade_token');
+      }
       localStorage.removeItem(OAUTH_CALLBACK_STORAGE_KEY);
       localStorage.removeItem(OAUTH_ERROR_STORAGE_KEY);
       localStorage.removeItem(PKCE_STATE_STORAGE_KEY);
@@ -357,9 +372,11 @@ export class PilotAccess {
       sessionStorage.removeItem(PENDING_NEP413_STORAGE_KEY);
       sessionStorage.removeItem(RECENT_NEP413_POPUP_KEY);
     } catch { /* ignore */ }
-    await signOutNearWalletSelector();
+    if (!this.opts.allowOfflineLocalAuth) {
+      await signOutNearWalletSelector();
+    }
     try {
-      await fetch('/v1/auth/logout', { method: 'POST', credentials: 'include' });
+      await this.doFetch('/v1/auth/logout', { method: 'POST', credentials: 'include' });
     } catch { /* ignore network errors on logout */ }
     if (!this.disposed) {
       this.guest();
@@ -424,7 +441,7 @@ export class PilotAccess {
       const endpoint = nep413Payload ? '/v1/auth/near/verify' : '/v1/auth/social';
       const reqBody = nep413Payload ?? hit;
       const upgradeBearer = this.resolveUpgradeBearer();
-      const response = await fetch(endpoint, {
+      const response = await this.doFetch(endpoint, {
         method: 'POST',
         credentials: 'include',
         headers: {

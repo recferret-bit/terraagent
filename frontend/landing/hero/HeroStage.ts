@@ -4,7 +4,6 @@ import { createColonyViewport, type ColonyViewport } from '@terra/render/core/cr
 import { StageHost, prefersReducedMotion } from '@terra/render/core/StageHost';
 import { PLANET_KINDS, PLANET_SPECS, type PlanetKind } from '@terra/render/planets/PlanetSpec';
 import { createOrbitalStage } from '@terra/render/orbit/OrbitalStage';
-import '@terra/render/kitbash';
 
 // One world's cycle (seconds), c = 0 when its terraform starts:
 //   0 → 8 terraform (4 steps) · 8 → 10 admire it · 10 → 11.5 collapse (terraform plays in reverse, so no city, border or
@@ -87,6 +86,13 @@ export class HeroStage {
 export function initHeroStage() {
   const host = document.getElementById('hero-stage');
   if (!host) return;
-  try { new HeroStage(host).start(); }
-  catch (e) { console.warn('hero stage: WebGL unavailable', e); host.classList.add('is-fallback'); }
+  host.dataset.stageState = 'loading';
+  try {
+    new HeroStage(host).start();
+    host.dataset.stageState = 'live';
+  } catch (e) {
+    console.warn('hero stage: WebGL unavailable', e);
+    host.classList.add('is-fallback');
+    host.dataset.stageState = 'fallback';
+  }
 }

@@ -1,5 +1,5 @@
 import { createPublicKey, generateKeyPairSync, randomBytes } from 'node:crypto';
-import { Inject, Injectable, Optional } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { RESOURCE_KEYS, tokenKeyOfVerifierId } from '@terra/contracts';
 import type { PrismaClient } from '@terra/db';
 import { databaseEnabled } from '../../../../core/persistence.js';
@@ -25,6 +25,7 @@ import { decodeBase58, ed25519PrivateKeyFromSeed, encodeBase58, KeyStore, loadKe
 import { resolveActiveNearNetwork, resolveNearNetworkConfig } from '../../network/near-network.config.js';
 import { NearRpcClient, seedToNearSecretKey } from '../../rpc/near-rpc.client.js';
 import { MockIntentsAdapter } from '../mock/intents.adapter.js';
+import { IntentsRpcError, classifyIntentsRpcFailure } from './intents-rpc-error.js';
 import {
   buildMainnetSaltNonce,
   depositToMainnetIntents,
@@ -35,6 +36,8 @@ import {
   withdrawFromMainnetIntents,
 } from './mainnet-intents-rpc.js';
 import { OpReceiptCache } from './op-receipt-cache.js';
+import { syncVerifierKeys, type VerifierKey, type VerifierKeyRole, type VerifierKeySyncReport } from './verifier-key-sync.js';
+import { executeOnVerifier, preflightVerifierSettlement } from './verifier-settlement.js';
 
 export function isSystemOrBotIntentSigner(accountId: string): boolean {
   const lower = accountId.toLowerCase();
@@ -67,6 +70,7 @@ export class TestnetIntentsAdapter implements IntentsPort {
   private readonly delegate: MockIntentsAdapter | null;
   private readonly txCache = new OpReceiptCache<ChainReceipt>();
   private readonly ephemeralSigners = new Map<string, { publicKey: string; seed: Buffer }>();
+  private readonly log = new Logger(TestnetIntentsAdapter.name);
   private keyStore: KeyStore | null = null;
 
   constructor(
@@ -141,26 +145,27 @@ export class TestnetIntentsAdapter implements IntentsPort {
     });
     const have = local ? BigInt(local.amount.toFixed(0)) : 0n;
     if (have >= needed) return;
+    let chainBal: bigint;
     try {
       const rawChain = await this.rpc.view<string>(this.rpc.config.contracts.res, 'mt_balance_of', {
         account_id: input.accountId,
         token_id: key,
       });
-      const chainBal = BigInt(rawChain);
-      if (chainBal > have) {
-        await this.prisma.mockChainAccount.upsert({
-          where: { accountId: input.accountId },
-          create: { accountId: input.accountId, kind: 'colony' },
-          update: {},
-        });
-        await this.prisma.mockChainBalance.upsert({
-          where: { accountId_tokenId: { accountId: input.accountId, tokenId: key } },
-          create: { accountId: input.accountId, tokenId: key, amount: chainBal.toString() },
-          update: { amount: chainBal.toString() },
-        });
-      }
-    } catch {
-      // Ignore RPC read errors and fall back to DB ledger state
+      chainBal = BigInt(rawChain);
+    } catch (err) {
+      throw classifyIntentsRpcFailure(err, { operation: 'mt_balance_of', accountId: input.accountId, tokenId: key });
+    }
+    if (chainBal > have) {
+      await this.prisma.mockChainAccount.upsert({
+        where: { accountId: input.accountId },
+        create: { accountId: input.accountId, kind: 'colony' },
+        update: {},
+      });
+      await this.prisma.mockChainBalance.upsert({
+        where: { accountId_tokenId: { accountId: input.accountId, tokenId: key } },
+        create: { accountId: input.accountId, tokenId: key, amount: chainBal.toString() },
+        update: { amount: chainBal.toString() },
+      });
     }
   }
 
@@ -185,7 +190,7 @@ export class TestnetIntentsAdapter implements IntentsPort {
     if (this.rpc.network === 'mainnet') {
       return this.txCache.run(`exec:${input.opId}`, async () => {
         for (const it of input.intents) {
-          const signer = await this.resolveSignerKey(it.diff.accountId).catch(() => null);
+          const signer = await this.resolveSignerKey(it.diff.accountId).catch((err: unknown) => this.rethrowUnlessNoCustodialKey(err));
           if (signer && signer.publicKey === it.publicKey) {
             await ensureMainnetIntentsKeyRegistered(
               this.rpc,
@@ -199,32 +204,29 @@ export class TestnetIntentsAdapter implements IntentsPort {
       });
     }
     if (!this.delegate) throw new NearException('NEAR_UNAVAILABLE', { message: 'Intents execute requires DB ledger' });
+    const onVerifier = Boolean(this.rpc.config.contracts.verifier && this.rpc.config.secrets.minterSecretKey);
+    if (onVerifier) await this.preflightOnVerifier(input);
     const r = await this.delegate.execute(input);
+    if (onVerifier) return executeOnVerifier(this.rpc, input);
     const hasHumanSigner = input.intents.some((it) => !isSystemOrBotIntentSigner(it.diff.accountId));
-    if (this.rpc.config.contracts.verifier && this.rpc.config.secrets.minterSecretKey) {
-      return this.executeOnVerifierContract(input, r);
-    }
     if (hasHumanSigner) return this.asTestnetReceipt(r);
     return { ...r, network: this.rpc.network, txHash: r.txHash.replace(/^mock:/, '') };
   }
 
-  private async executeOnVerifierContract(input: IntentsExecuteInput, fallback: ChainReceipt): Promise<ChainReceipt> {
-    const verifierId = this.rpc.config.contracts.verifier;
-    const minterSecret = this.rpc.config.secrets.minterSecretKey;
-    if (!verifierId || !minterSecret) return fallback;
-    try {
-      const { receipt } = await this.rpc.call({
-        signerAccountId: this.rpc.config.accounts.minter,
-        signerSecretKey: minterSecret,
-        contractId: verifierId,
-        methodName: 'execute_intents',
-        args: { op_id: input.opId, intents: input.intents },
-        gasTgas: 80,
-      });
-      return receipt;
-    } catch {
-      return { ...fallback, network: this.rpc.network, txHash: fallback.txHash.replace(/^mock:/, '') };
-    }
+  /** Syncs pilot / session / bot keys onto `verifier.<root>` (idempotent). Needs `NEAR_CONTRACT_VERIFIER` + minter key. */
+  async syncVerifierKeys(keys: readonly VerifierKey[]): Promise<VerifierKeySyncReport> {
+    return syncVerifierKeys(this.rpc, keys);
+  }
+
+  /** `all_keys_onchain` + `strict_balances` gate: throws `IntentsRpcError` before anything settles. */
+  private async preflightOnVerifier(input: IntentsExecuteInput): Promise<void> {
+    await preflightVerifierSettlement(this.rpc, input.intents, (accountId, publicKey) => this.verifierKeyRole(accountId, publicKey));
+  }
+
+  private async verifierKeyRole(accountId: string, publicKey: string): Promise<VerifierKeyRole> {
+    if (isSystemOrBotIntentSigner(accountId)) return 'bot';
+    const row = await this.prisma?.nearColonyAccount?.findUnique({ where: { accountId } });
+    return row?.tradingSessionPublicKey === publicKey ? 'session' : 'pilot';
   }
 
   private async asTestnetReceipt(mockReceipt: ChainReceipt): Promise<ChainReceipt> {
@@ -241,11 +243,23 @@ export class TestnetIntentsAdapter implements IntentsPort {
           gasTgas: 15,
         });
         return receipt;
-      } catch {
-        // Fall back if rate-limited during rapid market ticks
+      } catch (err) {
+        // The audit ping is best-effort during rapid market ticks: keep the deterministic hash, but never silently.
+        this.log.warn(classifyIntentsRpcFailure(err, { operation: 'storage_deposit_audit_ping' }).message);
       }
     }
     return { ...mockReceipt, network: this.rpc.network, txHash: mockReceipt.txHash.replace(/^mock:/, '') };
+  }
+
+  /** Mainnet execute only skips key registration for accounts we hold no key for; anything else is a real failure. */
+  private rethrowUnlessNoCustodialKey(err: unknown): null {
+    if (err instanceof NearException && (err.errorCode === 'NEAR_NOT_OWNER' || err.errorCode === 'NEAR_ACCOUNT_NOT_FOUND')) return null;
+    throw classifyIntentsRpcFailure(err, { operation: 'resolve_signer_key' });
+  }
+
+  private assumeAccountExists(accountId: string, err: unknown): true {
+    this.log.warn(classifyIntentsRpcFailure(err, { operation: 'account_exists', accountId }).message);
+    return true;
   }
 
   private async resolveSignerKey(accountId: string): Promise<{ accountId: string; publicKey: string; seed: Buffer }> {
@@ -265,7 +279,7 @@ export class TestnetIntentsAdapter implements IntentsPort {
           this.rpc.network === 'mainnet' &&
           row.ownerAccountId &&
           row.ownerAccountId !== row.accountId &&
-          !(await this.rpc.accountExists(row.accountId).catch(() => true))
+          !(await this.rpc.accountExists(row.accountId).catch((err: unknown) => this.assumeAccountExists(row.accountId, err)))
         ) {
           const ownerRow = await this.prisma.nearColonyAccount.findUnique({ where: { accountId: row.ownerAccountId } });
           if (ownerRow && ownerRow.encryptedSecret !== 'claimed' && ownerRow.encryptedSecret !== 'mock') {
@@ -320,7 +334,13 @@ export class TestnetIntentsAdapter implements IntentsPort {
       const publicKey = `ed25519:${encodeBase58(raw.subarray(32, 64))}`;
       this.ephemeralSigners.set(accountId, { publicKey, seed });
       return { accountId, publicKey, seed };
-    } catch {
+    } catch (err) {
+      const typed = new IntentsRpcError('invalid_key_material', `configured secret for ${accountId} is not valid base58`, {
+        operation: 'parse_ed25519_secret',
+        accountId,
+        cause: err,
+      });
+      this.log.warn(typed.message);
       return null;
     }
   }

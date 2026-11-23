@@ -2,9 +2,9 @@ import {
   createPlanet,
   DEV_PLANET_CAPACITY,
   DEV_PLANET_RADIUS,
-  DEV_PLANET_SEED,
   DEV_PLANET_TYPE,
   devPlanetIdFor,
+  devPlanetSeedFor,
   getSpawnSlots,
   type DevPlanetType,
   type PlanetState,
@@ -24,8 +24,10 @@ export function createLocalBootFallback(
   spawnOverride?: { q: number; r: number },
   planetType: DevPlanetType = DEV_PLANET_TYPE,
   flagsOverride?: readonly string[],
+  seedOverride?: string,
 ): BootAuthResult {
   const planetId = devPlanetIdFor(planetType, 1);
+  const planetSeed = seedOverride?.trim() || devPlanetSeedFor(planetId);
   onStatus?.(`Entering orbit: ${planetId}…`);
   const make = () =>
     createPlanet({
@@ -33,7 +35,7 @@ export function createLocalBootFallback(
       planetId,
       type: planetType,
       planetType,
-      seed: DEV_PLANET_SEED,
+      seed: planetSeed,
       radius: DEV_PLANET_RADIUS,
       capacity: DEV_PLANET_CAPACITY,
     });
@@ -78,7 +80,7 @@ export function createLocalBootFallback(
       id: planetId,
       name: 'Dev Planet',
       type: planetType,
-      seed: DEV_PLANET_SEED,
+      seed: planetSeed,
       radius: DEV_PLANET_RADIUS,
       state: 'ACTIVE',
     },

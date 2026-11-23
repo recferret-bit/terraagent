@@ -3,13 +3,18 @@ import type { ShoreField } from '../shoreField';
 import { getFaunaDensity, onWaterChange } from '../waterConfig';
 import { buildFishGeometry } from './fishGeometry';
 import { createFishMaterial } from './fishMaterial';
-import { FAUNA_CAP, createFaunaBuffers, layoutFauna, visibleFishCount, type FaunaLayout } from './faunaPlacement';
+import {
+  createAquaticThreatUniforms,
+  MAX_AQUATIC_THREATS,
+  type AquaticThreatZone,
+} from './faunaWater';
+import { FAUNA_CAP, createFaunaBuffers, layoutFauna, planetFishCap, visibleFishCount, type FaunaLayout } from './faunaPlacement';
 import { createFaunaSink } from './faunaSink';
 import { fishBounds, jellyBounds } from './faunaBounds';
 import { createFaunaBucketSet } from './faunaBuckets';
 import { buildJellyGeometry } from './jellyGeometry';
 import { createJellyMaterial } from './jellyMaterial';
-import { JELLY_CAP, createJellyBuffers, layoutJellies, visibleJellyCount } from './jellyPlacement';
+import { JELLY_CAP, createJellyBuffers, layoutJellies, planetJellyCap, visibleJellyCount } from './jellyPlacement';
 
 /**
  * Water fauna: fish (<= FAUNA_CAP, opaque) and jellyfish (<= JELLY_CAP, translucent, deep water only), no shadows,
@@ -34,6 +39,10 @@ export interface WaterFauna {
   readonly placed: number;
   /** Re-places the fish from a freshly baked field. */
   rebuild(field: ShoreField): void;
+  /** Updates active aggressor / battle / shoreline-disturbance threat zones so fish & jellies scatter and dive. */
+  setThreats(threats: readonly AquaticThreatZone[]): void;
+  /** Current active aquatic threat zones (`<= MAX_AQUATIC_THREATS`). */
+  getThreats(): readonly AquaticThreatZone[];
   /** Hides each cell mesh whose bounds lie wholly outside the view focus (`core/viewFocus.ts`); call once per frame. */
   cullToFocus(): void;
   dispose(): void;
@@ -45,31 +54,39 @@ export interface WaterFaunaOptions {
   /** The water's deep colour IUniform (underwater tint). */
   deepColor: THREE.IUniform;
   seed: number;
+  /** Optional world span (m) to scale planet-wide aquatic caps beyond the 64 m test cap. */
+  planetSpan?: number;
+  /** Optional planet biome kind ('oceanForest' | 'forestRock' | 'dune') for endemic aquatic palettes. */
+  biomeKind?: string;
 }
 
 export function createWaterFauna(opts: WaterFaunaOptions): WaterFauna {
+  const fishCap = opts.planetSpan ? planetFishCap(opts.planetSpan) : FAUNA_CAP;
+  const jellyCap = opts.planetSpan ? planetJellyCap(opts.planetSpan) : JELLY_CAP;
   const sink = createFaunaSink();
+  const threatUniforms = createAquaticThreatUniforms();
+  let activeThreats: AquaticThreatZone[] = [];
   const step = () => sink.step(); // dt is measured, so being called by several meshes in one frame is harmless
   const group = new THREE.Group();
   group.name = 'waterFaunaGroup';
   const owned = {
-    fishGeo: buildFishGeometry(), fishMat: createFishMaterial(opts.time, opts.deepColor, sink.uniform),
-    jellyGeo: buildJellyGeometry(), jellyMat: createJellyMaterial(opts.time, opts.deepColor, sink.uniform),
+    fishGeo: buildFishGeometry(), fishMat: createFishMaterial(opts.time, opts.deepColor, sink.uniform, opts.biomeKind, threatUniforms),
+    jellyGeo: buildJellyGeometry(), jellyMat: createJellyMaterial(opts.time, opts.deepColor, sink.uniform, threatUniforms),
   };
-  const fishBuf = createFaunaBuffers(FAUNA_CAP);
+  const fishBuf = createFaunaBuffers(fishCap);
   const fish = createFaunaBucketSet(group, {
-    name: 'waterFauna', geometry: owned.fishGeo, material: owned.fishMat, buffers: fishBuf, attrs: { aSwim: 'swim', aFish: 'fish', aOffset: 'offset' }, centre: 'swim', bounds: fishBounds, onFrame: step,
+    name: 'waterFauna', geometry: owned.fishGeo, material: owned.fishMat, buffers: fishBuf, attrs: { aSwim: 'swim', aFish: 'fish', aOffset: 'offset', aEvade: 'evade' }, centre: 'swim', bounds: fishBounds, onFrame: step,
   });
-  const jellyBuf = createJellyBuffers(JELLY_CAP);
+  const jellyBuf = createJellyBuffers(jellyCap);
   const jellies = createFaunaBucketSet(group, {
-    name: 'waterJellies', geometry: owned.jellyGeo, material: owned.jellyMat, buffers: jellyBuf, attrs: { aDrift: 'drift', aJelly: 'jelly' }, centre: 'drift', bounds: jellyBounds, onFrame: step,
+    name: 'waterJellies', geometry: owned.jellyGeo, material: owned.jellyMat, buffers: jellyBuf, attrs: { aDrift: 'drift', aJelly: 'jelly', aEvade: 'evade' }, centre: 'drift', bounds: jellyBounds, onFrame: step,
   });
   let layout: FaunaLayout | null = null;
   let jellyPlaced = 0;
 
   const applyDensity = () => {
     const d = getFaunaDensity();
-    fish.setCount(layout ? visibleFishCount(layout, d) : 0);
+    fish.setCount(layout ? visibleFishCount(layout, d, fishCap) : 0);
     jellies.setCount(visibleJellyCount(jellyPlaced, d));
   };
   const unsubscribe = onWaterChange(applyDensity);
@@ -82,12 +99,24 @@ export function createWaterFauna(opts: WaterFaunaOptions): WaterFauna {
     get jellyCount() { return jellies.count; },
     get placed() { return layout?.placed ?? 0; },
     rebuild(field) {
-      layout = layoutFauna(field, opts.seed, fishBuf, FAUNA_CAP);
-      jellyPlaced = layoutJellies(field, opts.seed, jellyBuf, JELLY_CAP);
+      layout = layoutFauna(field, opts.seed, fishBuf, fishCap);
+      jellyPlaced = layoutJellies(field, opts.seed, jellyBuf, jellyCap);
       fish.rebuild(layout.placed);
       jellies.rebuild(jellyPlaced);
       applyDensity();
     },
+    setThreats(threats) {
+      const count = Math.min(MAX_AQUATIC_THREATS, threats.length);
+      activeThreats = threats.slice(0, count).map((t) => ({ ...t }));
+      threatUniforms.uThreatCount.value = count;
+      const vecs = threatUniforms.uThreatZones.value;
+      for (let i = 0; i < MAX_AQUATIC_THREATS; i++) {
+        const tz = activeThreats[i];
+        if (tz) vecs[i]!.set(tz.x, tz.z, tz.radius, tz.strength);
+        else vecs[i]!.set(0, 0, 0, 0);
+      }
+    },
+    getThreats: () => activeThreats,
     cullToFocus() { fish.cullToFocus(); jellies.cullToFocus(); },
     dispose() {
       unsubscribe();

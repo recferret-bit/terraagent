@@ -77,14 +77,16 @@ describe('WsTransport', () => {
     expect(h.got.map((m) => m.t)).toEqual(['ready', 'welcome', 'delta']);
   });
 
-  it('a delta gap re-joins and drops the delta', async () => {
-    const h = harness();
+  it('a delta gap re-joins and drops the delta (preserving spectator mode)', async () => {
+    const h = harness({ mode: 'spectator' });
     h.t.start(); await h.flush();
     const s = h.sockets[0];
     await h.handshake(s);
+    expect(s.sent.at(-1)?.d).toMatchObject({ planetId: h.planetId, mode: 'spectator' });
     s.server(delta(12, 13));
     expect(h.t.state.phase).toBe('resyncing');
     expect(s.sent.at(-1)?.t).toBe('join');
+    expect(s.sent.at(-1)?.d).toMatchObject({ planetId: h.planetId, mode: 'spectator' });
     expect(h.got.filter((m) => m.t === 'delta')).toHaveLength(0);
     h.welcome(s, 20);
     expect(h.t.state.phase).toBe('welcomed');

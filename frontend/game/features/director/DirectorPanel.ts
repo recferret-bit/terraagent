@@ -1,7 +1,8 @@
-import type { DirectorActionState, SetDirectorPolicyArgs } from '@terra/contracts';
+import type { AiBudgetView, DirectorActionState, SetDirectorPolicyArgs } from '@terra/contracts';
 import type { ColonyDirectorRecord } from '@terra/sim';
 import { patchSharedAutopilotState, subscribeSharedAutopilotState } from '../shared/aiAutopilotState';
 import { DirectorControls } from './DirectorControls';
+import { aiAccessState, renderAiAccess } from './parts/aiAccessBadge';
 import { openTeeProofModal } from './parts/teeProofModal';
 
 /** One director action as the HUD may show it. Only `applied` means the sim accepted it. */
@@ -18,6 +19,7 @@ export interface DirectorPanelOptions {
   readonly onToggleWarDiplomacy?: (enabled: boolean) => void;
   readonly onOpenHq?: () => void;
   readonly onOpenAway?: () => void;
+  readonly readOnly?: boolean;
 }
 
 export interface DirectorAutopilotState {
@@ -32,21 +34,28 @@ export class DirectorPanel {
   private readonly aiStatusPill: HTMLElement;
   private readonly warToggleInput: HTMLInputElement | null;
   private readonly summaryEl: HTMLElement;
+  private readonly aiAccessEl: HTMLElement;
   private readonly controlsHost: HTMLElement;
   private readonly controls: DirectorControls | null;
   private readonly list: HTMLElement;
   private readonly offShared: () => void;
+  private readonly readOnly: boolean;
   private aiEnabled = false;
   private activeColonyId = 'col_0';
+  private currentAiBudget: AiBudgetView | null = null;
   private currentRows: DirectorActionRow[] = [];
   private planIntentRevision: number | null = null;
 
   constructor(private readonly host: HTMLElement, opts?: DirectorPanelOptions) {
+    this.readOnly = Boolean(opts?.readOnly);
     this.host.classList.add('ta-director', 'plate-sm');
-    const head = buildDirectorHeader(opts?.onOpenHq, opts?.onOpenAway, () => openTeeProofModal(this.activeColonyId));
+    const head = buildDirectorHeader(opts?.onOpenHq, opts?.onOpenAway, () =>
+      openTeeProofModal(this.activeColonyId, { budget: this.currentAiBudget }),
+    );
     this.aiStatusPill = head.aiStatusPill;
 
     const autoParts = buildAutopilotBar(opts, () => this.aiEnabled, (next) => {
+      if (this.readOnly) return;
       this.aiEnabled = next;
       this.renderAutopilotBtn();
       patchSharedAutopilotState({ aiEnabled: next });
@@ -57,6 +66,11 @@ export class DirectorPanel {
     this.warToggleInput = autoParts?.warInput ?? null;
     this.renderAutopilotBtn();
 
+    this.aiAccessEl = document.createElement('div');
+    this.aiAccessEl.className = 'ta-director__ai-access';
+    this.aiAccessEl.dataset.testid = 'director-ai-access';
+    this.aiAccessEl.hidden = true;
+
     this.summaryEl = document.createElement('div');
     this.summaryEl.className = 'ta-director__summary';
     this.summaryEl.dataset.testid = 'director-policy-summary';
@@ -65,7 +79,12 @@ export class DirectorPanel {
     this.controlsHost = document.createElement('div');
     this.controlsHost.className = 'ta-director__controls-wrap';
     this.controlsHost.hidden = !opts?.onPolicyChange;
-    this.controls = opts?.onPolicyChange ? new DirectorControls(this.controlsHost, opts.onPolicyChange) : null;
+    this.controls = opts?.onPolicyChange
+      ? new DirectorControls(this.controlsHost, (patch) => {
+          if (!this.readOnly) opts.onPolicyChange?.(patch);
+        })
+      : null;
+    this.controls?.setDisabled(this.readOnly);
 
     const planKicker = document.createElement('div');
     planKicker.className = 'ta-director__section-label';
@@ -74,9 +93,9 @@ export class DirectorPanel {
     this.list = document.createElement('div');
     this.list.className = 'ta-director__list';
     if (this.autopilotBar) {
-      this.host.append(head.el, this.autopilotBar, this.summaryEl, this.controlsHost, planKicker, this.list);
+      this.host.append(head.el, this.aiAccessEl, this.autopilotBar, this.summaryEl, this.controlsHost, planKicker, this.list);
     } else {
-      this.host.append(head.el, this.summaryEl, this.controlsHost, planKicker, this.list);
+      this.host.append(head.el, this.aiAccessEl, this.summaryEl, this.controlsHost, planKicker, this.list);
     }
 
     this.offShared = subscribeSharedAutopilotState((st) => {
@@ -99,20 +118,49 @@ export class DirectorPanel {
     });
   }
 
+  /** The colony the TEE proofs and the AI access card are about. */
+  getActiveColonyId(): string {
+    return this.activeColonyId;
+  }
+
+  /** W28 AI access card (`trial | script | tee | byok`); `null` (W28 off / 404) restores the pre-W28 plate. */
+  syncAiAccess(budget: AiBudgetView | null): void {
+    this.currentAiBudget = budget;
+    renderAiAccess(this.aiAccessEl, aiAccessState(budget), {
+      onOpenTee: () => openTeeProofModal(this.activeColonyId, { budget: this.currentAiBudget }),
+    });
+  }
+
   private renderAutopilotBtn(): void {
     this.aiStatusPill.textContent = this.aiEnabled ? 'COLONY AI: ON' : 'COLONY AI: OFF';
     this.aiStatusPill.dataset.enabled = String(this.aiEnabled);
     if (!this.autopilotBtn) return;
     this.autopilotBtn.textContent = this.aiEnabled ? 'AI AUTOPILOT: ON' : 'AI AUTOPILOT: OFF';
     this.autopilotBtn.className = this.aiEnabled ? 'btn btn-sm btn-primary' : 'btn btn-sm btn-ghost';
+    this.autopilotBtn.disabled = this.readOnly;
     this.autopilotBtn.setAttribute('aria-pressed', String(this.aiEnabled));
   }
 
   /** Syncs the live colony director policy onto the plate and marks older open plans as superseded. */
-  syncPolicy(record: ColonyDirectorRecord | undefined): void {
-    if (!record) return;
-    if ('colonyId' in record && typeof (record as { colonyId?: unknown }).colonyId === 'string') {
-      this.activeColonyId = (record as { colonyId: string }).colonyId;
+  syncPolicy(record: ColonyDirectorRecord | undefined, colonyId?: string): void {
+    const resolvedColonyId =
+      record && 'colonyId' in record && typeof (record as { colonyId?: unknown }).colonyId === 'string'
+        ? (record as { colonyId: string }).colonyId
+        : colonyId;
+    if (resolvedColonyId && resolvedColonyId !== this.activeColonyId) {
+      this.activeColonyId = resolvedColonyId;
+      this.planIntentRevision = null;
+      if (this.currentRows.length > 0) this.render([]);
+    }
+    if (!record) {
+      this.summaryEl.hidden = true;
+      this.summaryEl.textContent = '';
+      delete this.summaryEl.dataset.risk;
+      delete this.summaryEl.dataset.preset;
+      delete this.summaryEl.dataset.revision;
+      delete this.summaryEl.dataset.intentRevision;
+      this.controls?.reset();
+      return;
     }
     const { policy, intentRevision } = record;
     const budget = policy.risk === 'risky' ? '35% commit / 15% reserve' : '15% commit / 40% reserve';
@@ -225,7 +273,11 @@ function buildAutopilotBar(
     btn = document.createElement('button');
     btn.type = 'button';
     btn.dataset.testid = 'director-autopilot-toggle';
-    btn.addEventListener('click', () => onFlipAutopilot(!readEnabled()));
+    btn.disabled = Boolean(opts.readOnly);
+    btn.addEventListener('click', () => {
+      if (opts.readOnly) return;
+      onFlipAutopilot(!readEnabled());
+    });
     bar.appendChild(btn);
   }
   if (opts.onToggleWarDiplomacy) {
@@ -234,7 +286,9 @@ function buildAutopilotBar(
     warInput = document.createElement('input');
     warInput.type = 'checkbox';
     warInput.dataset.testid = 'director-war-diplomacy-toggle';
+    warInput.disabled = Boolean(opts.readOnly);
     warInput.addEventListener('change', () => {
+      if (opts.readOnly) return;
       const checked = Boolean(warInput?.checked);
       patchSharedAutopilotState({ awayRaids: checked });
       opts.onToggleWarDiplomacy?.(checked);

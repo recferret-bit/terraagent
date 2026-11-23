@@ -24,6 +24,7 @@ import {
   type EnvironmentState,
 } from '../environment';
 import { findColonyHqRow } from '../find';
+import { getEntitySpottingRadius, isColonyVisionSourceKind, isEntityContributingVision } from '../combat/vision';
 import { hqViewRadius, revealVision, setHqCellEnergy, syncHqView } from '../hq';
 import { MAX_COLONIES_PER_PLANET } from '../landing';
 import { evaluateColonyPower, recomputeAllColonyPower } from '../power-core';
@@ -50,16 +51,18 @@ function dropAllOrders(s: PlanetState, ctx: StepContext): void {
   writeOrdersByColony(s, {}, ctx.tick);
 }
 
-/** After `dev.seed`: active Hubs claim their territory again, and every HQ and pod sees its surroundings again. */
+/** After `dev.seed`: active Hubs claim their territory again, and buildings and units see their surroundings again. */
 function reclaimAndReveal(s: PlanetState, ctx: StepContext): void {
   const cols = s.entities.cols;
   for (let row = 0; row < s.entities.count; row++) {
     const owner = cols.owner[row];
-    if (owner < 0) continue;
+    if (owner < 0 || cols.hp[row] <= 0) continue;
     if (cols.kind[row] === ENTITY_KIND.hub && cols.state[row] === ENTITY_STATE.active) {
       claimTerritoryRadius(s, { colonyId: owner, q: cols.q[row], r: cols.r[row], tick: ctx.tick, data: ctx.data });
     }
-    if (cols.kind[row] === ENTITY_KIND.hq || cols.kind[row] === ENTITY_KIND.pod) revealVision(s, owner, cols.q[row], cols.r[row], hqViewRadius(ctx.data), ctx.tick);
+    if (!isColonyVisionSourceKind(cols.kind[row]) || !isEntityContributingVision(cols.state[row])) continue;
+    const radius = Math.floor(getEntitySpottingRadius(cols.kind[row], ctx.data));
+    if (radius > 0) revealVision(s, owner, cols.q[row], cols.r[row], radius, ctx.tick);
   }
 }
 

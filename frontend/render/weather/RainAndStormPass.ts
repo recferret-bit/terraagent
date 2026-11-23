@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { isSceneInDescent } from '../core/dayNightConfig';
+import { isSceneInDescent, isSceneInOrbit } from '../core/dayNightConfig';
 import { getViewFocus } from '../core/viewFocus';
 import {
   getRainLevel,
@@ -272,12 +272,18 @@ export function createRainAndStormPass(scene: THREE.Scene, camera: THREE.Camera)
         : lastNowMs < 0 ? 0.016 : Math.min(0.1, Math.max(0, (nowMs - lastNowMs) / 1000));
       lastNowMs = nowMs;
       if (flashEnvelope > 0) flashEnvelope = Math.max(0, flashEnvelope - dt * 3.8);
-      if (group.parent !== targetScene) targetScene.add(group);
-      if (isSceneInDescent(targetScene)) {
+      if (isSceneInDescent(targetScene) || isSceneInOrbit(targetScene)) {
+        if (group.parent === targetScene) group.removeFromParent();
         group.visible = false;
+        rainLines.visible = false;
         activeStreaks = 0;
+        state.currentTiltX = 0;
+        state.currentTiltZ = 0;
+        material.opacity = 0;
+        geo.setDrawRange(0, 0);
         return;
       }
+      if (group.parent !== targetScene) targetScene.add(group);
 
       const wp = getWeatherParams();
       const on = isWeatherOn();
