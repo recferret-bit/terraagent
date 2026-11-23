@@ -109,7 +109,15 @@ const EMPTY_DIPLOMACY: Readonly<DiplomacyBlobValue> = Object.freeze({
 export function peekDiplomacyBlob(state: PlanetState): Readonly<DiplomacyBlobValue> {
   const raw = state.blobs[DIPLOMACY_BLOB]?.value as Partial<DiplomacyBlobValue> | undefined;
   if (!raw || typeof raw !== 'object') return EMPTY_DIPLOMACY;
-  if (raw.offers && raw.truces && raw.wars && raw.lastHostilityByPair && raw.oathbreakerUntilByColony) {
+  if (
+    raw.offers &&
+    raw.truces &&
+    raw.wars &&
+    raw.lastHostilityByPair &&
+    raw.oathbreakerUntilByColony &&
+    raw.contactsByColony &&
+    raw.noContactByColony
+  ) {
     return raw as DiplomacyBlobValue;
   }
   return { ...EMPTY_DIPLOMACY, ...raw } as DiplomacyBlobValue;
