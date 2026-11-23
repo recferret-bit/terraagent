@@ -53,6 +53,8 @@ export interface DiplomacyBlobValue {
   lastHostilityByPair: Record<string, number>;
   contactsByColony: Record<number, number[]>;
   noContactByColony: Record<number, number[]>;
+  /** Tick of the latest declined offer per directed pair `from>to` (AI re-offer cooldown). Pruned when stale. */
+  declinedAtByPair?: Record<string, number>;
 }
 
 export function emptyDiplomacyBlob(): DiplomacyBlobValue {
@@ -84,7 +86,60 @@ export function readDiplomacyBlob(state: PlanetState): DiplomacyBlobValue {
     lastHostilityByPair: raw.lastHostilityByPair ? { ...raw.lastHostilityByPair } : {},
     contactsByColony: raw.contactsByColony ? { ...raw.contactsByColony } : {},
     noContactByColony: raw.noContactByColony ? { ...raw.noContactByColony } : {},
+    ...(raw.declinedAtByPair ? { declinedAtByPair: { ...raw.declinedAtByPair } } : {}),
   };
+}
+
+const EMPTY_DIPLOMACY: Readonly<DiplomacyBlobValue> = Object.freeze({
+  ...emptyDiplomacyBlob(),
+  offers: Object.freeze({}),
+  truces: Object.freeze({}),
+  wars: Object.freeze({}),
+  oathbreakerUntilByColony: Object.freeze({}),
+  lastHostilityByPair: Object.freeze({}),
+  contactsByColony: Object.freeze({}),
+  noContactByColony: Object.freeze({}),
+}) as Readonly<DiplomacyBlobValue>;
+
+/**
+ * No-copy read of the diplomacy blob for pure query paths (`hasActiveTruce`, targeting, AI scans).
+ * Returns the stored value itself (or a frozen empty blob). Never mutate it; writers use
+ * `readDiplomacyBlob` + `writeDiplomacyBlob`.
+ */
+export function peekDiplomacyBlob(state: PlanetState): Readonly<DiplomacyBlobValue> {
+  const raw = state.blobs[DIPLOMACY_BLOB]?.value as Partial<DiplomacyBlobValue> | undefined;
+  if (!raw || typeof raw !== 'object') return EMPTY_DIPLOMACY;
+  if (raw.offers && raw.truces && raw.wars && raw.lastHostilityByPair && raw.oathbreakerUntilByColony) {
+    return raw as DiplomacyBlobValue;
+  }
+  return { ...EMPTY_DIPLOMACY, ...raw } as DiplomacyBlobValue;
+}
+
+const NO_TRUCES: readonly StoredTruceRecord[] = Object.freeze([]);
+/** Pair index over a `truces` dictionary, keyed by the dictionary object (rebuilt when it is replaced). */
+const trucePairIndex = new WeakMap<object, Map<string, StoredTruceRecord[]>>();
+
+/** Truce records (any status) between `colA` and `colB`; O(1) after the first call per stored dictionary. */
+export function trucesForPair(state: PlanetState, colA: number, colB: number): readonly StoredTruceRecord[] {
+  const truces = peekDiplomacyBlob(state).truces;
+  let index = trucePairIndex.get(truces);
+  if (!index) {
+    index = new Map();
+    for (const t of Object.values(truces)) {
+      const key = pairKey(t.colonyAIndex, t.colonyBIndex);
+      const list = index.get(key);
+      if (list) list.push(t);
+      else index.set(key, [t]);
+    }
+    trucePairIndex.set(truces, index);
+  }
+  return index.get(pairKey(colA, colB)) ?? NO_TRUCES;
+}
+
+function isTruceInForce(t: StoredTruceRecord, tick: number): boolean {
+  if (t.status === 'active') return t.expiresAtTick > tick;
+  if (t.status === 'notice') return (t.noticeEndsAtTick ?? t.expiresAtTick) > tick;
+  return false;
 }
 
 export function resolveColonyIdStr(state: PlanetState, colonyIndex: number): string {
@@ -199,6 +254,7 @@ export function syncColonyDiplomacyViews(
 }
 
 export function writeDiplomacyBlob(state: PlanetState, blob: DiplomacyBlobValue, tick: number): void {
+  trucePairIndex.delete(blob.truces); // a writer may have added keys to a dictionary already indexed
   setBlob(state, DIPLOMACY_BLOB, blob, tick);
   syncColonyDiplomacyViews(state, blob, tick);
 }
@@ -223,8 +279,7 @@ export function recordHostilityBetween(
 
 export function getLastHostilityTick(state: PlanetState, colA: number, colB: number): number | undefined {
   if (colA < 0 || colB < 0 || colA === colB) return undefined;
-  const blob = readDiplomacyBlob(state);
-  return blob.lastHostilityByPair[pairKey(colA, colB)];
+  return peekDiplomacyBlob(state).lastHostilityByPair[pairKey(colA, colB)];
 }
 
 export function markColonyContact(
@@ -284,8 +339,7 @@ export function markColonyOathbreaker(
 
 export function getOathbreakerUntil(state: PlanetState, colonyIndex: number): number | null {
   if (colonyIndex < 0) return null;
-  const blob = readDiplomacyBlob(state);
-  const fromBlob = blob.oathbreakerUntilByColony[colonyIndex];
+  const fromBlob = peekDiplomacyBlob(state).oathbreakerUntilByColony[colonyIndex];
   const fromCol = state.colonies[colonyIndex]?.oathbreakerUntil as number | null | undefined;
   const val = typeof fromBlob === 'number' ? fromBlob : typeof fromCol === 'number' ? fromCol : null;
   return val;
@@ -310,14 +364,8 @@ export function hasActiveTruce(
   tick: number = state.meta.tick,
 ): boolean {
   if (colA < 0 || colB < 0 || colA === colB) return false;
-  const blob = readDiplomacyBlob(state);
-  for (const t of Object.values(blob.truces)) {
-    const matchesPair =
-      (t.colonyAIndex === colA && t.colonyBIndex === colB) ||
-      (t.colonyAIndex === colB && t.colonyBIndex === colA);
-    if (!matchesPair) continue;
-    if (t.status === 'active' && t.expiresAtTick > tick) return true;
-    if (t.status === 'notice' && (t.noticeEndsAtTick ?? t.expiresAtTick) > tick) return true;
+  for (const t of trucesForPair(state, colA, colB)) {
+    if (isTruceInForce(t, tick)) return true;
   }
   return false;
 }
@@ -328,12 +376,8 @@ export function getActiveTrucesForColony(
   tick: number = state.meta.tick,
 ): StoredTruceRecord[] {
   if (colonyIndex < 0) return [];
-  const blob = readDiplomacyBlob(state);
-  return Object.values(blob.truces).filter(
-    (t) =>
-      (t.colonyAIndex === colonyIndex || t.colonyBIndex === colonyIndex) &&
-      ((t.status === 'active' && t.expiresAtTick > tick) ||
-        (t.status === 'notice' && (t.noticeEndsAtTick ?? t.expiresAtTick) > tick)),
+  return Object.values(peekDiplomacyBlob(state).truces).filter(
+    (t) => (t.colonyAIndex === colonyIndex || t.colonyBIndex === colonyIndex) && isTruceInForce(t, tick),
   );
 }
 
