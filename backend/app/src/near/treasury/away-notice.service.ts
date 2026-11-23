@@ -4,6 +4,8 @@ import { databaseEnabled } from '../../core/persistence.js';
 import { APP_ENV, type AppEnv } from '../../core/tokens.js';
 import { PRISMA } from '../../db/db.module.js';
 import { FlagsService } from '../../flags/flags.service.js';
+import { JobsService } from '../../jobs/jobs.service.js';
+import type { JobRegistration } from '../../jobs/recurring.js';
 import { NotifierPort } from '../../ports/notifier.port.js';
 import { awayMemberColonies } from './away-colonies.js';
 import { councilNotice } from './away-notice.js';
@@ -24,31 +26,25 @@ interface CouncilScope {
 @Injectable()
 export class TreasuryAwayNoticeService implements OnModuleInit, OnModuleDestroy {
   private readonly log = new Logger(TreasuryAwayNoticeService.name);
-  private timer?: ReturnType<typeof setInterval>;
-  private running?: Promise<unknown>;
+  private job?: JobRegistration;
 
   constructor(
     @Inject(FlagsService) private readonly flags: FlagsService,
     @Optional() @Inject(PRISMA) private readonly prisma?: PrismaClient,
     @Optional() @Inject(NotifierPort) private readonly notifier?: NotifierPort,
     @Optional() @Inject(APP_ENV) private readonly env?: AppEnv,
+    @Optional() @Inject(JobsService) private readonly jobs?: JobsService,
   ) {}
 
+  /** A cluster-wide notification job (3.8): DB and notifier only, so any replica may send. */
   onModuleInit(): void {
     if (!this.flags.has('W22') || !this.prisma || !databaseEnabled(this.env)) return;
-    this.timer = setInterval(() => {
-      if (this.running) return;
-      this.running = this.notifyDue()
-        .catch((err: unknown) => this.log.warn(`council away notice: ${errorText(err)}`))
-        .finally(() => { this.running = undefined; });
-    }, FINALIZE_POLL_MS);
-    this.timer.unref?.();
+    this.job = this.jobs?.recurring({ name: 'notify.council-away', schedule: { everyMs: FINALIZE_POLL_MS }, run: () => this.notifyDue() });
   }
 
   async onModuleDestroy(): Promise<void> {
-    if (this.timer) clearInterval(this.timer);
-    this.timer = undefined;
-    await this.running;
+    await this.job?.stop();
+    this.job = undefined;
   }
 
   /** Queues council notes for away members. Does not cast a vote. `planetId` limits the scan (tests). */

@@ -37,6 +37,8 @@ import {
   seatNewColony,
   type SeatContext,
 } from './parts/home-seating';
+import { admitFromQueue, capacityTicketType, isCapacityTicket, seatOrQueue } from './parts/capacity-queue';
+import type { PlanetCapacityGate } from './parts/planet-capacity';
 
 export const HOME_SEAT_NOTIFIER = Symbol('HOME_SEAT_NOTIFIER');
 
@@ -70,6 +72,7 @@ export class HomeService {
   private landingHost: HomeLandingHost | undefined;
   private awayHeadline: AwayHeadline | undefined;
   private hardMode: HardModeHomeClock | undefined;
+  private capacity: PlanetCapacityGate | undefined;
   private seatChain: Promise<void> = Promise.resolve();
 
   constructor(
@@ -107,6 +110,11 @@ export class HomeService {
   /** Game module wires this after boot. Core does not import the digest service. */
   setAwayHeadline(source: AwayHeadline | undefined): void {
     this.awayHeadline = source;
+  }
+
+  /** Game module wires the planet cap (3.4). Unset: no cap. */
+  setCapacityGate(gate: PlanetCapacityGate | undefined): void {
+    this.capacity = gate;
   }
 
   /** Game module wires the dev hard-mode clock after boot. Core does not import it. */
@@ -290,6 +298,13 @@ export class HomeService {
         requestedSectorId,
         requestedPlanetId,
       );
+      if (isCapacityTicket(activeTicket)) {
+        return admitFromQueue(this.queueDeps(), activeTicket, () => this.withSeatLock(async () => {
+          const again = await this.existingColony(player.id, player.handle);
+          if (again?.colony.status === 'ACTIVE') return this.answerExisting(again.colony, again.planet, false);
+          return this.seatFresh(player, capacityTicketType(activeTicket), requestedSectorId, undefined, true);
+        }));
+      }
       return buildQueuedHomeResponse(activeTicket, this.lobbyPersistence, this.worldLifecycle);
     }
 
@@ -327,21 +342,19 @@ export class HomeService {
           requestedPlanetId,
         );
       }
-      await assertNewHomeJoinSpace({
-        antiCheat: this.antiCheat,
-        playerId: player.id,
-        preferredType: resolvedType,
-        requestedSectorId,
-        requestedPlanetId,
-      });
-      return seatNewColony(
-        this.seatContext(),
-        { id: player.id, handle: player.handle?.trim() || `Colonist-${player.id.slice(-4)}` },
-        resolvedType,
-        requestedSectorId?.trim() || undefined,
-        requestedPlanetId?.trim() || undefined,
-      );
+      return this.seatFresh(player, resolvedType, requestedSectorId, requestedPlanetId);
     });
+  }
+
+  /** Seats a NEW colony (caller holds the seat lock); at the planet cap, or behind a queue, the player is queued (3.4). */
+  private async seatFresh(player: { id: string; handle?: string }, type: DevPlanetType, sectorId?: string, planetId?: string, admitted = false): Promise<HomeResponse> {
+    await assertNewHomeJoinSpace({ antiCheat: this.antiCheat, playerId: player.id, preferredType: type, requestedSectorId: sectorId, requestedPlanetId: planetId });
+    const who = { id: player.id, handle: player.handle?.trim() || `Colonist-${player.id.slice(-4)}` };
+    return seatOrQueue(this.queueDeps(), player.id, type, admitted, () => seatNewColony(this.seatContext(), who, type, sectorId?.trim() || undefined, planetId?.trim() || undefined));
+  }
+
+  private queueDeps() {
+    return { lobby: this.lobbyPersistence, lifecycle: this.worldLifecycle };
   }
 
   adoptLateLanding(assignment: ColonySeatAssignment): Promise<boolean> {
@@ -367,6 +380,7 @@ export class HomeService {
       notifier: this.notifier,
       seatListeners: this.seatListeners,
       antiCheat: this.antiCheat,
+      capacity: this.capacity,
       buildHomeResponse: (col, pl, canonical) => this.buildHomeResponseAsync(col, pl, canonical),
     };
   }

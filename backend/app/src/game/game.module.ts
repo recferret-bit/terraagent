@@ -41,6 +41,9 @@ import { SimClusterService } from './cluster/sim-cluster.service';
 import { PlanetLiveStateController } from './planet-live-state.controller';
 import { devPlanetIds, devPlanetsToGenerate } from './dev-planets';
 import { GamePlanets } from './game-planets.service';
+import { planetCapacityGate } from './lifecycle/planet-cap';
+import { PlanetJobsService } from './lifecycle/planet-jobs.service';
+import { PlanetLifecycleService } from './lifecycle/planet-lifecycle.service';
 import { DevPresence } from './presence/dev-presence';
 import { HardModeClock } from './presence/hard-mode-clock';
 import { gameLandingHost } from './home-landing-host';
@@ -105,6 +108,12 @@ export const env = defineEnv('game', {
   TA_INTERNAL_URL: z.string().optional(),
   /** Shared internal secret authenticating cluster RPC calls (`/v1/internal/sim/*`). */
   TA_INTERNAL_SECRET: z.string().optional(),
+  /** Most planets loaded at once, cluster-wide (3.4); unset = 4 per sim thread. At the cap new players queue. */
+  TA_PLANET_CAP: z.coerce.number().int().positive().optional(),
+  /** Hours without a human socket before a planet is snapshotted and unloaded (3.5); 0 = never. */
+  TA_PLANET_IDLE_UNLOAD_H: z.coerce.number().min(0).default(24),
+  /** Seconds between idle checks of each loaded planet (a planet job on its lease holder). */
+  TA_PLANET_IDLE_CHECK_S: z.coerce.number().min(1).default(300),
 });
 
 const POOL = Symbol('SIM_THREAD_POOL');
@@ -160,6 +169,8 @@ const POOL = Symbol('SIM_THREAD_POOL');
     SimClusterService,
     DevSpectatorService,
     ProgressionEventForwarder,
+    PlanetJobsService,
+    PlanetLifecycleService,
     HardModeClock,
     DevPresence,
     TeeAttestationStore,
@@ -185,6 +196,8 @@ const POOL = Symbol('SIM_THREAD_POOL');
     SnapshotService,
     SimClusterService,
     DevSpectatorService,
+    PlanetJobsService,
+    PlanetLifecycleService,
     AwayDigestService,
     HardModeClock,
     DevPresence,
@@ -220,6 +233,7 @@ export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown
     private readonly simHistory: SimHistoryService,
     private readonly simLease: SimLeaseService,
     private readonly simCluster: SimClusterService,
+    private readonly lifecycle: PlanetLifecycleService,
     @Optional() private readonly httpAdapterHost?: HttpAdapterHost,
     @Optional() private readonly homeService?: HomeService,
     @Optional() private readonly antiCheat?: SectorAntiCheatService,
@@ -267,6 +281,7 @@ export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown
       await Promise.all(ids.map((id) => this.snapshots.loadNew(id, devOptsFor(id)).catch((e: unknown) => { if (!(e instanceof PlanetHeldError)) throw e; })));
       this.simLease.startLoop({
         onReclaim: async (planetId) => {
+          if (await this.lifecycle.keepDormant(planetId)) return this.simLease.releasePlanet(planetId);
           const outcome = await this.snapshots.restore(planetId);
           if (outcome !== 'restored') await this.simLease.releasePlanet(planetId);
         },
@@ -309,6 +324,7 @@ export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown
             },
       ),
     );
+    home.setCapacityGate(planetCapacityGate(this.lifecycle.config.cap, this.planets, this.simLease));
     home.setAwayHeadline(this.digests);
     home.setHardModeClock(this.hardMode);
   }
