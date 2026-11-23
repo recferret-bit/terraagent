@@ -53,6 +53,7 @@ function stackPlan(stack, target, catalog, root) {
     composeRsync(target, rel, remoteFile),
     ...nginxRsyncs(stack, target, catalog),
     contextRsync(target),
+    ...beforeUp(stack, target, remoteFile),
     ssh(target, composeUp(stack, remoteFile)),
     ssh(target, nginxReload()),
     ...afterUp(stack, target, catalog),
@@ -95,14 +96,22 @@ function composeUp(stack, remoteFile) {
   return `docker compose --env-file ${SERVER_ENV} ${profile}-f ${remoteFile} up -d --build`;
 }
 
+/**
+ * Backend only: build the new image and run `prisma migrate deploy` with it BEFORE the container is replaced. New code
+ * may not boot on the old schema, so migrating after a health wait crash-loops the app (seen on 2026-11-23).
+ */
+function beforeUp(stack, target, remoteFile) {
+  if (stack !== 'backend') return [];
+  const compose = `docker compose --env-file ${SERVER_ENV} -f ${remoteFile}`;
+  return [
+    ssh(target, `${compose} build`),
+    ssh(target, `${compose} run --rm --no-deps --entrypoint npx app prisma migrate deploy --schema shared/db/prisma/schema.prisma`),
+  ];
+}
+
 function afterUp(stack, target, catalog) {
   const steps = [];
-  if (stack === 'backend') {
-    steps.push(ssh(target, healthWait()));
-    steps.push(ssh(target, 'docker exec terra-app npx prisma migrate deploy --schema shared/db/prisma/schema.prisma'));
-    steps.push(ssh(target, 'docker restart terra-app'));
-    steps.push(ssh(target, healthWait()));
-  }
+  if (stack === 'backend') steps.push(ssh(target, healthWait()));
   for (const host of hostsByStack(catalog, stack)) steps.push(ssh(target, curlHost(host)));
   return steps;
 }

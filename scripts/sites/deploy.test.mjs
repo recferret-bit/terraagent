@@ -132,6 +132,14 @@ test('prisma migrate deploy is only on the backend step', () => {
   assert.equal(full.status, 0, full.out);
   const sections = stackSections(full.stdout);
   assert.match(sections.backend, /prisma migrate deploy/);
+  // The new image migrates before it replaces the running container, and nothing migrates or restarts afterwards.
+  const buildAt = sections.backend.indexOf('backend.yml build');
+  const migrateAt = sections.backend.indexOf('prisma migrate deploy');
+  const upAt = sections.backend.indexOf('up -d');
+  assert.ok(buildAt >= 0 && buildAt < migrateAt && migrateAt < upAt, 'backend builds, migrates, then starts');
+  assert.match(sections.backend, /run --rm --no-deps --entrypoint npx app prisma migrate deploy/);
+  assert.equal(sections.backend.includes('docker restart terra-app'), false);
+  assert.equal(sections.backend.includes('docker exec terra-app npx prisma'), false);
   for (const name of ['infra', 'frontend', 'chain'])
     assert.equal(sections[name].includes('prisma migrate deploy'), false);
   const backend = run({}, ['backend', '--dry-run']);
