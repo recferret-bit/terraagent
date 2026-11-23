@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { MANAGED_AI_MODEL, SCRIPT_AI_MODEL, type AiDownshiftReason } from '@terra/contracts';
 import type { PrismaClient } from '@terra/db';
 import type { AppEnv } from '../../core/tokens.js';
@@ -57,6 +58,7 @@ const scriptAccess = (reason: AiDownshiftReason): ManagedAiAccess => ({ mode: 's
  */
 export class ColonyDecisionResolver {
   private readonly cache = new Map<string, CachedColonyDecision>();
+  private readonly log = new Logger(ColonyDecisionResolver.name);
   private managedGate: ManagedAiGate | null = null;
 
   constructor(
@@ -67,6 +69,27 @@ export class ColonyDecisionResolver {
 
   clear(): void {
     this.cache.clear();
+  }
+
+  /** Forgets one colony's cached decision (its command was not submitted: the next sweep decides again). */
+  clearColony(planetId: string, colonyIndex: number): void {
+    this.cache.delete(`${planetId}:${colonyIndex}`);
+  }
+
+  /**
+   * Gives a managed turn back when its decision was not used (the provider call failed, or a guardrail blocked the
+   * answer). Tries twice; a refund that still fails is logged and never aborts the sweep.
+   */
+  async refundTurn(access: ManagedAiAccess | undefined): Promise<void> {
+    if (!access || access.mode === 'script' || access.mode === 'byok') return;
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        await this.gate().refund(access);
+        return;
+      } catch (err) {
+        if (attempt === 2) this.log.warn(`managed AI turn not refunded (${access.mode}): ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
   }
 
   clearPlanet(planetId: string): void {
@@ -173,17 +196,24 @@ export class ColonyDecisionResolver {
     }
     // the gate runs on the staking clock (fee warmup, AI day, slot ledger), like its `view()`; `ctx.nowMs` stays the
     // wall clock of the decision-cache cooldown, unless a caller pinned it (tests)
-    const access = await this.gate().admit(
-      { id: obs.colonyId, planetId, colonyIndex: obs.colonyIndex, playerId: ctx.playerIdByIndex[obs.colonyIndex] },
-      ctx.pinnedNowMs ?? stakingNowMs(),
-    );
+    let access: ManagedAiAccess;
+    try {
+      access = await this.gate().admit(
+        { id: obs.colonyId, planetId, colonyIndex: obs.colonyIndex, playerId: ctx.playerIdByIndex[obs.colonyIndex] },
+        ctx.pinnedNowMs ?? stakingNowMs(),
+      );
+    } catch (err) {
+      // The gate could not be read (database blip): this colony plays by rules now; the rest of the sweep goes on.
+      this.log.warn(`managed AI gate failed for ${obs.colonyId}: ${err instanceof Error ? err.message : String(err)}`);
+      return { ...fallbackDecision(obs, false), aiAccess: scriptAccess('no_database') };
+    }
     if (access.mode === 'script') {
       if (access.reason?.startsWith('provider_')) healthOf(this.llm).noteFallback(access.reason);
       return { ...fallbackDecision(obs, false), aiAccess: access };
     }
     const res = (await evaluateBatchWithLlm(this.llm, [obs], { model: access.model, usedPlayerKey: false })).get(obs.colonyIndex)!;
     if (!res.providerFailure) return { ...res, aiAccess: access };
-    await this.gate().refund(access);
+    await this.refundTurn(access);
     return this.tagProvider(new Map([[obs.colonyIndex, res]])).get(obs.colonyIndex)!;
   }
 

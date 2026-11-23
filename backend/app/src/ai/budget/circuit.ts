@@ -19,8 +19,9 @@ export type CircuitState = 'closed' | 'open' | 'half_open';
 
 /**
  * Five failures open the circuit. After the open window, one probe is allowed (one in flight at a time).
- * A probe failure opens it again for the same window. `trip` opens it at once for its own window (an unfunded or
- * unauthorized key). Rules-only play is the caller's fallback (AI §7).
+ * A probe failure opens it again for the standard window. `trip` opens it at once for its own, longer window (an
+ * unfunded or unauthorized key); only another `trip` repeats that window, so a topped-up key whose probe hits a
+ * passing 429 or 5xx is retried after the short window. Rules-only play is the caller's fallback (AI §7).
  */
 export class ProviderCircuit {
   private failures = 0;
@@ -61,6 +62,7 @@ export class ProviderCircuit {
 
   recordFailure(nowMs: number): void {
     if (this.probing) {
+      this.openMs = this.settings.openMs;
       this.openUntil = nowMs + this.openMs;
       this.probing = false;
       return;
@@ -73,7 +75,7 @@ export class ProviderCircuit {
     }
   }
 
-  /** Opens now for `openMs`; a probe that fails later reopens for the same window. */
+  /** Opens now for `openMs` (a hard failure: no balance, rejected key). */
   trip(nowMs: number, openMs: number): void {
     this.openMs = openMs;
     this.openUntil = nowMs + openMs;

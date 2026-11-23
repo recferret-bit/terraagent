@@ -23,9 +23,14 @@ export interface ProviderStateChange {
   readonly atMs: number;
 }
 
+/** A player key nobody used for this long is forgotten (its circuit starts closed again if the key comes back). */
+export const BYOK_FORGET_MS = 60 * 60_000;
+
 /** Telemetry sink: called once per state change (never per call) and once per fallback batch. */
 export interface ProviderHealthObserver {
   onStateChange(change: ProviderStateChange, openKeys: Readonly<Record<ProviderScope, number>>): void;
+  /** Open-key counts changed without a state change (stale player keys were forgotten). */
+  onOpenKeys?(openKeys: Readonly<Record<ProviderScope, number>>): void;
   onFallback(reason: string, decisions: number): void;
 }
 
@@ -37,6 +42,8 @@ interface KeyEntry {
   readonly scope: ProviderScope;
   open: boolean;
   kind?: LlmFailureKind;
+  /** Last acquire / settle (wall ms): stale player keys are forgotten. */
+  usedAt: number;
 }
 
 const COUNTED: ReadonlySet<LlmFailureKind> = new Set(['rate_limited', 'server', 'timeout', 'bad_response']);
@@ -78,13 +85,13 @@ export class ProviderHealth {
 
   /** Takes the right to call now (the half-open probe goes to one caller only). */
   acquire(apiKey?: string | null, nowMs: number = this.now()): ProviderAvailability {
-    const entry = this.entry(keyIdOf(apiKey));
+    const entry = this.entry(keyIdOf(apiKey), nowMs);
     return entry.circuit.allow(nowMs) ? { available: true } : this.unavailable(entry);
   }
 
   settle(apiKey: string | null | undefined, outcome: CallOutcome, nowMs: number = this.now()): void {
     const keyId = keyIdOf(apiKey);
-    const entry = this.entry(keyId);
+    const entry = this.entry(keyId, nowMs);
     if (outcome === null) entry.circuit.recordSuccess();
     else if (outcome === 'neutral' || !(HARD.has(outcome.kind) || COUNTED.has(outcome.kind))) entry.circuit.releaseProbe();
     else if (HARD.has(outcome.kind)) entry.circuit.trip(nowMs, HARD_OPEN_MS);
@@ -109,14 +116,30 @@ export class ProviderHealth {
     this.keys.clear();
   }
 
-  private entry(keyId: string): KeyEntry {
+  private entry(keyId: string, nowMs: number): KeyEntry {
     let entry = this.keys.get(keyId);
     if (!entry) {
+      this.forgetStale(nowMs);
       this.settings ??= circuitSettings();
-      entry = { circuit: new ProviderCircuit(this.settings), scope: keyId === 'protocol' ? 'protocol' : 'byok', open: false };
+      entry = { circuit: new ProviderCircuit(this.settings), scope: keyId === 'protocol' ? 'protocol' : 'byok', open: false, usedAt: nowMs };
       this.keys.set(keyId, entry);
     }
+    entry.usedAt = nowMs;
     return entry;
+  }
+
+  /**
+   * Drops player keys nobody used for {@link BYOK_FORGET_MS} unless their window is still open, so the registry (and
+   * the open-key gauge) cannot grow with every key a player ever tried. Runs when a new key appears.
+   */
+  private forgetStale(nowMs: number): void {
+    let droppedOpen = false;
+    for (const [id, e] of this.keys) {
+      if (e.scope !== 'byok' || nowMs - e.usedAt < BYOK_FORGET_MS || e.circuit.state(nowMs) === 'open') continue;
+      droppedOpen ||= e.open;
+      this.keys.delete(id);
+    }
+    if (droppedOpen) this.observer?.onOpenKeys?.(this.openKeys(nowMs));
   }
 
   private unavailable(entry: KeyEntry): ProviderAvailability {

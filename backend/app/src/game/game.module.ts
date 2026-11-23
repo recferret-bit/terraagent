@@ -269,6 +269,7 @@ export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown
     installRestartFastRunMetric(this.planets, this.metrics.registry);
     this.wireFastRunAlerts();
     this.colonyAgentLoop.setDecisionRecorder((d) => this.simHistory.recordExternalDecision(d));
+    this.colonyAgentLoop.usePlanetClock(this.lifecycle.store);
     this.simCluster.attachHttpServer(this.httpAdapterHost?.httpAdapter?.getHttpServer());
     if (this.simLease.canHostSim()) {
       const restored = await this.snapshots.restoreAll();

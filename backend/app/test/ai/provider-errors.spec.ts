@@ -24,6 +24,14 @@ describe('NEAR AI Cloud failure classification', () => {
     [429, JSON.stringify({ error: { message: 'Insufficient balance, top up' } }), 'unfunded'],
     [400, JSON.stringify({ error: { message: 'Your credit balance is too low' } }), 'unfunded'],
     [400, body('invalid_request_error', 'max_tokens too large'), 'rejected'],
+    // wording never overrides a typed reply, and rate-limit / capacity wording is not a balance problem
+    [400, body('invalid_request_error', 'insufficient context: billing address field is not a model input'), 'rejected'],
+    [404, body('not_found', 'model credits-v2 not found'), 'rejected'],
+    [429, JSON.stringify({ error: { message: 'Quota exceeded for requests per minute' } }), 'rate_limited'],
+    [429, JSON.stringify({ error: { message: 'Insufficient capacity, retry later' } }), 'rate_limited'],
+    // a proxy / WAF page in front of the provider says nothing about the key
+    [403, '<html><body>Access denied by firewall</body></html>', 'server'],
+    [403, JSON.stringify({ error: { message: 'forbidden' } }), 'unauthorized'],
     [503, body('service_overloaded'), 'server'],
     [500, '<html>oops</html>', 'server'],
     [504, '', 'timeout'],
@@ -36,10 +44,10 @@ describe('NEAR AI Cloud failure classification', () => {
   });
 
   it('reads OpenAI-style, flat and non-JSON bodies', () => {
-    expect(parseErrorBody(body('no_credits', 'm'))).toEqual({ type: 'no_credits', code: undefined, message: 'm' });
+    expect(parseErrorBody(body('no_credits', 'm'))).toEqual({ type: 'no_credits', code: undefined, message: 'm', json: true });
     expect(parseErrorBody(JSON.stringify({ type: 'authentication_error', message: 'bad' }))).toMatchObject({ type: 'authentication_error' });
     expect(parseErrorBody(JSON.stringify({ error: 'quota exceeded' }))).toMatchObject({ message: 'quota exceeded' });
-    expect(parseErrorBody('not json').message).toBe('not json');
+    expect(parseErrorBody('not json')).toEqual({ message: 'not json', json: false });
   });
 });
 

@@ -6,7 +6,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { NearAiLlmAdapter, type FetchLike } from '../../src/ai/adapters/nearai-llm.adapter.js';
 import { AiModule } from '../../src/ai/ai.module.js';
 import { GuardedLlmProvider } from '../../src/ai/provider/guarded-llm.js';
-import { HARD_OPEN_MS, keyIdOf, ProviderHealth, type ProviderHealthObserver } from '../../src/ai/provider/provider-health.js';
+import { BYOK_FORGET_MS, HARD_OPEN_MS, keyIdOf, ProviderHealth, type ProviderHealthObserver } from '../../src/ai/provider/provider-health.js';
 import { providerTelemetry } from '../../src/ai/provider/provider-telemetry.js';
 import { APP_ENV } from '../../src/core/tokens.js';
 import { LlmProviderError, LlmProviderPort, LlmProviderUnavailableError, type LlmRequest } from '../../src/ports/llm-provider.port.js';
@@ -67,6 +67,40 @@ describe('GuardedLlmProvider: per-key provider circuits', () => {
     expect(g.cloud.calls['protocol-key']).toBe(3);
     expect(g.changes.map((c) => [c.state, c.kind])).toEqual([['open', 'unfunded'], ['closed', undefined]]);
     expect(g.health.availability()).toEqual({ available: true });
+  });
+
+  it('a topped-up key whose probe hits a passing 429 is retried after the short window, not another 15 min', async () => {
+    const g = guarded({ 'protocol-key': 402 });
+    await expect(g.llm.complete(REQ)).rejects.toMatchObject({ kind: 'unfunded' });
+    g.cloud.statusByKey['protocol-key'] = 429; // credits are back, the provider is briefly busy
+    g.advance(HARD_OPEN_MS);
+    await expect(g.llm.complete(REQ)).rejects.toMatchObject({ kind: 'rate_limited' });
+    const state = g.health.availability();
+    expect(state).toMatchObject({ available: false, kind: 'rate_limited' });
+    expect(state.available === false && state.retryAtMs - (1_000_000 + HARD_OPEN_MS)).toBe(60_000);
+    g.cloud.statusByKey['protocol-key'] = 200;
+    g.advance(60_000);
+    await expect(g.llm.complete(REQ)).resolves.toMatchObject({ text: '{}' });
+    expect(g.health.availability()).toEqual({ available: true });
+  });
+
+  it('forgets player keys nobody used for an hour, so wrong keys cannot pile up as open forever', async () => {
+    const statuses: Record<string, number> = { 'protocol-key': 200 };
+    for (let i = 0; i < 50; i++) statuses[`sk-wrong-${i}`] = 401;
+    const g = guarded(statuses);
+    const gauge: Record<string, number>[] = [];
+    g.health.setObserver({ onStateChange: () => undefined, onFallback: () => undefined, onOpenKeys: (k) => gauge.push({ ...k }) });
+    for (let i = 0; i < 50; i++) await expect(g.llm.complete({ ...REQ, apiKey: `sk-wrong-${i}` })).rejects.toMatchObject({ kind: 'unauthorized' });
+    expect(g.health.openKeys()).toEqual({ protocol: 0, byok: 50 });
+    g.advance(BYOK_FORGET_MS + HARD_OPEN_MS);
+    statuses['sk-good'] = 200;
+    await expect(g.llm.complete({ ...REQ, apiKey: 'sk-good' })).resolves.toBeTruthy(); // a new key triggers the sweep
+    expect(g.health.openKeys()).toEqual({ protocol: 0, byok: 0 });
+    expect(gauge.at(-1)).toEqual({ protocol: 0, byok: 0 });
+    // a key that is still inside its open window is kept
+    await expect(g.llm.complete({ ...REQ, apiKey: 'sk-wrong-1' })).rejects.toMatchObject({ kind: 'unauthorized' });
+    await expect(g.llm.complete({ ...REQ, apiKey: 'sk-newer' })).resolves.toBeTruthy();
+    expect(g.health.openKeys()).toEqual({ protocol: 0, byok: 1 });
   });
 
   it('only one caller gets the half-open probe while it is in flight', async () => {

@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { NearAiLlmAdapter, type FetchLike } from '../../src/ai/adapters/nearai-llm.adapter.js';
 import { ColonyAgentLoopService } from '../../src/ai/colony-agent/colony-agent-loop.service.js';
 import { ManagedAiGate } from '../../src/ai/colony-agent/managed-ai-gate.js';
-import { humanConnectedNow, IDLE_PLANET_AFTER_MS, PlanetHumanActivity } from '../../src/ai/colony-agent/planet-activity.js';
+import { humanConnectedNow, IDLE_PLANET_AFTER_MS, PlanetHumanActivity, withPlanetClock } from '../../src/ai/colony-agent/planet-activity.js';
 import { GuardedLlmProvider } from '../../src/ai/provider/guarded-llm.js';
 import { ProviderHealth } from '../../src/ai/provider/provider-health.js';
 import type { AppEnv } from '../../src/core/tokens.js';
@@ -103,6 +103,27 @@ describe('NEAR AI zero balance: colonies keep playing on rules', () => {
   });
 });
 
+describe('a colony whose command could not be submitted is not left behind', () => {
+  it('a submit that throws does not fail the sweep, and that colony is decided again on the next sweep', async () => {
+    const s = setup({ 'protocol-key': 402 });
+    const submit = s.planets.submit.bind(s.planets);
+    let thrown = 0;
+    (s.planets as { submit: typeof submit }).submit = async (planetId, cmd) => {
+      if (cmd.colonyIndex === 5 && thrown++ === 0) throw new Error('sim thread restarting');
+      return submit(planetId, cmd);
+    };
+    const first = await s.svc.tickPlanetAgents('pl_loop', { useCache: true, nowMs: 1_000 });
+    expect(thrown).toBe(1);
+    expect(first.filter((e) => e.isBot)).toHaveLength(2); // the sweep finished and reported every bot
+    expect(s.submitted.some((c) => c.colonyIndex === 5)).toBe(false);
+    // 30 s later, inside the decision cooldown: the failed colony is not "cached"; it gets its command now
+    const second = await s.svc.tickPlanetAgents('pl_loop', { useCache: true, nowMs: 31_000 });
+    expect(second.find((e) => e.colonyIndex === 5)?.cached).toBeFalsy();
+    expect(s.submitted.some((c) => c.colonyIndex === 5 && c.kind === 'queueGoal')).toBe(true);
+    expect(second.find((e) => e.colonyIndex === 4)?.cached).toBe(true); // an applied colony keeps its cooldown
+  });
+});
+
 describe('idle planets sweep on rules only', () => {
   it('no human for 24 h: zero LLM calls, rules still applied', async () => {
     const s = setup({});
@@ -172,5 +193,30 @@ describe('idle planets sweep on rules only', () => {
     expect(await db.recentlyActive('pl', IDLE_PLANET_AFTER_MS)).toBe(true);
     expect(await db.recentlyActive('pl2', IDLE_PLANET_AFTER_MS + 100)).toBe(false);
     expect(findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ planetId: 'pl' }) }));
+  });
+});
+
+describe('the idle rule also reads the persisted planet clock', () => {
+  it('a human seen by another process (planet clock) keeps LLM decisions; an idle answer is reused for a minute', async () => {
+    const inner = { recentlyActive: vi.fn(async () => false), noteHumanPresent: vi.fn() };
+    let seen: Date | null = new Date(1_000_000 - 3_600_000); // an hour ago, stamped by the socket process
+    const clock = { get: vi.fn(async () => (seen ? { lastHumanSeenAt: seen } : null)) };
+    const activity = withPlanetClock(inner, clock);
+    expect(await activity.recentlyActive('pl_x', 1_000_000)).toBe(true);
+    seen = new Date(1_000_000 - IDLE_PLANET_AFTER_MS - 1);
+    expect(await activity.recentlyActive('pl_x', 1_000_000)).toBe(false);
+    expect(await activity.recentlyActive('pl_x', 1_030_000)).toBe(false); // 30 s later: no new read
+    expect(clock.get).toHaveBeenCalledTimes(2);
+    expect(await activity.recentlyActive('pl_x', 1_061_000)).toBe(false); // after the TTL: read again
+    expect(clock.get).toHaveBeenCalledTimes(3);
+    activity.noteHumanPresent?.('pl_x', 1_062_000); // a human connected: the idle answer is dropped at once
+    seen = new Date(1_062_000);
+    expect(await activity.recentlyActive('pl_x', 1_062_500)).toBe(true);
+    expect(inner.noteHumanPresent).toHaveBeenCalledWith('pl_x', 1_062_000);
+  });
+
+  it('a clock that cannot be read falls back to the inner answer', async () => {
+    const activity = withPlanetClock({ recentlyActive: async () => false }, { get: async () => { throw new Error('db down'); } });
+    expect(await activity.recentlyActive('pl_x', 5)).toBe(false);
   });
 });

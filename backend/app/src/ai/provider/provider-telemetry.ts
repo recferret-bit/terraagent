@@ -46,6 +46,9 @@ export function providerTelemetry(registry: Registry | undefined, log: Logger | 
       if (change.state === 'open') log?.warn(fields, 'ai provider circuit open: colonies fall back to rules');
       else log?.info(fields, 'ai provider circuit closed: AI decisions resume');
     },
+    onOpenKeys(openKeys: Readonly<Record<ProviderScope, number>>) {
+      for (const key of ['protocol', 'byok'] as const) state?.set({ key }, openKeys[key]);
+    },
     onFallback(reason, decisions) {
       fallbacks?.inc({ reason }, decisions);
     },

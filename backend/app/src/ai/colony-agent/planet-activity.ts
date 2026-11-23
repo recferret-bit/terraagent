@@ -65,3 +65,34 @@ export class PlanetHumanActivity implements PlanetActivity {
     }
   }
 }
+
+/** The persisted "last human on this planet" clock (`world.planet_activity`, written by the process that holds the sockets). */
+export interface PlanetSeenClock {
+  get(planetId: string): Promise<{ readonly lastHumanSeenAt: Date } | null>;
+}
+
+/** How long a "nobody was here" answer is reused before the clock is read again. */
+export const IDLE_ANSWER_TTL_MS = 60_000;
+
+/**
+ * `inner` first (this process's memory, then `core.colony.last_seen_at`), then the planet clock the idle unload also
+ * uses. One definition of "a human was here in the window" for both features, and it holds when another process owns
+ * the sockets. A "no" is reused for {@link IDLE_ANSWER_TTL_MS}, so an idle planet costs one read a minute, not one a sweep.
+ */
+export function withPlanetClock(inner: PlanetActivity, clock: PlanetSeenClock, windowMs: number = IDLE_PLANET_AFTER_MS): PlanetActivity {
+  const idleUntil = new Map<string, number>();
+  return {
+    noteHumanPresent(planetId, nowMs) {
+      idleUntil.delete(planetId);
+      inner.noteHumanPresent?.(planetId, nowMs);
+    },
+    async recentlyActive(planetId, nowMs) {
+      if ((idleUntil.get(planetId) ?? 0) > nowMs) return false;
+      if (await inner.recentlyActive(planetId, nowMs)) return true;
+      const row = await clock.get(planetId).catch(() => null);
+      if (row && nowMs - row.lastHumanSeenAt.getTime() < windowMs) return true;
+      idleUntil.set(planetId, nowMs + IDLE_ANSWER_TTL_MS);
+      return false;
+    },
+  };
+}

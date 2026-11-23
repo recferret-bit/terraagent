@@ -67,6 +67,7 @@ async function resolveColonyIdentity(db: PrismaClient | undefined, col: GateColo
 export class ManagedAiGate {
   private readonly lastCooldownMsByColony = new Map<string, number>();
   private readonly charges = new WeakMap<ManagedAiAccess, GateCharge>();
+  private readonly refunding = new WeakSet<ManagedAiAccess>();
 
   constructor(
     private readonly prisma: PrismaClient | undefined,
@@ -124,14 +125,21 @@ export class ManagedAiGate {
 
   /**
    * Gives back what `admit` charged for `access` when its provider call failed (the player never pays for a call
-   * that did not happen). Once only; `false` when nothing was charged or already refunded.
+   * that did not happen). Once only; `false` when nothing was charged or already refunded. The charge record is
+   * dropped only after the write lands, so a failed write (it throws) can be retried.
    */
   async refund(access: ManagedAiAccess): Promise<boolean> {
     const charge = this.charges.get(access);
     const db = this.prisma;
-    if (!charge || !db) return false;
-    this.charges.delete(access);
-    return charge.kind === 'wallet' ? refundWalletCall(db, charge.walletKey, charge.nowMs) : refundTrialTurn(db, charge.playerId);
+    if (!charge || !db || this.refunding.has(access)) return false;
+    this.refunding.add(access);
+    try {
+      const ok = charge.kind === 'wallet' ? await refundWalletCall(db, charge.walletKey, charge.nowMs) : await refundTrialTurn(db, charge.playerId);
+      this.charges.delete(access);
+      return ok;
+    } finally {
+      this.refunding.delete(access);
+    }
   }
 
   private charged(access: ManagedAiAccess, charge: GateCharge): ManagedAiAccess {

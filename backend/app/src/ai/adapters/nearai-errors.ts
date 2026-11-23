@@ -8,12 +8,15 @@ import { LlmProviderError, type LlmFailureKind } from '../../ports/llm-provider.
  */
 const UNFUNDED_TYPES = new Set(['no_credits', 'insufficient_credits', 'api_key_limit_exceeded', 'no_limit_configured', 'insufficient_quota', 'billing_hard_limit_reached', 'payment_required']);
 const UNAUTHORIZED_TYPES = new Set(['authentication_error', 'invalid_api_key', 'invalid_auth_header', 'missing_auth_header', 'unauthorized', 'permission_error']);
-const UNFUNDED_WORDS = /\b(balance|credits?|quota|insufficient|billing|payment|top[ -]?up|spend limit)\b/i;
+/** Only words that mean money. `quota` and a bare `insufficient` also describe rate limits and capacity ("quota exceeded for requests per minute"). */
+const UNFUNDED_WORDS = /\b(balance|credits?|billing|payment|top[ -]?up|spend(?:ing)? limit|insufficient funds)\b/i;
 
 interface ErrorBody {
   readonly type?: string;
   readonly code?: string;
   readonly message?: string;
+  /** False for a body that is not JSON (an HTML page from a proxy or WAF, not the provider's own answer). */
+  readonly json: boolean;
 }
 
 /** Reads `{ error: { type, code, message } }` (OpenAI / NEAR AI) or `{ type, message }` from a response body. */
@@ -22,9 +25,9 @@ export function parseErrorBody(raw: string): ErrorBody {
   try {
     parsed = JSON.parse(raw);
   } catch {
-    return { message: raw.slice(0, 300) };
+    return { message: raw.slice(0, 300), json: false };
   }
-  if (!parsed || typeof parsed !== 'object') return {};
+  if (!parsed || typeof parsed !== 'object') return { json: true };
   const outer = parsed as Record<string, unknown>;
   const inner = outer.error && typeof outer.error === 'object' ? (outer.error as Record<string, unknown>) : outer;
   const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : typeof v === 'number' ? String(v) : undefined);
@@ -32,6 +35,7 @@ export function parseErrorBody(raw: string): ErrorBody {
     type: str(inner.type),
     code: str(inner.code),
     message: str(inner.message) ?? (typeof outer.error === 'string' ? outer.error : undefined),
+    json: true,
   };
 }
 
@@ -47,6 +51,8 @@ function kindFromType(type: string | undefined): LlmFailureKind | null {
 function kindFromStatus(status: number, body: ErrorBody): LlmFailureKind {
   const typed = (body.type ?? body.code)?.toLowerCase();
   if (status === 402) return typed === 'provider_error' ? 'server' : 'unfunded';
+  // A 403 page that is not JSON comes from a proxy or WAF in front of the provider: not a verdict on the key.
+  if (status === 403 && !body.json) return 'server';
   if (status === 401 || status === 403) return 'unauthorized';
   if (status === 429) return UNFUNDED_WORDS.test(body.message ?? '') ? 'unfunded' : 'rate_limited';
   if (status === 408 || status === 504) return 'timeout';
@@ -55,13 +61,14 @@ function kindFromStatus(status: number, body: ErrorBody): LlmFailureKind {
 }
 
 /**
- * Classifies a non-200 NEAR AI Cloud reply by `error.type`, then `error.code`, then status, then message keywords
- * (an unknown 4xx whose message talks about balance / credit / quota is still `unfunded`).
+ * Classifies a non-200 NEAR AI Cloud reply by `error.type`, then `error.code`, then status, then message keywords:
+ * an unknown 4xx with NO typed envelope whose message talks about balance / credits / billing is still `unfunded`.
+ * A typed reply (`invalid_request_error`, `not_found`, ...) is never re-read by its wording.
  */
 export function classifyNearAiFailure(status: number, rawBody: string): LlmProviderError {
   const body = parseErrorBody(rawBody);
   let kind = kindFromType(body.type) ?? kindFromType(body.code) ?? kindFromStatus(status, body);
-  if (kind === 'rejected' && UNFUNDED_WORDS.test(body.message ?? '')) kind = 'unfunded';
+  if (kind === 'rejected' && !body.type && !body.code && UNFUNDED_WORDS.test(body.message ?? '')) kind = 'unfunded';
   return new LlmProviderError(kind, `NEAR AI Cloud HTTP ${status}`, status, body.type ?? body.code);
 }
 

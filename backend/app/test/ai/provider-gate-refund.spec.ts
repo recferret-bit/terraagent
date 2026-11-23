@@ -71,4 +71,27 @@ describe('managed turn charge vs provider failure', () => {
     expect(asked.every((c) => !c.includes('"colonyIndex":0'))).toBe(true);
     expect(gate.refund).not.toHaveBeenCalled();
   });
+
+  it('a gate that cannot be read (database blip) drops that colony to rules and the sweep still finishes', async () => {
+    gate.admit.mockRejectedValue(new Error('P1001: database unreachable'));
+    const { svc } = setup(null);
+    const results = await svc.tickPlanetAgents('pl_loop', { playerAiByColony: {} });
+    const col0 = results.find((e) => e.colonyIndex === 0)!;
+    expect(col0.model).toBe(SCRIPT_AI_MODEL);
+    expect(col0.aiAccess).toMatchObject({ mode: 'script', reason: 'no_database' });
+    expect(gate.refund).not.toHaveBeenCalled();
+  });
+
+  it('a refund whose write fails is retried once and never aborts the sweep', async () => {
+    gate.refund.mockRejectedValueOnce(new Error('P1001')).mockResolvedValueOnce(true);
+    const { svc } = setup(new LlmProviderError('unfunded', 'NEAR AI Cloud HTTP 402', 402));
+    const col0 = (await svc.tickPlanetAgents('pl_loop', { playerAiByColony: {} })).find((e) => e.colonyIndex === 0)!;
+    expect(gate.refund).toHaveBeenCalledTimes(2);
+    expect(col0.aiAccess?.reason).toBe('provider_unfunded');
+    gate.refund.mockReset();
+    gate.refund.mockRejectedValue(new Error('P1001'));
+    const again = setup(new LlmProviderError('unfunded', 'NEAR AI Cloud HTTP 402', 402));
+    await expect(again.svc.tickPlanetAgents('pl_loop', { playerAiByColony: {} })).resolves.toBeTruthy();
+    expect(gate.refund).toHaveBeenCalledTimes(2);
+  });
 });

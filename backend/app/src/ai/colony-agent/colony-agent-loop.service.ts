@@ -1,4 +1,4 @@
-import { Inject, Injectable, Optional } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { newId, SCRIPT_AI_MODEL, type AgentDecisionFeedItemV1, type MarketTokenKey, type TradeAllowance } from '@terra/contracts';
 import type { PrismaClient } from '@terra/db';
 import { restore, shouldAiGovernColony } from '@terra/sim';
@@ -28,7 +28,7 @@ import {
 import type { ResolvedDecision } from './batch-llm.js';
 import { decisionFeedItem } from './colony-decision-feed.js';
 import { ColonyDecisionResolver, type PlayerColonyAiOverride } from './colony-decision-resolver.js';
-import { humanConnectedNow, PlanetHumanActivity, type PlanetActivity } from './planet-activity.js';
+import { humanConnectedNow, PlanetHumanActivity, withPlanetClock, type PlanetActivity, type PlanetSeenClock } from './planet-activity.js';
 import { TeeAttestationStore } from './tee-attestation.store.js';
 import { PlanetJobsService } from '../../game/lifecycle/planet-jobs.service.js';
 import type { JobRegistration } from '../../jobs/recurring.js';
@@ -53,6 +53,7 @@ export const COLONY_AGENT_LOOP_MS = 180_000;
 export class ColonyAgentLoopService {
   private timer: ReturnType<typeof setInterval> | null = null;
   private job: JobRegistration | null = null;
+  private readonly log = new Logger(ColonyAgentLoopService.name);
   private readonly resolver: ColonyDecisionResolver;
   private activity: PlanetActivity;
   private decisionRecorder?: (item: Omit<AgentDecisionFeedItemV1, 'id'>) => void;
@@ -107,6 +108,11 @@ export class ColonyAgentLoopService {
   /** Replaces the "human on this planet in the last 24 h" source of the background sweep. */
   setPlanetActivity(activity: PlanetActivity): void {
     this.activity = activity;
+  }
+
+  /** Adds the persisted planet clock (the idle unload's) to the idle rule, so both features agree on "a human was here". */
+  usePlanetClock(clock: PlanetSeenClock): void {
+    this.activity = withPlanetClock(this.activity, clock);
   }
 
   async sweepLoadedPlanets(): Promise<void> {
@@ -203,8 +209,15 @@ export class ColonyAgentLoopService {
         directive: deterministicDirective(obs),
         model: SCRIPT_AI_MODEL,
       };
-      const evalRes = await this.applyColonyDecision(planetId, col, obs, decision, opts, state.meta.tick);
-      resultsByIndex.set(obs.colonyIndex, evalRes);
+      try {
+        resultsByIndex.set(obs.colonyIndex, await this.applyColonyDecision(planetId, col, obs, decision, opts, state.meta.tick));
+      } catch (err) {
+        // The decision was cached before it was applied: forget it, or the next sweeps would skip this colony as
+        // "cached" without ever submitting its command. The other colonies still get theirs.
+        this.resolver.clearColony(planetId, obs.colonyIndex);
+        this.log.warn(`colony decision not applied (${planetId} #${obs.colonyIndex}): ${err instanceof Error ? err.message : String(err)}`);
+        resultsByIndex.set(obs.colonyIndex, { colonyIndex: obs.colonyIndex, colonyId: col.id, governed: true, isBot: obs.isBot, directive: decision.directive, model: decision.model });
+      }
     }
 
     return state.colonies
@@ -218,9 +231,13 @@ export class ColonyAgentLoopService {
     stateColonies: ReadonlyArray<{ readonly index: number; readonly playerId?: unknown } | undefined>,
     overrides?: Record<number, PlayerColonyAiOverride>,
   ): Promise<Record<number, PlayerColonyAiOverride>> {
-    const fromStore = this.playerAiStore
-      ? await this.playerAiStore.resolvePlanetPlayerAiConfigs(planetId, stateColonies)
-      : {};
+    let fromStore: Record<number, PlayerColonyAiOverride> = {};
+    try {
+      if (this.playerAiStore) fromStore = await this.playerAiStore.resolvePlanetPlayerAiConfigs(planetId, stateColonies);
+    } catch (err) {
+      // One unreadable saved key (a rotated KEK, a damaged envelope) must not stop the whole planet's sweeps.
+      this.log.warn(`player AI settings unreadable for ${planetId}: ${err instanceof Error ? err.message : String(err)}`);
+    }
     return { ...fromStore, ...(overrides ?? {}) };
   }
 
@@ -257,6 +274,8 @@ export class ColonyAgentLoopService {
     }
 
     if (guardrailRejected) {
+      // a managed turn whose answer was blocked by the attestation check is given back
+      if (guardrailRejected === 'TEE_ATTESTATION_FAILED' && !cached) await this.resolver.refundTurn(aiAccess);
       this.emitRecordedDecision(planetId, col, obs, decision, null, 'rejected', `${directive.action} (blocked: ${guardrailRejected})`, stateTick, opts.nowMs, { guardrailRejected });
       return {
         colonyIndex: col.index,
