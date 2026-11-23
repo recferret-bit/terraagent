@@ -26,10 +26,13 @@ export interface JobRegistration {
   stop(): Promise<void>;
 }
 
-/** Retries for loops: two more tries with backoff from 5 s, then the dead-letter queue. */
-export const LOOP_RETRY: JobRetryOptions = { retryLimit: 2, retryDelayMs: 5_000, retryBackoff: true, retryDelayMaxMs: 60_000 };
-
-export const deadLetterOf = (queue: string) => `${queue}.dead`;
+/**
+ * Loops are not retried: the next interval is the retry. A retry re-ran the whole body within seconds (three bot
+ * ticks per round, three RPC sweeps of every staking account) for an error that is usually still there, and the
+ * failed payloads of a loop (always `{}` or a planet id) are not worth a dead-letter queue nobody reads. A failure is
+ * a `job failed` log line and `ta_jobs_runs_total{outcome="error"}`.
+ */
+export const LOOP_RETRY: JobRetryOptions = { retryLimit: 0 };
 
 /** Completed loop jobs are kept one hour (a 5 s planet tick would otherwise keep a week of rows). */
 export const LOOP_DELETE_AFTER_S = 3_600;

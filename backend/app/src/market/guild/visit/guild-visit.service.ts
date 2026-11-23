@@ -63,7 +63,7 @@ export class GuildVisitService implements OnModuleInit, OnModuleDestroy {
   /** A planet job (3.8): each planet's visits tick on its lease holder, one tick per planet at a time. */
   start(intervalMs = GUILD_VISIT_TICK_MS): void {
     if (this.job || !this.enabled()) return;
-    this.job = this.planetJobs?.register({ name: 'market.guild-visit', everyMs: intervalMs, run: (planetId) => this.tick(planetId) }) ?? null;
+    this.job = this.planetJobs?.register({ name: 'market.guild-visit', everyMs: intervalMs, concurrency: 4, run: (planetId) => this.tick(planetId) }) ?? null;
   }
 
   stop(): Promise<void> {

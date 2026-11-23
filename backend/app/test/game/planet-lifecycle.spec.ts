@@ -125,6 +125,45 @@ describe('presence persists "last human seen" (3.5)', () => {
 });
 
 describe('planet jobs (3.8, 4): one job per planet, on the holder', () => {
+  it('never runs one planet twice at once in this process, even if the queue hands it out twice', async () => {
+    const jobs = memoryJobs();
+    let active = 0;
+    let maxActive = 0;
+    let runs = 0;
+    let finish!: () => void;
+    const svc = new PlanetJobsService({ loadedIds: () => ['pl_a'], isLoaded: () => true }, jobs);
+    svc.register({ name: 'test.overlap', everyMs: 60_000, concurrency: 2, run: () => new Promise<void>((resolve) => {
+      runs++;
+      maxActive = Math.max(maxActive, ++active);
+      finish = () => { active--; resolve(); };
+    }) });
+    jobs.onApplicationBootstrap();
+    await jobs.whenStarted();
+    const name = jobs.queueFor('test.overlap', 'instance');
+    await jobs.port.enqueue(name, { planetId: 'pl_a' }); // no singleton key: as a job the queue failed while it still ran
+    await eventually(() => runs === 1);
+    await jobs.port.enqueue(name, { planetId: 'pl_a' });
+    await new Promise((r) => setTimeout(r, 150));
+    expect(runs).toBe(1); // the second hand-out returned at once instead of running beside the first
+    finish();
+    expect(maxActive).toBe(1);
+    await jobs.onModuleDestroy();
+  });
+
+  it('fan-out defines its queue first, so an enqueue can never create it with the default policy', async () => {
+    const jobs = memoryJobs();
+    const defined: Array<{ name: string; policy?: string }> = [];
+    const define = jobs.define.bind(jobs);
+    jobs.define = (def) => { defined.push({ name: def.name, policy: def.policy }); return define(def); };
+    const svc = new PlanetJobsService({ loadedIds: () => ['pl_a'], isLoaded: () => true }, jobs);
+    jobs.onApplicationBootstrap();
+    await jobs.whenStarted();
+    const queue = { name: 'test.fresh/test', policy: 'stately' as const };
+    expect(await svc.fanOut(queue, {})).toBe(1);
+    expect(defined[0]).toEqual({ name: 'test.fresh/test', policy: 'stately' });
+    await jobs.onModuleDestroy();
+  });
+
   it('fans out one job per locally loaded, eligible planet and skips planets that left this process', async () => {
     const jobs = memoryJobs();
     const loaded = new Set(['pl_a', 'pl_b', 'pl_spec_1']);
@@ -133,7 +172,7 @@ describe('planet jobs (3.8, 4): one job per planet, on the holder', () => {
     svc.register({ name: 'test.planet', everyMs: 60_000, eligible: (id) => !id.startsWith('pl_spec_'), run: async (id) => { ran.push(id); } });
     jobs.onApplicationBootstrap();
     await jobs.whenStarted();
-    const queue = jobs.queueFor('test.planet', 'instance');
+    const queue = { name: jobs.queueFor('test.planet', 'instance'), policy: 'stately' as const };
     loaded.delete('pl_b');
     expect(await svc.fanOut(queue, { eligible: (id) => !id.startsWith('pl_spec_') })).toBe(1);
     await eventually(() => ran.length === 1);

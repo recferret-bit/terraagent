@@ -1,7 +1,7 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
-import type { JobRetryOptions } from '../../jobs/job-queue.port';
+import type { JobRetryOptions, QueueDefinition } from '../../jobs/job-queue.port';
 import { JobsService } from '../../jobs/jobs.service';
-import { deadLetterOf, LOOP_DELETE_AFTER_S, LOOP_RETRY, loopExpireSeconds, type JobRegistration } from '../../jobs/recurring';
+import { LOOP_DELETE_AFTER_S, LOOP_RETRY, loopExpireSeconds, type JobRegistration } from '../../jobs/recurring';
 import { GamePlanets } from '../game-planets.service';
 
 export interface PlanetJobDef {
@@ -15,6 +15,9 @@ export interface PlanetJobDef {
   /** Planets this job skips (checked when the sweep enqueues). */
   readonly eligible?: (planetId: string) => boolean;
 }
+
+/** An idle planet worker looks for jobs this often (two polls a second per worker slot). */
+export const PLANET_JOB_POLL_MS = 500;
 
 export interface PlanetJobData {
   readonly planetId: string;
@@ -41,32 +44,47 @@ export class PlanetJobsService {
   register(def: PlanetJobDef): JobRegistration {
     const jobs = this.jobs;
     if (!jobs || !jobs.hostsSim) return { stop: async () => undefined };
-    const queue = jobs.queueFor(def.name, 'instance');
+    const queueDef: QueueDefinition = {
+      name: jobs.queueFor(def.name, 'instance'), policy: 'stately', ...(def.retry ?? LOOP_RETRY),
+      expireInSeconds: loopExpireSeconds(def.everyMs), deleteAfterSeconds: LOOP_DELETE_AFTER_S,
+    };
+    const running = new Set<string>();
     const worker = jobs.worker<PlanetJobData>(
-      {
-        name: queue, policy: 'stately', ...(def.retry ?? LOOP_RETRY), deadLetter: deadLetterOf(def.name),
-        expireInSeconds: loopExpireSeconds(def.everyMs), deleteAfterSeconds: LOOP_DELETE_AFTER_S,
-      },
-      { concurrency: def.concurrency ?? 2 },
+      queueDef,
+      { concurrency: def.concurrency ?? 2, pollMs: PLANET_JOB_POLL_MS },
       async ({ data }) => {
-        if (this.planets.isLoaded(data.planetId)) await def.run(data.planetId);
+        // One run per planet at a time in this process, even if the queue hands the planet out twice (a job that
+        // outlived its expiry is failed by the queue while its handler is still running).
+        if (running.has(data.planetId) || !this.planets.isLoaded(data.planetId)) return;
+        running.add(data.planetId);
+        try {
+          await def.run(data.planetId);
+        } finally {
+          running.delete(data.planetId);
+        }
       },
     );
     const sweep = jobs.recurring({
       name: `${def.name}.sweep`,
       scope: 'instance',
       schedule: { everyMs: def.everyMs },
-      run: () => this.fanOut(queue, def),
+      run: () => this.fanOut(queueDef, def),
     });
     return { stop: async () => { await sweep.stop(); await worker.stop(); } };
   }
 
-  /** Enqueues one job per locally loaded planet; a planet with a job still waiting is coalesced. */
-  async fanOut(queue: string, def: Pick<PlanetJobDef, 'eligible'>): Promise<number> {
+  /**
+   * Enqueues one job per locally loaded planet; a planet with a job still waiting is coalesced. The queue is defined
+   * first (idempotent): an enqueue into a queue that does not exist yet would create it with the default policy, and
+   * a planet could then pile up and overlap jobs.
+   */
+  async fanOut(queue: QueueDefinition, def: Pick<PlanetJobDef, 'eligible'>): Promise<number> {
+    if (!this.jobs) return 0;
+    await this.jobs.define(queue);
     let queued = 0;
     for (const planetId of this.planets.loadedIds()) {
       if (def.eligible && !def.eligible(planetId)) continue;
-      if (await this.jobs?.port.enqueue<PlanetJobData>(queue, { planetId }, { singletonKey: planetId })) queued++;
+      if (await this.jobs.port.enqueue<PlanetJobData>(queue.name, { planetId }, { singletonKey: planetId })) queued++;
     }
     return queued;
   }

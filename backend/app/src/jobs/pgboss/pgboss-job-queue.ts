@@ -22,6 +22,9 @@ export interface PgBossJobQueueOptions {
   readonly onError?: (queue: string, err: unknown) => void;
 }
 
+/** How often pg-boss removes finished job rows past their `deleteAfterSeconds`. */
+export const MAINTENANCE_INTERVAL_S = 600;
+
 const sec = (ms: number | undefined) => (ms === undefined ? undefined : Math.max(1, Math.ceil(ms / 1000)));
 
 function retryOptions(o: JobRetryOptions): SendOptions {
@@ -73,7 +76,8 @@ export class PgBossJobQueue extends JobQueuePort {
     if (!this.started) return;
     this.started = false;
     this.schedules.stop();
-    await this.boss.stop({ graceful: true, timeout: 20_000 });
+    // Workers were already asked to stop by their registrations; a job still running gets 5 s more, not 20.
+    await this.boss.stop({ graceful: true, timeout: 5_000 });
   }
 
   async createQueue(def: QueueDefinition): Promise<void> {
@@ -138,6 +142,9 @@ export class PgBossJobQueue extends JobQueuePort {
       max: this.opts.poolMax ?? 4,
       application_name: 'terraagent-jobs',
       queueCacheIntervalSeconds: 15,
+      // pg-boss deletes finished rows once per maintenance interval, 24 h by default: a 5 s loop then keeps a day of
+      // rows (17k per queue) whatever its `deleteAfterSeconds` says. Ten minutes keeps the tables small.
+      maintenanceIntervalSeconds: MAINTENANCE_INTERVAL_S,
     });
     boss.on('error', (err: unknown) => this.opts.onError?.('pgboss', err));
     return boss;

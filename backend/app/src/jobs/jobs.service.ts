@@ -7,7 +7,6 @@ import { installJobMetrics, type JobRunCounter } from './jobs-metrics';
 import { MemoryJobQueue } from './memory/memory-job-queue';
 import {
   canHostSim,
-  deadLetterOf,
   instanceQueue,
   LOOP_DELETE_AFTER_S,
   LOOP_RETRY,
@@ -29,11 +28,19 @@ export const JOBS_OPTIONS = Symbol('JOBS_OPTIONS');
 
 const RETRY_START_MS = 5_000;
 const MAX_RETRY_START_MS = 60_000;
+/** A registration still not applied after this long fails `/readyz` (its loop is off). */
+const REGISTRATION_GRACE_MS = 120_000;
+/** Shutdown waits this long for a running job before moving on (the sim snapshots must fit the stop grace period). */
+export const STOP_WAIT_MS = 5_000;
 
 interface Pending {
   readonly apply: () => Promise<JobRegistration>;
   live?: JobRegistration;
   stopped: boolean;
+  applying?: boolean;
+  /** First failed apply (wall ms); cleared once applied. */
+  failingSince?: number;
+  retry?: ReturnType<typeof setTimeout>;
 }
 
 /**
@@ -59,6 +66,8 @@ export class JobsService implements OnApplicationBootstrap, OnModuleDestroy {
     // `/readyz` names a job queue that never started (every background loop would be off).
     readiness?.register('jobs', () => {
       if (!this.started) throw new Error(`${this.port.kind} job queue not started`);
+      const stuck = this.pending.filter((p) => !p.stopped && p.failingSince !== undefined && Date.now() - p.failingSince > REGISTRATION_GRACE_MS).length;
+      if (stuck > 0) throw new Error(`${stuck} job registration(s) could not be applied: their loops are off`);
       return this.port.kind;
     });
   }
@@ -84,7 +93,7 @@ export class JobsService implements OnApplicationBootstrap, OnModuleDestroy {
     return this.register(async () => {
       const everyMs = 'everyMs' in def.schedule ? def.schedule.everyMs : 60_000;
       await this.define({
-        name: queue, policy: def.policy ?? 'exclusive', ...(def.retry ?? LOOP_RETRY), deadLetter: deadLetterOf(def.name),
+        name: queue, policy: def.policy ?? 'exclusive', ...(def.retry ?? LOOP_RETRY),
         expireInSeconds: loopExpireSeconds(everyMs), deleteAfterSeconds: LOOP_DELETE_AFTER_S,
       });
       const worker = await this.work(queue, { concurrency: 1 }, () => def.run().then(() => undefined));
@@ -119,7 +128,7 @@ export class JobsService implements OnApplicationBootstrap, OnModuleDestroy {
     clearTimeout(this.retryTimer);
     await this.startup;
     this.readiness?.unregister('jobs');
-    for (const p of this.pending) await this.stopOne(p);
+    await Promise.all(this.pending.map((p) => this.stopOne(p)));
     await this.port.stop().catch((err: unknown) => this.opts.log?.warn({ err: errText(err) }, 'job queue stop failed'));
   }
 
@@ -150,20 +159,43 @@ export class JobsService implements OnApplicationBootstrap, OnModuleDestroy {
     return { stop: () => this.stopOne(p) };
   }
 
-  private async apply(p: Pending): Promise<void> {
-    if (p.stopped || p.live) return;
+  /**
+   * Applies one registration. A failure (a database blip while queues are created) is retried with backoff until it
+   * lands: a loop must never stay off for the life of the process because its first try failed.
+   */
+  private async apply(p: Pending, delayMs = RETRY_START_MS): Promise<void> {
+    if (p.stopped || p.live || p.applying || this.stopping) return;
+    p.applying = true;
     try {
-      p.live = await p.apply();
+      const live = await p.apply();
+      p.failingSince = undefined;
+      // stopped while the apply was in flight: do not leave a worker nobody holds
+      if (p.stopped || this.stopping) await this.bounded(live.stop());
+      else p.live = live;
     } catch (err) {
-      this.opts.log?.warn({ err: errText(err) }, 'job registration failed');
+      p.failingSince ??= Date.now();
+      this.opts.log?.warn({ err: errText(err), retryInMs: delayMs }, 'job registration failed');
+      p.retry = setTimeout(() => void this.apply(p, Math.min(delayMs * 2, MAX_RETRY_START_MS)), delayMs);
+      p.retry.unref?.();
+    } finally {
+      p.applying = false;
     }
   }
 
   private async stopOne(p: Pending): Promise<void> {
     p.stopped = true;
+    clearTimeout(p.retry);
     const live = p.live;
     p.live = undefined;
-    await live?.stop().catch(() => undefined);
+    if (live) await this.bounded(live.stop());
+  }
+
+  /** Waits for `work` at most {@link STOP_WAIT_MS}: a slow job handler must not eat the shutdown's snapshot time. */
+  private async bounded(work: Promise<unknown>): Promise<void> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<void>((resolve) => { timer = setTimeout(resolve, STOP_WAIT_MS); timer.unref?.(); });
+    await Promise.race([work.then(() => undefined, () => undefined), timeout]);
+    clearTimeout(timer);
   }
 
   private work<T extends object>(queue: string, opts: WorkOptions, handler: JobHandler<T>) {

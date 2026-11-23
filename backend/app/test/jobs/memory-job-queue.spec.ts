@@ -73,15 +73,52 @@ describe('JobsService registrations', () => {
     await jobs.onModuleDestroy();
   });
 
-  it('a failing loop is retried, then dead-lettered under <name>.dead', async () => {
+  it('a failing loop is not retried or dead-lettered: the next interval is its retry', async () => {
     const jobs = memoryJobs();
     let tries = 0;
-    jobs.recurring({ name: 'test.poison', schedule: { everyMs: 60_000 }, retry: { retryLimit: 1, retryDelayMs: 0 }, run: async () => { tries++; throw new Error('boom'); } });
+    // a day-long slot: the schedule itself does not fire during the test, the one job below is the only run
+    jobs.recurring({ name: 'test.poison', schedule: { everyMs: 86_400_000 }, run: async () => { tries++; throw new Error('boom'); } });
     jobs.onApplicationBootstrap();
     await jobs.whenStarted();
     await jobs.port.enqueue('test.poison', {});
-    await eventually(async () => ((await jobs.port.stats()).find((s) => s.queue === 'test.poison.dead')?.queued ?? 0) === 1);
-    expect(tries).toBe(2);
+    await eventually(() => tries >= 1);
+    await new Promise((r) => setTimeout(r, 400));
+    expect(tries).toBe(1);
+    expect((await jobs.port.stats()).map((s) => s.queue)).toEqual(['test.poison']);
+    await jobs.onModuleDestroy();
+  });
+
+  it('a registration that fails once is applied on the retry instead of staying off', async () => {
+    const jobs = memoryJobs();
+    const define = jobs.define.bind(jobs);
+    let failures = 1;
+    jobs.define = (def) => (failures-- > 0 ? Promise.reject(new Error('P1001: database blip')) : define(def));
+    let runs = 0;
+    jobs.recurring({ name: 'test.flaky-boot', schedule: { everyMs: 200 }, run: async () => { runs++; } });
+    jobs.onApplicationBootstrap();
+    await jobs.whenStarted();
+    expect(runs).toBe(0);
+    await eventually(() => runs >= 1, 9_000); // first retry after 5 s
+    await jobs.onModuleDestroy();
+  }, 15_000);
+
+  it('a registration made while bootstrap is still applying is applied once, and a stop in flight leaves no worker', async () => {
+    const jobs = memoryJobs();
+    let applies = 0;
+    let release!: () => void;
+    const define = jobs.define.bind(jobs);
+    jobs.define = async (def) => { applies++; await new Promise<void>((r) => (release = r)); return define(def); };
+    let runs = 0;
+    const reg = jobs.recurring({ name: 'test.race', schedule: { everyMs: 100 }, run: async () => { runs++; } });
+    jobs.onApplicationBootstrap();
+    await eventually(() => applies === 1);
+    const stopped = reg.stop(); // stop while its apply is in flight
+    release();
+    await stopped;
+    await jobs.whenStarted();
+    await new Promise((r) => setTimeout(r, 400));
+    expect(applies).toBe(1);
+    expect(runs).toBe(0);
     await jobs.onModuleDestroy();
   });
 
@@ -92,7 +129,7 @@ describe('JobsService registrations', () => {
     jobs.recurring({ name: 'test.any', schedule: { everyMs: 1_000 }, run: async () => undefined });
     jobs.onApplicationBootstrap();
     await jobs.whenStarted();
-    expect((await jobs.port.stats()).map((s) => s.queue).sort()).toEqual(['test.any', 'test.any.dead']);
+    expect((await jobs.port.stats()).map((s) => s.queue).sort()).toEqual(['test.any']);
     await jobs.onModuleDestroy();
   });
 
