@@ -43,6 +43,8 @@ describe('Local-only spectator guards & reset query parsing', () => {
     expect(onlineMode('?spectator=1&planet=dune', remoteEnv)).toBeNull();
     expect(onlineMode('?scenario=spectator', remoteEnv)).toBe('boot');
     expect(localHostOptions('?spectator=1', remoteEnv)).toBeNull();
+    expect(localHostOptions('?host=local&scenario=spectator', remoteEnv)).toMatchObject({ scenario: 'w00' });
+    expect(localHostOptions('?host=local&scenario=spectator', remoteEnv)?.spectator).toBeUndefined();
   });
 
   it('parses & strips one-shot spectator reset parameter without clobbering other query params', () => {
@@ -118,6 +120,77 @@ describe('LocalHostCore spectator snapshot persistence & reset=true wipe', () =>
     );
     expect(core4.tick).toBe(0);
     await core4.stop();
+  });
+});
+
+describe('LocalHostCore scenario spectator bot adoption & persistence', () => {
+  it('activates scenario colonies (including w01 descending pod, w18 multi-colony, and w00 empty) as live bots in local scenario spectator mode and isolates persistence/reset', async () => {
+    const sharedStore = memorySnapshotStore();
+    const makeDeps = (): LocalHostDeps => ({
+      now: () => 0,
+      wallMs: () => 1_700_000_000_000,
+      schedule: () => () => undefined,
+      store: sharedStore,
+    });
+
+    // 1. w01 scenario spectator: descending pod lands immediately, upgrades pipeline flags so Command Hub & buildings queue, and emits zero ledger errors
+    const outW01: FromLocalHost[] = [];
+    const w01Core = await LocalHostCore.create(
+      { scenario: 'w01', spectator: true },
+      makeDeps(),
+      (m) => outW01.push(m),
+    );
+    w01Core.handle({ t: 'client', msg: { t: 'join', d: { planetId: 'local', mode: 'spectator' } } });
+    w01Core.advance(15);
+    expect(w01Core.simHost.state.colonies[0]?.isBot).toBe(true);
+    expect(w01Core.simHost.state.colonies[0]?.status).toBe('active');
+    expect(outW01.filter((m) => m.t === 'error')).toEqual([]);
+    const w01Inputs = outW01.flatMap((m) => (m.t === 'server' && m.msg.t === 'sim.input' ? m.msg.d.items : []));
+    expect(w01Inputs.some((i) => i.isBot && i.source === 'bot')).toBe(true);
+    expect(
+      w01Inputs.some((i) => (i.args as { build?: { building?: string } } | undefined)?.build?.building === 'commandHub'),
+    ).toBe(true);
+    const w01SavedTick = w01Core.tick;
+    await w01Core.stop();
+
+    // Resuming w01 scenario spectator restores tick; reset=true wipes back to fresh landed tick
+    const w01Resumed = await LocalHostCore.create({ scenario: 'w01', spectator: true }, makeDeps(), () => undefined);
+    expect(w01Resumed.tick).toBe(w01SavedTick);
+    await w01Resumed.stop();
+
+    const w01Reset = await LocalHostCore.create({ scenario: 'w01', spectator: true, reset: true }, makeDeps(), () => undefined);
+    expect(w01Reset.tick).toBeLessThan(w01SavedTick);
+    await w01Reset.stop();
+
+    // 2. w18 scenario spectator: all 5 colonies become active bots, emit inputs/decisions, and produce zero ledger drift errors
+    const outW18: FromLocalHost[] = [];
+    const w18Core = await LocalHostCore.create(
+      { scenario: 'w18', spectator: true },
+      makeDeps(),
+      (m) => outW18.push(m),
+    );
+    w18Core.handle({ t: 'client', msg: { t: 'join', d: { planetId: 'local', mode: 'spectator' } } });
+    w18Core.advance(12);
+    expect(outW18.filter((m) => m.t === 'error')).toEqual([]);
+    expect(w18Core.journal.reconcile(w18Core.simHost.state)).toEqual([]);
+    expect(w18Core.simHost.state.colonies.filter((c) => Boolean(c && c.isBot))).toHaveLength(5);
+    const w18Decisions = outW18.flatMap((m) => (m.t === 'server' && m.msg.t === 'sim.decision' ? m.msg.d.items : []));
+    expect(w18Decisions.some((d) => d.isBot)).toBe(true);
+    await w18Core.stop();
+
+    // 3. w00 scenario spectator: empty scenario seeds Rival AI bots with active wave pipeline
+    const outW00: FromLocalHost[] = [];
+    const w00Core = await LocalHostCore.create(
+      { scenario: 'w00', spectator: true, botCount: 2 },
+      makeDeps(),
+      (m) => outW00.push(m),
+    );
+    w00Core.handle({ t: 'client', msg: { t: 'join', d: { planetId: 'local', mode: 'spectator' } } });
+    w00Core.advance(12);
+    expect(w00Core.simHost.state.colonies.filter((c) => Boolean(c && c.isBot))).toHaveLength(2);
+    const w00Inputs = outW00.flatMap((m) => (m.t === 'server' && m.msg.t === 'sim.input' ? m.msg.d.items : []));
+    expect(w00Inputs.some((i) => i.isBot)).toBe(true);
+    await w00Core.stop();
   });
 });
 

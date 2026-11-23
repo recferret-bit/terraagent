@@ -8,3 +8,4 @@ export * from './tuning';
 export * from './tunedHealth';
 export * from './journal';
 export * from './supplyTradeView';
+export * from './spectatorScenario';

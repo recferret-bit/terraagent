@@ -116,7 +116,7 @@ export class GamePlanets {
   private readonly fastRunListeners: ((planetId: string, seconds: number, ticks: number) => void)[] = [];
   private readonly fastRunAbortListeners: ((planetId: string) => void)[] = [];
   /** Set by `shutdown`: threads stopping on purpose are not "down". */
-  private stopping = false;
+  private stopping = false; private shutdownPromise?: Promise<void>;
   private readonly unlisten: () => void;
 
   constructor(readonly pool: SimThreadPool, readonly deltaHz = 5) {
@@ -357,15 +357,17 @@ export class GamePlanets {
     this.shutdownHooks.push(fn);
   }
 
-  async shutdown(): Promise<void> {
-    this.stopping = true;
-    for (const h of this.shutdownHooks) await h();
-    await this.pool.shutdown();
-    this.unlisten();
-    const err = new Error('game threads stopped');
-    this.requests.failAll(err);
-    for (const id of [...this.loading.keys()]) this.failLoad(id, err);
-    for (const key of [...this.cmdWaiters.keys()]) this.settleCmd(key, { ok: false, commandId: key.split('\0')[1] ?? '', code: 'thread_down' });
+  shutdown(): Promise<void> {
+    return (this.shutdownPromise ??= (async () => {
+      this.stopping = true;
+      for (const h of this.shutdownHooks.splice(0)) await h();
+      await this.pool.shutdown();
+      this.unlisten();
+      const err = new Error('game threads stopped');
+      this.requests.failAll(err);
+      for (const id of [...this.loading.keys()]) this.failLoad(id, err);
+      for (const key of [...this.cmdWaiters.keys()]) this.settleCmd(key, { ok: false, commandId: key.split('\0')[1] ?? '', code: 'thread_down' });
+    })());
   }
 
   /**

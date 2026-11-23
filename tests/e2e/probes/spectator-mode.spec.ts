@@ -217,6 +217,16 @@ test.describe('Live Server Spectator URLs (?spectator=1&host=server and ?spectat
     expect(await page.evaluate(() => new URLSearchParams(window.location.search).has('reset'))).toBe(false);
     await expect(page.locator('[data-testid="spectator-bot-0"]')).toBeVisible();
     await expect(page.locator('[data-testid="spectator-bot-1"]')).toBeVisible();
+
+    // Server scenario spectator (?spectator=1&host=server&scenario=w01&reset=1): lands pod, activates bot, emits inputs, strips reset
+    await page.goto('/play.html?spectator=1&host=server&scenario=w01&reset=1&shadow=0&crt=0&wind=0&water=0&reflect=0&pixel=0');
+    await waitForTick(page, (t) => t >= 12, 120_000);
+    expect(await page.evaluate(() => new URLSearchParams(window.location.search).has('reset'))).toBe(false);
+    await expect(page.locator('[data-testid="spectator-bot-0"]')).toBeVisible();
+    await expect.poll(
+      async () => page.evaluate(() => (window as unknown as SpectatorWindow).__online!.store.recentInputs().some((i) => i.isBot)),
+      { timeout: 30_000, intervals: [500] },
+    ).toBe(true);
     expectNoPageErrors(page);
   });
 });
@@ -239,6 +249,10 @@ test.describe('Live Server Spectator ?join=<planetId> Inspection', () => {
     await expect(page.locator('[data-testid="spectator-panel"]')).toBeVisible({ timeout: 15_000 });
     await expect(page.locator('[data-testid="spectator-bot-0"]')).toBeVisible();
     await expect(page.locator('[data-testid="spectator-bot-3"]')).toBeVisible();
+    const joinedColonyCount = await page.evaluate(
+      () => (window as unknown as SpectatorWindow).__online!.store.latest?.colonies.filter(Boolean).length ?? 0,
+    );
+    expect(joinedColonyCount).toBe(5);
 
     await page.locator('[data-testid="spectator-bot-0"]').click();
     const bot0Entity = await page.evaluate(() => (window as unknown as SpectatorWindow).__online!.getSelectedEntityId());

@@ -35,10 +35,10 @@ export const joinParam = (search: string): string | null => {
   return v && PLANET_ID.test(v) ? v : null;
 };
 
-/** `?scenario=<id>` (lower-cased, validated) or null. */
+/** `?scenario=<id>` (lower-cased, validated; excludes the `'spectator'` mode alias) or null. */
 export const scenarioParam = (search: string): string | null => {
   const v = new URLSearchParams(search).get('scenario')?.trim().toLowerCase();
-  return v && SCENARIO_ID.test(v) ? v : null;
+  return v && v !== 'spectator' && SCENARIO_ID.test(v) ? v : null;
 };
 
 interface HeldPlanet {
@@ -63,8 +63,7 @@ export function createSessionTarget(
   const spectator = isSpectatorSearch(loc.search, {
     location: { protocol: loc.protocol, hostname: hostnameOfHost(loc.host) },
   });
-  const rawScenario = scenarioParam(loc.search);
-  const scenario = spectator && rawScenario === 'spectator' ? null : rawScenario;
+  const scenario = scenarioParam(loc.search);
   const join = joinParam(loc.search);
   const specOpts = parseSpectatorQueryOptions(loc.search);
   let resetPending = spectator && specOpts.reset;
@@ -129,9 +128,7 @@ export function createSessionTarget(
     get accessToken() { return `dev:${name}`; },
     resolve() {
       if (join) {
-        return spectator && (resetPending || join.startsWith('pl_spec_'))
-          ? resolveSpectator(join)
-          : Promise.resolve({ planetId: join });
+        return spectator ? resolveSpectator(join) : Promise.resolve({ planetId: join });
       }
       if (spectator) return resolveSpectator(undefined, scenario ?? undefined);
       if (!scenario) return firstPlanet(doFetch);

@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { hostname } from 'node:os';
-import { Inject, Injectable, Optional, type OnApplicationShutdown } from '@nestjs/common';
+import { Inject, Injectable, Optional, type BeforeApplicationShutdown, type OnApplicationShutdown } from '@nestjs/common';
 import type { PrismaClient } from '@terra/db';
 import type { Logger } from 'pino';
 import { layerLogger } from '../../core/logging/logger';
@@ -51,11 +51,12 @@ function isUniqueViolation(e: unknown): boolean {
  * simulations with live bots or players if another replica crashes or drains.
  */
 @Injectable()
-export class SimLeaseService implements OnApplicationShutdown {
+export class SimLeaseService implements BeforeApplicationShutdown, OnApplicationShutdown {
   private readonly log: Logger;
   readonly workerId: string;
   readonly role: SimWorkerRole;
   readonly enabled: boolean;
+  readonly configuredInternalUrl: string | null;
   ttlMs: number = DEFAULT_SIM_LEASE_TTL_MS;
   private internalUrlValue: string | null;
   private timer: NodeJS.Timeout | undefined;
@@ -64,6 +65,7 @@ export class SimLeaseService implements OnApplicationShutdown {
   private leaseLostHandler: ((planetId: string) => Promise<void>) | undefined;
   private listenersBound = false;
   private loopActive = false;
+  private released = false;
   private offDown: (() => void) | undefined;
   nowMs: () => number = () => Date.now();
 
@@ -82,7 +84,8 @@ export class SimLeaseService implements OnApplicationShutdown {
     const rawRole = (env as Record<string, unknown>).TA_SIM_ROLE;
     this.role = rawRole === 'sim-worker' || rawRole === 'api' ? rawRole : 'all';
     const rawUrl = (env as Record<string, unknown>).TA_INTERNAL_URL;
-    this.internalUrlValue = typeof rawUrl === 'string' && rawUrl.trim() ? rawUrl.trim().replace(/\/+$/, '') : null;
+    this.configuredInternalUrl = typeof rawUrl === 'string' && rawUrl.trim() ? rawUrl.trim().replace(/\/+$/, '') : null;
+    this.internalUrlValue = null;
     this.enabled = Boolean(prisma && persistenceEnabled(env));
   }
 
@@ -90,16 +93,28 @@ export class SimLeaseService implements OnApplicationShutdown {
     return this.internalUrlValue;
   }
 
-  setInternalUrl(url: string | null | undefined): void {
+  setInternalUrl(url: string | null | undefined): Promise<void> {
     const clean = typeof url === 'string' && url.trim() ? url.trim().replace(/\/+$/, '') : null;
-    if (!clean) return;
+    if (!clean) return Promise.resolve();
     this.internalUrlValue = clean;
-    if (this.enabled && this.prisma && this.canHostSim()) {
-      void this.registerNodeHeartbeat().catch(() => undefined);
-      void this.prisma.simWorkerLease
+    this.released = false;
+    if (!this.enabled || !this.prisma || !this.canHostSim()) return Promise.resolve();
+    const prisma = this.prisma;
+    return (async () => {
+      await prisma.simWorkerLease
         .updateMany({ where: { workerId: this.workerId }, data: { internalUrl: clean } })
         .catch(() => undefined);
-    }
+      await this.registerNodeHeartbeat().catch(() => undefined);
+    })();
+  }
+
+  /** Scrubs any stale `SimWorkerNode` or `internalUrl` left behind if this `workerId` crashed (`SIGKILL`) on a prior run. */
+  async clearBootStaleEndpoints(): Promise<void> {
+    if (!this.enabled || !this.prisma || !this.canHostSim() || this.internalUrlValue) return;
+    await this.prisma.simWorkerNode.deleteMany({ where: { workerId: this.workerId } }).catch(() => undefined);
+    await this.prisma.simWorkerLease
+      .updateMany({ where: { workerId: this.workerId }, data: { internalUrl: null } })
+      .catch(() => undefined);
   }
 
   setTtlMsForTest(ms: number): void {
@@ -161,6 +176,7 @@ export class SimLeaseService implements OnApplicationShutdown {
     stats?: { lastTick?: number; alivePlayers?: number; aliveBots?: number; mode?: 'active' | 'coarse' },
   ): Promise<boolean> {
     if (!this.canHostSim()) return false;
+    this.released = false;
     if (!this.enabled || !this.prisma) return true;
 
     const now = new Date(this.nowMs());
@@ -402,20 +418,47 @@ export class SimLeaseService implements OnApplicationShutdown {
     });
   }
 
+  /** Evicts an unreachable/crashed remote worker's node heartbeat and expires its leases so healthy workers can take over immediately. */
+  async evictWorker(workerId: string): Promise<void> {
+    if (!this.enabled || !this.prisma || !workerId) return;
+    const now = new Date(this.nowMs());
+    await this.prisma.simWorkerNode.deleteMany({ where: { workerId } }).catch(() => undefined);
+    await this.prisma.simWorkerLease
+      .updateMany({ where: { workerId }, data: { expiresAt: now, internalUrl: null } })
+      .catch(() => undefined);
+  }
+
+  /** Expires a single planet lease when the remote worker reports it is no longer hosting `planetId`. */
+  async evictPlanetLease(planetId: string, workerId: string): Promise<void> {
+    if (!this.enabled || !this.prisma || !planetId || !workerId) return;
+    const now = new Date(this.nowMs());
+    await this.prisma.simWorkerLease
+      .updateMany({ where: { planetId, workerId }, data: { expiresAt: now } })
+      .catch(() => undefined);
+  }
+
   async releaseAll(): Promise<void> {
+    this.released = true;
     if (!this.enabled || !this.prisma) return;
     const now = new Date(this.nowMs());
     await this.prisma.simWorkerLease.updateMany({
       where: { workerId: this.workerId },
-      data: { expiresAt: now },
+      data: { expiresAt: now, internalUrl: null },
     });
     await this.prisma.simWorkerNode.deleteMany({
       where: { workerId: this.workerId },
     }).catch(() => undefined);
   }
 
+  beforeApplicationShutdown(): void {
+    // Stop lease renewals first, keeping active leases held until GameModule stops sim threads and flushes SHUTDOWN snapshots.
+    this.stopLoop();
+  }
+
   async onApplicationShutdown(): Promise<void> {
     this.stopLoop();
-    await this.releaseAll().catch(() => undefined);
+    if (!this.released) {
+      await this.releaseAll().catch(() => undefined);
+    }
   }
 }

@@ -290,6 +290,14 @@ export class SnapshotService implements BeforeApplicationShutdown {
     if (!this.enabled) return;
     const t0 = Date.now();
     const r = await this.scheduler.flushAll('SHUTDOWN', SHUTDOWN_BUDGET_MS);
+    await Promise.all([
+      this.sectorState?.flushAll().catch((e: unknown) => {
+        this.log.warn({ err: errText(e) }, 'sector state shutdown flush failed');
+      }),
+      this.simHistory?.flush().catch((e: unknown) => {
+        this.log.warn({ err: errText(e) }, 'sim history shutdown flush failed');
+      }),
+    ]);
     this.log.info({ planets: r.planets, ms: Date.now() - t0, timedOut: r.timedOut }, 'shutdown snapshots written');
   }
 
@@ -308,15 +316,19 @@ export class SnapshotService implements BeforeApplicationShutdown {
     this.bytes.set(saved.sizeBytes);
     this.total.inc({ kind: s.kind });
     this.log.debug({ planetId, tick: s.tick, kind: s.kind, sizeBytes: saved.sizeBytes }, 'snapshot saved');
-    void this.digestFlush?.(planetId, s.bytes)?.catch((e: unknown) => {
-      this.log.warn({ planetId, err: errText(e) }, 'digest flush failed');
-    });
-    void this.sectorState?.flushPlanet(planetId).catch((e: unknown) => {
-      this.log.warn({ planetId, err: errText(e) }, 'sector state snapshot flush failed');
-    });
-    void this.simHistory?.flush().catch((e: unknown) => {
-      this.log.warn({ planetId, err: errText(e) }, 'sim history snapshot flush failed');
-    });
-    void this.store.prune(planetId).catch((e: unknown) => this.log.warn({ planetId, err: String(e) }, 'snapshot prune failed'));
+    await Promise.all([
+      this.digestFlush?.(planetId, s.bytes)?.catch((e: unknown) => {
+        this.log.warn({ planetId, err: errText(e) }, 'digest flush failed');
+      }),
+      this.sectorState?.flushPlanet(planetId).catch((e: unknown) => {
+        this.log.warn({ planetId, err: errText(e) }, 'sector state snapshot flush failed');
+      }),
+      this.simHistory?.flush().catch((e: unknown) => {
+        this.log.warn({ planetId, err: errText(e) }, 'sim history snapshot flush failed');
+      }),
+      s.kind === 'SHUTDOWN'
+        ? undefined
+        : this.store.prune(planetId).catch((e: unknown) => this.log.warn({ planetId, err: String(e) }, 'snapshot prune failed')),
+    ]);
   }
 }

@@ -1,5 +1,5 @@
 import { availableParallelism } from 'node:os';
-import { Inject, Module, Optional, type OnApplicationBootstrap, type OnApplicationShutdown } from '@nestjs/common';
+import { Inject, Module, Optional, type BeforeApplicationShutdown, type OnApplicationBootstrap, type OnApplicationShutdown } from '@nestjs/common';
 import { HttpAdapterHost, ModuleRef } from '@nestjs/core';
 import type { PrismaClient } from '@terra/db';
 import { defineEnv } from '@terra/config';
@@ -192,7 +192,7 @@ const POOL = Symbol('SIM_THREAD_POOL');
     EconomySimService,
   ],
 })
-export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown {
+export class GameModule implements OnApplicationBootstrap, BeforeApplicationShutdown, OnApplicationShutdown {
   private unsubBridge: (() => void) | undefined;
   private unsubDigest: (() => void) | undefined;
   private unsubHomeSeat: (() => void) | undefined;
@@ -215,6 +215,7 @@ export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown
     private readonly modules: ModuleRef,
     private readonly hardMode: HardModeClock,
     private readonly colonyAgentLoop: ColonyAgentLoopService,
+    private readonly planetLedger: PlanetLedgerService,
     private readonly sectorState: SectorStateService,
     private readonly simHistory: SimHistoryService,
     private readonly simLease: SimLeaseService,
@@ -236,7 +237,9 @@ export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown
     const seedRivalAi = this.env.TA_SEED_RIVAL_AI === '1' || this.env.TA_SEED_RIVAL_AI === 'true';
     if (this.flags.has('W18') && seedRivalAi) {
       this.planets.onPlanetLoaded((planetId, _tick, info) => {
-        if (!info.restored) void this.colonyAgentLoop.seedRivalsOnPlanet(planetId, 2);
+        if (!info.restored && !info.genesis && !planetId.startsWith('pl_spec_')) {
+          void this.colonyAgentLoop.seedRivalsOnPlanet(planetId, 2);
+        }
       });
     }
     await this.pool.start();
@@ -256,6 +259,7 @@ export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown
     this.colonyAgentLoop.setDecisionRecorder((d) => this.simHistory.recordExternalDecision(d));
     this.simCluster.attachHttpServer(this.httpAdapterHost?.httpAdapter?.getHttpServer());
     if (this.simLease.canHostSim()) {
+      await this.simLease.clearBootStaleEndpoints();
       const restored = await this.snapshots.restoreAll();
       const ids = devPlanetsToGenerate(devPlanetIds(Number(this.env.GAME_DEV_PLANETS), this.pool.size), this.planets.loadedIds(), restored);
       const devOptsFor = (id: string) =>
@@ -398,6 +402,19 @@ export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown
       offEvents();
       offDown();
     };
+  }
+
+  async beforeApplicationShutdown(): Promise<void> {
+    this.colonyAgentLoop.stop();
+    await this.planets.shutdown();
+    this.sectorState.closeSubscriptions();
+    this.simHistory.closeSubscriptions();
+    await Promise.all([
+      this.planetLedger.settled(),
+      this.sectorState.flushAll().catch(() => undefined),
+      this.simHistory.flush().catch(() => undefined),
+    ]);
+    await this.simLease.releaseAll().catch(() => undefined);
   }
 
   async onApplicationShutdown(): Promise<void> {

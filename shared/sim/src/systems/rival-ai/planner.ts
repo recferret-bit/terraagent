@@ -117,6 +117,12 @@ function pickBuildingOrder(
   const targetTurrets = persona === 'warlord' ? 3 : 2;
   const candidates: Array<{ building: string; reason: string }> = [];
 
+  if (scan.hubCount === 0) {
+    candidates.push({
+      building: 'commandHub',
+      reason: 'Establishing Command Hub foundation',
+    });
+  }
   if (brownout || netPower < 4 || scan.powerPlantCount === 0) {
     candidates.push({
       building: flags.has('W03') ? 'wind' : 'solar',

@@ -63,8 +63,10 @@ describe('session target', () => {
     expect(f).toHaveBeenCalledWith('/v1/dev/planets');
   });
 
-  it('validates the scenario param', () => {
+  it('validates the scenario param and ignores spectator mode alias', () => {
     expect(scenarioParam('?scenario=../x')).toBeNull();
+    expect(scenarioParam('?scenario=spectator')).toBeNull();
+    expect(scenarioParam('?scenario=SPECTATOR')).toBeNull();
     expect(scenarioParam('?scenario=w00-empty')).toBe('w00-empty');
   });
 });
@@ -197,7 +199,7 @@ describe('server spectator target (?spectator=1&host=server & reset)', () => {
 describe('server spectator ?join=<planetId> & non-local origin guard', () => {
   const localLoc = (search: string) => ({ protocol: 'http:', host: '127.0.0.1:5173', search });
 
-  it('resets explicit ?join=<planetId> once when &reset=1 is passed, re-ensures pl_spec_* on reconnect, and joins arbitrary planets read-only without mutating', async () => {
+  it('resets explicit ?join=<planetId> once when &reset=1 is passed and re-ensures via /v1/dev/spectator on reconnect for lock/restore safety', async () => {
     const specBodies: unknown[] = [];
     const specFetch = vi.fn(async (_url: string, init?: RequestInit) => {
       specBodies.push(JSON.parse(String(init?.body ?? '{}')));
@@ -216,7 +218,7 @@ describe('server spectator ?join=<planetId> & non-local origin guard', () => {
     const customBodies: unknown[] = [];
     const customFetch = vi.fn(async (_url: string, init?: RequestInit) => {
       customBodies.push(JSON.parse(String(init?.body ?? '{}')));
-      return okJson({ planetId: 'pl_custom_scenario', tick: 0, botCount: 2, created: true, reset: true });
+      return okJson({ planetId: 'pl_custom_scenario', tick: 0, botCount: 2, created: customBodies.length === 1, reset: customBodies.length === 1 });
     });
     const customJoinReset = createSessionTarget(
       localLoc('?spectator=1&join=pl_custom_scenario&reset=1'),
@@ -226,11 +228,20 @@ describe('server spectator ?join=<planetId> & non-local origin guard', () => {
     );
     expect(await customJoinReset.resolve()).toEqual({ planetId: 'pl_custom_scenario' });
     expect(await customJoinReset.resolve()).toEqual({ planetId: 'pl_custom_scenario' });
-    expect(customFetch).toHaveBeenCalledTimes(1);
-    expect(customBodies).toEqual([{ planetId: 'pl_custom_scenario', reset: true }]);
+    expect(customFetch).toHaveBeenCalledTimes(2);
+    expect(customBodies).toEqual([{ planetId: 'pl_custom_scenario', reset: true }, { planetId: 'pl_custom_scenario' }]);
+
+    const plainJoinBodies: unknown[] = [];
+    const plainJoinFetch = vi.fn(async (_url: string, init?: RequestInit) => {
+      plainJoinBodies.push(JSON.parse(String(init?.body ?? '{}')));
+      return okJson({ planetId: 'pl_dev', tick: 15, botCount: 2, created: false, reset: false });
+    });
+    const plainJoin = createSessionTarget(localLoc('?spectator=1&join=pl_dev'), plainJoinFetch, memoryStorage(), memoryStorage());
+    expect(await plainJoin.resolve()).toEqual({ planetId: 'pl_dev' });
+    expect(plainJoinBodies).toEqual([{ planetId: 'pl_dev' }]);
   });
 
-  it('disables spectator mode completely on non-local hostnames', async () => {
+  it('disables spectator mode completely on non-local hostnames (including ?scenario=spectator)', async () => {
     const f = vi.fn(async () => okJson({ planets: [{ id: 'pl_prod' }] }));
     const t = createSessionTarget(
       { protocol: 'https:', host: 'play.terraagent.fun', search: '?spectator=1&host=server&reset=1' },
@@ -241,5 +252,17 @@ describe('server spectator ?join=<planetId> & non-local origin guard', () => {
     expect(t.mode).toBeUndefined();
     expect(await t.resolve()).toEqual({ planetId: 'pl_prod' });
     expect(f).toHaveBeenCalledWith('/v1/dev/planets');
+
+    const lanFetch = vi.fn(async () => okJson({ planets: [{ id: 'pl_lan' }] }));
+    const lanSpecScenario = createSessionTarget(
+      { protocol: 'http:', host: '192.168.1.25:5173', search: '?scenario=spectator' },
+      lanFetch,
+      memoryStorage(),
+      memoryStorage(),
+    );
+    expect(lanSpecScenario.mode).toBeUndefined();
+    expect(await lanSpecScenario.resolve()).toEqual({ planetId: 'pl_lan' });
+    expect(lanFetch).toHaveBeenCalledTimes(1);
+    expect(lanFetch).toHaveBeenCalledWith('/v1/dev/planets');
   });
 });

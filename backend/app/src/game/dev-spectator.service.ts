@@ -5,6 +5,7 @@ import { createScenarioPlanet, getScenario } from '@terra/scenarios';
 import {
   createPlanet,
   hashString,
+  prepareSpectatorScenarioHost,
   restore,
   seedRivalAiColonies,
   SimHost,
@@ -51,6 +52,11 @@ export interface DevSpectatorResponse {
 
 interface EnsureContext {
   readonly planetId: string;
+  readonly explicitPlanetId: boolean;
+  readonly hasExplicitPlanetType: boolean;
+  readonly hasExplicitBotCount: boolean;
+  readonly hasExplicitSeed: boolean;
+  readonly inferredBotCount: boolean;
   readonly scenarioId?: string;
   readonly planetType: 'desert' | 'ocean' | 'temperate';
   readonly botCount: number;
@@ -58,7 +64,25 @@ interface EnsureContext {
   readonly reset: boolean;
 }
 
-const CLUSTER_WORKER_WAIT_MS = 5_000;
+function inferSpectatorDefaultsFromPlanetId(planetId: string): {
+  readonly scenarioId?: string;
+  readonly planetType?: 'desert' | 'ocean' | 'temperate';
+  readonly botCount?: number;
+} {
+  if (planetId.startsWith('pl_spec_sc_')) {
+    const rawSc = planetId.slice('pl_spec_sc_'.length).trim().toLowerCase();
+    if (rawSc && getScenario(rawSc)) return { scenarioId: rawSc };
+    return {};
+  }
+  const m = /^pl_spec_(desert|ocean|temperate)_([1-6])(?:_|$)/.exec(planetId);
+  if (!m) return {};
+  return {
+    planetType: m[1] as 'desert' | 'ocean' | 'temperate',
+    botCount: Number(m[2]),
+  };
+}
+
+const CLUSTER_WORKER_WAIT_MS = 20_000;
 const CLUSTER_WORKER_POLL_MS = 150;
 
 export function normalizeSpectatorPlanetType(raw?: string): 'desert' | 'ocean' | 'temperate' {
@@ -114,14 +138,17 @@ export class DevSpectatorService {
   ) {}
 
   ensureSpectatorPlanet(rawInput: DevSpectatorRequest = {}): Promise<DevSpectatorResponse> {
-    const rawScenario = rawInput.scenario?.trim().toLowerCase();
+    const inferred = rawInput.planetId ? inferSpectatorDefaultsFromPlanetId(rawInput.planetId) : {};
+    const rawScenario = (rawInput.scenario ?? inferred.scenarioId)?.trim().toLowerCase();
     const scenarioId = rawScenario && rawScenario !== 'spectator' ? rawScenario : undefined;
     const scenarioDef = scenarioId ? getScenario(scenarioId) : undefined;
     if (scenarioId && !scenarioDef) {
       throw new CoreException('NOT_FOUND', { status: 404, message: `Unknown scenario "${scenarioId}"` });
     }
-    const planetType = normalizeSpectatorPlanetType(rawInput.planetType ?? scenarioDef?.planet.planetType);
-    const botCount = Math.max(1, Math.min(6, rawInput.botCount ?? 2));
+    const planetType = normalizeSpectatorPlanetType(
+      rawInput.planetType ?? inferred.planetType ?? scenarioDef?.planet.planetType,
+    );
+    const botCount = Math.max(1, Math.min(6, rawInput.botCount ?? inferred.botCount ?? 2));
     const seed = rawInput.seed?.trim() || `spec-${planetType}`;
     const planetId =
       rawInput.planetId ??
@@ -136,7 +163,19 @@ export class DevSpectatorService {
     }
 
     return this.withPlanetLock(planetId, () =>
-      this.runEnsure({ planetId, scenarioId: scenarioDef?.id, planetType, botCount, seed, reset }),
+      this.runEnsure({
+        planetId,
+        explicitPlanetId: Boolean(rawInput.planetId),
+        hasExplicitPlanetType: Boolean(rawInput.planetType?.trim()),
+        hasExplicitBotCount: rawInput.botCount !== undefined,
+        hasExplicitSeed: Boolean(rawInput.seed?.trim()),
+        inferredBotCount: inferred.botCount !== undefined,
+        scenarioId: scenarioDef?.id,
+        planetType,
+        botCount,
+        seed,
+        reset,
+      }),
     );
   }
 
@@ -165,16 +204,47 @@ export class DevSpectatorService {
     }
   }
 
+  private async resolveResetContext(ctx: EnsureContext): Promise<EnsureContext> {
+    if (!ctx.explicitPlanetId || ctx.scenarioId) return { ...ctx, reset: true };
+    if (ctx.hasExplicitPlanetType && ctx.hasExplicitBotCount && ctx.hasExplicitSeed) return { ...ctx, reset: true };
+    const loc = await this.tryEnsureHosted(ctx.planetId).catch(() => null);
+    if (!loc) return { ...ctx, reset: true };
+    const full = await (this.cluster ? this.cluster.fullStateAnywhere(ctx.planetId) : this.planets.fullState(ctx.planetId)).catch(
+      () => null,
+    );
+    if (!full) return { ...ctx, reset: true };
+    const state = restore(full.bytes);
+    const liveBots = state.colonies.filter((c) => Boolean(c && c.isBot && c.status !== 'eliminated')).length;
+    const planetType = ctx.hasExplicitPlanetType ? ctx.planetType : normalizeSpectatorPlanetType(state.meta.planetType);
+    const seed = ctx.hasExplicitSeed ? ctx.seed : state.meta.seed?.trim() || `spec-${planetType}`;
+    const botCount =
+      ctx.hasExplicitBotCount || ctx.inferredBotCount
+        ? ctx.botCount
+        : liveBots >= 1 && liveBots <= 6
+          ? liveBots
+          : ctx.botCount;
+    return { ...ctx, planetType, seed, botCount, reset: true };
+  }
+
   private async runEnsure(ctx: EnsureContext): Promise<DevSpectatorResponse> {
     const { planetId, reset, botCount } = ctx;
     if (reset) {
       await this.assertResetSafe(planetId);
+      if (this.simLease && !this.simLease.canHostSim() && this.cluster) {
+        await this.waitForClusterWorker();
+      }
+      const nextCtx = await this.resolveResetContext(ctx);
       await this.wipeEverywhere(planetId);
-      return this.seedAndLoadFresh({ ...ctx, reset: true });
+      return this.seedAndLoadFresh(nextCtx);
     }
 
     const loc = await this.tryEnsureHosted(planetId);
-    if (!loc) return this.seedAndLoadFresh({ ...ctx, reset: false });
+    if (!loc) {
+      if (ctx.explicitPlanetId && !planetId.startsWith('pl_spec_')) {
+        return { planetId, tick: 0, botCount: 0, created: false, reset: false };
+      }
+      return this.seedAndLoadFresh({ ...ctx, reset: false });
+    }
 
     const full = this.cluster
       ? await this.cluster.fullStateAnywhere(planetId)
@@ -183,13 +253,13 @@ export class DevSpectatorService {
     const activeBots = state.colonies.filter((c) => Boolean(c && c.isBot && c.status !== 'eliminated')).length;
     const activeHumans = state.colonies.filter((c) => Boolean(c && !c.isBot && c.status !== 'eliminated')).length;
 
-    if (activeBots > 0 || (Boolean(ctx.scenarioId) && activeHumans > 0)) {
+    if (activeBots > 0 || activeHumans > 0) {
       if (this.planets.isLoaded(planetId)) this.planets.requestSectorSync(planetId);
       await this.sectorState?.flushPlanet(planetId);
       return { planetId, tick: full.tick, botCount: activeBots || activeHumans, created: false, reset: false };
     }
 
-    if (activeHumans === 0 && canonicalPlanetById(planetId) === null) {
+    if (canonicalPlanetById(planetId) === null) {
       await this.wipeEverywhere(planetId);
       return this.seedAndLoadFresh({ ...ctx, reset: false });
     }
@@ -231,17 +301,18 @@ export class DevSpectatorService {
   }
 
   private async tryEnsureHostedInCluster(planetId: string): Promise<PlanetHostLocation | null> {
-    const immediate = await this.cluster!.ensureHosted(planetId);
+    const startedAt = Date.now();
+    const immediate = await this.cluster!.ensureHosted(planetId, undefined, this.workerWaitMs);
     if (immediate) return immediate;
     if (!this.simLease || this.simLease.canHostSim()) return null;
 
     const hasSaved = (await this.snapshots?.hasPersistedSnapshots(planetId).catch(() => false)) ?? false;
     const noWorker = (await this.simLease.pickHealthyWorker()) === null;
     if (hasSaved || noWorker) {
-      const deadline = Date.now() + this.workerWaitMs;
+      const deadline = startedAt + this.workerWaitMs;
       while (Date.now() < deadline) {
         await new Promise((r) => setTimeout(r, CLUSTER_WORKER_POLL_MS));
-        const retried = await this.cluster!.ensureHosted(planetId);
+        const retried = await this.cluster!.ensureHosted(planetId, undefined, 0);
         if (retried) return retried;
       }
     }
@@ -295,22 +366,7 @@ export class DevSpectatorService {
         worldSalt: randomUUID(),
         ...(region ? { region } : {}),
       });
-      const setupPostings: LedgerPosting[] = [...built.setupPostings];
-      const liveCols = built.host.state.colonies.filter((c) => Boolean(c && c.status !== 'eliminated')).length;
-      if (liveCols === 0) {
-        const colonyIndices = Array.from({ length: botCount }, (_, idx) => idx);
-        seedRivalAiColonies(built.host.state, {
-          count: botCount,
-          colonyIndices,
-          capacity: 8,
-          tick: built.host.tick,
-          data: built.host.pipeline.config.data,
-          recordPosting: (p) => { setupPostings.push(p); },
-        });
-      }
-      const colonyCount =
-        built.host.state.colonies.filter((c) => Boolean(c && c.status !== 'eliminated')).length || botCount;
-      return { host: built.host, setupPostings, colonyCount };
+      return prepareSpectatorScenarioHost(built, { botCount, fallbackFlags: this.flags.list });
     }
 
     const host = new SimHost({ flags: flagsFromList(this.flags.list), hostRole: 'authority_external_bots' });

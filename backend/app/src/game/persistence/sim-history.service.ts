@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { Inject, Injectable, Optional, type OnApplicationShutdown } from '@nestjs/common';
+import { Inject, Injectable, Optional, type BeforeApplicationShutdown, type OnApplicationShutdown } from '@nestjs/common';
 import {
   AgentDecisionHistoryResponseV1Schema,
   SimInputHistoryResponseV1Schema,
@@ -98,7 +98,7 @@ export interface DecisionHistoryQuery {
  * and ALL actor decisions (`ai.agent_decision_history`) for both bots and players.
  */
 @Injectable()
-export class SimHistoryService implements OnApplicationShutdown {
+export class SimHistoryService implements BeforeApplicationShutdown, OnApplicationShutdown {
   private readonly log: Logger;
   readonly enabled: boolean;
   private readonly inputsByPlanet = new Map<string, SimInputFeedItemV1[]>();
@@ -445,9 +445,19 @@ export class SimHistoryService implements OnApplicationShutdown {
     this.decisionsByPlanet.delete(planetId);
   }
 
-  async onApplicationShutdown(): Promise<void> {
+  closeSubscriptions(): void {
     this.unsubFeeds?.();
     this.unsubFeeds = undefined;
+  }
+
+  async beforeApplicationShutdown(): Promise<void> {
     await this.flush();
+  }
+
+  async onApplicationShutdown(): Promise<void> {
+    this.closeSubscriptions();
+    if (this.flushTimer || this.queuedInputs.length > 0 || this.queuedDecisions.length > 0) {
+      await this.flush();
+    }
   }
 }
