@@ -71,18 +71,19 @@ describe('Production build URL lockdown & offline local-host guardrails', () => 
   it('locks down ?host=local, legacy QA query params (?autodeploy=, ?qat=, ?t=, ?seed=&skip=1, ?waves=, ?scenario=, ?join=), and local fallback in production builds across play, me, and trade', async () => {
     setProductionBuildOverride(true);
 
-    expect(onlineMode('')).toBe('boot');
-    expect(onlineMode('?host=local')).toBe('boot');
-    expect(onlineMode('?host=local&scenario=w00')).toBe('boot');
-    expect(onlineMode('?host=local&scenario=w01')).toBe('boot');
-    expect(onlineMode('?autodeploy=1500')).toBe('boot');
-    expect(onlineMode('?menutime=10')).toBe('boot');
-    expect(onlineMode('?qat=5')).toBe('boot');
-    expect(onlineMode('?t=5')).toBe('boot');
-    expect(onlineMode('?seed=123&skip=1')).toBe('boot');
-    expect(onlineMode('?waves=..00')).toBe('boot');
-    expect(onlineMode('?scenario=w00&as=e2e')).toBe('boot');
-    expect(onlineMode('?join=pl_1')).toBe('boot');
+    expect(onlineMode('')).toBeNull();
+    expect(onlineMode('?host=local')).toBeNull();
+    expect(onlineMode('?host=local&scenario=w00')).toBeNull();
+    expect(onlineMode('?host=local&scenario=w01')).toBeNull();
+    expect(onlineMode('?autodeploy=1500')).toBeNull();
+    expect(onlineMode('?menutime=10')).toBeNull();
+    expect(onlineMode('?qat=5')).toBeNull();
+    expect(onlineMode('?t=5')).toBeNull();
+    expect(onlineMode('?seed=123&skip=1')).toBeNull();
+    expect(onlineMode('?waves=..00')).toBeNull();
+    expect(onlineMode('?scenario=w00&as=e2e')).toBeNull();
+    expect(onlineMode('?join=pl_1')).toBeNull();
+    expect(onlineMode('?spectator=1')).toBeNull();
     expect(onlineMode('?planet=dune')).toBeNull();
     expect(onlineMode('?planet=dune&host=local&t=5&autodeploy=100&qat=3')).toBeNull();
 

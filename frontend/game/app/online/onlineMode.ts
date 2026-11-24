@@ -71,46 +71,33 @@ export function stripSpectatorResetFromUrl(
 }
 
 /**
- * Determines whether `/play.html` runs the online/boot flow or the prototype world-picker (`null`).
+ * Determines whether `/play.html` runs the direct online harness flow or the 3D orbital planet selection screen (`null`).
+ * - Production builds (`prod === true`): always returns `null` so players always land on the orbital planet selection screen.
  * - Spectator URL (`?spectator=1` / `?scenario=spectator` / `?mode=spectator`, local dev only):
  *   - With `?join=<planetId>` or `?host=server`: `'scenario'` (read-only WS spectator of a backend planet)
  *   - Otherwise: `'host'` (immediate local zero-player bot-only planet)
- * - Prototype mode (`null`):
- *   - `?planet=dune|oceanForest|forestRock` (or `?autodeploy=` / `?menutime=`)
- *   - `?host=local` without `?scenario=` (prototype world picker)
- *   - `!flags.has('W01')` (e.g. `?waves=..00`) without `?scenario=`, `?join=` or `?host=`
- * - W00 / join online mode (`'scenario'` | `'host'`):
- *   - `?join=<planetId>`
- *   - `?scenario=w00*` or `!flags.has('W01')` with `?scenario=` / `?host=`
- * - W01 automatic boot flow (`'boot'`):
- *   - Default on `/play.html` when `flags.has('W01')` (including `?scenario=w01*` or `?host=local&scenario=w01*`)
+ * - Direct dev/E2E harness flows (`!prod`):
+ *   - `?join=<planetId>`: `'scenario'`
+ *   - `?scenario=`: `'boot'` for W01 scenarios when `flags.has('W01')`, `'scenario'` for `w00*`/`w09*` or when W01 is off
+ * - Every other URL (bare `/play.html`, `?planet=`, `?colonyId=`, `?new=1`, `?skip=1`, `?deploy=1`, `?host=local`, `?waves=`): `null`
  */
 export function onlineMode(search: string, envOpts?: SpectatorEnvOptions): OnlineMode | null {
   const q = new URLSearchParams(search);
   const prod = isProductionBuild(envOpts?.mode, envOpts?.prod, envOpts?.appEnv);
+  if (prod) return null;
   if (isSpectatorSearch(search, envOpts)) {
     return q.has('join') || q.get('host') === 'server' ? 'scenario' : 'host';
   }
-  if (prod) {
-    return q.has('planet') ? null : 'boot';
-  }
   if (q.has('planet') || q.has('autodeploy') || q.has('menutime')) return null;
   if (q.has('join')) return 'scenario';
-  const host = q.get('host');
   const rawScenario = q.get('scenario')?.trim().toLowerCase() ?? null;
   const scenario = rawScenario === 'spectator' ? null : rawScenario;
-  if (host === 'local' && !scenario) return null;
-
-  const { flags } = resolveClientFlags({ search, dev: !prod });
-  const hasW01 = flags.has('W01');
-
   if (scenario) {
+    const { flags } = resolveClientFlags({ search, dev: !prod });
+    const hasW01 = flags.has('W01');
     // w00 and w09 are landed dev planets. They skip the drop-pod boot, which hides the HUD until an HQ deploys.
     if (!hasW01 || scenario.startsWith('w00') || scenario === 'w09' || scenario.startsWith('w09-')) return 'scenario';
     return 'boot';
   }
-  if (q.has('host')) {
-    return hasW01 ? 'boot' : 'host';
-  }
-  return hasW01 ? 'boot' : null;
+  return null;
 }

@@ -367,3 +367,53 @@ describe('/me.html — live colony slots bar & WS multi-colony join', () => {
     transport.dispose();
   });
 });
+
+describe('Planet selection screen — roster pre-selection from /me & orbit links', () => {
+  const oceanCol: ActiveHomeColony = {
+    kind: 'oceanForest',
+    planetType: 'ocean',
+    planetId: CANONICAL_PLANETS.ocean.id,
+    planetName: 'Thalassa',
+    colonyId: 'col_ocean_focus',
+    colonyName: 'Coral Hold',
+    foundingSectorId: 'sec_1_0',
+  };
+
+  it('switches to the planet, colony, and sector named by initialColonyId when arriving from /me', () => {
+    const cb: MenuCallbacks = { onPlanet: vi.fn(), onDeploy: vi.fn(), onSettings: vi.fn() };
+    const menu = new MainMenu(document.body, cb, 'dune', undefined, {
+      planetList: makePlanetListFixture(),
+      initialColonyId: 'col_ocean_focus',
+    });
+    menu.setColonyRoster({
+      primary: oceanCol,
+      colonies: [oceanCol],
+      slots: { used: 1, max: 3, aiColonySlots: 3, isStaker: true, tier: 2, stakedNear: '50' },
+    });
+
+    expect(menu.kind).toBe('oceanForest');
+    expect(menu.getSelectedColonyId()).toBe('col_ocean_focus');
+    expect(menu.getSectorIntent()).toEqual({ mode: 'chosen', sectorId: 'sec_1_0' });
+    expect(menu.resolveDeployAction()).toMatchObject({ mode: 'enter', colony: oceanCol });
+    expect(menu.el.querySelector('#deploy')?.textContent).toBe('ENTER COLONY');
+    menu.dispose();
+  });
+
+  it('focuses the active colony planet on bare /play.html (explicitPlanet: false) while keeping staker expansion planets unlocked', () => {
+    const cb: MenuCallbacks = { onPlanet: vi.fn(), onDeploy: vi.fn(), onSettings: vi.fn() };
+    const menu = new MainMenu(document.body, cb, 'dune', undefined, {
+      planetList: makePlanetListFixture(),
+      explicitPlanet: false,
+    });
+    menu.setColonyRoster({
+      primary: oceanCol,
+      colonies: [oceanCol],
+      slots: { used: 1, max: 3, aiColonySlots: 3, isStaker: true, tier: 2, stakedNear: '50' },
+    });
+
+    expect(menu.kind).toBe('oceanForest');
+    expect(menu.el.querySelector('.world-card[data-k="dune"]')?.classList.contains('is-colony-locked')).toBe(false);
+    expect(menu.resolveDeployAction()).toMatchObject({ mode: 'enter', colony: oceanCol });
+    menu.dispose();
+  });
+});

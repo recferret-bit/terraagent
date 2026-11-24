@@ -39,9 +39,9 @@ describe('Local-only spectator guards & reset query parsing', () => {
 
     const remoteEnv = { location: { protocol: 'https:', hostname: 'play.terraagent.fun' }, mode: 'development', prod: false };
     expect(isSpectatorSearch('?spectator=1', remoteEnv)).toBe(false);
-    expect(onlineMode('?spectator=1', remoteEnv)).toBe('boot');
+    expect(onlineMode('?spectator=1', remoteEnv)).toBeNull();
     expect(onlineMode('?spectator=1&planet=dune', remoteEnv)).toBeNull();
-    expect(onlineMode('?scenario=spectator', remoteEnv)).toBe('boot');
+    expect(onlineMode('?scenario=spectator', remoteEnv)).toBeNull();
     expect(localHostOptions('?spectator=1', remoteEnv)).toBeNull();
     expect(localHostOptions('?host=local&scenario=spectator', remoteEnv)).toMatchObject({ scenario: 'w00' });
     expect(localHostOptions('?host=local&scenario=spectator', remoteEnv)?.spectator).toBeUndefined();

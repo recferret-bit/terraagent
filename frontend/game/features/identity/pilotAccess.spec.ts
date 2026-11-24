@@ -424,7 +424,7 @@ describe('OAuth popup error handling & real @near-wallet-selector/core Testnet b
     ).toEqual({ provider: 'near-wallet', token: 'nep413:abc' });
 
     const section = renderPlanetsSection(makeW12ProfileFixture());
-    expect(section.querySelector('[data-testid="me-colony-dive-in"]')?.getAttribute('href')).toBe('/play.html?skip=1&colonyId=co_w12_live_1');
+    expect(section.querySelector('[data-testid="me-colony-dive-in"]')?.getAttribute('href')).toBe('/play.html?planet=forestRock&colonyId=co_w12_live_1');
   });
 
   it('initializes real @near-wallet-selector/core on Testnet with Meteor, OKX, NEAR Mobile, Intear, and MyNearWallet modules', async () => {

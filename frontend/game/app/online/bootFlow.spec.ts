@@ -297,8 +297,11 @@ describe('W01-38: returning profile & local fallback', () => {
   });
 
   it('3. falls back cleanly to local SimHost on pl_dev when backend is unreachable, and preserves W00 / prototype URL routing', async () => {
-    expect(onlineMode('')).toBe('boot');
-    expect(onlineMode('?skip=1')).toBe('boot');
+    expect(onlineMode('')).toBeNull();
+    expect(onlineMode('?skip=1')).toBeNull();
+    expect(onlineMode('?colonyId=co_1')).toBeNull();
+    expect(onlineMode('?new=1')).toBeNull();
+    expect(onlineMode('?waves=..01')).toBeNull();
     expect(onlineMode('?scenario=w01')).toBe('boot');
     expect(onlineMode('?host=local&scenario=w01')).toBe('boot');
     expect(onlineMode('?scenario=w00&as=e2e')).toBe('scenario');

@@ -115,7 +115,7 @@ export function buildGameplayAndEngineSections(): HTMLElement[] {
       ['Surface / Route', 'Runtime', 'Primary Capability'],
       [
         ['[/landing.html](/landing.html) & [/pitchdeck/](/pitchdeck/)', 'Vite MPA + Three.js Orbit', 'Interactive 3D orbital landing (`terraagent.fun`), protocol schematic & pitch deck'],
-        ['[/play.html?planet=dune&skip=1](/play.html?planet=dune&skip=1)', 'WebGL2 + WS / Web Worker', 'Live RTS gameplay (`?deploy=1` drop-pod descent, `?skip=1` colony entry, `?host=local`, plus local-dev console & `F8` Shader Lab)'],
+        ['[/play.html?planet=dune](/play.html?planet=dune)', 'WebGL2 + WS / Web Worker', 'Orbital planet selection & live RTS gameplay (choose world/sector or enter an active colony, `?host=local`, plus local-dev console & `F8` Shader Lab)'],
         ['[/trade.html](/trade.html)', 'SSE + REST (`/v1/trade/*`)', '90-pair planetary CLOB orderbook, live depth ladder, 0.65%–0.25% 4-tier staker fees, Stake Trade Profits, 1Click swaps & `ta_bot_...` keys'],
         ['[/me.html#staking](/me.html#staking)', 'REST (`/v1/me/*`, `/v1/near/staking/*`)', '4-Tier Staking Wealth Dashboard (self-fill-excluded Effective APY, Compound & Stake Trade Profits, Patron Card), 60 badges & AES-256-GCM BYOK vault'],
         ['[/deed.html](/deed.html) (`/deed/:tokenId`)', 'OpenGraph + NFT Feed', 'Shareable colony deed milestone timeline with generated preview artwork'],

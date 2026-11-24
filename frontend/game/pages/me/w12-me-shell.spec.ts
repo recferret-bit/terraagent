@@ -39,7 +39,7 @@ describe('W12-13 /me page shell, sticky tabs, wave_disabled plate, and PA-03 saf
     const modelSelect = root.querySelector('[data-testid="me-ai-model-select"]') as HTMLSelectElement | null;
     expect(modelSelect?.value).toBe('z-ai/glm-5.3-flash');
     expect(root.querySelector('[data-testid="me-colony-dive-in"]')?.getAttribute('href')).toBe(
-      '/play.html?skip=1&colonyId=co_w12_live_1',
+      '/play.html?planet=forestRock&colonyId=co_w12_live_1',
     );
   });
 
@@ -391,12 +391,12 @@ describe('/me same-planet multi-colony selector', () => {
     const diveEl = root.querySelector<HTMLAnchorElement>('[data-testid="me-same-planet-dive"]')!;
     const optionBtns = [...root.querySelectorAll<HTMLButtonElement>('[data-testid="me-same-planet-option"]')];
     expect(optionBtns).toHaveLength(2);
-    expect(diveEl.getAttribute('href')).toBe('/play.html?skip=1&colonyId=col_same_1&sector=sec_0_0');
+    expect(diveEl.getAttribute('href')).toBe('/play.html?planet=dune&colonyId=col_same_1&sector=sec_0_0');
 
     // Selecting second colony via option pill updates dropdown, Dive link, and card highlight
     optionBtns[1]!.click();
     expect(selectEl.value).toBe('col_same_2');
-    expect(diveEl.getAttribute('href')).toBe('/play.html?skip=1&colonyId=col_same_2&sector=sec_1_0');
+    expect(diveEl.getAttribute('href')).toBe('/play.html?planet=dune&colonyId=col_same_2&sector=sec_1_0');
     expect(diveEl.textContent).toContain('Ridge Bastion');
     expect(
       root.querySelector('[data-testid="me-current-colony"][data-colony-id="col_same_2"]')?.classList.contains('is-selected-colony'),
@@ -405,16 +405,16 @@ describe('/me same-planet multi-colony selector', () => {
     // Changing dropdown back to first colony updates Dive link and option pills
     selectEl.value = 'col_same_1';
     selectEl.dispatchEvent(new Event('change'));
-    expect(diveEl.getAttribute('href')).toBe('/play.html?skip=1&colonyId=col_same_1&sector=sec_0_0');
+    expect(diveEl.getAttribute('href')).toBe('/play.html?planet=dune&colonyId=col_same_1&sector=sec_0_0');
     expect(optionBtns[0]!.getAttribute('aria-pressed')).toBe('true');
 
     // Individual cards also carry sector query param when planet has multiple colonies
     const cards = [...root.querySelectorAll<HTMLElement>('[data-testid="me-current-colony"]')];
     expect(cards[0]!.querySelector('[data-testid="me-colony-dive-in"]')?.getAttribute('href')).toBe(
-      '/play.html?skip=1&colonyId=col_same_1&sector=sec_0_0',
+      '/play.html?planet=dune&colonyId=col_same_1&sector=sec_0_0',
     );
     expect(cards[1]!.querySelector('[data-testid="me-colony-dive-in"]')?.getAttribute('href')).toBe(
-      '/play.html?skip=1&colonyId=col_same_2&sector=sec_1_0',
+      '/play.html?planet=dune&colonyId=col_same_2&sector=sec_1_0',
     );
   });
 });

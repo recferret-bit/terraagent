@@ -53,7 +53,7 @@ function buildEconomySimHeader(): HTMLElement {
     ['LANDING', isPlayHost ? 'https://terraagent.fun/' : '/landing.html', false],
     ['EXCHANGE', '/trade.html', false],
     ['WHITEPAPER', isPlayHost ? 'https://whitepaper.terraagent.fun/' : '/whitepaper/', false],
-    ['PLAY LIVE →', '/play.html?planet=dune&skip=1', true],
+    ['PLAY LIVE →', '/play.html?planet=dune', true],
   ];
   for (const [label, href, primary] of links) {
     const a = document.createElement('a');

@@ -72,6 +72,7 @@ export interface MainMenuOptions {
   readonly probeFetch?: typeof fetch;
   readonly initialNewColony?: boolean;
   readonly initialColonyId?: string | null;
+  readonly explicitPlanet?: boolean;
 }
 
 function buildMenuShellHtml(planetsByKind: Readonly<Record<PlanetKind, PlanetSummaryV1>>): string {
@@ -112,6 +113,7 @@ export class MainMenu {
   private colonyRoster: PilotColonyRoster | null = null;
   private selectedColonyId: string | null = null;
   private disposed = false;
+  private readonly explicitPlanet: boolean;
   private readonly autoProbeColony: boolean;
   private readonly probeFetch?: typeof fetch;
 
@@ -125,6 +127,7 @@ export class MainMenu {
     this.kind = kind;
     this.explicitSeed = seed;
     this.seed = seed ?? PLANET_SPECS[kind].seed;
+    this.explicitPlanet = Boolean(options?.explicitPlanet);
     this.autoProbeColony = Boolean(options?.autoProbeColony);
     this.probeFetch = options?.probeFetch;
     this.planetsByKind = options?.planetList
@@ -337,21 +340,23 @@ export class MainMenu {
   setColonyRoster(roster: PilotColonyRoster | null): void {
     this.colonyRoster = roster;
     const preserveNew = this.selectedColonyId === NEW_COLONY_SELECTION_ID && canFoundAnotherColony(roster);
-    const kept =
-      preserveNew || !this.selectedColonyId
-        ? null
-        : roster?.colonies.find((c) => c.colonyId === this.selectedColonyId) ?? null;
+    const kept = preserveNew || !this.selectedColonyId ? null : roster?.colonies.find((c) => c.colonyId === this.selectedColonyId) ?? null;
     this.selectedColonyId = preserveNew ? NEW_COLONY_SELECTION_ID : (kept?.colonyId ?? null);
     this.activeColony = kept ?? roster?.primary ?? roster?.colonies[0] ?? null;
     applyColonyRosterToMenuDom(this.el, roster);
-    if (roster && roster.colonies.length > 0 && (!this.canSelectPlanet(this.kind) || (kept && kept.kind !== this.kind))) {
-      const targetKind = (kept ?? this.activeColony ?? roster.colonies[0]!).kind;
-      this.select(targetKind, true);
-      if (kept) this.selectedColonyId = kept.colonyId;
+    if (kept) {
+      if (kept.kind !== this.kind) this.select(kept.kind, true);
+      this.selectedColonyId = kept.colonyId;
+      const norm = kept.foundingSectorId ? normalizeSectorIntent(kept.foundingSectorId) : null;
+      const sectors = this.planetsByKind[this.kind].sectors;
+      if (norm?.mode === 'chosen' && (sectors.length === 0 || sectors.some((s) => s.kind === 'land' && s.sectorId === norm.sectorId))) this.sectorIntent = norm;
       applyColonyRosterToMenuDom(this.el, roster);
-    } else {
       this.renderArHud();
+      return;
     }
+    const switchKind = roster && roster.colonies.length > 0 && !preserveNew && (!this.canSelectPlanet(this.kind) || (!this.explicitPlanet && this.activeColony && this.activeColony.kind !== this.kind));
+    if (switchKind) { this.select((this.activeColony ?? roster!.colonies[0]!).kind, true); applyColonyRosterToMenuDom(this.el, roster); }
+    else this.renderArHud();
   }
 
   setActiveColony(active: ActiveHomeColony | null): void {

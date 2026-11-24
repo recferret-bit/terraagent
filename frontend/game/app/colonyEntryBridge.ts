@@ -86,25 +86,6 @@ export function parseInitialMenuColonyOptions(rawSearch: string): {
   };
 }
 
-export async function resolveAutoDeployPlanetKind(opts: {
-  readonly requestedKind: PlanetKind;
-  readonly probeOnline: boolean;
-  readonly forceRequestedPlanet?: boolean;
-  readonly probeActiveColony: () => Promise<unknown>;
-  readonly getActiveColonyKind: () => PlanetKind | null;
-}): Promise<PlanetKind> {
-  if (opts.probeOnline) {
-    await Promise.race([
-      opts.probeActiveColony(),
-      new Promise<null>((r) => setTimeout(() => r(null), 1500)),
-    ]);
-  } else {
-    await new Promise((r) => setTimeout(r, 50));
-  }
-  if (opts.forceRequestedPlanet) return opts.requestedKind;
-  return opts.getActiveColonyKind() ?? opts.requestedKind;
-}
-
 export function resolveHomeBaseDiveAngles(markers: readonly OrbitalGlobeMarkerInput[]): { yaw: number; pitch: number } {
   const home = markers.find((m) => m.isHomeBase);
   return home ? { yaw: home.yaw, pitch: home.pitch } : { yaw: 0, pitch: 0.08 };

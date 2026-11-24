@@ -177,14 +177,14 @@ describe('TerraAgent whitepaper NEP-245 & subdomain link parity', () => {
     }
 
     const beforeHrefs = Array.from(mount.querySelectorAll('a[href]'), (a) => a.getAttribute('href'));
-    expect(beforeHrefs).toContain('/play.html?planet=dune&skip=1');
+    expect(beforeHrefs).toContain('/play.html?planet=dune');
     expect(beforeHrefs).toContain('/trade.html');
     expect(beforeHrefs).toContain('/dev/economy-sim/');
     expect(beforeHrefs).toContain('/playground.html');
 
     rewriteSubdomainLinks(mount, 'whitepaper.terraagent.fun');
     const afterHrefs = Array.from(mount.querySelectorAll('a[href]'), (a) => a.getAttribute('href'));
-    expect(afterHrefs).toContain('https://play.terraagent.fun/play.html?planet=dune&skip=1');
+    expect(afterHrefs).toContain('https://play.terraagent.fun/play.html?planet=dune');
     expect(afterHrefs).toContain('https://play.terraagent.fun/trade.html');
     expect(afterHrefs).toContain('https://play.terraagent.fun/dev/economy-sim/');
     expect(afterHrefs).toContain('https://playground.terraagent.fun/');

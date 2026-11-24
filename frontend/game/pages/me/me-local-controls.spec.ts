@@ -37,8 +37,8 @@ describe('/me local mode (?host=local) sign-out, sign-in, rename & navigation li
     expect(headerLink.textContent).toContain('Local Commander · PILOT / ME');
     expect(headerLink.getAttribute('href')).toBe('/me.html?host=local');
 
-    // Local mode links keep ?host=local
-    expect(q(root, 'me-colony-dive-in')!.getAttribute('href')).toBe('/play.html?host=local&skip=1');
+    // Local mode links keep ?host=local and point to the planet selection screen
+    expect(q(root, 'me-colony-dive-in')!.getAttribute('href')).toBe('/play.html?host=local&planet=forestRock');
     expect(q(root, 'me-play-cta')!.getAttribute('href')).toBe('/play.html?host=local');
 
     // Sign out transitions cleanly to me-auth-prompt with all internals disabled until signed in

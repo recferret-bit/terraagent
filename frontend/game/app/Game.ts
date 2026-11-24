@@ -16,7 +16,7 @@ import { createOrbitalStage } from '@terra/render/orbit/OrbitalStage';
 import { Gameplay } from './Gameplay';
 import {
   applyColonyViewportSettings, buildForwardedOnlineSearch, finishReturningColonyEntry, mountBootOnlineSession,
-  mountPrototypeHudRig, parseInitialMenuColonyOptions, prepareOnlineGuestState, resetOrbitalScene, resolveAutoDeployPlanetKind,
+  mountPrototypeHudRig, parseInitialMenuColonyOptions, prepareOnlineGuestState, resetOrbitalScene,
   resolveColonyLoadMode, resolveEnteringDeployTarget, startReturningColonyEntry, stepEntryBloomFlash, stepReturningColonyEntry,
   stripColonyIdFromSearch, syncOrbitSelectorUrl, type ColonyLoadMode,
 } from './colonyEntryBridge';
@@ -63,8 +63,8 @@ export class Game {
   private keepOnlineSession = false;
   private useOnlineGameplay = true;
   private loadMode: ColonyLoadMode | null = null;
-  private readonly isLocalHost: boolean; private sessionSearch: string;
-  private fastForward = 0; private time = 0; private raf = 0;
+  private isLocalHost: boolean; private sessionSearch: string;
+  private time = 0; private raf = 0;
   private readonly pacer = createFramePacer({ maxDt: 0.05 });
   private readonly offFpsCap = onPerfConfigChange((opt, res, cap) => { if (this.settings.optimized !== opt || this.settings.resolution !== res || this.settings.fpsCap !== cap) this.settings = { ...this.settings, optimized: opt, resolution: res, fpsCap: cap }; });
   private readonly prewarmQueue: string[] = [...LANDING_PREWARM_ARCHETYPES]; private prepSeq = 0;
@@ -90,8 +90,7 @@ export class Game {
     this.sectorIntent = normalizeSectorIntent(q.get('sector'));
     const store = this.flagsStore ??= createClientFlagsStore();
     this.isLocalHost = devBuild && q.get('host') === 'local';
-    const isLegacyQa = devBuild && (q.has('autodeploy') || q.has('qat') || q.has('t') || (q.has('seed') && q.get('skip') === '1' && !this.isLocalHost));
-    this.useOnlineGameplay = !devBuild || (store.set.has('W01') && !isLegacyQa);
+    this.useOnlineGameplay = !devBuild || store.set.has('W01');
 
     this.menu = new MainMenu(document.body, {
       onPlanet: (k) => {
@@ -113,23 +112,13 @@ export class Game {
         this.applySettings();
         if (rebuildPrep) this.schedulePrepare();
       },
-    }, kind, seed, { ...parseInitialMenuColonyOptions(location.search), sectorIntent: this.sectorIntent, feedOptions: this.isLocalHost ? undefined : { wsUrl: null }, autoProbeColony: this.useOnlineGameplay && !this.isLocalHost });
+    }, kind, seed, { ...parseInitialMenuColonyOptions(location.search), explicitPlanet: q.has('planet'), sectorIntent: this.sectorIntent, feedOptions: this.isLocalHost ? undefined : { wsUrl: null }, autoProbeColony: this.useOnlineGameplay && !this.isLocalHost });
     this.settings = this.menu.settings;
     this.mountStage(this.makeSpec(kind, this.menu.seed));
     this.applySettings();
     this.loop();
-    if ((q.has('planet') || q.has('colonyId') || this.isLocalHost) && (q.get('skip') === '1' || (devBuild && q.has('t')) || q.get('deploy') === '1')) {
-      this.settings.skipCinematic = q.get('skip') === '1';
-      this.fastForward = devBuild ? Math.max(0, parseFloat(q.get('t') ?? '0') || 0) : 0;
-      void this.autoDeploy(kind);
-    } else {
-      this.syncOrbitUrl();
-      this.schedulePrepare(60);
-      if (devBuild && q.has('autodeploy')) setTimeout(() => {
-        this.deploy(this.menu.kind, this.menu.seed);
-        if (q.has('qat')) this.qaAdvance(parseFloat(q.get('qat')!) || 0);
-      }, parseInt(q.get('autodeploy')!, 10) || 1500);
-    }
+    this.syncOrbitUrl();
+    this.schedulePrepare(60);
   }
 
   private syncOrbitUrl() { syncOrbitSelectorUrl(this.menu.kind, this.menu.getSelectedColonyId() === '__new__'); }
@@ -176,24 +165,6 @@ export class Game {
   private discardPrepared() {
     const p = this.prepared; this.prepared = null;
     disposePreparedDescentSession({ viewport: this.viewport, prepared: p, resetScene: () => this.resetScene() });
-  }
-
-  private async autoDeploy(requestedKind: PlanetKind): Promise<void> {
-    const q = new URLSearchParams(location.search);
-    const wantNew = q.get('new') === '1';
-    const explicitColonyId = wantNew ? null : (new URLSearchParams(this.sessionSearch).get('colonyId') ?? q.get('colonyId') ?? q.get('colony'));
-    const targetKind = await resolveAutoDeployPlanetKind({
-      requestedKind, probeOnline: this.useOnlineGameplay && !this.isLocalHost, forceRequestedPlanet: wantNew && q.has('planet'),
-      probeActiveColony: () => this.menu.probeActiveColony(),
-      getActiveColonyKind: () => {
-        const roster = this.menu.getColonyRoster();
-        return (explicitColonyId && roster ? roster.colonies.find((c) => c.colonyId === explicitColonyId)?.kind : null) ?? this.menu.resolveDeployAction().colony?.kind ?? null;
-      },
-    });
-    if (explicitColonyId) { this.menu.selectColony(explicitColonyId, q.get('sector') ?? undefined); this.sectorIntent = this.menu.getSectorIntent(); }
-    this.menu.select(targetKind, false);
-    const entering = !wantNew && (this.menu.resolveDeployAction().mode === 'enter' || Boolean(explicitColonyId));
-    this.deploy(targetKind, !entering && targetKind === this.menu.kind ? this.menu.seed : PLANET_SPECS[targetKind].seed, true);
   }
 
   private deploy(kind: PlanetKind, seed: number, instant = false) {
@@ -264,10 +235,6 @@ export class Game {
       this.cutToDescent(false);
       this.dHud.show();
       if (this.settings.skipCinematic) this.skipDescent();
-      else if (this.fastForward > 0) {
-        const steps = Math.floor(Math.max(0, this.fastForward - this.descent.handoff.startAt) * 30);
-        for (let i = 0; i < steps && (this.phase as Phase) === 'descent'; i++) this.descent!.update(1 / 30);
-      }
       return;
     }
     this.phase = 'deploying';

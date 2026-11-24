@@ -5,6 +5,7 @@ import {
   type CurrentColonySummary,
   type MeProfileResponse,
 } from '@terra/contracts';
+import { kindOfPlanetType } from '../../../../design/pilot/activeHomeColony';
 import { el } from '../dom';
 
 export interface PlanetsSectionController {
@@ -21,15 +22,15 @@ function buildColonyDiveHref(
   includeSector: boolean,
   localHost: boolean | undefined,
 ): string {
-  const sector = includeSector && colony.foundingSectorId
-    ? `&sector=${encodeURIComponent(colony.foundingSectorId)}`
-    : '';
-  if (localHost) {
-    return includeSector
-      ? `/play.html?host=local&skip=1&colonyId=${encodeURIComponent(colony.colonyId)}${sector}`
-      : '/play.html?host=local&skip=1';
+  const kind = kindOfPlanetType(colony.planetType);
+  const params = new URLSearchParams();
+  if (localHost) params.set('host', 'local');
+  if (kind) params.set('planet', kind);
+  if (!localHost || includeSector) {
+    params.set('colonyId', colony.colonyId);
+    if (includeSector && colony.foundingSectorId) params.set('sector', colony.foundingSectorId);
   }
-  return `/play.html?skip=1&colonyId=${encodeURIComponent(colony.colonyId)}${sector}`;
+  return `/play.html?${params.toString()}`;
 }
 
 function groupColoniesByPlanet(
