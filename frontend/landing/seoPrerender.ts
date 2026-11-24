@@ -18,10 +18,10 @@ function buildFaqEntities(): Array<Record<string, unknown>> {
     },
     {
       '@type': 'Question',
-      name: "Why can't I join any planet I like?",
+      name: 'How do multiple colonies and NEAR.AI slots work?',
       acceptedAnswer: {
         '@type': 'Answer',
-        text: 'Planets stop accepting new colonies once their seats fill or 24 hours pass since the first landing. That keeps every new player on a fair start. Fresh worlds open automatically.',
+        text: 'Free and Tier 1 (10 NEAR) pilots command 1 active colony at a time. Staking 50 / 200 / 500+ NEAR unlocks 3 / 6 / 12 NEAR.AI colony slots so you can expand onto multiple planets or multiple distinct sectors of the same planet (never two colonies in the same sector), all managed on GLM 5.3 Flash.',
       },
     },
     {
@@ -37,7 +37,15 @@ function buildFaqEntities(): Array<Record<string, unknown>> {
       name: 'How do players earn, and what pays for gas and AI?',
       acceptedAnswer: {
         '@type': 'Answer',
-        text: 'Sell refined cargo on /trade.html, collect stall fees at your Trade Hub, run automated trading bots, or claim defense bounties. Real trade activity, staking yield, and forfeited bonds cover gas and AI—never an inflationary reward token.',
+        text: 'Sell refined cargo on /trade.html, collect 0–1.00% stall fees at your Trade Hub, run automated trading bots, or claim defense bounties and 90% treaty/war bond slashes. Real trade activity, 20% of validator staking yield, and 10% bond slashes cover gas and AI—never an inflationary reward token.',
+      },
+    },
+    {
+      '@type': 'Question',
+      name: 'How do staking profits, warmup, and unstaking rules work?',
+      acceptedAnswer: {
+        '@type': 'Answer',
+        text: 'Stake native NEAR, stNEAR, or LiNEAR on /me.html#staking with no Colony Deed required. You keep 100% of principal plus 80% of validator yield (7.20% simulated net APY on testnet; live APY on mainnet), compound at 0% fee without resetting maturity clocks, and cut market taker fees from 1.00% to 0.65% (instant at 10 NEAR) or 0.50% / 0.35% / 0.25% (at 50 / 200 / 500+ NEAR after a 24h continuous-stake warmup; crossing below 50 to 50+ NEAR starts a fresh 24h clock). Unstaking under 7 days after deposit pays 0.25% (0% after 7 days), unbonding takes 4 epochs (~2 game-days) and unbonding principal does not count toward tiers. Tier 4 Lead Patrons on the 3 canonical worlds also earn 15% of Protocol fee share (12% of gross on standard 20% DAO fills). Zero combat or mining buffs.',
       },
     },
     {

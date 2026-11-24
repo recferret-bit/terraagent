@@ -20,6 +20,10 @@ describe('Wealth Dashboard render', () => {
     expect(q(root, 'staking-kpi-apy')!.textContent).toContain('20.00%');
     expect(q(root, 'staking-apy-source')!.textContent).toBe('Sim APY');
     expect(q(root, 'staking-kpi-income')!.textContent).toContain('NEAR');
+    expect(q(root, 'staking-income-yield-usd')!.textContent).toBe('$5.00');
+    expect(q(root, 'staking-income-fees-usd')!.textContent).toBe('$2.00');
+    expect(q(root, 'staking-income-stalls-usd')!.textContent).toBe('$0.00');
+    expect(q(root, 'staking-income-patron-usd')!.textContent).toBe('$0.00');
     expect(q(root, 'staking-kpi-effective')!.textContent).toContain('8.10%');
     expect(q(root, 'staking-self-fills')!.textContent).toBe('3 self-fills excluded');
     expect(q(root, 'staking-effective-tooltip')!.title).toContain('Effective APY =');
@@ -365,5 +369,36 @@ describe('Patron Card canonical-only content-switch tabs & auto-nomination', () 
     click(root, 'staking-patron-history-scope');
     expect(q(root, 'staking-patron-history-title')!.textContent).toContain('ALL 3 WORLDS');
     expect(root.querySelectorAll('[data-testid="staking-patron-history-row"]').length).toBe(4);
+  });
+
+  it('prevents duplicate NEAR/asset units in tx table, blocks non-http(s) explorerUrl, and avoids false ok toast on failed social sign', async () => {
+    const p = makePerformance({
+      txs: [
+        { txHash: 'bad-proto', kind: 'stake', amountNear: '50', asset: 'near', atMs: NOW - 1000, explorerUrl: 'javascript:alert(1)' },
+        { txHash: 'lst-1', kind: 'stake', amountNear: '25', asset: 'stNEAR', atMs: NOW - 500, explorerUrl: 'https://testnet.nearblocks.io/txns/lst-1' },
+      ],
+    });
+    const root = await mount(makeMock(() => p), {
+      accountId: 'pilot.testnet',
+      selectorFactory: async () => ({
+        wallet: async () => ({
+          signAndSendTransaction: async () => {
+            throw new Error('Wallet popup closed');
+          },
+        }),
+      }) as never,
+    });
+    const txText = q(root, 'staking-tx-table')!.textContent ?? '';
+    expect(txText).not.toContain('NEAR NEAR');
+    expect(txText).not.toContain('NEAR stNEAR');
+    expect(txText).toContain('25.00 stNEAR');
+    expect(root.querySelector('a[href^="javascript:"]')).toBeNull();
+    expect(root.querySelector('a[href="https://testnet.nearblocks.io/txns/lst-1"]')).not.toBeNull();
+
+    click(root, 'staking-share-social');
+    await flush();
+    const patronStatus = q(root, 'staking-patron-status')!;
+    expect(patronStatus.hidden).toBe(false);
+    expect(patronStatus.dataset.tone).toBe('warn');
   });
 });

@@ -30,9 +30,9 @@ export const CHAPTER_ITEMS: ReadonlyArray<ChapterNavItem> = [
   { id: 'sec-04', num: '04', label: 'Core Loop, S0–S10 & Diplomacy', tag: 'GAME' },
   { id: 'sec-05', num: '05', label: 'Biomes, Terraforming & Resources', tag: 'WORLD' },
   { id: 'sec-06', num: '06', label: 'Realtime Engine, DB & Exchange', tag: 'ENGINE' },
-  { id: 'sec-07', num: '07', label: '3D Fleet: Robots, Ships & Base', tag: '28 3D' },
+  { id: 'sec-07', num: '07', label: '3D Fleet: Robots, Ships & Base', tag: '30 3D' },
   { id: 'sec-08', num: '08', label: '3D Ecology: Fauna, Hives & Ore', tag: '13 3D' },
-  { id: 'sec-09', num: '09', label: '3D VFX: Beams, Storms & Shaders', tag: '27 3D' },
+  { id: 'sec-09', num: '09', label: '3D VFX: Beams, Storms & Shaders', tag: '28 3D' },
   { id: 'sec-canonical', num: '10', label: 'Risks, Testnet Proofs & Draft', tag: 'LEDGER' },
 ];
 
@@ -48,6 +48,7 @@ export const STACK_NAV_ITEMS: ReadonlyArray<StackNavItem> = [
   { targetId: 'sec-01', anchorId: 'sub-web3-operator-accounts', layer: 'WEB3', title: '4 Core Protocol & Gas Accounts', status: 'ACCOUNTS' },
   { targetId: 'sec-01', anchorId: 'sub-web3-ports', layer: 'WEB3', title: '11 Typed NEAR Ports & Mock Parity', status: 'PORTS' },
   { targetId: 'sec-02', anchorId: 'sub-econ-lanes', layer: 'WEB3', title: '4 Player & Agent Income Lanes', status: 'INCOME' },
+  { targetId: 'sec-02', anchorId: 'sub-econ-tiers', layer: 'WEB3', title: '4-Tier Orbital Patronage & Staking Rules', status: 'STAKING' },
   { targetId: 'sec-02', anchorId: 'sub-econ-schematic', layer: 'WEB3', title: 'Protocol Treasury & 4-Way Settlement', status: 'SCHEMA' },
   { targetId: 'sec-02', anchorId: 'sub-econ-examples', layer: 'WEB3', title: 'Trade, Staking & Bond Math Receipts', status: 'EXAMPLES' },
   { targetId: 'sec-03', anchorId: 'sub-ai-pipeline', layer: 'AI-TEE', title: 'Hardware TEE & 4-Gate Guardrails', status: 'SCHEMA' },
@@ -62,14 +63,14 @@ export const STACK_NAV_ITEMS: ReadonlyArray<StackNavItem> = [
 ];
 
 export const ENTITY_NAV_ITEMS: ReadonlyArray<EntityNavItem> = [
-  { targetId: 'sec-07', filterGroup: 'robots', group: 'ROBOTS', label: 'Hero, Miner, Builder, Combat, Recon', count: 5 },
+  { targetId: 'sec-07', filterGroup: 'robots', group: 'ROBOTS', label: 'Hero, Miner, Builder, Artillery, Tank, Combat, Recon', count: 7 },
   { targetId: 'sec-07', filterGroup: 'orbital', group: 'ORBITAL', label: 'Carrier, Patron Flagship, Drop Pods, Guild Trader, Sats', count: 8 },
   { targetId: 'sec-07', filterGroup: 'buildings', group: 'BUILDINGS', label: 'HQ (+ Staker Uplink & Gold), Power, Industry, Defense, Rocket', count: 18 },
   { targetId: 'sec-08', filterGroup: 'fauna', group: 'FAUNA', label: 'Ant, Beetle, Spitter', count: 3 },
   { targetId: 'sec-08', filterGroup: 'hives', group: 'HIVES', label: 'Ant, Beetle & Spitter Hives', count: 3 },
   { targetId: 'sec-08', filterGroup: 'deposits', group: 'DEPOSITS', label: 'Metal, Crystal & Oil Stages', count: 3 },
   { targetId: 'sec-09', filterGroup: 'work', group: 'WORK FX', label: 'Cutter Beams & 3D Debris Chunks', count: 9 },
-  { targetId: 'sec-09', filterGroup: 'combat', group: 'COMBAT FX', label: 'Laser, Acid, Rocket, Artillery Bursts', count: 7 },
+  { targetId: 'sec-09', filterGroup: 'combat', group: 'COMBAT FX', label: 'Laser, Acid, Rocket, Artillery, Rupture', count: 8 },
   { targetId: 'sec-09', filterGroup: 'hazards', group: 'HAZARDS', label: 'Lightning, Twister, Meteor & Rain', count: 4 },
   { targetId: 'sec-09', filterGroup: 'shaders', group: 'SHADERS', label: 'Water, Unifier, Day/Night, Build, Ruin', count: 7 },
 ];

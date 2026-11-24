@@ -48,6 +48,10 @@ export class SectorHashIndex {
     return this.planetsById.get(planetId);
   }
 
+  getReplicaTick(planetId: string): number | undefined {
+    return this.replicasByPlanet.get(planetId)?.meta.tick;
+  }
+
   getSectorSpace(planetId: string, sectorId: string): SectorSpaceEntry | undefined {
     return this.sectorsByKey.get(sectorMapKey(planetId, sectorId));
   }
@@ -423,6 +427,10 @@ export class SectorHashIndex {
   syncFromSnapshotBytes(planetId: string, bytes: Uint8Array): PlanetSpatialState | null {
     try {
       const state = restore(bytes);
+      const existing = this.replicasByPlanet.get(planetId);
+      if (existing && existing.meta.seed === state.meta.seed && state.meta.tick < existing.meta.tick) {
+        return this.planetsById.get(planetId) ?? this.syncFromPlanetState(planetId, existing);
+      }
       this.replicasByPlanet.set(planetId, state);
       return this.syncFromPlanetState(planetId, state);
     } catch {

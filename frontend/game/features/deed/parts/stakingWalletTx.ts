@@ -94,7 +94,7 @@ export async function sendStakingWalletTx(opts: SendStakingWalletTxOptions): Pro
     const res = await opts.fetchFn(`/v1/near/staking/wallet-tx?${qs.toString()}`);
     if (!res.ok) throw new Error('Unable to build staking wallet transaction.');
     const tx = (await res.json()) as StakingWalletTx;
-    const gasYocto = `${tx.gasTgas}000000000000`;
+    const gasYocto = (BigInt(Math.round(tx.gasTgas)) * 1_000_000_000_000n).toString();
     const sentViaInjected = !opts.selectorFactory
       ? await sendTxWithInjectedExtraWallet(readSavedNearWallet()?.walletId, {
           receiverId: tx.contractId,

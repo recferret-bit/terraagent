@@ -9,6 +9,8 @@ import type { HomeRepository, PlanetRecord } from '../home.repository';
 export interface PlanetCapacityGate {
   /** Most planets loaded at once. */
   readonly cap: number;
+  /** Cluster-wide cap when scaling by active sim-hosting nodes. */
+  effectiveCap?(): Promise<number>;
   /** Planets loaded now. */
   loadedPlanetIds(): Promise<ReadonlySet<string>>;
 }
@@ -42,10 +44,11 @@ export async function pickSeatPlanet(
 ): Promise<SeatPick> {
   if (!gate) return { ...(await repo.findOrCreateOpenDevPlanet(type, skip, skipIndices)), wake: false };
   const loaded = await gate.loadedPlanetIds();
+  const cap = gate.effectiveCap ? await gate.effectiveCap() : gate.cap;
   const open = await repo.findOpenDevPlanets(type, skip, skipIndices);
   const live = open.find((o) => loaded.has(o.planet.id));
   if (live) return { ...live, wake: false };
-  if (loaded.size >= gate.cap) throw new PlanetCapReached(type, gate.cap, loaded.size);
+  if (loaded.size >= cap) throw new PlanetCapReached(type, cap, loaded.size);
   const [asleep] = open;
   if (asleep) return { ...asleep, wake: true };
   return { ...(await repo.createNextDevPlanet(type, skipIndices)), wake: false };
@@ -56,7 +59,8 @@ export async function explicitPlanetWake(gate: PlanetCapacityGate | undefined, p
   if (!gate) return false;
   const loaded = await gate.loadedPlanetIds();
   if (loaded.has(planet.id)) return false;
-  if (loaded.size >= gate.cap) throw new PlanetCapReached(type, gate.cap, loaded.size);
+  const cap = gate.effectiveCap ? await gate.effectiveCap() : gate.cap;
+  if (loaded.size >= cap) throw new PlanetCapReached(type, cap, loaded.size);
   return true;
 }
 

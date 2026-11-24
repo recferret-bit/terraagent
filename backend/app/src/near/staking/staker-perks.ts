@@ -166,10 +166,24 @@ export async function resolvePlanetStakedColonies(
     allAccounts.length > 0
       ? { OR: [{ colonyId: { in: ids } }, { accountId: { in: allAccounts } }] }
       : { colonyId: { in: ids } };
-  const rows = await prisma.stakingPosition.findMany({
+  const rawRows = (await prisma.stakingPosition.findMany({
     where: posWhere,
-    select: { colonyId: true, accountId: true, stakedSnapshot: true },
-  });
+    select: { colonyId: true, poolId: true, accountId: true, stakedSnapshot: true, updatedAt: true },
+  })) as Array<{ colonyId: string; poolId?: string; accountId: string; stakedSnapshot: { toFixed(n: number): string }; updatedAt?: Date | null }>;
+  const deduped = new Map<string, (typeof rawRows)[number]>();
+  let anonIdx = 0;
+  for (const r of rawRows) {
+    const key = r.accountId && r.poolId
+      ? `acct:${r.accountId}::pool:${r.poolId}`
+      : r.accountId
+        ? `acct:${r.accountId}::row:${anonIdx++}`
+        : `col:${r.colonyId ?? anonIdx++}::pool:${r.poolId ?? ''}`;
+    const prev = deduped.get(key);
+    if (!prev || (r.updatedAt?.getTime() ?? 0) >= (prev.updatedAt?.getTime() ?? 0)) {
+      deduped.set(key, r);
+    }
+  }
+  const rows = [...deduped.values()];
 
   const byColony = new Map<string, bigint>();
   const byAccount = new Map<string, bigint>();

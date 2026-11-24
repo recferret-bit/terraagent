@@ -281,7 +281,7 @@ export class HomeService {
   private capacitySeat(): CapacitySeatDeps {
     return {
       queue: { lobby: this.lobbyPersistence, lifecycle: this.worldLifecycle },
-      antiCheat: this.antiCheat,
+      antiCheat: this.antiCheat, slotAllowance: this.slotAllowance,
       listActiveBundles: (playerId, handle) => this.listActiveBundles(playerId, handle),
       seatContext: (occupied) => this.seatContext(occupied),
       withRoster: (home, playerId, bundles) => this.withRoster(home, playerId, bundles),

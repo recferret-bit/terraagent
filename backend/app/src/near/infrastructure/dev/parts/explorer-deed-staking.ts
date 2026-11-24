@@ -57,6 +57,17 @@ function asMetaRecord(val: unknown): Record<string, unknown> {
   return val && typeof val === 'object' && !Array.isArray(val) ? (val as Record<string, unknown>) : {};
 }
 
+function formatYoctoDbAmount(val: unknown): string {
+  if (val === null || val === undefined) return '0';
+  const raw =
+    typeof val === 'object' && 'toFixed' in val && typeof (val as { toFixed: (n?: number) => string }).toFixed === 'function'
+      ? (val as { toFixed: (n?: number) => string }).toFixed(0)
+      : String(val).trim();
+  if (!raw || raw === '0') return '0';
+  if (/^\d+$/.test(raw)) return yoctoToNear(raw, 6);
+  return raw;
+}
+
 function formatNearAmount(val: unknown): string {
   if (val === null || val === undefined) return '0';
   const raw =
@@ -224,10 +235,10 @@ async function appendMockStakingRows(
     if (accountFilter && m.accountId !== accountFilter) continue;
     const key = `${m.accountId}::${m.poolId}`;
     if (seen.has(key)) continue;
-    const staked = formatNearAmount(m.staked);
-    const unbonding = formatNearAmount(m.unbonding);
-    const withdrawable = formatNearAmount(m.withdrawable);
-    const rewards = formatNearAmount(m.rewardsAccrued);
+      const staked = formatYoctoDbAmount(m.staked);
+      const unbonding = formatYoctoDbAmount(m.unbonding);
+      const withdrawable = formatYoctoDbAmount(m.withdrawable);
+      const rewards = formatYoctoDbAmount(m.rewardsAccrued);
     if (staked === '0' && unbonding === '0' && withdrawable === '0' && rewards === '0') continue;
     seen.add(key);
     const poolInfo = poolMap.get(m.poolId);
@@ -269,8 +280,8 @@ async function collectStakingPositions(
       kind: 'position', pool: r.poolId, poolId: r.poolId, name: poolInfo?.name ?? r.poolId,
       accountId: r.accountId, colonyId: r.colonyId === r.accountId ? 'wallet' : r.colonyId,
       asset: r.asset, tier: stakingTierForYocto(rawYocto).id,
-      staked: formatNearAmount(r.stakedSnapshot), unbonding: formatNearAmount(r.unbondingSnapshot),
-      withdrawable: formatNearAmount(r.withdrawableSnapshot), rewards: formatNearAmount(r.rewardsSnapshot),
+      staked: formatYoctoDbAmount(r.stakedSnapshot), unbonding: formatYoctoDbAmount(r.unbondingSnapshot),
+      withdrawable: formatYoctoDbAmount(r.withdrawableSnapshot), rewards: formatYoctoDbAmount(r.rewardsSnapshot),
       apyBp: poolInfo?.apyBp ?? 0,
       updatedAt: r.updatedAt instanceof Date ? r.updatedAt.getTime() : Number(r.updatedAt ?? 0),
     });
@@ -305,7 +316,7 @@ async function collectStakingPositions(
       rows.push({
         kind: 'patron', pool: seat.planetId, poolId: seat.planetId, name: `Lead Patron · ${seat.planetId}`,
         accountId: seat.accountId, colonyId: 'lead-patron', asset: 'NEAR', tier: 4,
-        staked: formatNearAmount(seat.activeStaked), unbonding: '0', withdrawable: '0', rewards: '-',
+        staked: formatYoctoDbAmount(seat.activeStaked), unbonding: '0', withdrawable: '0', rewards: '-',
         apyBp: 0, updatedAt: seat.updatedAt instanceof Date ? seat.updatedAt.getTime() : Number(seat.updatedAt ?? 0),
       });
     }

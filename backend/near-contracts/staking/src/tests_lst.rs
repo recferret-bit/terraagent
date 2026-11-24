@@ -178,7 +178,7 @@ fn price_mode_compound_rolls_realised_shares_into_principal() {
     deposit(&mut c, "alice.testnet", 100 * ONE_NEAR, T0);
     set_price(&mut c, PRICE_ONE * 12 / 10);
     testing_env!(at(OP, T0 + 2 * WEEK).build());
-    let r = c.compound_yield(LST.into(), Some("alice.testnet".into()), None, Some(T0 + 2 * WEEK));
+    let r = c.compound_yield(LST.into(), Some("alice.testnet".into()), None, Some(T0 + 2 * WEEK), None);
     assert!(r.compounded.parse::<u128>().unwrap() > 0);
     assert_eq!(r.position.rewards, "0");
     assert_eq!(liabilities(&c, &["alice.testnet"], T0 + 2 * WEEK), 100 * ONE_NEAR);
@@ -223,15 +223,15 @@ fn matured_lst_position() -> (StakingVaultContract, u64) {
 fn withdraw_lst_sends_ft_transfer_in_one_step_and_rolls_back_on_failure() {
     let (mut c, ready) = matured_lst_position();
     testing_env!(at("alice.testnet", ready).attached_deposit(NearToken::from_yoctonear(1)).build());
-    let _ = c.withdraw_lst(LST.into(), LST.parse().unwrap(), (4 * ONE_NEAR).to_string(), None, Some("wallet.near".into()));
+    let _ = c.withdraw_lst(LST.into(), LST.parse().unwrap(), (4 * ONE_NEAR).to_string(), None, Some("wallet.near".into()), None);
     let receipts = receipts_text();
     assert!(receipts.contains("ft_transfer") && receipts.contains("wallet.near"), "{receipts}");
     assert_eq!(c.get_position("alice.testnet".into(), LST.into(), 0, ready).withdrawable, (6 * ONE_NEAR).to_string());
 
     testing_env!(at(SELF_ID, ready).build());
-    assert!(!c.on_withdraw_lst("alice.testnet".into(), LST.into(), "wallet.near".into(), (4 * ONE_NEAR).to_string(), "0".into(), Err(PromiseError::Failed)));
+    assert!(!c.on_withdraw_lst("alice.testnet".into(), LST.into(), "wallet.near".into(), (4 * ONE_NEAR).to_string(), "0".into(), None, Err(PromiseError::Failed)));
     assert_eq!(c.get_position("alice.testnet".into(), LST.into(), 0, ready).withdrawable, (10 * ONE_NEAR).to_string());
-    assert!(c.on_withdraw_lst("alice.testnet".into(), LST.into(), "wallet.near".into(), ONE_NEAR.to_string(), "0".into(), Ok(())));
+    assert!(c.on_withdraw_lst("alice.testnet".into(), LST.into(), "wallet.near".into(), ONE_NEAR.to_string(), "0".into(), None, Ok(())));
     assert_eq!(c.get_position("alice.testnet".into(), LST.into(), 0, ready).withdrawable, (10 * ONE_NEAR).to_string());
 }
 
@@ -246,7 +246,7 @@ fn withdraw_lst_pays_realised_yield_after_principal_in_price_mode() {
     let (w, r): (u128, u128) = (p.withdrawable.parse().unwrap(), p.rewards.parse().unwrap());
     assert!(r > 0);
     testing_env!(at("alice.testnet", ready).build());
-    let _ = c.withdraw_lst(LST.into(), LST.parse().unwrap(), (w + r).to_string(), None, None);
+    let _ = c.withdraw_lst(LST.into(), LST.parse().unwrap(), (w + r).to_string(), None, None, None);
     let p = c.get_position("alice.testnet".into(), LST.into(), 0, ready);
     assert_eq!((p.withdrawable.as_str(), p.rewards.as_str()), ("0", "0"));
 }
@@ -256,7 +256,7 @@ fn withdraw_lst_pays_realised_yield_after_principal_in_price_mode() {
 fn withdraw_lst_rejects_more_than_is_unbonded() {
     let (mut c, ready) = matured_lst_position();
     testing_env!(at("alice.testnet", ready).build());
-    let _ = c.withdraw_lst(LST.into(), LST.parse().unwrap(), (10 * ONE_NEAR + 1).to_string(), None, None);
+    let _ = c.withdraw_lst(LST.into(), LST.parse().unwrap(), (10 * ONE_NEAR + 1).to_string(), None, None, None);
 }
 
 #[test]
@@ -265,7 +265,7 @@ fn withdraw_lst_with_nothing_unbonded_panics() {
     let mut c = priced_pool(PRICE_ONE);
     deposit(&mut c, "alice.testnet", ONE_NEAR, T0);
     testing_env!(at("alice.testnet", T0 + 1).build());
-    let _ = c.withdraw_lst(LST.into(), LST.parse().unwrap(), "1".into(), None, None);
+    let _ = c.withdraw_lst(LST.into(), LST.parse().unwrap(), "1".into(), None, None, None);
 }
 
 #[test]
@@ -273,7 +273,7 @@ fn withdraw_lst_with_nothing_unbonded_panics() {
 fn withdraw_lst_rejects_zero_amount() {
     let (mut c, ready) = matured_lst_position();
     testing_env!(at("alice.testnet", ready).build());
-    let _ = c.withdraw_lst(LST.into(), LST.parse().unwrap(), "0".into(), None, None);
+    let _ = c.withdraw_lst(LST.into(), LST.parse().unwrap(), "0".into(), None, None, None);
 }
 
 #[test]
@@ -281,7 +281,7 @@ fn withdraw_lst_rejects_zero_amount() {
 fn withdraw_lst_cannot_pull_another_wallets_position() {
     let (mut c, ready) = matured_lst_position();
     testing_env!(at("mallory.testnet", ready).build());
-    let _ = c.withdraw_lst(LST.into(), LST.parse().unwrap(), ONE_NEAR.to_string(), Some("alice.testnet".into()), Some("mallory.testnet".into()));
+    let _ = c.withdraw_lst(LST.into(), LST.parse().unwrap(), ONE_NEAR.to_string(), Some("alice.testnet".into()), Some("mallory.testnet".into()), None);
 }
 
 #[test]
@@ -289,7 +289,7 @@ fn withdraw_lst_cannot_pull_another_wallets_position() {
 fn withdraw_lst_rejects_a_different_token_than_the_one_deposited() {
     let (mut c, ready) = matured_lst_position();
     testing_env!(at("alice.testnet", ready).build());
-    let _ = c.withdraw_lst(LST.into(), "linear-protocol.near".parse().unwrap(), ONE_NEAR.to_string(), None, None);
+    let _ = c.withdraw_lst(LST.into(), "linear-protocol.near".parse().unwrap(), ONE_NEAR.to_string(), None, None, None);
 }
 
 #[test]
@@ -304,7 +304,7 @@ fn native_withdraw_refuses_lst_pools() {
 fn operator_may_pay_out_a_wallet_lst_position() {
     let (mut c, ready) = matured_lst_position();
     testing_env!(at(OP, ready).build());
-    let _ = c.withdraw_lst(LST.into(), LST.parse().unwrap(), ONE_NEAR.to_string(), Some("alice.testnet".into()), None);
+    let _ = c.withdraw_lst(LST.into(), LST.parse().unwrap(), ONE_NEAR.to_string(), Some("alice.testnet".into()), None, None);
     assert_eq!(c.get_position("alice.testnet".into(), LST.into(), 0, ready).withdrawable, (9 * ONE_NEAR).to_string());
 }
 
@@ -458,7 +458,7 @@ fn solvency_path(seed: u64) {
                     let accrued = c.get_position(who.into(), LST.into(), 0, ms).rewards.parse::<u128>().unwrap() > 0;
                     if accrued {
                         testing_env!(at(OP, ms).build());
-                        c.compound_yield(LST.into(), Some(who.into()), None, Some(ms));
+                        c.compound_yield(LST.into(), Some(who.into()), None, Some(ms), None);
                     }
                 }
                 _ => {
@@ -492,3 +492,121 @@ solvency_seeds!(
     solvency_path_seed_4 => 4, solvency_path_seed_5 => 5, solvency_path_seed_6 => 6, solvency_path_seed_7 => 7,
     solvency_path_seed_8 => 8, solvency_path_seed_9 => 9, solvency_path_seed_10 => 10, solvency_path_seed_11 => 11,
 );
+
+#[test]
+fn flat_price_weighted_entry_does_not_creep_by_one_yocto() {
+    assert_eq!(weighted_entry(PRICE_ONE, 10, 7, PRICE_ONE), PRICE_ONE);
+    assert_eq!(weighted_entry(PRICE_ONE + 7, 13, 19, PRICE_ONE + 7), PRICE_ONE + 7);
+}
+
+#[test]
+fn sim_to_price_mode_transition_cannot_unlock_unbacked_rewards() {
+    let mut c = new_contract();
+    // 1. User deposits in simulated APY mode (price == 0) and accrues unbacked simulated rewards.
+    testing_env!(at(LST, T0).build());
+    c.ft_on_transfer("mallory.testnet".parse().unwrap(), (10 * ONE_NEAR).to_string(), format!(r#"{{"pool_id":"{LST}"}}"#));
+    let t1 = T0 + 30 * GAME_DAY_MS;
+    testing_env!(at(OP, t1).build());
+    c.unstake("u-all".into(), "mallory.testnet".into(), LST.into(), 900, (10 * ONE_NEAR).to_string(), t1);
+    let sim_rewards: u128 = c.get_position("mallory.testnet".into(), LST.into(), 900, t1).rewards.parse().unwrap();
+    assert!(sim_rewards > 0);
+
+    // 2. Price later becomes available, and mallory tops up 0.01 shares to try flipping into price mode.
+    set_price_at(&mut c, PRICE_ONE, t1 + 1_000);
+    testing_env!(at(LST, t1 + 1_000).build());
+    c.ft_on_transfer("mallory.testnet".parse().unwrap(), (ONE_NEAR / 100).to_string(), format!(r#"{{"pool_id":"{LST}","apy_bp":0}}"#));
+
+    // Entry price MUST remain None (0), keeping unbacked simulated rewards locked out of withdraw_lst & compound_yield!
+    let pos = c.get_account_positions("mallory.testnet".into(), None, Some(t1 + 1_000));
+    assert_eq!(pos[0].entry_lst_price_yocto, None);
+    let ready = t1 + UNBONDING_DURATION_MS;
+    testing_env!(at("mallory.testnet", ready).prepaid_gas(near_sdk::Gas::from_tgas(45)).build());
+    assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let _ = c.withdraw_lst(LST.into(), LST.parse().unwrap(), sim_rewards.to_string(), None, None, None);
+    })).is_err());
+    assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let _ = c.compound_yield(LST.into(), None, None, None, None);
+    })).is_err());
+}
+
+#[test]
+fn refresh_price_uses_ft_price_for_linear_and_rnear() {
+    let mut c = new_contract();
+    testing_env!(ctx(OP).build());
+    c.bind_lst_pool("linear-protocol.near".into(), "linear-protocol.near".parse().unwrap());
+    testing_env!(ctx("anyone.testnet").build());
+    let _ = c.refresh_lst_price("linear-protocol.near".into(), "linear-protocol.near".parse().unwrap());
+    assert!(receipts_text().contains("ft_price"));
+}
+
+#[test]
+#[should_panic(expected = "NEAR_INSUFFICIENT_GAS")]
+fn withdraw_protocol_lst_requires_40_tgas() {
+    let mut c = priced_pool(PRICE_ONE);
+    deposit(&mut c, "alice.testnet", 100 * ONE_NEAR, T0);
+    set_price(&mut c, PRICE_ONE * 12 / 10);
+    unstake(&mut c, "alice.testnet", "u1", 1, T0 + 2 * WEEK);
+    testing_env!(at(OP, T0 + 2 * WEEK).prepaid_gas(near_sdk::Gas::from_tgas(30)).build());
+    let _ = c.withdraw_protocol_lst(LST.into(), LST.parse().unwrap(), None, None);
+}
+
+#[test]
+fn withdraw_protocol_lst_supports_partial_and_ok_callback() {
+    let mut c = priced_pool(PRICE_ONE);
+    deposit(&mut c, "alice.testnet", 100 * ONE_NEAR, T0);
+    set_price(&mut c, PRICE_ONE * 12 / 10);
+    unstake(&mut c, "alice.testnet", "u1", 1, T0 + 2 * WEEK);
+    let avail: u128 = c.get_protocol_lst_balance(LST.into()).parse().unwrap();
+    assert!(avail > 2);
+
+    testing_env!(at(OP, T0 + 2 * WEEK).prepaid_gas(near_sdk::Gas::from_tgas(80)).build());
+    let part = avail / 2;
+    let _ = c.withdraw_protocol_lst(LST.into(), LST.parse().unwrap(), Some(part.to_string()), None);
+    assert_eq!(c.get_protocol_lst_balance(LST.into()), (avail - part).to_string());
+    testing_env!(at(SELF_ID, T0 + 2 * WEEK).build());
+    assert!(c.on_withdraw_protocol_lst(LST.into(), "terraagent.testnet".into(), part.to_string(), Ok(())));
+    assert_eq!(c.get_protocol_lst_balance(LST.into()), (avail - part).to_string());
+}
+
+#[test]
+fn register_position_binds_lst_pool() {
+    let mut c = new_contract();
+    c.positions.insert(
+        pos_key("old-lst.testnet", "meta-pool.near"),
+        StakingRecord { staked: 5 * ONE_NEAR, last_accrued_at_ms: T0, ..Default::default() },
+    );
+    testing_env!(ctx(OP).build());
+    c.register_position("old-lst.testnet".into(), "meta-pool.near".into(), Some("meta-pool.near".into()), Some(T0));
+    let listed = c.get_account_positions("old-lst.testnet".into(), None, None);
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].asset, "meta-pool.near");
+    assert_eq!(c.get_lst_binding("meta-pool.near".into()).as_deref(), Some("meta-pool.near"));
+}
+
+#[test]
+fn withdraw_lst_with_op_id_is_idempotent_after_success_and_retryable_after_rollback() {
+    let (mut c, ready) = matured_lst_position();
+    testing_env!(at("alice.testnet", ready).build());
+    assert!(matches!(
+        c.withdraw_lst(LST.into(), LST.parse().unwrap(), (4 * ONE_NEAR).to_string(), None, None, Some("wlst-1".into())),
+        near_sdk::PromiseOrValue::Promise(_)
+    ));
+    testing_env!(at(SELF_ID, ready).build());
+    assert!(!c.on_withdraw_lst("alice.testnet".into(), LST.into(), "alice.testnet".into(), (4 * ONE_NEAR).to_string(), "0".into(), Some("wlst-1".into()), Err(PromiseError::Failed)));
+    assert_eq!(c.get_position("alice.testnet".into(), LST.into(), 0, ready).withdrawable, (10 * ONE_NEAR).to_string());
+
+    testing_env!(at("alice.testnet", ready).build());
+    assert!(matches!(
+        c.withdraw_lst(LST.into(), LST.parse().unwrap(), (4 * ONE_NEAR).to_string(), None, None, Some("wlst-1".into())),
+        near_sdk::PromiseOrValue::Promise(_)
+    ));
+    testing_env!(at(SELF_ID, ready).build());
+    assert!(c.on_withdraw_lst("alice.testnet".into(), LST.into(), "alice.testnet".into(), (4 * ONE_NEAR).to_string(), "0".into(), Some("wlst-1".into()), Ok(())));
+
+    testing_env!(at("alice.testnet", ready).build());
+    assert!(matches!(
+        c.withdraw_lst(LST.into(), LST.parse().unwrap(), (4 * ONE_NEAR).to_string(), None, None, Some("wlst-1".into())),
+        near_sdk::PromiseOrValue::Value(true)
+    ));
+    assert_eq!(c.get_position("alice.testnet".into(), LST.into(), 0, ready).withdrawable, (6 * ONE_NEAR).to_string());
+}

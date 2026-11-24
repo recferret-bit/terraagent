@@ -40,6 +40,7 @@ export class TradePage {
   private readonly loaders: Loaders;
   private readonly pickers: Pickers;
   private readonly ticket: OrderTicket;
+  private readonly ramp: RampView;
   private readonly keys: KeysPanel;
   private readonly stallEditor: StallEditor;
   private readonly p: Record<'ladder' | 'board' | 'ticket' | 'balances' | 'ramp' | 'market' | 'pairs' | 'orders' | 'fills' | 'keys', Panel>;
@@ -79,7 +80,8 @@ export class TradePage {
       market: panel('market', 'All resting orders'), pairs: panel('overview', 'All pairs'), orders: panel('orders', 'My orders'),
       fills: panel('fills', 'My fills'), keys: panel('keys', 'Bot / API keys'),
     };
-    this.p.ramp.body.append(new RampView(client, { isMainnet: () => this.nearNetwork === 'mainnet' }).root);
+    this.ramp = new RampView(client, { isMainnet: () => this.nearNetwork === 'mainnet' });
+    this.p.ramp.body.append(this.ramp.root);
     this.ticket = new OrderTicket({
       client,
       state: () => this.store.get(),
@@ -218,6 +220,8 @@ export class TradePage {
         this.netBadge.className = 'tr-badge tr-badge-warn';
       }
       if (body.protocolAccount) this.netBadge.title = `TerraAgent Protocol treasury: ${body.protocolAccount}`;
+      this.staking.syncMode();
+      this.ramp.syncMode();
     } catch { /* non-blocking */ }
   }
 

@@ -4,6 +4,6 @@ export default defineConfig({
   test: {
     name: '@terra/landing',
     include: ['**/*.spec.ts'],
-    exclude: ['**/node_modules/**'],
+    exclude: ['**/*.int.spec.ts', '**/node_modules/**'],
   },
 });

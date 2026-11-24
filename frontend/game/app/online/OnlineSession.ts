@@ -196,7 +196,7 @@ export class OnlineSession {
     if (m.t === 'welcome') {
       this.planetId = m.d.planet.id;
       if (m.d.mode === 'spectator' && isLocalSpectatorAllowed()) this.spectator = true;
-      if (!this.spectator && m.d.colonyId && !this.colonyId) this.colonyId = m.d.colonyId;
+      if (!this.spectator && m.d.colonyId) this.colonyId = m.d.colonyId;
       this.flags.update(resolveClientFlags({ welcomeFlags: m.d.flags, search: this.search, dev: !isProductionBuild() && Boolean(import.meta.env?.DEV) }));
       this.hud.showWelcome(m.d);
     }
@@ -338,7 +338,7 @@ export class OnlineSession {
       planetKind: this.planetKind, skipDescent: this.skipDescent, fromSpaceDescent: this.fromSpaceDescent,
       freshDeployment: this.freshDeployment, loadMode: this.loadMode,
     });
-    this.planetId = s.planetId; this.colonyId = s.colonyId; this.colonyIndex = s.colonyIndex; this.foundingSectorId = s.foundingSectorId;
+    this.planetId = s.planetId; this.colonyId = s.colonyId; this.colonyIndex = s.colonyIndex; this.foundingSectorId = s.foundingSectorId; this.store.setTargetColony(s.colonyId || null, s.foundingSectorId);
     this.spawn = s.spawn; this.cameraTargetTile = { q: s.spawn.q, r: s.spawn.r }; this.freshDeployment = s.freshDeployment; this.loadMode = s.loadMode;
   }
 

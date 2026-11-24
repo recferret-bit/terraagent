@@ -95,7 +95,7 @@ describe('TerraAgent whitepaper section ordering & token hygiene', () => {
     }
 
     const allCards = [...FLEET_CARDS, ...ECOLOGY_CARDS, ...EFFECT_CARDS];
-    expect(allCards.length).toBe(67); // W28 adds the uplink + gold hubs and the Lead Patron flagship
+    expect(allCards.length).toBe(70); // W28 adds the uplink + gold hubs and the Lead Patron flagship
     for (const item of ENTITY_NAV_ITEMS) {
       const matching = allCards.filter((c) => c.group === item.filterGroup);
       expect(matching.length, `Entity nav count mismatch for ${item.group}`).toBe(item.count);
@@ -125,6 +125,12 @@ describe('TerraAgent whitepaper section ordering & token hygiene', () => {
     risksHost.remove();
     expect(mountedText).not.toMatch(/staker fee discounts[^.]{0,60}@terra\/sim/i);
     expect(mountedText).toContain('never reads staking');
+    expect(mountedText).toContain('4-Tier Orbital Patronage Matrix');
+    expect(mountedText).toContain('Staker Profit Streams, Anti-Snipe Warmup & Exit Rules');
+    expect(mountedText).toContain('Native-backing solvency guard');
+    expect(md).toContain('| **T4 Planetary Patron** |');
+    expect(md).toContain('Four Staker Profit & Effective APY Buckets');
+    expect(md).toContain('TOTAL_NATIVE_BACKING_KEY');
 
     const featuresSrc = readFileSync(resolve(import.meta.dirname, 'data/features.ts'), 'utf8');
     const web3AiSrc = readFileSync(resolve(import.meta.dirname, 'sections/web3AndAi.ts'), 'utf8');

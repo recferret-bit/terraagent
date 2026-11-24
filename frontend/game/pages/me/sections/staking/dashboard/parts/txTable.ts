@@ -14,16 +14,20 @@ const KIND_LABEL: Record<StakingTxRow['kind'], string> = {
 
 const shortHash = (h: string): string => (h.length > 16 ? `${h.slice(0, 8)}…${h.slice(-6)}` : h);
 
+const safeExplorerUrl = (url: string | null): string | null => (url && /^https?:\/\//i.test(url) ? url : null);
+
 function row(t: StakingTxRow): HTMLElement {
-  const hash = t.explorerUrl
-    ? el('a', { href: t.explorerUrl, target: '_blank', rel: 'noopener noreferrer', dataset: { testid: 'staking-tx-link' } }, shortHash(t.txHash))
+  const safeUrl = safeExplorerUrl(t.explorerUrl);
+  const hash = safeUrl
+    ? el('a', { href: safeUrl, target: '_blank', rel: 'noopener noreferrer', dataset: { testid: 'staking-tx-link' } }, shortHash(t.txHash))
     : el('span', { className: 'ta-stk-sub', title: t.txHash }, shortHash(t.txHash));
+  const amountLabel = t.asset === 'near' ? formatNear(Number(t.amountNear)) : `${Number(t.amountNear).toFixed(2)} ${t.asset}`;
   return el(
     'tr',
     { dataset: { testid: 'staking-tx-row', kind: t.kind } },
     el('td', {}, new Date(t.atMs).toISOString().slice(0, 16).replace('T', ' ')),
     el('td', {}, KIND_LABEL[t.kind]),
-    el('td', {}, `${formatNear(Number(t.amountNear))} ${t.asset === 'near' ? '' : t.asset}`.trim()),
+    el('td', {}, amountLabel),
     el('td', {}, hash),
   );
 }

@@ -320,3 +320,23 @@ describe('AntiCheat Review — cold BountyController, Deed, DirectorKey, Trade &
     expect(rpcRes).toMatchObject({ jsonrpc: '2.0', id: 7, error: { code: -32000, message: expect.stringContaining('pl_cold has ended') } });
   });
 });
+
+describe('SectorHashIndex monotonic snapshot tick guard', () => {
+  it('SectorHashIndex ignores stale snapshot bytes older than its live replica tick', async () => {
+    const { antiCheat } = createAtlasFixture();
+    const { createPlanet, SimHost } = await import('@terra/sim');
+    const host = new SimHost({ flags: ['W00', 'W01'] });
+    host.load(createPlanet({ type: 'desert', seed: 'stale-snap' }));
+    const snap0 = host.snapshot();
+    antiCheat.syncFromSnapshotBytes('pl_stale', snap0);
+    host.step(1);
+    const diff1 = host.diffSince(0);
+    antiCheat.applyPlanetDelta('pl_stale', diff1, []);
+    // Concurrent older snapshot at tick 0 must not overwrite tick 1 replica and break tick 2 diff
+    antiCheat.syncFromSnapshotBytes('pl_stale', snap0);
+    host.step(1);
+    const diff2 = host.diffSince(1);
+    antiCheat.applyPlanetDelta('pl_stale', diff2, []);
+    expect(antiCheat.index.getReplicaTick('pl_stale')).toBe(2);
+  });
+});

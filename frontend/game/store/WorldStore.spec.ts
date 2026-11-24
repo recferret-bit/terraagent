@@ -249,4 +249,26 @@ describe('simWorkerPrewarm and software GL loop pacing', () => {
     expect(computeNextSessionLoopDelayMs(softVp, '?fpsCap=60', 8)).toBe(0);
     expect(computeNextSessionLoopDelayMs(hwVp, '', 300)).toBe(150);
   });
+
+  it('preserves colonyId and sectorId on worker badDiff requestResync with and without transport.requestResync', async () => {
+    const t = new FakeTransport();
+    const store = new WorldStore(t, () => ({ postMessage() {}, onmessage: null, terminate() {} }));
+    store.start(['W00']);
+    store.setTargetColony('co_col_2', 'sec_1_0');
+    t.msgs.emit({ v: 1, t: 'welcome', d: { reason: 'join', colonyId: 'co_col_2', planet: { id: 'pl_x', type: 'temperate', name: 'x' }, state: new Uint8Array(), simVersion: 1, dataHash: 'h', tick: 0, serverTimeMs: 1, tickMs: 200, deltaHz: 5, flags: ['W00'] } } as never);
+    (store as unknown as { fromWorker(m: unknown): void }).fromWorker({ t: 'badDiff', tick: 1 });
+    expect(t.sent).toEqual([{ t: 'join', d: { planetId: 'pl_x', colonyId: 'co_col_2', sectorId: 'sec_1_0' } }]);
+
+    let transportResyncs = 0;
+    const t2 = new FakeTransport();
+    (t2 as Transport).requestResync = () => { transportResyncs += 1; };
+    const store2 = new WorldStore(t2, () => ({ postMessage() {}, onmessage: null, terminate() {} }));
+    store2.start(['W00']);
+    t2.msgs.emit({ v: 1, t: 'welcome', d: { reason: 'join', colonyId: 'co_col_2', planet: { id: 'pl_x', type: 'temperate', name: 'x' }, state: new Uint8Array(), simVersion: 1, dataHash: 'h', tick: 0, serverTimeMs: 1, tickMs: 200, deltaHz: 5, flags: ['W00'] } } as never);
+    (store2 as unknown as { fromWorker(m: unknown): void }).fromWorker({ t: 'badDiff', tick: 1 });
+    expect(transportResyncs).toBe(1);
+    expect(t2.sent).toEqual([]);
+    store.dispose();
+    store2.dispose();
+  });
 });

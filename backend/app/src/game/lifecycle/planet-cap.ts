@@ -9,10 +9,15 @@ import type { SimLeaseService } from '../persistence/sim-lease.service';
 export function planetCapacityGate(
   cap: number,
   planets: Pick<GamePlanets, 'loadedIds'>,
-  leases?: Pick<SimLeaseService, 'enabled' | 'findActiveLeases'>,
+  leases?: Pick<SimLeaseService, 'enabled' | 'findActiveLeases'> & Partial<Pick<SimLeaseService, 'countHealthyWorkers'>>,
+  explicitCap = true,
 ): PlanetCapacityGate {
   return {
     cap,
+    async effectiveCap() {
+      if (explicitCap || !leases?.enabled || !leases.countHealthyWorkers) return cap;
+      return Math.max(1, await leases.countHealthyWorkers()) * cap;
+    },
     async loadedPlanetIds() {
       const ids = new Set(planets.loadedIds());
       if (leases?.enabled) for (const l of await leases.findActiveLeases()) ids.add(l.planetId);

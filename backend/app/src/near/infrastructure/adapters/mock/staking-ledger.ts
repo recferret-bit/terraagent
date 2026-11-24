@@ -1,6 +1,9 @@
+import { STAKING_TIERS } from '@terra/contracts';
 import type { DbClient } from '@terra/db';
 import type { StakingAssetKind } from '../../../application/ports/staking.port.js';
 import { computeSplitRewardDelta } from '../../../staking/yocto.js';
+
+const WARMUP_TIER_MIN_YOCTO = BigInt(STAKING_TIERS[2]!.minStakeNear) * 10n ** 24n;
 
 /** One `chain.mock_chain_staking` row as the mock staking adapter sees it: balances in yocto, clocks in unix ms. */
 export interface StakingRowState {
@@ -79,7 +82,7 @@ export function projectStakingRow(
     withdrawable,
     rewards: BigInt(row.rewardsAccrued.toFixed()) + split.userReward,
     protocolYieldDelta: split.protocolYield,
-    lastAccruedAtMs: nowMs,
+    lastAccruedAtMs: Math.max(row.lastAccruedAt.getTime(), nowMs),
     stakedSinceMs: row.stakedSinceAt?.getTime() ?? null,
     lastStakedAtMs: row.lastStakedAt?.getTime() ?? null,
     asset,
@@ -99,12 +102,14 @@ export async function loadStakingRow(
   return row ? projectStakingRow(row, apyBp, nowMs, yieldShareBp, rewardMultiplier) : emptyStakingRow(nowMs);
 }
 
-/** Records a deposit: the first deposit of a continuous stake starts the warmup clock, every deposit bumps `lastStakedAt`. */
+/** Records a deposit: the first deposit (or crossing from < 50 NEAR into Tier 2+) starts the warmup clock; every deposit bumps `lastStakedAt`. */
 export function withDeposit(snap: SettledStakingRow, amount: bigint, nowMs: number, asset: StakingAssetKind): StakingRowState {
-  const fresh = snap.staked === 0n || snap.stakedSinceMs === null;
+  const nextStaked = snap.staked + amount;
+  const crossedWarmupTier = snap.staked < WARMUP_TIER_MIN_YOCTO && nextStaked >= WARMUP_TIER_MIN_YOCTO;
+  const fresh = snap.staked === 0n || snap.stakedSinceMs === null || crossedWarmupTier;
   return {
     ...snap,
-    staked: snap.staked + amount,
+    staked: nextStaked,
     stakedSinceMs: fresh ? nowMs : snap.stakedSinceMs,
     lastStakedAtMs: nowMs,
     asset,

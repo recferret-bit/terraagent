@@ -48,6 +48,7 @@ export class PerksView {
             accountId: query.accountId,
             colonyId: query.colonyId,
             env,
+            dbEnabled: true,
             w28: true,
             full: true,
             nowMs,

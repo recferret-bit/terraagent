@@ -17,7 +17,10 @@ function rig(cap: number) {
   const loaded = new Set<string>();
   const woken: string[] = [];
   const host: HomeLandingHost = {
-    landingSite: async (planet, i) => { loaded.add(planet.id); return { ok: true, q: 10 + i, r: -i, slotIndex: i }; },
+    landingSite: async (planet, i, sectorId) => {
+      loaded.add(planet.id);
+      return { ok: true, q: 10 + i, r: -i, slotIndex: i, ...(sectorId ? { sectorId } : {}) };
+    },
     ensureHomeLoaded: async (planet) => { if (!loaded.has(planet.id)) woken.push(planet.id); loaded.add(planet.id); },
   };
   home.setLandingHost(host);
@@ -136,5 +139,32 @@ describe('planet cap: the queue drains when a seat frees', () => {
     await r.lobby.updateTicket({ ticketId: gone.id, now: new Date(Date.now() - QUEUE_LIVE_MS - 5_000) });
     await r.repo.deleteColony((await r.repo.listColoniesByPlanetId('pl_dev'))[0]!.id);
     expect((await r.seat('q_here')).state).toBe('ACTIVE');
+  });
+
+  it('admits multi-colony (?new=1) stakers at cap onto overflow planets with sectorId and cancels if allowance drops', async () => {
+    const r = rig(1);
+    await r.fill('p_', SEATS - 1);
+    const first = await r.seat('staker_1');
+    expect(first.state).toBe('ACTIVE');
+    let maxSlots = 3;
+    r.home.setSlotAllowanceService({
+      resolveForPlayer: async (_pid: string, used = 0) => ({ used, max: maxSlots, isStaker: maxSlots > 1, tier: maxSlots > 1 ? 2 : 0 }),
+    } as never);
+
+    const queued = await r.home.getOrAssignHome({ id: 'staker_1', handle: 'staker_1' }, 'desert', 'sec_1_0', undefined, true);
+    expect(queued.state).toBe('QUEUED');
+    const tkt = await r.lobby.findActiveTicketByPlayer('staker_1');
+    expect(tkt?.sectorIntent).toEqual({ kind: 'chosen', sectorId: 'sec_1_0' });
+
+    const leaving = (await r.repo.listColoniesByPlanetId('pl_dev')).find((c) => c.playerId !== 'staker_1')!;
+    await r.repo.deleteColony(leaving.id);
+    maxSlots = 1;
+    await expect(r.home.getOrAssignHome({ id: 'staker_1', handle: 'staker_1' }, 'desert', 'sec_1_0', undefined, true)).rejects.toMatchObject({ errorCode: 'STAKING_REQUIRED' });
+    expect((await r.lobby.getTicketById(tkt!.id))?.state).toBe('CANCELLED');
+
+    maxSlots = 3;
+    const queued2 = await r.home.getOrAssignHome({ id: 'staker_1', handle: 'staker_1' }, 'desert', 'sec_1_0', undefined, true);
+    expect(queued2.state).toBe('ACTIVE');
+    expect(queued2.state === 'ACTIVE' && queued2.colony.foundingSectorId).toBe('sec_1_0');
   });
 });

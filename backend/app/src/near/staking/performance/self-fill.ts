@@ -20,11 +20,15 @@ export interface AccountOwnerRow {
 export type IdentitiesOf = (accountId: string) => ReadonlySet<string>;
 
 export function identityResolver(rows: readonly AccountOwnerRow[]): IdentitiesOf {
-  const byAccount = new Map(rows.map((r) => [r.accountId, r]));
+  const byAccount = new Map<string, AccountOwnerRow[]>();
+  for (const r of rows) {
+    const list = byAccount.get(r.accountId) ?? [];
+    list.push(r);
+    byAccount.set(r.accountId, list);
+  }
   return (accountId) => {
     const ids = new Set<string>([`owner:${accountId}`]);
-    const r = byAccount.get(accountId);
-    if (r) {
+    for (const r of byAccount.get(accountId) ?? []) {
       if (r.playerId) ids.add(`player:${r.playerId}`);
       if (r.ownerAccountId) ids.add(`owner:${r.ownerAccountId}`);
       if (r.claimedByAccountId) ids.add(`owner:${r.claimedByAccountId}`);

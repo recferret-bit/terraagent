@@ -69,7 +69,10 @@ export class TestnetStakingAdapter implements StakingPort {
     const source = (env ?? process.env) as Record<string, string | undefined>;
     const client = rpc ? null : new NearRpcClient(resolveNearNetworkConfig(source, resolveActiveNearNetwork('Staking', source)));
     this.rpc = rpc ?? (client as NearRpcClient);
-    this.apy = new ValidatorApyReader(apyProbe ?? rpcApyProbe(client as NearRpcClient), () => Date.now());
+    this.apy = new ValidatorApyReader(
+      apyProbe ?? (client ? rpcApyProbe(client) : { samples: async () => { throw new Error('rpc client not configured'); } }),
+      () => Date.now(),
+    );
   }
 
   /** Surfaces a typed staking RPC failure as the API's `NEAR_UNAVAILABLE` exception (never a silent fallback value). */
@@ -249,7 +252,7 @@ export class TestnetStakingAdapter implements StakingPort {
     });
   }
 
-  /** LST pools pay out in one transaction through `withdraw_lst` (`ft_transfer` of the matured shares to the wallet). */
+  /** LST pools pay out in one transaction through `withdraw_lst` (`ft_transfer` of matured shares + price-mode yield). */
   private async withdrawLst(
     input: WithdrawInput,
     pool: StakingPoolView,
@@ -257,7 +260,8 @@ export class TestnetStakingAdapter implements StakingPort {
     signer: { accountId: string; secretKey: string },
   ) {
     const view = await this.position({ accountId: input.accountId, pool: pool.poolId });
-    const amount = BigInt(view.withdrawable);
+    const priceMode = await this.isPriceModeLst(input.accountId, pool.poolId);
+    const amount = BigInt(view.withdrawable) + (priceMode ? BigInt(view.rewards) : 0n);
     if (amount <= 0n) throw new NearException('NOTHING_TO_WITHDRAW', { details: { accountId: input.accountId, pool: pool.poolId } });
     return this.rpc.call({
       signerAccountId: signer.accountId,
@@ -270,8 +274,23 @@ export class TestnetStakingAdapter implements StakingPort {
         amount: amount.toString(),
         account_id: input.accountId,
         recipient_id: input.toAccountId ?? null,
+        op_id: input.opId,
       },
     });
+  }
+
+  private async isPriceModeLst(accountId: string, poolId: string): Promise<boolean> {
+    try {
+      const rows = await this.rpc.view<ContractAccountPosition[]>(this.rpc.config.contracts.staking, 'get_account_positions', {
+        account_id: accountId,
+        apy_bp: null,
+        now_ms: this.nowMs(),
+      });
+      const match = Array.isArray(rows) ? rows.find((r) => r.pool_id === poolId) : undefined;
+      return Boolean(match?.entry_lst_price_yocto && BigInt(match.entry_lst_price_yocto) > 0n);
+    } catch {
+      return false;
+    }
   }
 
   /** W28 `compound_yield`: accrued yield becomes principal (`0 %` fee, deposit clocks untouched). `STAKE_NO_YIELD` maps to `NOTHING_TO_COMPOUND`. */
@@ -285,7 +304,7 @@ export class TestnetStakingAdapter implements StakingPort {
         signerSecretKey: signer.secretKey,
         contractId: this.rpc.config.contracts.staking,
         methodName: 'compound_yield',
-        args: { pool_id: pool.poolId, account_id: input.accountId, apy_bp: pool.apyBp, now_ms: this.nowMs() },
+        args: { pool_id: pool.poolId, account_id: input.accountId, apy_bp: pool.apyBp, now_ms: this.nowMs(), op_id: input.opId },
       });
       return receipt;
     });

@@ -91,6 +91,11 @@ export class RampView {
     } catch { /* non-blocking */ }
   }
 
+  /** Re-syncs the mainnet confirmation visibility after `/v1/near/status` resolves. */
+  syncMode(): void {
+    this.live();
+  }
+
   /** Live only on Mainnet and after the explicit confirm; every other case is a dry quote (HACKATHON.md Q-007). */
   private live(): boolean {
     const mainnet = this.opts.isMainnet?.() === true;
@@ -125,9 +130,10 @@ export class RampView {
         minAmountOut?: string;
         timeEstimateSec?: number;
         message?: string;
+        error?: { message?: string };
       };
       if (!res.ok) {
-        this.output.replaceChildren(note(body.message || 'Quote validation failed.', 'err'));
+        this.output.replaceChildren(note(body.error?.message || body.message || 'Quote validation failed.', 'err'));
         return;
       }
       this.output.replaceChildren(

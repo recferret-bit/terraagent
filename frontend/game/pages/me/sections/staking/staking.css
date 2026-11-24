@@ -287,6 +287,10 @@
   vertical-align: top;
 }
 
+.ta-stk-table td:nth-child(2) {
+  white-space: nowrap;
+}
+
 .ta-stk-table thead th {
   font-family: var(--ta-font-mono);
   font-size: 11px;

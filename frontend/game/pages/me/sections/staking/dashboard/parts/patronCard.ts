@@ -77,19 +77,25 @@ async function postToNearSocial(
   const net = o.network === 'mainnet' ? 'mainnet' : 'testnet';
   const tx = patronNearSocialTx(patronFacts(p), o.origin, o.accountId, net);
   btn.dataset.lastSocialTx = JSON.stringify({ contractId: tx.contractId, methodName: tx.methodName, attachedDepositYocto: tx.attachedDepositYocto, gasTgas: tx.gasTgas });
+  let walletSigned = true;
   if (o.network !== 'mock') {
     try {
       await sendSocialTx(tx, net, o.selectorFactory);
     } catch {
-      /* no wallet connected: still open the profile view like the deed share */
+      walletSigned = false;
     }
   }
   statusNode.hidden = false;
-  statusNode.dataset.tone = 'ok';
-  statusNode.textContent =
-    o.network === 'mock'
-      ? 'Prepared NEAR Social post (local mock) and opened profile preview.'
-      : 'Submitted NEAR Social post and opened profile preview.';
+  if (o.network === 'mock') {
+    statusNode.dataset.tone = 'ok';
+    statusNode.textContent = 'Prepared NEAR Social post (local mock) and opened profile preview.';
+  } else if (walletSigned) {
+    statusNode.dataset.tone = 'ok';
+    statusNode.textContent = 'Submitted NEAR Social post and opened profile preview.';
+  } else {
+    statusNode.dataset.tone = 'warn';
+    statusNode.textContent = 'Wallet did not sign NEAR Social post — opened profile preview.';
+  }
   if (o.openWindow) o.openWindow(tx.nearSocialUrl);
   else if (typeof window.open === 'function') window.open(tx.nearSocialUrl, '_blank', 'noopener,noreferrer');
 }
@@ -119,7 +125,7 @@ function buildNominationRules(): HTMLElement {
     { className: 'ta-stk-patron-rules plate-sm' },
     el('li', {}, el('b', {}, 'Automatic Seat Rule: '), 'Top active Tier 4 (≥500 NEAR) staker backing a canonical planet automatically holds its Lead Patron seat.'),
     el('li', {}, el('b', {}, 'Canonical Worlds Only: '), 'Applies strictly to Kharon Dunes, Thalassa Verde, and Granite Hollow — paid NFT sovereign planets are excluded.'),
-    el('li', {}, el('b', {}, 'Perks & Switching: '), 'Names the planet flagship (ISS <pilot>) & earns 15% of its trade fees; switch tabs below to inspect each world.'),
+    el('li', {}, el('b', {}, 'Perks & Switching: '), 'Names the planet flagship (ISS <pilot>) & earns 15% of the Protocol’s trade-fee cut (12% of gross on standard 20% DAO fills; self-fills excluded). Switch tabs below to inspect each world.'),
   );
 }
 
@@ -131,9 +137,9 @@ function tabSeatSummary(
   const lead = p.patronage?.planets.find((pl) => pl.planetId === planetId)?.leadPatron ?? null;
   if (leadPlanets.includes(planetId)) {
     const nearTxt = lead ? formatNear(Number(lead.activeStakedNear)) : formatNear(totalStakedNear(p.balances));
-    return { text: `★ YOUR SEAT (${nearTxt} NEAR)`, tone: 'mine' };
+    return { text: `★ YOUR SEAT (${nearTxt})`, tone: 'mine' };
   }
-  if (lead) return { text: `Lead: ${lead.carrierName} (${formatNear(Number(lead.activeStakedNear))} NEAR)`, tone: 'occupied' };
+  if (lead) return { text: `Lead: ${lead.carrierName} (${formatNear(Number(lead.activeStakedNear))})`, tone: 'occupied' };
   return { text: 'Seat vacant · ≥500 NEAR', tone: 'vacant' };
 }
 

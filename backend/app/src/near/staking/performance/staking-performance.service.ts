@@ -110,7 +110,9 @@ export class StakingPerformanceService implements OnModuleDestroy {
 
     const [priceView, apy, ecosystem] = await Promise.all([this.price.view(), this.apy(network), readEcosystemTvl(db)]);
     const nearUsd = priceView.nearUsd;
-    const r = await resolveWalletPerks(db, { accountId, env: this.envBag(), w28: true, full: true, nowMs, grossApyBp: apy.grossApyBp });
+    const r = await resolveWalletPerks(db, {
+      accountId, env: this.envBag(), dbEnabled: databaseEnabled(this.env), w28: true, full: true, nowMs, grossApyBp: apy.grossApyBp,
+    });
     const [balances, txs, fills, patron, patronage] = await this.loadWalletLedger(db, r.wallet, accountId, network, nowMs, sinceMs, nearUsd, apy);
 
     const lst = balances.lst.map((l) => ({ asset: l.asset, amount: nearText(l.amountYocto), nearValue: nearText(lstNearValue(l.asset, l.amountYocto)) }));

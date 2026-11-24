@@ -24,6 +24,7 @@ export interface StakingFlowHost {
   /** `colonyId` is `undefined` for a wallet-first W28 stake without a deed. */
   ids(): { colonyId: string | undefined; planetId: string; accountId: string | undefined };
   input(): { pool: string; asset: StakingAsset; amount: string };
+  readAmount?(): string;
   activePosition(): StakingPositionDto | null;
   say(message: string): void;
   applyAction(body: StakingActionResponse): void;
@@ -119,6 +120,7 @@ export async function runStake(h: StakingFlowHost): Promise<boolean> {
     h.tracker().stakeCompleted({ ...props, txHash: body.txHash });
     return true;
   } catch {
+    h.say('Stake failed');
     return false;
   }
 }
@@ -126,7 +128,13 @@ export async function runStake(h: StakingFlowHost): Promise<boolean> {
 export async function runUnstake(h: StakingFlowHost): Promise<boolean> {
   const pos = h.activePosition();
   if (!pos || Number(pos.staked || '0') <= 0) return false;
-  const amount = pos.staked;
+  const entered = h.readAmount?.() ?? '';
+  const enteredNum = entered ? Number(entered) : Number.NaN;
+  const stakedNum = Number(pos.staked);
+  const amount =
+    entered && Number.isFinite(enteredNum) && enteredNum > 0 && enteredNum <= stakedNum
+      ? entered
+      : pos.staked;
   const props = eventProps(h, pos.pool, amount);
   const signature = await h.sign(`Unstake ${amount} NEAR from ${pos.pool}`, pos.pool, `unstake:${props.colonyId}:${pos.pool}:${amount}`, false);
   if (signature === null) return false;
@@ -135,13 +143,17 @@ export async function runUnstake(h: StakingFlowHost): Promise<boolean> {
     const res = await postJson(h, '/v1/near/unstake', {
       ...baseBody(h), pool: pos.pool, amount, ...(signature ? { walletSignature: signature } : {}),
     });
-    if (!res.ok) return false;
-    const body = (await res.json()) as StakingActionResponse;
+    const body = (await res.json().catch(() => null)) as StakingActionResponse | null;
+    if (!res.ok || !body) {
+      h.say(extractStakingApiError(body, 'Unstake failed'));
+      return false;
+    }
     h.applyAction(body);
     const fee = body.earlyExitFeeBp ? ` · early-exit fee ${body.earlyExitFeeNear ?? ''} NEAR (${body.earlyExitFeeBp} bp)` : '';
     h.say(`Unbonding (4 epochs)${fee}`);
     return true;
   } catch {
+    h.say('Unstake failed');
     return false;
   }
 }
@@ -163,13 +175,17 @@ export async function runWithdraw(h: StakingFlowHost): Promise<boolean> {
     const res = await postJson(h, '/v1/near/withdraw', {
       ...baseBody(h), pool: pos.pool, ...(signature ? { walletSignature: signature } : {}),
     });
-    if (!res.ok) return false;
-    const body = (await res.json()) as StakingActionResponse;
+    const body = (await res.json().catch(() => null)) as StakingActionResponse | null;
+    if (!res.ok || !body) {
+      h.say(extractStakingApiError(body, 'Withdraw failed'));
+      return false;
+    }
     h.applyAction(body);
     h.say(`Withdrawn to wallet (${body.txHash})`);
     h.tracker().withdrawCompleted({ ...props, txHash: body.txHash });
     return true;
   } catch {
+    h.say('Withdraw failed');
     return false;
   }
 }
@@ -179,7 +195,7 @@ export async function runCompound(h: StakingFlowHost): Promise<boolean> {
   const pos = h.activePosition();
   if (!h.w28 || !pos || Number(pos.rewards || '0') <= 0) return false;
   if (h.network() !== 'mock') {
-    const done = await walletTx(h, 'compound_yield', pos.pool, pos.rewards);
+    const done = await walletTx(h, 'compound_yield', pos.pool, pos.rewards, lstFor(h, pos.asset));
     return done !== null;
   }
   try {

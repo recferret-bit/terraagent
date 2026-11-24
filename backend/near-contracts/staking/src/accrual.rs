@@ -10,7 +10,7 @@ pub(crate) fn compute_accrued_reward_delta(staked: u128, apy_bp: u32, elapsed_ms
     }
     let den: u128 = 10_000u128 * YEAR_MS;
     let factor: u128 = (apy_bp as u128) * (elapsed_ms as u128);
-    (staked / den) * factor + ((staked % den) * factor) / den
+    crate::mathx::mul_div_floor(staked, factor, den).unwrap_or(u128::MAX)
 }
 
 pub(crate) fn read_protocol_yield_bp() -> u32 {

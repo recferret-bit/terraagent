@@ -104,7 +104,7 @@ register({
     b.addPart(rbox(0.74, 0.3, 0.95, 0.08, 1), 'hullPrimary', { name: 'body hull', position: [0, 0.52, -0.05] });
     b.addPart(rbox(0.5, 0.28, 0.5, 0.07, 1), 'hullPrimary', { name: 'cabin', position: [0, 0.78, 0.15] });
     b.addPart(rbox(0.4, 0.1, 0.05, 0.02, 1), 'glassVisor', { name: 'cabin visor', position: [0, 0.82, 0.41] });
-    b.addPart(rbox(0.3, 0.025, 0.02, 0.008, 1), 'energyCyan', { name: 'visor light', position: [0, 0.82, 0.44], emissiveIntensity: 4 });
+    b.addPart(rbox(0.3, 0.025, 0.032, 0.008, 1), 'energyCyan', { name: 'visor light', position: [0, 0.82, 0.432], emissiveIntensity: 4 });
     b.addPart(rbox(0.8, 0.05, 0.4, 0.02, 1), 'frameGunmetal', { name: 'hull deck', position: [0, 0.68, -0.4] });
     // Ore hopper (rear) + top chute bar (shares hopper grate center so tilt aligns)
     b.addPart(rbox(0.66, 0.32, 0.5, 0.05, 1), 'hullSecondary', { name: 'ore hopper', position: [0, 0.84, -0.42], rotation: [0.12, 0, 0] });

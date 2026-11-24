@@ -6,6 +6,7 @@ import { EventBus } from '../../bus/event-bus.js';
 import { databaseEnabled } from '../../core/persistence.js';
 import { APP_ENV, type AppEnv } from '../../core/tokens.js';
 import { PRISMA } from '../../db/db.module.js';
+import { SimClusterService } from '../../game/cluster/sim-cluster.service.js';
 import { GamePlanets } from '../../game/game-planets.service.js';
 import { FlagsService } from '../../flags/flags.service.js';
 import { JobsService } from '../../jobs/jobs.service.js';
@@ -64,6 +65,8 @@ export class TreasuryFinalizeService implements OnModuleInit, OnModuleDestroy {
     @Optional() @Inject(APP_ENV) private readonly env?: AppEnv,
     @Optional() @Inject(W22TelemetryService) private readonly telemetry?: W22TelemetryService,
     @Optional() @Inject(JobsService) private readonly jobs?: JobsService,
+    @Optional() @Inject(SimClusterService)
+    private readonly cluster?: Pick<SimClusterService, 'resolveLocation' | 'submitAnywhere' | 'fullStateAnywhere'>,
   ) {}
 
   /** One pass per poll across the cluster (3.8), on a sim-hosting replica: approved effects are posted to the sim. */
@@ -146,9 +149,11 @@ export class TreasuryFinalizeService implements OnModuleInit, OnModuleDestroy {
   private async sendEffect(scope: DaoScope, row: ProposalRow, nowMs: number): Promise<boolean> {
     const parsed = readProposal(row);
     if (parsed.effectPosted || !this.prisma) return false;
-    // Only the planet's holder claims the effect (3.8, 4): elsewhere `post` cannot reach the sim and the claimed effect
-    // would be lost. The proposal stays Approved with the effect unposted until a pass runs where the planet is loaded.
-    if (this.planets?.isLoaded && !this.planets.isLoaded(scope.planetId)) return false;
+    // Only claim & post when the planet is hosted locally or reachable on a sibling worker (otherwise it stays Approved).
+    if (this.planets?.isLoaded && !this.planets.isLoaded(scope.planetId)) {
+      const loc = await this.cluster?.resolveLocation(scope.planetId).catch(() => null);
+      if (!loc) return false;
+    }
     const project = treasuryProject(this.flags.flags, parsed.kind);
     if (!project) return false;
     const command = treasuryEffectCommand(project, effectUntilTick(await this.tickOf(scope.planetId), project.durationH));
@@ -161,12 +166,13 @@ export class TreasuryFinalizeService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async post(planetId: string, command: SimCommandV1): Promise<void> {
-    if (!this.planets) {
+    if (!this.planets && !this.cluster) {
       this.log.warn(`treasury effect for ${planetId} is stored on the proposal; no sim port`);
       return;
     }
     try {
-      const out = await this.planets.submit(planetId, command);
+      const local = !this.planets?.isLoaded || this.planets.isLoaded(planetId);
+      const out = local && this.planets ? await this.planets.submit(planetId, command) : await this.cluster!.submitAnywhere(planetId, command);
       if (!out.ok) this.log.warn(`treasury effect not applied on ${planetId}: ${out.code ?? 'rejected'}`);
     } catch (err) {
       this.log.warn(`treasury effect submit failed on ${planetId}: ${errorText(err)}`);
@@ -193,20 +199,30 @@ export class TreasuryFinalizeService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async liveTick(planetId: string): Promise<number | null> {
-    if (!this.planets?.isLoaded?.(planetId) || !this.planets.fullState) return null;
-    try {
-      const state = await this.planets.fullState(planetId, 500);
-      return typeof state.tick === 'number' && state.tick >= 0 ? state.tick : null;
-    } catch {
-      return null;
+    if (this.planets?.isLoaded?.(planetId) && this.planets.fullState) {
+      try {
+        const state = await this.planets.fullState(planetId, 500);
+        return typeof state.tick === 'number' && state.tick >= 0 ? state.tick : null;
+      } catch {
+        return null;
+      }
     }
+    if (this.cluster) {
+      try {
+        const state = await this.cluster.fullStateAnywhere(planetId, 1_000);
+        return typeof state.tick === 'number' && state.tick >= 0 ? state.tick : null;
+      } catch {
+        return null;
+      }
+    }
+    return null;
   }
 
   private async scopes(planetId?: string): Promise<DaoScope[]> {
     const daoId = planetId ? daoAccountIdFor(planetId) : undefined;
     const daos = await this.prisma!.mockChainDao.findMany({
       where: daoId ? { id: daoId } : undefined,
-      include: { proposals: { orderBy: { id: 'asc' } } },
+      include: { proposals: { where: { status: { in: ['InProgress', 'Approved'] } }, orderBy: { id: 'asc' } } },
     });
     return daos.map((dao) => ({
       planetId: parsePolicy(dao.policy).name,

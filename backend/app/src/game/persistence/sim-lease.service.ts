@@ -392,6 +392,12 @@ export class SimLeaseService implements BeforeApplicationShutdown, OnApplication
     });
   }
 
+  async countHealthyWorkers(): Promise<number> {
+    if (!this.enabled || !this.prisma) return 0;
+    const now = new Date(this.nowMs());
+    return this.prisma.simWorkerNode.count({ where: { role: { in: ['sim-worker', 'all'] }, expiresAt: { gt: now } } });
+  }
+
   /** The live sim worker with the lowest load score (least busy threads, then fewest planets). */
   async pickHealthyWorker(): Promise<SimWorkerNodeRecord | null> {
     if (!this.enabled || !this.prisma) return null;

@@ -266,8 +266,8 @@ export function createReceiptExamplesGrid(): HTMLElement {
       bars: [['50%', 'is-terra'], ['40%', 'is-orange'], ['10%', 'is-blue']],
       rows: [
         ['Seller Principal (100%)', '$100.00 USDC'],
-        ['Trade Hub Stall Royalty', '+$0.50 USDC'],
-        ['TerraAgent Protocol (80% fee)', '+$0.80 ($0.52–$0.20 T1–T4)'],
+        ['Trade Hub Stall Royalty', '+$0.50 USDC (0–1.00% cap)'],
+        ['Protocol + Lead Patron (80% fee)', '+$0.80 ($0.52–$0.20 T1–T4; 15% to T4 Patron)'],
         ['Planet Council DAO (20% fee)', '+$0.20 ($0.13–$0.05 T1–T4)'],
       ],
     },
@@ -278,10 +278,10 @@ export function createReceiptExamplesGrid(): HTMLElement {
       title: '50 NEAR Staked on /me.html#staking (Commander T2)',
       bars: [['80%', 'is-blue'], ['20%', 'is-energy']],
       rows: [
-        ['Locked Principal (2d Unbond)', '50.00 NEAR (100% Safe)'],
-        ['Pilot Net Yield (80% split)', '+3.60 NEAR / yr (7.20%)'],
-        ['Protocol Infra Slice (20%)', '+0.90 NEAR / yr (~3k txs)'],
-        ['Commander Perks (50 NEAR)', '3 AI Slots + 0.50% Fee'],
+        ['Locked Principal (2d Unbond)', '50.00 NEAR (0% Compound · <7d 0.25% exit)'],
+        ['Pilot Net Yield (80% split)', '+3.60 NEAR / yr (7.20% Sim / live Mainnet)'],
+        ['Protocol Infra Slice (20%)', '+0.90 NEAR / yr (~3k txs · 35% AI budget)'],
+        ['Commander Perks (50 NEAR)', '3 AI Slots + 0.50% Fee (24h warmup)'],
       ],
     },
     {

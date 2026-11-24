@@ -47,9 +47,8 @@ export class TradeStaking {
     });
     this.setColonyId = (next) => {
       if (next && next !== activeColonyId) {
-        const hadNone = activeColonyId === null && accountId() === null;
         activeColonyId = next;
-        if (hadNone) void this.pill.refresh();
+        void this.pill.refresh();
       }
     };
   }
@@ -57,6 +56,8 @@ export class TradeStaking {
   private readonly setColonyId: (colonyId: string | null) => void;
 
   refresh(): Promise<void> { return this.pill.refresh(); }
+
+  syncMode(): void { this.profits.syncMode(); }
 
   /** Re-draws the warmup countdown (page tick). */
   tick(): void { this.fee.update(); }

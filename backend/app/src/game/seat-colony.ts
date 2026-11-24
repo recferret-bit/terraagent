@@ -26,11 +26,13 @@ export interface SeatHost {
  * handed to `adoptLateLanding` (LED-15: the row is written again, or the colony index marked landed), and logged.
  */
 export function gameSeatHost(
-  snapshots: Pick<SnapshotService, 'loadNew'>, planets: Pick<GamePlanets, 'submit'>, log: Pick<Logger, 'error' | 'warn'>,
+  snapshots: Pick<SnapshotService, 'loadNew'> & Partial<Pick<SnapshotService, 'loadHome'>>,
+  planets: Pick<GamePlanets, 'submit'>,
+  log: Pick<Logger, 'error' | 'warn'>,
   adoptLateLanding?: (assignment: ColonySeatAssignment) => Promise<boolean>,
 ): SeatHost {
   return {
-    ensureLoaded: (planetId, opts) => snapshots.loadNew(planetId, opts),
+    ensureLoaded: (planetId, opts) => (snapshots.loadHome ? snapshots.loadHome(planetId, opts) : snapshots.loadNew(planetId, opts)),
     submit: (planetId, cmd) => planets.submit(planetId, cmd),
     onLateLanding: (assignment, appliedAtTick) => {
       const { planet, colony } = assignment;

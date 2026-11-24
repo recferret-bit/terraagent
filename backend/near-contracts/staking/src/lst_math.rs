@@ -33,6 +33,9 @@ pub(crate) fn weighted_entry(entry: u128, prior: u128, added: u128, price: u128)
     if entry == 0 {
         return 0;
     }
+    if entry == price {
+        return entry;
+    }
     let total = prior.saturating_add(added);
     let a = mul_div_ceil(prior, entry, total).unwrap_or(entry);
     let b = mul_div_ceil(added, price, total).unwrap_or(price);

@@ -46,6 +46,14 @@ describe('W20-19 AccountClaimService & MockIdentityAdapter unit', () => {
     const afterByAccount = await service.isAccountClaimed('other', first.accountId);
     expect(afterByAccount.claimed).toBe(true);
     expect(afterByAccount.accountId).toBe(first.accountId);
+
+    await expect(
+      service.claimColonyAccount({
+        colonyId: 'col_0',
+        walletAccountId: 'thief-wallet.terraagent.mock',
+        newPublicKey: 'ed25519:wallet-key-2',
+      }),
+    ).rejects.toMatchObject({ errorCode: 'NEAR_NOT_OWNER', status: 403 });
   });
 
   it('defaults colonyId to col_0 and derives walletAccountId when omitted', async () => {

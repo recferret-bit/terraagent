@@ -1,4 +1,4 @@
-import type { HomeResponse } from '@terra/contracts';
+import type { HomeResponse, SectorId } from '@terra/contracts';
 import { devPlanetIdFor, devPlanetTypeOf, type DevPlanetType } from '@terra/sim';
 import type { WorldLifecycleService } from '../../../lobby/lifecycle.service';
 import type { LobbyPersistenceService } from '../../../lobby/lobby-persistence.service';
@@ -48,25 +48,39 @@ export async function seatOrQueue(
   type: DevPlanetType,
   admitted: boolean,
   seat: () => Promise<HomeResponse>,
+  intent?: { readonly sectorId?: string; readonly planetId?: string },
 ): Promise<HomeResponse> {
   const now = (deps.now ?? Date.now)();
   if (deps.lobby && !admitted && (await liveQueue(deps.lobby, devPlanetIdFor(type, 1), now)).length > 0) {
-    return enqueue(deps, deps.lobby, playerId, type, now);
+    return enqueue(deps, deps.lobby, playerId, type, now, intent);
   }
   try {
     return await seat();
   } catch (e) {
     if (!(e instanceof PlanetCapReached)) throw e;
     if (!deps.lobby) throw capUnavailable(e);
-    return enqueue(deps, deps.lobby, playerId, e.type, now);
+    return enqueue(deps, deps.lobby, playerId, e.type, now, intent);
   }
 }
 
-async function enqueue(deps: CapacityQueueDeps, lobby: LobbyPersistenceService, playerId: string, type: DevPlanetType, now: number): Promise<HomeResponse> {
+async function enqueue(
+  deps: CapacityQueueDeps,
+  lobby: LobbyPersistenceService,
+  playerId: string,
+  type: DevPlanetType,
+  now: number,
+  intent?: { readonly sectorId?: string; readonly planetId?: string },
+): Promise<HomeResponse> {
+  const sectorId = intent?.sectorId?.trim() || undefined;
   const { ticket } = await lobby.enqueueTicket({
     playerId,
     idempotencyKey: `planet-cap:${type}:${now}`,
-    request: { mode: 'AUTO', planetId: devPlanetIdFor(type, 1), planetType: type },
+    request: {
+      mode: 'AUTO',
+      planetId: devPlanetIdFor(type, 1),
+      planetType: type,
+      ...(sectorId ? { sectorId: sectorId as SectorId, sectorIntent: { kind: 'chosen' as const, sectorId: sectorId as SectorId } } : {}),
+    },
     priority: 0,
   });
   return queuedAtCap(ticket, lobby, deps.lifecycle);

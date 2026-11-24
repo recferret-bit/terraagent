@@ -11,22 +11,22 @@ const PILLARS: readonly IntroPillar[] = [
   {
     index: '01',
     title: '100% PRINCIPAL CUSTODY',
-    copy: 'Stake native NEAR, stNEAR, or LiNEAR in your wallet and withdraw matured principal anytime.',
+    copy: 'Stake native NEAR, stNEAR, or LiNEAR wallet-first (no Deed). 0% compound fee keeps clocks; <7d exit pays 0.25%; ~2d unbond.',
   },
   {
     index: '02',
     title: '80% NET VALIDATOR YIELD',
-    copy: 'Rewards accrue live every second; 20% funds gasless NEP-366 relays and protocol compute.',
+    copy: 'Keep 80% of validator APY live every second; 20% funds gasless NEP-366 relays and Managed NEAR.AI TEE compute.',
   },
   {
     index: '03',
     title: 'NEAR.AI TEE & 0.25% FEES',
-    copy: 'Higher tiers unlock up to 12 managed autopilot colony slots and cut market taker fees.',
+    copy: '10 / 50 / 200 / 500+ NEAR unlocks 1–12 AI slots, 0.65% (instant) → 0.50% / 0.35% / 0.25% fees (24h warmup), 2x–15x gas & 1.5x DAO.',
   },
   {
     index: '04',
     title: 'PLANETARY PATRONAGE',
-    copy: 'Tier 4 (≥500 NEAR) competes on the 3 canonical worlds to name a flagship & earn 15% of fees (Sovereign NFTs excluded).',
+    copy: 'Tier 4 (≥500 NEAR) competes on the 3 canonical worlds to name a flagship & earn 15% of Protocol’s fee cut (12% of gross; Sovereign NFTs excluded).',
     accent: true,
   },
 ] as const;

@@ -85,3 +85,43 @@ describe('W28-07 staking wallet-tx: compound_yield & withdraw_lst', () => {
     ).toThrow(/amountNear/i);
   });
 });
+
+describe('W28-07 staking wallet-tx cross-network, HTTP 400 & LST compound guards', () => {
+  it('rejects cross-network LST contracts, invalid NEAR decimals with HTTP 400, and sets apy_bp=0 on LST compound', () => {
+    expect(() =>
+      buildStakingWalletTxDescriptor(
+        { action: 'deposit_and_stake_lst', lstContract: 'meta-pool.near', amountNear: '5' },
+        { NEAR_ADAPTER_STAKING: 'testnet' },
+      ),
+    ).toThrow(/unwhitelisted/i);
+
+    try {
+      buildStakingWalletTxDescriptor(
+        { action: 'deposit_and_stake', poolId: 'astro-stakers.poolv1.near', amountNear: 'not-a-number' },
+        { NEAR_ADAPTER_STAKING: 'mainnet' },
+      );
+      throw new Error('expected throw');
+    } catch (err) {
+      expect((err as { getStatus?: () => number; code?: string }).getStatus?.() ?? (err as { status?: number }).status).toBe(400);
+    }
+
+    expect(() =>
+      buildStakingWalletTxDescriptor(
+        { action: 'unstake', poolId: 'astro-stakers.poolv1.near', amountNear: '0' },
+        { NEAR_ADAPTER_STAKING: 'mainnet' },
+      ),
+    ).toThrow(/amountNear/i);
+
+    const stNearCompound = buildStakingWalletTxDescriptor(
+      { action: 'compound_yield', poolId: 'meta-pool.near' },
+      { NEAR_ADAPTER_STAKING: 'mainnet' },
+    );
+    expect((stNearCompound.args as { apy_bp?: number }).apy_bp).toBe(0);
+
+    const nativeCompound = buildStakingWalletTxDescriptor(
+      { action: 'compound_yield', poolId: 'astro-stakers.poolv1.near' },
+      { NEAR_ADAPTER_STAKING: 'mainnet' },
+    );
+    expect((nativeCompound.args as { apy_bp?: number }).apy_bp).toBeGreaterThan(0);
+  });
+});

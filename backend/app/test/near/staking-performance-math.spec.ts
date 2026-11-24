@@ -227,4 +227,25 @@ describe('readWalletBalances maturity & live RPC wallet fallback', () => {
     });
     expect(neg.walletYocto).toBe(0n);
   });
+
+  it('deduplicates multiple StakingPosition rows sharing the same accountId and poolId, keeping newest updatedAt', async () => {
+    const dec = (v: string) => ({ toFixed: () => v });
+    const older = new Date('2026-06-01T00:00:00Z');
+    const newer = new Date('2026-06-02T00:00:00Z');
+    const fakeDb = {
+      stakingPosition: {
+        findMany: async () => [
+          { accountId: 'alice.near', poolId: 'astro.near', asset: 'near', stakedSnapshot: dec((50n * 10n ** 24n).toString()), unbondingSnapshot: dec('0'), withdrawableSnapshot: dec('0'), rewardsSnapshot: dec('0'), updatedAt: older },
+          { accountId: 'alice.near', poolId: 'astro.near', asset: 'near', stakedSnapshot: dec((80n * 10n ** 24n).toString()), unbondingSnapshot: dec('0'), withdrawableSnapshot: dec('0'), rewardsSnapshot: dec('0'), updatedAt: newer },
+        ],
+      },
+    } as never;
+    const wb = await readWalletBalances(fakeDb, { walletKey: 'alice.near', playerId: null, colonyIds: ['c1', 'c2'], accountIds: ['alice.near'] }, {
+      readMockWallet: false,
+      primaryAccountId: 'alice.near',
+      readLiveWalletYocto: async () => 3n * 10n ** 24n,
+    });
+    expect(wb.activeYocto).toBe(80n * 10n ** 24n);
+    expect(wb.walletYocto).toBe(3n * 10n ** 24n);
+  });
 });

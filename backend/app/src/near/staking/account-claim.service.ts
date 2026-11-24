@@ -292,6 +292,9 @@ export class AccountClaimService {
     if (!prisma) {
       this.assertRowOwnership(undefined, input.playerId);
       const mem = this.claimedAccounts.get(input.colonyId);
+      if (mem && mem.claimedByAccountId !== input.walletAccountId) {
+        throw new NearException('NEAR_NOT_OWNER', { status: 403, message: 'Colony account is already claimed by another wallet' });
+      }
       return {
         accountId: mem?.accountId ?? defaultAccountId,
         existingClaimedAt: mem ? new Date(mem.claimedAt) : null,
@@ -301,6 +304,9 @@ export class AccountClaimService {
     const existing = await this.findColonyAccountRow(prisma, input.colonyId, undefined, input.playerId);
     if (existing) {
       this.assertRowOwnership(existing.playerId, input.playerId);
+      if (existing.claimedAt !== null && existing.claimedByAccountId && existing.claimedByAccountId !== input.walletAccountId) {
+        throw new NearException('NEAR_NOT_OWNER', { status: 403, message: 'Colony account is already claimed by another wallet' });
+      }
       return { accountId: existing.accountId, existingClaimedAt: existing.claimedAt };
     }
 

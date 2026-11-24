@@ -69,6 +69,7 @@ export class StakingPerksService {
       accountId,
       playerId,
       env: this.envBag(),
+      dbEnabled: databaseEnabled(this.env),
       w28: true,
       full: true,
       nowMs: query.nowMs,
@@ -97,7 +98,7 @@ export class StakingPerksService {
     const tierByWallet = new Map<string, number>();
     const colonies: Array<{ colonyId: string; colonyIndex: number; tier: number }> = [];
     for (const { id, colonyIndex } of rows) {
-      const r = await resolveWalletPerks(db, { colonyId: id, env: this.envBag(), w28: true });
+      const r = await resolveWalletPerks(db, { colonyId: id, env: this.envBag(), dbEnabled: databaseEnabled(this.env), w28: true });
       const key = r.wallet.walletKey === 'anonymous' ? id : r.wallet.walletKey;
       if (!tierByWallet.has(key)) tierByWallet.set(key, r.perks.tier);
       colonies.push({ colonyId: id, colonyIndex, tier: tierByWallet.get(key) ?? 0 });

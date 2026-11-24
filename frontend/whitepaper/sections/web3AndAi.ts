@@ -182,18 +182,40 @@ function buildWeb3ProtocolSection(): HTMLElement {
   return sec01;
 }
 
+const STAKING_TIER_TABLE_ROWS: ReadonlyArray<ReadonlyArray<string>> = [
+  ['`T0 Cadet`', '`0\u00A0NEAR`', '`1.00%` (`100\u00A0bp`)', '`1` colony (`5` free TEE turns, then Script AI)', 'Script AI · `1×` gas · `1` bot', '— · `1.0×`', 'Standard Hull'],
+  ['`T1 Scout`', '`10\u00A0NEAR`', '`0.65%` (instant)', '`1` colony · `1` GLM 5.3 Flash slot', '`120s` sweep · `2×` gas · `1` bot', '— · `1.0×`', 'Cyan Uplink + Quantum Dish'],
+  ['`T2 Commander`', '`50\u00A0NEAR`', '`0.50%` (`24h` warmup)', '`3` colonies · `3` GLM 5.3 Flash slots', '`60s` sweep · `4×` gas · `3` bots', '`5\u00A0min` · `1.0×`', 'Plasma Trail + Cyan Cutters'],
+  ['`T3 Archon`', '`200\u00A0NEAR`', '`0.35%` (`24h` warmup)', '`6` colonies · `6` GLM 5.3 Flash slots', '`30s` sweep · `8×` gas · `3` bots', '`5\u00A0min` · `1.5×`', 'Gold Command Hub + Plume'],
+  ['`T4 Patron`', '`500+\u00A0NEAR`', '`0.25%` (`24h` warmup)', '`12` colonies · `12` GLM 5.3 Flash slots', '`30s` sweep · `15×` gas · `3` bots', '`5\u00A0min` · `1.5×`', 'Lead Patron (`15%` Protocol cut = `12%` gross) + Flagship'],
+];
+
+const STAKING_RULE_ROWS: ReadonlyArray<ReadonlyArray<string>> = [
+  ['4 Profit & Effective APY Streams', '80% net validator APY (`7.20%` Sim / live on Mainnet) + taker fee savings (`1.00% → 0.65%–0.25%`) + stake-blind Trade Hub stall royalties (`0–1.00%`) + Tier 4 Lead Patron revenue (`15%` of Protocol cut = `12%` of gross on standard 20% DAO fills). Self-fills excluded.'],
+  ['Anti-Snipe 24h Warmup & Reset', 'Tier 1 (`65 bp`) activates at `t=0`. Tier 2–4 fee cuts unlock after `24h` continuous stake (`1 min` in local mode). Crossing `< 50 → >= 50 NEAR` resets `stakedSinceMs` (single-pool & cross-pool); `>= 50 NEAR` top-ups preserve it.'],
+  ['Early Exit, Compound & Unbonding', 'Unstaking `< 7 days` after latest deposit pays `0.25%` (`25 bp`) to `protocol.<root>` (`0%` after `7d`). `compound_yield` is `0%` fee and never resets maturity/warmup clocks. Unbonding takes `4 epochs` (~`2 game-days`); unbonding principal is excluded from tiers immediately.'],
+  ['Managed AI Budget & Zero P2W', 'Daily wallet AI cap = `35% × (daily protocol yield USD + daily non-self protocol trade-fee USD)` (`>= 65%` margin; DAO & Patron cuts deducted; `$0.0000375`/turn on `z-ai/glm-5.3-flash`). Trade Hub stall cap stays `0–1.00%` for all tiers; `@terra/sim` never reads staking (`D-31`).'],
+  ['Lead Planetary Patron & Solvency', 'Top active `>= 500 NEAR` staker on each of the 3 canonical worlds (`Kharon Dunes`, `Thalassa Verde`, `Granite Hollow`; sovereign NFT worlds excluded) automatically holds the Lead Patron seat. Native-backing solvency guard + optional `op_id` idempotency protect on-chain positions.'],
+];
+
 function buildEconomyAndIncomeSection(): HTMLElement {
   const sec02 = createSectionShell(
     'sec-02',
     '02',
     'INCOME, STAKING & PROTOCOL TREASURY',
-    'How Players Earn, Day-1 Lossless Staking & Protocol Cashflows',
+    'How Players Earn, 4-Tier Lossless Staking & Protocol Cashflows',
     'Zero inflationary emissions: every credit earned by players, bot operators, stakers, and `protocol.terraagent.testnet` traces back to commodity arbitrage, marketplace fees, real NEAR validator yield, or forfeited truce and war collateral.',
     'web3',
   );
 
   const lanesH3 = makeEl('h3', 'wp-subsection-h3', 'Four Player & Agent Income Lanes');
   lanesH3.id = 'sub-econ-lanes';
+
+  const tiersH3 = makeEl('h3', 'wp-subsection-h3', '4-Tier Orbital Patronage Matrix (Wallet-First, Zero Pay-to-Win)');
+  tiersH3.id = 'sub-econ-tiers';
+
+  const rulesH3 = makeEl('h3', 'wp-subsection-h3', 'Staker Profit Streams, Anti-Snipe Warmup & Exit Rules');
+  rulesH3.id = 'sub-econ-rules';
 
   const schematicH3 = makeEl('h3', 'wp-subsection-h3', 'Protocol Treasury Conduit & 4-Way Atomic Clearing');
   schematicH3.id = 'sub-econ-schematic-h3';
@@ -204,13 +226,20 @@ function buildEconomyAndIncomeSection(): HTMLElement {
   sec02.append(
     lanesH3,
     createFeatureGrid(INCOME_LANE_CARDS),
+    tiersH3,
+    createTable(
+      ['Tier', 'Min Stake', 'Taker Fee', 'Colonies & Managed AI', 'Sweep · Gas · Bots', 'Radar · DAO', 'Patronage & 3D Prestige'],
+      STAKING_TIER_TABLE_ROWS,
+    ),
+    rulesH3,
+    createTable(['Rule / Profit Mechanism', 'Exact Specification'], STAKING_RULE_ROWS),
     schematicH3,
     createProtocolEconomySchema(),
     receiptsH3,
     createReceiptExamplesGrid(),
     createCallout(
       'Fair Staking Guarantee (Zero Pay-to-Win)',
-      'Wallet-first 4-Tier Orbital Patronage rewards pilots with 80% of pool yield (7.20% net Sim APY), 1–12 Managed `NEAR.AI` colony slots, and progressive trade-fee cuts (`1.00% → 0.65%` instant `→ 0.50% / 0.35% / 0.25%` after `24h` warmup). `@terra/sim` rejects any staking lookup during resource harvesting or combat — wallets never boost unit damage.',
+      'Wallet-first 4-Tier Orbital Patronage rewards pilots with 80% of pool yield (7.20% net Sim APY on testnet; live APY on mainnet), 1–12 Managed `NEAR.AI` colony slots, and progressive trade-fee cuts (`1.00% → 0.65%` instant `→ 0.50% / 0.35% / 0.25%` after `24h` warmup). `@terra/sim` never reads staking (`D-31`) — wallets never boost unit damage or mining speed.',
     ),
   );
   return sec02;

@@ -55,7 +55,7 @@ export function formatTierFeeLine(perks: StakerPerksInfo | null | undefined, now
   if (!isV2Perks(perks)) return '';
   const feeTier = STAKING_TIERS[perks.feeTier]!;
   const base = `Tier ${perks.tierName}: ${feeTier.takerFeeBp} bp market fee`;
-  if (perks.feeWarmupReadyAtMs === null) return base;
+  if (perks.feeWarmupReadyAtMs === null || perks.feeWarmupReadyAtMs <= nowMs) return base;
   const hours = Math.max(1, Math.ceil((perks.feeWarmupReadyAtMs - nowMs) / 3_600_000));
   return `${base} now, full ${perks.tierName} fee in ${hours} h`;
 }

@@ -19,13 +19,29 @@ export class AiSlotLedger {
   /** `true` when `colonyId` already holds a slot of `walletKey` or takes a free one (`max` slots). */
   claim(walletKey: string, colonyId: string, max: number, nowMs: number): boolean {
     this.roll(nowMs);
-    if (max <= 0) return false;
+    if (max <= 0) {
+      this.sets.delete(walletKey);
+      return false;
+    }
     const set = this.sets.get(walletKey) ?? new Set<string>();
+    while (set.size > max) {
+      const oldestOrNewest = Array.from(set).pop();
+      if (oldestOrNewest === undefined) break;
+      set.delete(oldestOrNewest);
+    }
     if (set.has(colonyId)) return true;
     if (set.size >= max) return false;
     set.add(colonyId);
     this.sets.set(walletKey, set);
     return true;
+  }
+
+  release(walletKey: string, colonyId: string, nowMs: number): void {
+    this.roll(nowMs);
+    const set = this.sets.get(walletKey);
+    if (!set) return;
+    set.delete(colonyId);
+    if (set.size === 0) this.sets.delete(walletKey);
   }
 
   has(walletKey: string, colonyId: string, nowMs: number): boolean {

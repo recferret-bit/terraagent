@@ -98,6 +98,7 @@ export class ManagedAiGate {
       colonyId: resolved.colonyId,
       playerId: resolved.playerId,
       env: this.envBag(),
+      dbEnabled: databaseEnabled(this.env),
       w28: true,
       full: true,
       nowMs,
@@ -112,8 +113,12 @@ export class ManagedAiGate {
     if (!provider.available) return script(downshiftForFailure(provider.kind));
     if (perks.maxAiColonySlots > 0) {
       if (usage.dailyCallsUsed >= perks.dailyAiCallLimit) return script('budget_exhausted');
+      const hadSlot = this.slots.has(wallet.walletKey, resolved.colonyId, nowMs);
       if (!this.slots.claim(wallet.walletKey, resolved.colonyId, perks.maxAiColonySlots, nowMs)) return script('slot_cap');
-      if (!(await chargeWalletCall(db, wallet.walletKey, perks.dailyAiCallLimit, nowMs))) return script('budget_exhausted');
+      if (!(await chargeWalletCall(db, wallet.walletKey, perks.dailyAiCallLimit, nowMs))) {
+        if (!hadSlot) this.slots.release(wallet.walletKey, resolved.colonyId, nowMs);
+        return script('budget_exhausted');
+      }
       return this.charged({ mode: 'tee', model: MANAGED_AI_MODEL }, { kind: 'wallet', walletKey: wallet.walletKey, nowMs });
     }
     const playerId = resolved.playerId ?? wallet.playerId;
@@ -165,6 +170,7 @@ export class ManagedAiGate {
       colonyId: resolved.colonyId,
       playerId: resolved.playerId,
       env: this.envBag(),
+      dbEnabled: databaseEnabled(this.env),
       w28: true,
       full: true,
       nowMs,

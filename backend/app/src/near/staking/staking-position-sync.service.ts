@@ -181,10 +181,11 @@ export class StakingPositionSyncService implements OnModuleInit, OnModuleDestroy
     const db = this.useDb();
     if (!db) {
       const all = Array.from(this.positions.values());
-      if (!accountOrColonyId) return all;
-      return all.filter(
-        (p) => p.accountId === accountOrColonyId || p.colonyId === accountOrColonyId,
-      );
+      const filtered = accountOrColonyId
+        ? all.filter((p) => p.accountId === accountOrColonyId || p.colonyId === accountOrColonyId)
+        : all;
+      const isSpecificColony = Boolean(accountOrColonyId && filtered.some((p) => p.colonyId === accountOrColonyId && p.colonyId !== p.accountId));
+      return isSpecificColony ? filtered : dedupeByAccountAndPool(filtered, (p) => `${p.accountId}::${p.pool}`, (p) => p.updatedAt ?? 0);
     }
 
     const pools = await this.staking.listPools();
@@ -195,8 +196,10 @@ export class StakingPositionSyncService implements OnModuleInit, OnModuleDestroy
         : undefined,
       orderBy: [{ colonyId: 'asc' }, { poolId: 'asc' }],
     });
+    const isSpecificColony = Boolean(accountOrColonyId && rows.some((r) => r.colonyId === accountOrColonyId && r.colonyId !== r.accountId));
+    const selected = isSpecificColony ? rows : dedupeByAccountAndPool(rows, (r) => `${r.accountId}::${r.poolId}`, (r) => r.updatedAt.getTime());
 
-    return rows.map((row) => {
+    return selected.map((row) => {
       const poolInfo = poolMap.get(row.poolId);
       return {
         ...(row.colonyId === row.accountId ? {} : { colonyId: row.colonyId }),
@@ -458,4 +461,14 @@ export class StakingPositionSyncService implements OnModuleInit, OnModuleDestroy
   private useDb(): PrismaClient | null {
     return this.prisma && databaseEnabled(this.env) ? this.prisma : null;
   }
+}
+
+function dedupeByAccountAndPool<T>(rows: readonly T[], keyOf: (row: T) => string, updatedAtOf: (row: T) => number): T[] {
+  const byKey = new Map<string, T>();
+  for (const row of rows) {
+    const key = keyOf(row);
+    const prev = byKey.get(key);
+    if (!prev || updatedAtOf(row) > updatedAtOf(prev)) byKey.set(key, row);
+  }
+  return [...byKey.values()];
 }

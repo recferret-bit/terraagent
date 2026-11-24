@@ -71,6 +71,10 @@ pub struct StakingVaultContract {
     processed_ops: LookupMap<String, String>,
 }
 
+pub(crate) fn op_key(scope: &str, op_id: &str) -> String {
+    format!("{scope}:{op_id}")
+}
+
 fn emit_staking(event: &str, data: serde_json::Value) {
     let payload = json!({
         "standard": "terra-staking",
@@ -161,7 +165,8 @@ impl StakingVaultContract {
         require!(!op_id.is_empty(), "STAKE_INSUFFICIENT_BALANCE: op_id required");
         require!(!account_id.trim().is_empty(), "STAKE_INSUFFICIENT_BALANCE: account_id required");
         self.require_operator();
-        if let Some(prev) = self.processed_ops.get(&op_id) {
+        let okey = op_key("credit", &op_id);
+        if let Some(prev) = self.processed_ops.get(&okey) {
             return prev.clone();
         }
         let add_val = parse_yocto(&amount);
@@ -169,7 +174,7 @@ impl StakingVaultContract {
         let next = cur.checked_add(add_val).expect("STAKE_INSUFFICIENT_BALANCE: overflow");
         self.balances.insert(account_id.clone(), next);
         let res = next.to_string();
-        self.processed_ops.insert(op_id, res.clone());
+        self.processed_ops.insert(okey, res.clone());
         emit_staking("credit_near", json!({ "account_id": account_id, "amount": amount, "balance": res }));
         res
     }
@@ -252,7 +257,8 @@ impl StakingVaultContract {
     ) -> StakingPositionView {
         require!(!op_id.is_empty(), "STAKE_INSUFFICIENT_BALANCE: op_id required");
         self.require_operator();
-        if let Some(cached) = self.processed_ops.get(&op_id) {
+        let okey = op_key("stake", &op_id);
+        if let Some(cached) = self.processed_ops.get(&okey) {
             return serde_json::from_str(cached).expect("STAKE_INSUFFICIENT_BALANCE: cached corrupt");
         }
         validate_pool_and_apy(&pool_id, apy_bp);
@@ -291,10 +297,10 @@ impl StakingVaultContract {
         let prior = next.staked;
         next.staked = prior.checked_add(stake_val).expect("STAKE_INSUFFICIENT_BALANCE: overflow");
         self.positions.insert(pos_key(&account_id, &pool_id), next.clone());
-        positions::record_deposit(&account_id, &pool_id, positions::NATIVE_ASSET, now_ms, prior, stake_val, 0);
+        positions::record_deposit(&account_id, &pool_id, positions::NATIVE_ASSET, now_ms, prior, 0, stake_val, 0);
 
         let view = to_view(&account_id, &pool_id, &next);
-        self.processed_ops.insert(op_id, serde_json::to_string(&view).unwrap());
+        self.processed_ops.insert(okey, serde_json::to_string(&view).unwrap());
         emit_staking(
             "stake",
             json!({ "account_id": account_id, "payer": payer, "pool_id": pool_id, "amount": amount }),
@@ -324,7 +330,8 @@ impl StakingVaultContract {
             is_operator || apy_bp <= MAX_NON_OPERATOR_APY_BP,
             "STAKE_INVALID_APY: direct non-operator apy_bp exceeds 1000 bp"
         );
-        if let Some(cached) = self.processed_ops.get(&op_id) {
+        let okey = op_key("unstake", &op_id);
+        if let Some(cached) = self.processed_ops.get(&okey) {
             return serde_json::from_str(cached).expect("STAKE_INSUFFICIENT_BALANCE: cached corrupt");
         }
         validate_pool_and_apy(&pool_id, apy_bp);
@@ -371,7 +378,7 @@ impl StakingVaultContract {
 
         let mut view = to_view(&account_id, &pool_id, &next);
         view.early_exit_fee = Some(fee.to_string());
-        self.processed_ops.insert(op_id, serde_json::to_string(&view).unwrap());
+        self.processed_ops.insert(okey, serde_json::to_string(&view).unwrap());
         emit_staking(
             "unstake",
             json!({ "account_id": account_id, "pool_id": pool_id, "amount": amount, "early_exit_fee": fee.to_string(), "ready_at_ms": next.unbonding_ready_at_ms }),
@@ -415,7 +422,8 @@ impl StakingVaultContract {
     ) -> StakingPositionView {
         require!(!op_id.is_empty(), "STAKE_INSUFFICIENT_BALANCE: op_id required");
         let stake_val = env::attached_deposit().as_yoctonear();
-        if let Some(cached) = self.processed_ops.get(&op_id) {
+        let okey = op_key("stake_payable", &op_id);
+        if let Some(cached) = self.processed_ops.get(&okey) {
             require!(
                 stake_val == 0,
                 "STAKE_DUPLICATE_OP: duplicate op_id with attached NEAR deposit"
@@ -464,10 +472,10 @@ impl StakingVaultContract {
         let prior = next.staked;
         next.staked = prior.checked_add(stake_val).expect("STAKE_INSUFFICIENT_BALANCE: overflow");
         self.positions.insert(pos_key(&target, &pool_id), next.clone());
-        positions::record_deposit(&target, &pool_id, positions::NATIVE_ASSET, effective_now, prior, stake_val, 0);
+        positions::record_deposit(&target, &pool_id, positions::NATIVE_ASSET, effective_now, prior, 0, stake_val, 0);
 
         let view = to_view(&target, &pool_id, &next);
-        self.processed_ops.insert(op_id, serde_json::to_string(&view).unwrap());
+        self.processed_ops.insert(okey, serde_json::to_string(&view).unwrap());
         emit_staking("stake_payable", json!({ "account_id": target, "pool_id": pool_id, "amount": stake_val.to_string() }));
         view
     }

@@ -78,6 +78,13 @@ export class PatronSeatService {
         details: { planetId: normalizedPlanetId, eligiblePlanetIds: PATRONAGE_PLANET_IDS },
       });
     }
+    const wallet = await resolveWallet(this.db, { accountId });
+    const siblingAccounts = wallet.accountIds.filter((a) => a !== accountId);
+    if (siblingAccounts.length > 0 && typeof this.db.stakingPatronNomination?.deleteMany === 'function') {
+      await this.db.stakingPatronNomination.deleteMany({
+        where: { accountId: { in: siblingAccounts }, planetId: { not: normalizedPlanetId } },
+      });
+    }
     const prev =
       typeof this.db.stakingPatronNomination?.findUnique === 'function'
         ? ((await this.db.stakingPatronNomination.findUnique({ where: { accountId }, select: { planetId: true } })) as
@@ -91,7 +98,6 @@ export class PatronSeatService {
       update: changed ? { planetId: normalizedPlanetId, createdAt: new Date(nowMs) } : { planetId: normalizedPlanetId },
     });
     if (changed) {
-      const wallet = await resolveWallet(this.db, { accountId });
       const clock = await readStakeClock(this.db, wallet);
       await recordPatronHistoryEvent(this.db, {
         planetId: normalizedPlanetId,

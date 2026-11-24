@@ -159,6 +159,7 @@ export class StakingPanel implements Disposable {
     this.statusMsgEl = dom.statusMsgEl;
 
     this.host = this.buildHost();
+    this.poolSelectEl.addEventListener('change', () => this.renderState());
     this.parent.appendChild(this.root);
     this.renderPools(DEFAULT_STAKING_POOLS);
     this.renderState();
@@ -381,6 +382,7 @@ export class StakingPanel implements Disposable {
         asset: (this.assetSelectEl.value || 'near') as StakingAsset,
         amount: this.amountInputEl.value.replace(/[^\d.]/g, '').trim() || '10',
       }),
+      readAmount: () => this.amountInputEl.value.replace(/[^\d.]/g, '').trim(),
       activePosition: () => this.activePosition(),
       say: (m) => { this.statusMsgEl.textContent = m; },
       applyAction: (body) => {

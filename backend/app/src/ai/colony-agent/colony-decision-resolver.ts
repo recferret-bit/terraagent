@@ -117,8 +117,7 @@ export class ColonyDecisionResolver {
     const save = (list: readonly ColonyObservation[], res: Map<number, ResolvedDecision>): void => this.save(planetId, list, res, ctx, out);
     if (batches.bots.length > 0) save(batches.bots, this.tagProvider(await evaluateBatchWithLlm(this.llm, batches.bots, { model: this.botModel(), usedPlayerKey: false })));
     for (const obs of batches.stakers) {
-      const override = Boolean(ctx.stakedOverride[obs.colonyIndex] || !ctx.enforcePlayerKeyGate);
-      save([obs], new Map([[obs.colonyIndex, await this.resolveManagedSingle(planetId, obs, ctx, override)]]));
+      save([obs], new Map([[obs.colonyIndex, await this.resolveManagedSingle(planetId, obs, ctx, Boolean(ctx.stakedOverride[obs.colonyIndex]))]]));
     }
     for (const group of batches.players.values()) {
       const res = await evaluateBatchWithLlm(this.llm, group.list, { apiKey: group.apiKey, model: group.model, usedPlayerKey: true });
@@ -148,8 +147,10 @@ export class ColonyDecisionResolver {
       const group = b.players.get(`${apiKey}::${model}`);
       if (group) group.list.push(obs);
       else b.players.set(`${apiKey}::${model}`, { apiKey, model, list: [obs] });
-    } else if (this.isManagedCandidate(obs, ctx) || !ctx.enforcePlayerKeyGate) {
+    } else if (this.isManagedCandidate(obs, ctx)) {
       b.stakers.push(obs);
+    } else if (!ctx.enforcePlayerKeyGate) {
+      b.bots.push(obs);
     } else {
       const fallback = fallbackDecision(obs, false);
       out.set(obs.colonyIndex, fallback);
@@ -232,7 +233,8 @@ export class ColonyDecisionResolver {
     const playerCfg = ctx.playerConfigs[obs.colonyIndex];
     const apiKey = playerCfg?.apiKey?.trim();
     if (apiKey) return `${base}|player:${apiKey.slice(-4)}:${normalizeNearAiModel(playerCfg?.model || DEFAULT_NEAR_AI_MODEL)}`;
-    if (this.isManagedCandidate(obs, ctx) || !ctx.enforcePlayerKeyGate) return `${base}|staker:${MANAGED_AI_MODEL}`;
+    if (this.isManagedCandidate(obs, ctx)) return `${base}|staker:${MANAGED_AI_MODEL}`;
+    if (!ctx.enforcePlayerKeyGate) return `${base}|bot:${this.botModel()}`;
     return `${base}|det`;
   }
 

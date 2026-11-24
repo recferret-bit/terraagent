@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  CANONICAL_PLANETS,
   CompoundYieldRequest,
   EvaluatedStakerPerksV2,
   IntentsQuoteRequest,
@@ -13,7 +14,9 @@ import {
   StakeProfitsRequest,
   StakeRequestSchema,
   StakerPerksAny,
+  StakerPerksResponse,
   StakingActionResponse,
+  StakingOverviewResponse,
   StakingPerformanceResponse,
   StakingPositionDto,
   StakingPrestigeResponse,
@@ -23,6 +26,8 @@ import {
   dailyAiCallLimit,
   earlyExitFeeBp,
   effectiveTakerFee,
+  maxColoniesForAiSlots,
+  maxColoniesForTier,
   nextStakingTier,
   parseDecimalToAtomic,
   parseDisplayAmount,
@@ -31,6 +36,14 @@ import {
   stakingTierForYocto,
   type EvaluatedStakerPerksV2 as PerksV2,
 } from '../src';
+import {
+  formatPatronagePlanetLabel,
+  isPatronageEligiblePlanetId,
+  patronagePlanetName,
+  resolveDefaultPatronagePlanetId,
+} from '../src/staking/patronage';
+import { ApyView, EcosystemTvlView, IncomeProjection, NearPriceView, StakingTxRow } from '../src/staking/performance';
+import { StakeProfitsQuote, StakeProfitsResponse } from '../src/staking/actions';
 
 const H = 3_600_000;
 const D = 24 * H;
@@ -347,5 +360,125 @@ describe('Planetary Patronage competition & history schemas', () => {
     expect(PatronContenderRow.safeParse({ ...contender, gapToLeadNear: '-1' }).success).toBe(false);
     expect(PatronHistoryRow.safeParse({ ...history, kind: 'rigged' }).success).toBe(false);
     expect(PlanetaryPatronageView.safeParse({ ...patronage, extra: true }).success).toBe(false);
+  });
+});
+
+describe('W28 shared contracts completeness & numerical boundaries', () => {
+  it('validates StakingOverviewResponse, StakerPerksResponse, StakeProfitsQuote/Response, and subviews (pos + neg + boundary)', () => {
+    const price = { nearUsd: 4.5, source: 'live' as const, asOfMs: 1_700_000_000_000 };
+    const apy = { grossApyBp: 900, netApyBp: 720, protocolYieldShareBp: 2000, source: 'live' as const };
+    const projection = {
+      amountNear: 50,
+      dailyNear: 0.0098,
+      monthlyNear: 0.3,
+      yearlyNear: 3.6,
+      dailyUsd: 0.044,
+      monthlyUsd: 1.35,
+      yearlyUsd: 16.2,
+    };
+    const ecosystem = { totalNear: '1234.5', entries: [{ id: 'metapool' as const, asset: 'stNEAR' as const, label: 'Meta Pool · stNEAR', tvlNear: '1234.5', sharePct: 100 }] };
+    const txRow = {
+      txHash: 'hash-1',
+      kind: 'stake' as const,
+      amountNear: '50',
+      asset: 'near' as const,
+      atMs: 1_700_000_000_000,
+      explorerUrl: null,
+    };
+    expect(NearPriceView.safeParse(price).success).toBe(true);
+    expect(NearPriceView.safeParse({ ...price, nearUsd: -1 }).success).toBe(false);
+    expect(ApyView.safeParse(apy).success).toBe(true);
+    expect(ApyView.safeParse({ ...apy, source: 'bogus' }).success).toBe(false);
+    expect(IncomeProjection.safeParse(projection).success).toBe(true);
+    expect(IncomeProjection.safeParse({ ...projection, yearlyNear: -1 }).success).toBe(false);
+    expect(EcosystemTvlView.parse(ecosystem)).toEqual(ecosystem);
+    expect(StakingTxRow.safeParse(txRow).success).toBe(true);
+    expect(StakingTxRow.safeParse({ ...txRow, amountNear: '-5' }).success).toBe(false);
+
+    const overview = {
+      asOfMs: 1_700_000_000_000,
+      network: 'testnet' as const,
+      price,
+      apy,
+      tiers: [...STAKING_TIERS],
+      rules: {
+        feeWarmupMs: STAKING_RULES.feeWarmupMs,
+        earlyExitWindowMs: STAKING_RULES.earlyExitWindowMs,
+        earlyExitFeeBp: STAKING_RULES.earlyExitFeeBp,
+        freeTrialTurns: STAKING_RULES.freeTrialTurns,
+        standardTakerFeeBp: STAKING_TIERS[0]!.takerFeeBp,
+      },
+      projection,
+      ecosystem,
+    };
+    expect(StakingOverviewResponse.safeParse(overview).success).toBe(true);
+    expect(StakingOverviewResponse.safeParse({ ...overview, network: 'devnet' }).success).toBe(false);
+
+    const perksResp = {
+      accountId: 'pilot.testnet',
+      perks: samplePerksV2(),
+      aiBudget: {
+        model: 'z-ai/glm-5.3-flash',
+        mode: 'tee' as const,
+        dailyBudgetUsd: 0.05,
+        dailyBudgetUsedUsd: 0.01,
+        dailyCallLimit: 100,
+        dailyCallsUsed: 2,
+        tradeBonusCalls: 0,
+        freeTrialTurnsRemaining: 0,
+        freeTrialTurnsTotal: 5,
+        trialEligible: true,
+        colonySlotsUsed: 1,
+        colonySlotsMax: 3,
+      },
+    };
+    expect(StakerPerksResponse.safeParse(perksResp).success).toBe(true);
+    expect(StakerPerksResponse.safeParse({ ...perksResp, extraField: 1 }).success).toBe(false);
+
+    const quote = {
+      amountInUsdc: '10.00',
+      amountInAtomic: '10000000',
+      amountOutNear: '2.5',
+      nearUsd: 4,
+      source: 'mock' as const,
+      dry: false,
+    };
+    expect(StakeProfitsQuote.safeParse(quote).success).toBe(true);
+    expect(StakeProfitsResponse.safeParse({ quote, txHash: 'mock:1', position: null, walletBalanceNear: '100' }).success).toBe(true);
+    expect(StakeProfitsResponse.safeParse({ quote, txHash: '', position: null, walletBalanceNear: '100' }).success).toBe(false);
+  });
+});
+
+describe('W28 patronage & numerical boundary helpers', () => {
+  it('covers patronage planet helpers and colony slot helpers across positive, negative, and boundary inputs', () => {
+    const defaultPlanet = resolveDefaultPatronagePlanetId();
+    expect(isPatronageEligiblePlanetId(defaultPlanet)).toBe(true);
+    expect(isPatronageEligiblePlanetId('non-existent-planet')).toBe(false);
+    expect(isPatronageEligiblePlanetId('')).toBe(false);
+    expect(isPatronageEligiblePlanetId(null)).toBe(false);
+
+    expect(patronagePlanetName(CANONICAL_PLANETS.desert.id).toLowerCase()).toContain('kharon');
+    expect(formatPatronagePlanetLabel(CANONICAL_PLANETS.ocean.id).toLowerCase()).toContain('thalassa');
+    expect(patronagePlanetName('unknown-planet')).toBe('unknown-planet');
+
+    expect(maxColoniesForAiSlots(0)).toBe(1);
+    expect(maxColoniesForAiSlots(1)).toBe(1);
+    expect(maxColoniesForAiSlots(3)).toBe(3);
+    expect(maxColoniesForTier(STAKING_TIERS[0]!)).toBe(1);
+    expect(maxColoniesForTier(STAKING_TIERS[4]!)).toBe(STAKING_TIERS[4]!.aiColonySlots);
+  });
+
+  it('guards dailyAiBudgetUsd and earlyExitFeeBp against NaN, Infinity, negative APY, and zero/negative clocks', () => {
+    expect(dailyAiBudgetUsd({ activeStakedNear: Number.NaN, nearUsd: 4, grossApyBp: 900, dailyProtocolTradeFeeUsd: 0 })).toBe(0);
+    expect(dailyAiBudgetUsd({ activeStakedNear: 50, nearUsd: Number.POSITIVE_INFINITY, grossApyBp: 900, dailyProtocolTradeFeeUsd: 0 })).toBe(0);
+    expect(dailyAiBudgetUsd({ activeStakedNear: 50, nearUsd: 4, grossApyBp: -900, dailyProtocolTradeFeeUsd: -2 })).toBe(0);
+
+    expect(earlyExitFeeBp(null, 10_000)).toBe(0);
+    expect(earlyExitFeeBp(-1, 10_000)).toBe(0);
+    expect(earlyExitFeeBp(Number.NaN, 10_000)).toBe(0);
+    expect(earlyExitFeeBp(1_000, Number.NaN)).toBe(0);
+    expect(earlyExitFeeBp(0, 10_000)).toBe(STAKING_RULES.earlyExitFeeBp);
+    expect(earlyExitFeeBp(1_000, 1_500, 1_000)).toBe(STAKING_RULES.earlyExitFeeBp);
+    expect(earlyExitFeeBp(1_000, 2_000, 1_000)).toBe(0);
   });
 });

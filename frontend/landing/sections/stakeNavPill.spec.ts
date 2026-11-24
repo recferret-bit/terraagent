@@ -68,4 +68,18 @@ describe('staking calculator wiring', () => {
     expect(root.querySelector('#econ-stake-out')!.textContent).toBe('500+ NEAR');
     expect(cta.textContent).toContain('TIER 4');
   });
+  it('hydrates live APY from /v1/near/staking/overview and falls back cleanly on 404', async () => {
+    const root = document.createElement('div');
+    root.innerHTML = renderStakingCalculatorHtml();
+    bindStakeCalculator(root, resp(200, { apy: { netApyBp: 792, grossApyBp: 990, source: 'live' } }));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(root.querySelector('#econ-apy-badge')!.textContent).toBe('7.92% LIVE APY');
+    expect(root.querySelector('#econ-user-yield')!.textContent).toBe('3.96 NEAR / yr');
+
+    const offline = document.createElement('div');
+    offline.innerHTML = renderStakingCalculatorHtml();
+    bindStakeCalculator(offline, resp(404, {}));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(offline.querySelector('#econ-apy-badge')!.textContent).toBe('7.20% SIM APY');
+  });
 });

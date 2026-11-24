@@ -334,3 +334,56 @@ describe('Multi-colony staking_position deduplication on PostgreSQL', () => {
     expect(perks.maxAiColonySlots).toBe(3);
   });
 });
+
+describe('Quick-Win Hardening: Dust Pre-Stake Warmup & DB tradeFeeProvider', () => {
+  it('cross-pool dust pre-stake (1 NEAR at NOW-10d + 500 NEAR at NOW-10s) does not unlock Tier 4 25 bp fee early', async () => {
+    await link('col_sniper1', 'sniper.near', 'sniper.near', null, 'p_sniper');
+    await position('col_sniper1', 'sniper.near', 1, NOW - 10 * DAY);
+    await db.prisma.stakingPosition.create({
+      data: { colonyId: 'col_sniper2', poolId: 'kiln.pool.mock', accountId: 'sniper.near', stakedSnapshot: nearToYocto(500), stakedSinceAt: new Date(NOW - 10_000), lastStakedAt: new Date(NOW - 10_000) },
+    });
+    const res = await resolveDbStakerPerks(db.prisma, { accountId: 'sniper.near', w28: true, nowMs: NOW });
+    expect(res.tier).toBe(4);
+    expect(res.stakedSinceMs).toBe(NOW - 10_000);
+    expect(res.feeTier).toBe(1);
+    expect(res.platformFeeBp).toBe(65);
+  });
+
+  it('resolveWalletPerks feeds genuine daily buyer trade fees minus DAO + Patron cuts into AI trade bonus and excludes self-fills', async () => {
+    await link('col_tb', 'tb-buyer.near', 'tb-buyer.near', null, 'p_tb');
+    await link('col_tb2', 'tb-alt.near', 'tb-buyer.near', null, 'p_tb');
+    await position('col_tb', 'tb-buyer.near', 10, NOW - 2 * DAY);
+    const basePerks = await resolveWalletPerks(db.prisma, { accountId: 'tb-buyer.near', w28: true, nowMs: NOW, full: true });
+    await db.prisma.intentTrade.createMany({
+      data: [
+        {
+          tradeId: 'tr_tb_real', planetId: CANONICAL_PLANETS.desert.id, pair: 'metals.t1/USDC', base: 'metals.t1', quote: 'USDC',
+          makerOrderId: 'm1', takerOrderId: 'k1', makerSide: 'sell', buyerColonyId: 'col_tb', sellerColonyId: 'col_str', stallColonyId: 'col_st',
+          buyerAccountId: 'tb-buyer.near', sellerAccountId: 'stranger.near', stallAccountId: 'stall.near', platformAccountId: 'protocol.mock',
+          amount: '10', notional: '1000000000', platformFee: '1000000', stallFee: '0', treasuryAllocation: '200000',
+          platformFeeBp: 65, stallFeeBp: 100, policyVersion: 'v1', policyHash: 'h', legs: [], batchHash: 'b', state: 'FINAL',
+          createdAt: new Date(NOW - 1_000), settledAt: new Date(NOW - 1_000),
+        },
+        {
+          tradeId: 'tr_tb_wash', planetId: CANONICAL_PLANETS.desert.id, pair: 'metals.t1/USDC', base: 'metals.t1', quote: 'USDC',
+          makerOrderId: 'm2', takerOrderId: 'k2', makerSide: 'sell', buyerColonyId: 'col_tb', sellerColonyId: 'col_tb2', stallColonyId: 'col_st',
+          buyerAccountId: 'tb-buyer.near', sellerAccountId: 'tb-alt.near', stallAccountId: 'stall.near', platformAccountId: 'protocol.mock',
+          amount: '10', notional: '9000000000', platformFee: '9000000', stallFee: '0', treasuryAllocation: '0',
+          platformFeeBp: 65, stallFeeBp: 100, policyVersion: 'v1', policyHash: 'h', legs: [], batchHash: 'b', state: 'FINAL',
+          createdAt: new Date(NOW - 500), settledAt: new Date(NOW - 500),
+        },
+      ],
+    });
+    await db.prisma.stakingPatronPayout.create({
+      data: { id: 'pp_tb_1', planetId: CANONICAL_PLANETS.desert.id, accountId: 'patron.near', sourceTradeId: 'tr_tb_real', amountUsdcAtomic: '120000', createdAt: new Date(NOW - 1_000) },
+    });
+    try {
+      const withBonus = await resolveWalletPerks(db.prisma, { accountId: 'tb-buyer.near', w28: true, nowMs: NOW, full: true });
+      expect(withBonus.perks.dailyAiBudgetUsd).toBeCloseTo(basePerks.perks.dailyAiBudgetUsd + 0.68 * 0.35, 6);
+      expect(withBonus.perks.dailyAiCallLimit).toBeGreaterThan(basePerks.perks.dailyAiCallLimit);
+    } finally {
+      await db.prisma.stakingPatronPayout.deleteMany({ where: { id: 'pp_tb_1' } });
+      await db.prisma.intentTrade.deleteMany({ where: { tradeId: { in: ['tr_tb_real', 'tr_tb_wash'] } } });
+    }
+  });
+});

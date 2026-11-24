@@ -13,6 +13,8 @@ use near_sdk::borsh;
 use near_sdk::{env, near, require};
 
 pub const NATIVE_ASSET: &str = "NEAR";
+/// Tier 2 minimum active stake (`50 NEAR`): crossing from below into `>= 50 NEAR` starts a fresh 24h fee warmup.
+pub const WARMUP_TIER_MIN_YOCTO: u128 = 50 * 1_000_000_000_000_000_000_000_000;
 
 #[near(serializers = [borsh])]
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -66,23 +68,32 @@ fn index_pool(account_id: &str, pool_id: &str) {
 
 /// Records a deposit: bumps `last_staked_at_ms`, starts `staked_since_ms` for an empty position,
 /// indexes the pool under the wallet and applies the weighted entry share price.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn record_deposit(
     account_id: &str,
     pool_id: &str,
     asset: &str,
     now_ms: u64,
     prior_staked: u128,
+    prior_rewards: u128,
     added: u128,
     price: u128,
 ) {
     let mut meta = read_meta(account_id, pool_id).unwrap_or_default();
-    if prior_staked == 0 || meta.staked_since_ms == 0 {
+    let new_staked = prior_staked.saturating_add(added);
+    if prior_staked == 0
+        || meta.staked_since_ms == 0
+        || (prior_staked < WARMUP_TIER_MIN_YOCTO && new_staked >= WARMUP_TIER_MIN_YOCTO)
+    {
         meta.staked_since_ms = now_ms;
     }
-    meta.last_staked_at_ms = now_ms;
+    meta.last_staked_at_ms = meta.last_staked_at_ms.max(now_ms);
     meta.asset = asset.to_string();
-    meta.entry_lst_price_yocto =
-        crate::lst_math::weighted_entry(meta.entry_lst_price_yocto, prior_staked, added, price);
+    // Never let an emptied simulated-APY LST position with unbacked rewards switch into price mode.
+    if asset == NATIVE_ASSET || prior_staked > 0 || meta.entry_lst_price_yocto > 0 || prior_rewards == 0 {
+        meta.entry_lst_price_yocto =
+            crate::lst_math::weighted_entry(meta.entry_lst_price_yocto, prior_staked, added, price);
+    }
     write_meta(account_id, pool_id, &meta);
     index_pool(account_id, pool_id);
 }
@@ -127,15 +138,16 @@ impl StakingVaultContract {
     ) -> Vec<AccountPositionView> {
         let now = now_ms.unwrap_or_else(env::block_timestamp_ms);
         let apy = apy_bp.unwrap_or(0);
+        require!(apy <= crate::MAX_APY_BP, "STAKE_INVALID_APY: apy_bp exceeds 5000 bp");
         read_index(&account_id)
             .into_iter()
             .filter_map(|pool_id| {
                 if !self.positions.contains_key(&pos_key(&account_id, &pool_id)) {
                     return None;
                 }
-                let meta = read_meta(&account_id, &pool_id).unwrap_or_default();
-                let shown = self.settle_pure(&account_id, &pool_id, apy, now).record;
-                Some(view_of(&account_id, &pool_id, &shown, &meta))
+                let settled = self.settle_pure(&account_id, &pool_id, apy, now);
+                let meta = settled.meta.unwrap_or_default();
+                Some(view_of(&account_id, &pool_id, &settled.record, &meta))
             })
             .collect()
     }

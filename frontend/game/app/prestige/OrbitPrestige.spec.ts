@@ -167,3 +167,22 @@ describe('W28-12 dev tier override (unit)', () => {
     expect(mp.descent()).toEqual({ plasmaTrail: true, flagshipCarrierName: 'ISS patron.near' });
   });
 });
+
+describe('W28-12 defaultFetchWalletTier (unit)', () => {
+  it('reads body.perks.tier, falls back to legacy top-level tier, and returns 0 on error or 404', async () => {
+    const { defaultFetchWalletTier } = await import('./OrbitPrestige');
+    const originalFetch = globalThis.fetch;
+    try {
+      globalThis.fetch = async () => new Response(JSON.stringify({ perks: { tier: 3 } }), { status: 200 });
+      expect(await defaultFetchWalletTier('w.near')).toBe(3);
+      globalThis.fetch = async () => new Response(JSON.stringify({ tier: 2 }), { status: 200 });
+      expect(await defaultFetchWalletTier('w.near')).toBe(2);
+      globalThis.fetch = async () => new Response('{}', { status: 404 });
+      expect(await defaultFetchWalletTier('w.near')).toBe(0);
+      globalThis.fetch = async () => { throw new Error('offline'); };
+      expect(await defaultFetchWalletTier('w.near')).toBe(0);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+});

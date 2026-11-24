@@ -25,7 +25,7 @@ async function reland(seat: SeatHost, planet: PlanetRecord, colony: ColonyRecord
  * generated fresh and its live colony rows are landed again at their recorded sites.
  */
 export function gameLandingHost(
-  snapshots: Pick<SnapshotService, 'loadNew' | 'loadHome'>,
+  snapshots: Pick<SnapshotService, 'loadNew'> & Partial<Pick<SnapshotService, 'loadHome'>>,
   planets: Pick<GamePlanets, 'landingSite'>,
   seat: SeatHost,
   timeoutMs = SEAT_LANDING_TIMEOUT_MS,
@@ -34,15 +34,22 @@ export function gameLandingHost(
   return {
     async landingSite(planet, colonyIndex, sectorId) {
       if (cluster?.remoteOnly) {
-        return within(cluster.forwardLandingSite(planet.id, paramsOf(planet), colonyIndex, timeoutMs), timeoutMs, `loading ${planet.id}`);
+        return within(cluster.forwardLandingSite(planet.id, paramsOf(planet), colonyIndex, timeoutMs, sectorId), timeoutMs, `loading ${planet.id}`);
       }
-      await within(snapshots.loadNew(planet.id, paramsOf(planet)), timeoutMs, `loading ${planet.id}`);
+      const load: Promise<unknown> = snapshots.loadHome ? snapshots.loadHome(planet.id, paramsOf(planet)) : snapshots.loadNew(planet.id, paramsOf(planet));
+      await within(load, timeoutMs, `loading ${planet.id}`);
       return planets.landingSite(planet.id, colonyIndex, timeoutMs, sectorId);
     },
     async ensureHomeLoaded(planet, colonies) {
       const outcome = cluster?.remoteOnly
         ? await within(cluster.forwardLoadHome(planet.id, paramsOf(planet)), timeoutMs, `loading ${planet.id}`)
-        : await within(snapshots.loadHome(planet.id, paramsOf(planet)), timeoutMs, `loading ${planet.id}`);
+        : await within(
+            snapshots.loadHome
+              ? snapshots.loadHome(planet.id, paramsOf(planet))
+              : snapshots.loadNew(planet.id, paramsOf(planet)).then(() => 'generated' as const),
+            timeoutMs,
+            `loading ${planet.id}`,
+          );
       if (outcome !== 'generated') return;
       for (const c of await colonies()) if (c.status === 'ACTIVE') await reland(seat, planet, c, timeoutMs);
     },

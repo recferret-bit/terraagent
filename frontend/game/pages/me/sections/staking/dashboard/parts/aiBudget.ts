@@ -41,7 +41,7 @@ export function renderAiBudget(b: AiBudgetView, tier: number): HTMLElement {
       id: 'staking-ai-budget',
       title: 'AI COMPUTE BUDGET',
       description:
-        'Protocol-sponsored NEAR.AI TEE compute (GLM 5.3 Flash) scales automatically with your staked NEAR and daily trade-fee contribution (35% revenue share). Verified T0 pilots get 5 free TEE trial turns on 1 colony; staking ≥10 NEAR unlocks Managed GLM 5.3 Flash and 50 / 200 / 500+ NEAR unlocks 3 / 6 / 12 concurrent colony slots across planets or distinct sectors.',
+        'Protocol-sponsored NEAR.AI TEE compute (GLM 5.3 Flash) scales automatically at 35% of (daily protocol staking yield + daily non-self protocol trade fees after DAO 20% and Patron 15% cuts), preserving ≥65% protocol margin. Verified T0 pilots get 5 free TEE trial turns on 1 colony; staking 10 / 50 / 200 / 500+ NEAR unlocks 1 / 3 / 6 / 12 concurrent colony slots across planets or distinct sectors.',
     },
     el('h3', { className: 'label ta-stk-h' }, '⚡ AI COMPUTE BUDGET'),
   );

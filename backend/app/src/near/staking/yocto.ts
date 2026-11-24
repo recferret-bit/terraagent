@@ -17,7 +17,9 @@ export function computeAccruedRewardDelta(
   apyBp: number,
   elapsedMs: number,
 ): bigint {
-  if (staked <= 0n || apyBp <= 0 || elapsedMs <= 0) return 0n;
+  if (staked <= 0n || !Number.isFinite(apyBp) || apyBp <= 0 || !Number.isFinite(elapsedMs) || elapsedMs <= 0) {
+    return 0n;
+  }
   const num = staked * BigInt(apyBp) * BigInt(Math.floor(elapsedMs));
   const den = 10_000n * 365n * BigInt(GAME_DAY_MS);
   return num / den;
@@ -55,11 +57,12 @@ export function nearToYocto(nearAmount: string | number): string {
     throw new Error(`Invalid NEAR amount "${str}"`);
   }
   const [wholePart = '0', fracPart = ''] = str.split('.');
-  if (fracPart.length === 0 && wholePart.length >= 19) {
-    return BigInt(wholePart).toString();
+  const normalizedWhole = wholePart.replace(/^0+(?=\d)/, '');
+  if (fracPart.length === 0 && normalizedWhole.length >= 19) {
+    return BigInt(normalizedWhole).toString();
   }
   const paddedFrac = (fracPart + '0'.repeat(24)).slice(0, 24);
-  return (BigInt(wholePart) * ONE_NEAR_YOCTO + BigInt(paddedFrac)).toString();
+  return (BigInt(normalizedWhole) * ONE_NEAR_YOCTO + BigInt(paddedFrac)).toString();
 }
 
 /** Formats a yoctoNEAR integer string or bigint into a decimal NEAR string (up to `maxFracDigits` decimals). */

@@ -38,6 +38,7 @@ export class GuildOffers implements TradeHubTabInstance {
   private readonly rejectEl: HTMLElement;
   private timer: ReturnType<typeof setInterval> | null = null;
   private radarTimer: ReturnType<typeof setInterval> | null = null;
+  private disposed = false;
   private earlyRadar: { visit: EarlyGuildRadarVisit; syncedAtMs: number; serverNowMs: number } | null = null;
   private readonly off: () => void;
   private readonly analytics: GuildAnalytics;
@@ -75,6 +76,7 @@ export class GuildOffers implements TradeHubTabInstance {
   }
 
   dispose(): void {
+    this.disposed = true;
     this.clearTimer();
     this.off();
     this.root.replaceChildren();
@@ -134,8 +136,12 @@ export class GuildOffers implements TradeHubTabInstance {
     const planetId = this.ctx.services.session?.planetId?.() ?? this.ctx.services.store?.currentPlanetId?.() ?? null;
     const idx = ownColonyIndex(this.ctx.services);
     const col = viewColony(this.ctx.services.store?.latest, idx);
-    const colonyId = (col as { colonyId?: string } | undefined)?.colonyId ?? `col_${idx}`;
+    const colonyId =
+      (col as { id?: string; colonyId?: string } | undefined)?.id ??
+      (col as { colonyId?: string } | undefined)?.colonyId ??
+      `col_${idx}`;
     void fetchEarlyGuildRadar({ planetId, colonyId, colonyIndex: idx }, this.radarFetch).then((res) => {
+      if (this.disposed) return;
       this.earlyRadar = res ? { visit: res.visit, serverNowMs: res.serverNowMs, syncedAtMs: this.now() } : null;
       this.paint();
     });

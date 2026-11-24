@@ -76,13 +76,6 @@ export class RelayStatusService {
     await this.assertSignerOwnedByPlayer(pid, body.signerId);
 
     const envMap = (this.env ?? process.env) as Record<string, string | undefined>;
-    await enforceWalletRelayQuota({
-      prisma: this.prisma,
-      env: envMap,
-      w28: this.flags.has('W28'),
-      playerId: pid,
-      signerId: body.signerId,
-    });
     const cfg = resolveNearNetworkConfig(envMap, resolveActiveNearNetwork('Relayer', envMap));
     const { decoded } = validateAndDecodeRelayDelegate({
       signedDelegateBase64: body.signedDelegate,
@@ -109,6 +102,13 @@ export class RelayStatusService {
         });
       }
     }
+    await enforceWalletRelayQuota({
+      prisma: this.prisma,
+      env: envMap,
+      w28: this.flags.has('W28'),
+      playerId: pid,
+      signerId: body.signerId,
+    });
     const opId = body.opId?.trim() || `relay:${pid}:${Date.now().toString(36)}`;
     return this.relayerPort.submitMetaTx({
       opId,

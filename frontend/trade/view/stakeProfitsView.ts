@@ -47,7 +47,7 @@ export class StakeProfitsControl {
     const max = h('button', { type: 'button', class: 'btn btn-ghost btn-sm', 'data-testid': 'stake-profits-max', onclick: () => { this.input.value = formatAtomic('USDC', this.freeMicro); } }, 'MAX');
     const close = h('button', { type: 'button', class: 'btn btn-ghost btn-sm', 'data-testid': 'stake-profits-cancel', onclick: () => { this.dialog.hidden = true; } }, 'CANCEL');
     this.dialog = h('div', { class: 'tr-stake-profits plate-sm', 'data-testid': 'stake-profits-confirm', role: 'dialog', 'aria-label': 'Stake trade profits' },
-      h('p', { class: 'tr-hint' }, 'Swap USDC trade profits to stNEAR and stake them (NEAR Intents 1Click).'),
+      h('p', { class: 'tr-hint' }, 'Swap USDC trade profits into stNEAR via NEAR Intents 1Click (80% net APY, counts toward Orbital Patronage tiers).'),
       h('div', { class: 'tr-row' }, this.input, max),
       h('div', { class: 'tr-row' }, this.submitBtn, close),
       this.msg);
@@ -60,6 +60,11 @@ export class StakeProfitsControl {
     this.freeMicro = freeUsdcMicro;
     this.button.hidden = freeUsdcMicro <= 0n;
     if (this.button.hidden) this.dialog.hidden = true;
+    this.renderSubmitLabel();
+  }
+
+  /** Updates mode label (`STAKE` in mock, `GET QUOTE` on testnet/mainnet). */
+  syncMode(): void {
     this.renderSubmitLabel();
   }
 
@@ -135,6 +140,8 @@ export class StakeProfitsControl {
 }
 
 function errorText(json: unknown, status: number): string {
-  const e = (json as { error?: { message?: unknown } } | null)?.error;
-  return typeof e?.message === 'string' && e.message ? e.message : `Request failed (${status}).`;
+  const obj = json as { error?: { message?: unknown }; message?: unknown } | null;
+  if (typeof obj?.error?.message === 'string' && obj.error.message) return obj.error.message;
+  if (typeof obj?.message === 'string' && obj.message) return obj.message;
+  return `Request failed (${status}).`;
 }

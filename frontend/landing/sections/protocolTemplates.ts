@@ -74,7 +74,7 @@ export function renderProtocolSchematicHtml(): string {
       <div class="proto-col">
         <span class="proto-col-label is-in">INFLOWS · 3 REVENUE STREAMS</span>
         <article class="proto-node plate-sm" data-stream="trade">
-          <div class="proto-node-top"><b data-proto-trade-title>80% of Platform Trade Fee</b><span class="proto-rate" data-proto-trade-rate>0.80% / 0.52%</span></div>
+          <div class="proto-node-top"><b data-proto-trade-title>80% of Platform Trade Fee</b><span class="proto-rate" data-proto-trade-rate>0.80% / 0.52%–0.20%</span></div>
           <p>Paid by the buyer on market fills (<span data-proto-dao-share-pct>20%</span> to Planet Council DAO; 15% of Protocol cut to Tier 4 Lead Patron).</p>
         </article>
         <article class="proto-node plate-sm" data-stream="staking">
@@ -201,13 +201,13 @@ export function renderProtocolReceiptsHtml(): string {
           <li><span>Seller Principal (100%)</span><b>$100.00 USDC</b></li>
           <li><span>Trade Hub Stall Owner</span><b>+$0.50 USDC</b></li>
           <li><span>Planet Council DAO</span><b data-proto-ex-dao>+$0.20 ($0.13–$0.05 Stk)</b></li>
-          <li><span>Protocol Treasury</span><b data-proto-ex-trade>+$0.80 ($0.52 Stk)</b></li>
+          <li><span>Protocol Treasury</span><b data-proto-ex-trade>+$0.80 ($0.52–$0.20 Stk)</b></li>
         </ul>
-        <p class="proto-proof-foot">1 fill covers <b data-proto-ex-trade-txs>~650 gasless NEP-366 player txs</b> (~0.0003 NEAR/tx at ~$4/NEAR).</p>
+        <p class="proto-proof-foot">1 fill covers <b data-proto-ex-trade-txs>~650 gasless NEP-366 player txs</b> (~0.0003 NEAR/tx at ~$4/NEAR). On canonical worlds with a Tier 4 Lead Patron, 15% of Protocol's cut ($0.12 std / $0.03 T4) pays the Lead Patron.</p>
       </article>
       <article class="proto-proof plate-sm" data-stream="staking">
         <span class="proto-proof-tag is-blue">EXAMPLE 02 · 50 NEAR TIER 2 STAKE</span>
-        <strong>100% Principal Safe · 2d Unbond</strong>
+        <strong>100% Principal Safe · 0% Compound · 2d Unbond</strong>
         <ul class="proto-proof-rows">
           <li><span>Locked Principal</span><b>50.00 NEAR</b></li>
           <li><span>Pilot Net Yield</span><b data-proto-ex-pilot-yield>+3.60 NEAR / yr</b></li>
@@ -215,6 +215,7 @@ export function renderProtocolReceiptsHtml(): string {
           <li><span>Unlocked Perks</span><b data-proto-ex-perks>3 AI Slots + 0.50% Fee (24h)</b></li>
         </ul>
         <p class="proto-proof-foot" data-proto-ex-stake-foot>+0.90 NEAR/yr sponsors ~3,000 meta-txs with zero principal risk.</p>
+        <p class="proto-proof-foot">Unstaking &lt;7d pays 0.25% (0% after 7d); compounding is free and preserves clocks; unbonding principal does not count toward tiers.</p>
       </article>
       <article class="proto-proof plate-sm" data-stream="bonds">
         <span class="proto-proof-tag is-orange">EXAMPLE 03 · 20 NEAR TREATY / SIEGE BOND</span>

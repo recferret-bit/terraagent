@@ -60,6 +60,7 @@ export interface ContractAccountPosition {
   readonly rewards: string;
   readonly staked_since_ms: number | null;
   readonly last_staked_at_ms: number | null;
+  readonly entry_lst_price_yocto?: string | null;
 }
 
 /** Maps one `get_account_positions` entry to the port view (clocks of `0` mean none, like the contract's cleared meta). */

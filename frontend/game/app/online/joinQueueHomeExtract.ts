@@ -257,7 +257,7 @@ export function extractActiveHomePayload(
   if (target?.planetId) {
     const byPlanet = eligible.find((c) => c.planet.id === target.planetId);
     if (byPlanet) return byPlanet;
-    if (target.excludeColonyIds) return null;
+    if (target.excludeColonyIds && (canonicalPlanetById(target.planetId) !== null || !target.planetType)) return null;
   }
   if (target?.planetType) {
     const byType = eligible.find((c) => c.planet.type === target.planetType);
@@ -290,7 +290,10 @@ export function buildActiveQueueFilter(params: {
         : typeof params.sectorIntent === 'object' && params.sectorIntent !== null && 'sectorId' in params.sectorIntent && typeof params.sectorIntent.sectorId === 'string'
           ? params.sectorIntent.sectorId
           : undefined);
-  const planetId = params.latestQueue?.planetId ?? params.planetId;
+  const qPid = params.latestQueue?.planetId;
+  const planetId = params.newColony
+    ? (params.planetId ?? (qPid && canonicalPlanetById(qPid) ? qPid : undefined))
+    : (qPid ?? params.planetId);
   const planetType = params.latestQueue?.planetType ?? params.planetType;
   return {
     ...(explicitColonyId ? { colonyId: explicitColonyId } : {}),
@@ -312,6 +315,7 @@ export async function inspectTrackedNewColonyTicketHelper(params: {
   readonly onCancel?: (ticketId: string | null) => void;
   readonly onReturnToOrbit?: () => void;
   readonly fallback: { planetType?: PlanetType; planetId?: string; sectorIntent?: SectorIntentInput };
+  readonly priorActiveColonyIds?: ReadonlySet<string>;
   readonly onQueued: (queued: QueuedHomeStatus) => void;
 }): Promise<ExtractedActiveHome | 'cancelled' | null> {
   const { ticketId, accessToken, doFetch, storage, search, clearPending, bootOverlay, onCancel, onReturnToOrbit, fallback, onQueued } = params;
@@ -336,7 +340,7 @@ export async function inspectTrackedNewColonyTicketHelper(params: {
     bootOverlay?.hideQueueStatus();
     throw new BootError(`Queue ticket ${status.toLowerCase()}`, 200, `TICKET_${status}`);
   }
-  if (status === 'SPAWNED' && typeof body.colonyId === 'string' && body.colonyId) {
+  if ((status === 'SPAWNED' || status === 'ASSIGNED') && typeof body.colonyId === 'string' && body.colonyId) {
     const pinnedRes = await doFetch(`/v1/me/home?colonyId=${encodeURIComponent(body.colonyId)}`, {
       method: 'GET',
       headers: { Authorization: `Bearer ${accessToken}` },
@@ -344,6 +348,19 @@ export async function inspectTrackedNewColonyTicketHelper(params: {
     }).catch(() => null);
     if (pinnedRes?.ok) {
       return extractActiveHomePayload(await pinnedRes.json(), { colonyId: body.colonyId });
+    }
+  }
+  if (status === 'ASSIGNED' && params.priorActiveColonyIds) {
+    const homeRes = await doFetch('/v1/me/home', {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${accessToken}` },
+      credentials: 'include',
+    }).catch(() => null);
+    if (homeRes?.ok) {
+      return extractActiveHomePayload(await homeRes.json(), {
+        excludeColonyIds: params.priorActiveColonyIds,
+        ...(fallback.planetType ? { planetType: fallback.planetType } : {}),
+      });
     }
   }
   const queued = extractQueuedHomeStatus(body, fallback);
@@ -368,9 +385,11 @@ export function buildCoordinatorHomeUrl(params: {
       ? (!params.isInitial && params.latestQueue?.colonyId ? params.latestQueue.colonyId : null)
       : new URLSearchParams(params.search).get('colonyId'));
   if (colonyId) query.set('colonyId', colonyId);
-  else if (params.isInitial && params.newColony) query.set('new', '1');
-  if (!colonyId && params.newColony && (params.latestQueue?.planetId ?? params.planetId)) {
-    query.set('planetId', (params.latestQueue?.planetId ?? params.planetId)!);
+  else if (params.newColony) query.set('new', '1');
+  const qPid = params.latestQueue?.planetId;
+  const pollPid = params.planetId ?? (qPid && canonicalPlanetById(qPid) ? qPid : undefined);
+  if (!colonyId && params.newColony && pollPid) {
+    query.set('planetId', pollPid);
   }
   const polledSec =
     params.latestQueue?.reservedSectorId ??

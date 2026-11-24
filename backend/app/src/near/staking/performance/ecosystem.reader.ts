@@ -30,14 +30,27 @@ export function buildEcosystemView(byAsset: Readonly<Partial<Record<StakingAsset
 export async function readEcosystemTvl(db: DbClient | null | undefined): Promise<EcosystemTvlView> {
   if (!db) return buildEcosystemView({});
   if (typeof db.stakingPosition?.findMany === 'function') {
-    const [posRows, txNets] = await Promise.all([
-      db.stakingPosition.findMany({ select: { accountId: true, poolId: true, asset: true, stakedSnapshot: true } }) as Promise<
-        Array<{ accountId: string; poolId: string; asset?: string | null; stakedSnapshot: { toFixed(n: number): string } | null }>
+    const [rawPosRows, txNets] = await Promise.all([
+      db.stakingPosition.findMany({ select: { colonyId: true, accountId: true, poolId: true, asset: true, stakedSnapshot: true, updatedAt: true } }) as Promise<
+        Array<{ colonyId?: string; accountId: string; poolId: string; asset?: string | null; stakedSnapshot: { toFixed(n: number): string } | null; updatedAt?: Date | null }>
       >,
       readPoolTxAssetNets(db),
     ]);
+    const deduped = new Map<string, (typeof rawPosRows)[number]>();
+    let anonIdx = 0;
+    for (const r of rawPosRows) {
+      const key = r.accountId && r.poolId
+        ? `acct:${r.accountId}::pool:${r.poolId}`
+        : r.accountId
+          ? `acct:${r.accountId}::row:${anonIdx++}`
+          : `col:${r.colonyId ?? anonIdx++}::pool:${r.poolId ?? ''}`;
+      const prev = deduped.get(key);
+      if (!prev || (r.updatedAt?.getTime() ?? 0) >= (prev.updatedAt?.getTime() ?? 0)) {
+        deduped.set(key, r);
+      }
+    }
     const byAsset: Partial<Record<StakingAsset, bigint>> = {};
-    for (const r of posRows) {
+    for (const r of deduped.values()) {
       const staked = BigInt(r.stakedSnapshot?.toFixed(0) ?? '0');
       const split = splitStakedByAsset(staked, r.asset, txNets.get(`${r.accountId}::${r.poolId}`));
       if (split.near > 0n) byAsset.near = (byAsset.near ?? 0n) + split.near;

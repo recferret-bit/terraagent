@@ -60,15 +60,15 @@ function formatHistoryDetails(r: PatronHistoryRow): string {
   if (r.kind === 'fee_payout') return `+$${(r.payoutUsd ?? 0).toFixed(2)} USDC`;
   if (r.kind === 'seat_overtaken') {
     const prev = r.previousAccountId ?? 'incumbent';
-    const prevAmt = r.previousStakedNear ? ` (${formatNear(Number(r.previousStakedNear))} NEAR)` : '';
-    return `${formatNear(Number(r.activeStakedNear))} NEAR · beat ${prev}${prevAmt}`;
+    const prevAmt = r.previousStakedNear ? ` (${formatNear(Number(r.previousStakedNear))})` : '';
+    return `${formatNear(Number(r.activeStakedNear))} · beat ${prev}${prevAmt}`;
   }
   if (r.kind === 'seat_vacated') {
-    const prevAmt = r.previousStakedNear ? ` (was ${formatNear(Number(r.previousStakedNear))} NEAR)` : '';
-    return `Dropped to ${formatNear(Number(r.activeStakedNear))} NEAR${prevAmt}`;
+    const prevAmt = r.previousStakedNear ? ` (was ${formatNear(Number(r.previousStakedNear))})` : '';
+    return `Dropped to ${formatNear(Number(r.activeStakedNear))}${prevAmt}`;
   }
-  if (r.kind === 'seat_claimed') return `${formatNear(Number(r.activeStakedNear))} NEAR`;
-  return `${formatNear(Number(r.activeStakedNear))} NEAR active`;
+  if (r.kind === 'seat_claimed') return `${formatNear(Number(r.activeStakedNear))}`;
+  return `${formatNear(Number(r.activeStakedNear))} active`;
 }
 
 function competitionRow(r: PatronContenderRow, hasLead: boolean): HTMLElement {
@@ -82,7 +82,7 @@ function competitionRow(r: PatronContenderRow, hasLead: boolean): HTMLElement {
     r.status === 'lead'
       ? 'SEAT HELD'
       : hasLead
-        ? `+${formatNear(Number(r.gapToLeadNear))} NEAR`
+        ? `+${formatNear(Number(r.gapToLeadNear))}`
         : `+${formatNear(Number(r.gapToLeadNear))} to claim`;
   return el(
     'tr',
@@ -102,7 +102,7 @@ function competitionRow(r: PatronContenderRow, hasLead: boolean): HTMLElement {
       el('div', { className: 'ta-stk-patron-pilot' }, el('span', {}, r.accountId), youBadge),
       el('div', { className: 'ta-stk-patron-carrier' }, r.carrierName),
     ),
-    el('td', { className: 'ta-stk-patron-mono' }, `${formatNear(Number(r.activeStakedNear))} NEAR`),
+    el('td', { className: 'ta-stk-patron-mono' }, formatNear(Number(r.activeStakedNear))),
     el('td', {}, statusPill),
     el('td', { className: 'ta-stk-patron-mono' }, gapText),
   );
@@ -136,7 +136,7 @@ function renderCompetitionBox(view: PlanetPatronCompetitionView): HTMLElement {
   const planetLabel = patronagePlanetName(view.planetId).toUpperCase();
   const lead = view.leadPatron;
   const summaryText = lead
-    ? `Lead: ${lead.carrierName} (${formatNear(Number(lead.activeStakedNear))} NEAR) · >${formatNear(Number(lead.activeStakedNear))} NEAR to overtake`
+    ? `Lead: ${lead.carrierName} (${formatNear(Number(lead.activeStakedNear))}) · >${formatNear(Number(lead.activeStakedNear))} to overtake`
     : 'Seat vacant · ≥500 NEAR to claim';
 
   const emptyCell = el('td', { className: 'ta-stk-sub' }, 'No nominations yet — stake ≥500 NEAR and nominate to claim this world.');

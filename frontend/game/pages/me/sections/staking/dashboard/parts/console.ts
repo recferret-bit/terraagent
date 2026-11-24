@@ -216,7 +216,7 @@ export function renderConsole(initialAmount: string, h: ConsoleHandlers, now: ()
       id: 'staking-console',
       title: 'ACTION CONSOLE',
       description:
-        'Execute wallet-first staking actions: stake NEAR / stNEAR / LiNEAR, compound accrued yield at 0% fee, unstake, withdraw matured principal, or swap USDC trade profits into stNEAR. In local mode, unbonding & warmup take 1 minute.',
+        'Execute wallet-first staking actions: stake NEAR / stNEAR / LiNEAR, compound accrued yield at 0% fee (preserves maturity & warmup clocks), unstake (<7d early exit pays 0.25%; unbonding principal takes ~2 game-days and does not count toward tiers), withdraw matured principal, or swap USDC trade profits into stNEAR. Crossing <50 → ≥50 NEAR starts a fresh 24h fee-warmup clock (top-ups ≥50 NEAR keep it). In local mode, unbonding & warmup take 1 minute.',
     },
     el('h3', { className: 'label ta-stk-h' }, 'ACTION CONSOLE'),
     el('div', { className: 'ta-stk-chips' }, walletBadge, stakedBadge, btns.faucet),

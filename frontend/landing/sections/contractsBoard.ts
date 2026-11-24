@@ -116,7 +116,7 @@ const CONTRACTS: readonly DeployedContract[] = [
     accent: 'var(--ta-energy)',
     kicker: '4-TIER VAULT',
     title: 'Wallet-First Staking Vault',
-    summary: 'Stakes native NEAR or stNEAR/LiNEAR with no Deed required, 1-click compound (0% fee), <7d 25 bp exit fee, and human-only guards.',
+    summary: 'Stakes native NEAR or stNEAR/LiNEAR with no Deed (80% net APY), 0%-fee compound, <7d 25 bp exit fee, ~2d unbond, and human-only guards.',
     inGameTrigger: 'Wallet Stake (10–500+ NEAR)',
     onChainAction: 'stake_payable · compound_yield · withdraw',
     codeHash: '9b51P4dVKvQWK5r8T5J9gdiNuEvNMuxY3CK1SihefNwb',

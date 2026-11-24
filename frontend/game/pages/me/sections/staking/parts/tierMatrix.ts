@@ -14,9 +14,9 @@ export const PRESTIGE_COPY: Readonly<Record<StakingTierKey, string>> = {
 };
 
 export const ORBITAL_PATRONAGE_DESCRIPTION =
-  'Compares all 5 staking tiers. Perks unlock lower market taker fees, concurrent multi-colony NEAR.AI TEE slots (1 / 3 / 6 / 12 colonies on GLM 5.3 Flash across planets or distinct sectors), higher gasless relayer caps, and cosmetic 3D prestige — never sim combat or harvest advantages (Zero Pay-to-Win).';
+  'Compares all 5 staking tiers. Active stake (unbonding excluded) unlocks lower market taker fees (T1 instant; T2–T4 after 24h warmup — crossing <50 → ≥50 NEAR starts a fresh 24h clock), 1 / 3 / 6 / 12 concurrent GLM 5.3 Flash colony slots across planets or distinct sectors, 2x–15x gasless caps, Guild radar, 1.5x DAO votes, and cosmetic 3D prestige. Trade Hub stall cap stays 0–1.00% for all tiers — Zero Pay-to-Win.';
 
-const HEADERS = ['Tier', 'Min stake', 'Taker fee', 'Colonies & AI slots', 'Gas cap', 'Prestige'] as const;
+const HEADERS = ['Tier', 'Min stake', 'Taker fee', 'Colonies & AI slots', 'Gas · Perks', 'Prestige'] as const;
 
 export function formatWarmupDuration(feeWarmupMs: number): string {
   if (feeWarmupMs >= 3_600_000) return `${Math.round(feeWarmupMs / 3_600_000)}h`;
@@ -30,13 +30,22 @@ export function feeCell(tier: StakingTierRow, warmupLabel: string | number): str
   return tier.warmupRequired ? `${fee} · after ${label} warmup` : fee;
 }
 
+function tierPerksCell(tier: StakingTierRow): string {
+  const parts = [`${tier.gasMultiplier}x gas`, `${tier.botKeys} bot${tier.botKeys === 1 ? '' : 's'}`];
+  parts.push(tier.aiColonySlots > 0 ? `${tier.sweepSeconds}s sweep` : 'Script AI after trial');
+  if (tier.guildRadarLeadMs > 0) parts.push(`${Math.round(tier.guildRadarLeadMs / 60_000)}m radar`);
+  if (tier.daoVoteWeightBp > 10_000) parts.push(`${(tier.daoVoteWeightBp / 10_000).toFixed(1)}x DAO`);
+  if (tier.patronEligible) parts.push('Lead Patron (15% Protocol cut)');
+  return parts.join(' · ');
+}
+
 function tierRow(tier: StakingTierRow, reached: boolean, warmupLabel: string, rowTestIdPrefix: string): HTMLElement {
   const cells = [
     el('th', { className: 'ta-stk-tier-name', aria: { label: `Tier ${tier.id} ${tier.name}` } }, `T${tier.id} · ${tier.name}`),
     el('td', null, `${tier.minStakeNear} NEAR`),
     el('td', null, feeCell(tier, warmupLabel)),
-    el('td', null, tier.aiColonySlots === 0 ? '1 colony · Script AI' : `${tier.aiColonySlots} colon${tier.aiColonySlots === 1 ? 'y' : 'ies'} · GLM 5.3 Flash`),
-    el('td', null, `${tier.gasMultiplier}x`),
+    el('td', null, tier.aiColonySlots === 0 ? '1 colony · 5 free TEE turns' : `${tier.aiColonySlots} colon${tier.aiColonySlots === 1 ? 'y' : 'ies'} · GLM 5.3 Flash`),
+    el('td', null, tierPerksCell(tier)),
     el('td', { className: 'ta-stk-prestige' }, PRESTIGE_COPY[tier.key]),
   ];
   return el(
@@ -66,13 +75,23 @@ export function buildTierMatrixContent(
   const rowPrefix = ids.rowTestIdPrefix ?? 'staking-tier-row-';
   const head = el('thead', null, el('tr', null, ...HEADERS.map((h) => el('th', null, h))));
   const body = el('tbody', null, ...tiers.map((t) => tierRow(t, t.id === reachedId, warmupLabel, rowPrefix)));
+  const rulesFoot = el(
+    'p',
+    { className: 'ta-stk-sub', style: { margin: '8px 10px' } },
+    'Rules: 80% net validator APY · 0% compound fee preserves maturity/warmup clocks · <7d early exit pays 0.25% (0% after 7d) · ~2d unbonding principal excluded from tiers · Daily AI budget = 35% of protocol yield + non-self trade fees (≥65% margin).',
+  );
   return el(
     'div',
     {
-      className: 'ta-stk-scroll ta-stk-patronage-table-wrap',
+      className: 'ta-stk-patronage-table-wrap',
       dataset: { testid: ids.matrixTestId ?? 'staking-tier-matrix', reachedTier: reachedId },
     },
-    el('table', { className: 'ta-stk-table', aria: { label: 'Orbital Patronage tiers' } }, head, body),
+    el(
+      'div',
+      { className: 'ta-stk-scroll' },
+      el('table', { className: 'ta-stk-table', aria: { label: 'Orbital Patronage tiers' } }, head, body),
+    ),
+    rulesFoot,
   );
 }
 

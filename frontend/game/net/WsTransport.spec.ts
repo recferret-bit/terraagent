@@ -90,6 +90,21 @@ describe('WsTransport', () => {
     expect(h.got.filter((m) => m.t === 'delta')).toHaveLength(0);
     h.welcome(s, 20);
     expect(h.t.state.phase).toBe('welcomed');
+    s.server(delta(12, 13)); // gap → re-join
+    h.welcome(s, 20);
+  });
+
+  it('requestResync transitions to resyncing and preserves colonyId and sectorId', async () => {
+    const h = harness({ colonyId: 'co_2', sectorId: 'sec_1_0' });
+    h.t.start(); await h.flush();
+    const s = h.sockets[0];
+    await h.handshake(s);
+    h.t.requestResync();
+    expect(h.t.state.phase).toBe('resyncing');
+    expect(s.sent.at(-1)).toMatchObject({ t: 'join', d: { planetId: h.planetId, colonyId: 'co_2', sectorId: 'sec_1_0' } });
+    // second call while resyncing is a no-op
+    h.t.requestResync();
+    expect(s.sent.filter((m) => m.t === 'join')).toHaveLength(2);
   });
 
   it('server restart (4012) reconnects with backoff and shows Reconnecting…', async () => {

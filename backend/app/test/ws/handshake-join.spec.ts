@@ -225,6 +225,50 @@ describe('WS gateway: join, leave, shutdown', () => {
   });
 });
 
+describe('InternalSimRelayServer resync propagation', () => {
+  it('InternalSimRelayServer relays onResync across /v1/internal/sim/ws on thread rebalance', async () => {
+    const http = await import('node:http');
+    const { InternalSimRelayServer, INTERNAL_WS_PATH, subscribeRemotePlanetStream } = await import('../../src/ws/parts/cluster-relay');
+    let subscriber: { onResync?: () => void } | undefined;
+    const relay = new InternalSimRelayServer(
+      {
+        isLoaded: (id: string) => id === 'pl_relay',
+        setMode: () => undefined,
+        subscribe: (_id: string, sub: { onResync?: () => void }) => {
+          subscriber = sub;
+          return () => undefined;
+        },
+        onWarp: () => () => undefined,
+        onPlanetDown: () => () => undefined,
+      } as never,
+      { TA_INTERNAL_SECRET: 'sec' },
+      () => undefined,
+    );
+    const server = http.createServer();
+    server.on('upgrade', (req, sock, head) => relay.handleUpgrade(req, sock, head));
+    await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+    const port = (server.address() as { port: number }).port;
+    let resyncs = 0;
+    const stop = subscribeRemotePlanetStream({
+      internalUrl: `http://127.0.0.1:${port}`,
+      planetId: 'pl_relay',
+      env: { TA_INTERNAL_SECRET: 'sec' },
+      subscriber: { onResync: () => { resyncs += 1; } },
+      onSimFeeds: () => undefined,
+      onWarp: () => undefined,
+      onDown: () => undefined,
+    });
+    await until(async () => Boolean(subscriber));
+    subscriber?.onResync?.();
+    await until(async () => resyncs === 1);
+    expect(resyncs).toBe(1);
+    expect(INTERNAL_WS_PATH).toBe('/v1/internal/sim/ws');
+    stop();
+    relay.closeAll();
+    await new Promise<void>((r) => server.close(() => r()));
+  });
+});
+
 async function until(fn: () => Promise<boolean>, ms = 3000) {
   const end = Date.now() + ms;
   while (!(await fn())) {

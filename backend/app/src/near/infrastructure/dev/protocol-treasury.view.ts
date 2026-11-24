@@ -1,8 +1,9 @@
-import { RESOURCE_KEYS, tokenKeyOfVerifierId } from '@terra/contracts';
+import { RESOURCE_KEYS, STAKING_RULES, STAKING_TIERS, tokenKeyOfVerifierId } from '@terra/contracts';
 import type { PrismaClient } from '@terra/db';
 import { databaseEnabled } from '../../../core/persistence.js';
 import type { AppEnv } from '../../../core/tokens.js';
 import { PROTOCOL_ACCOUNT_ID } from '../../../market/orders/market-policy.provider.js';
+import { nearAdapterFor } from '../adapter-selection.js';
 import { readMainnetVerifierBalances } from '../adapters/real/mainnet-intents-rpc.js';
 import {
   resolveActiveNearNetwork,
@@ -177,14 +178,14 @@ async function hydrateLiveProtocolBalances(
 
 async function hydrateDbProtocolBalances(
   prisma: PrismaClient,
-  nearMode: string,
+  useMockLedger: boolean,
   activeNet: 'testnet' | 'mainnet',
   protocolAccountId: string,
   balances: Record<string, string>,
   testnetVerifierLedger: Record<string, string>,
 ): Promise<void> {
   const accountIds = Array.from(new Set([PROTOCOL_ACCOUNT_ID, protocolAccountId]));
-  if (nearMode === 'mock') {
+  if (useMockLedger) {
     const [chainBals, intentsBals] = await Promise.all([
       prisma.mockChainBalance.findMany({ where: { accountId: { in: accountIds } } }),
       prisma.mockChainIntentsBalance.findMany({ where: { accountId: { in: accountIds } } }),
@@ -207,20 +208,21 @@ export async function buildProtocolTreasuryView(
   rpcClient?: ProtocolRpcReader,
 ): Promise<TerraAgentProtocolView> {
   const nearMode = envSource.NEAR_MODE ?? 'mock';
+  const useMockLedger = nearAdapterFor('Staking', envSource) === 'mock';
   const activeNet = resolveActiveNearNetwork(null, envSource);
   const cfg = resolveNearNetworkConfig(envSource, activeNet);
   const protocolAccountId =
-    nearMode === 'mock' ? envSource.NEAR_PROTOCOL_ACCOUNT?.trim() || PROTOCOL_ACCOUNT_ID : cfg.accounts.protocol;
+    useMockLedger ? envSource.NEAR_PROTOCOL_ACCOUNT?.trim() || PROTOCOL_ACCOUNT_ID : cfg.accounts.protocol;
   const w28 = isW28Enabled(envSource);
   const sched = resolveProtocolFeeSchedule(envSource, { w28 });
   const balances: Record<string, string> = {};
   const testnetVerifierLedger: Record<string, string> = {};
 
   if (prisma && databaseEnabled(envSource as unknown as AppEnv)) {
-    await hydrateDbProtocolBalances(prisma, nearMode, activeNet, protocolAccountId, balances, testnetVerifierLedger);
+    await hydrateDbProtocolBalances(prisma, useMockLedger, activeNet, protocolAccountId, balances, testnetVerifierLedger);
   }
 
-  if (nearMode !== 'mock') {
+  if (!useMockLedger) {
     const rpc =
       rpcClient ??
       (envSource.VITEST !== 'true' && process.env.VITEST !== 'true' ? new NearRpcClient(cfg) : undefined);
@@ -240,10 +242,10 @@ export async function buildProtocolTreasuryView(
       stakerPlatformFeeBp: sched.stakerPlatformFeeBp,
       ...(w28
         ? {
-            tierTakerFeeBp: [100, 65, 50, 35, 25] as const,
-            protocolNetTier4Bp: Math.floor((25 * (10_000 - sched.daoCarveOutShareBp)) / 10_000),
-            leadPatronProtocolShareBp: 1500,
-            freeTrialTurns: 5,
+            tierTakerFeeBp: STAKING_TIERS.map((t) => t.takerFeeBp) as unknown as readonly [number, number, number, number, number],
+            protocolNetTier4Bp: Math.floor((STAKING_TIERS[4]!.takerFeeBp * (10_000 - sched.daoCarveOutShareBp)) / 10_000),
+            leadPatronProtocolShareBp: STAKING_RULES.patronProtocolFeeShareBp,
+            freeTrialTurns: STAKING_RULES.freeTrialTurns,
           }
         : {}),
       daoCarveOutShareBp: sched.daoCarveOutShareBp,

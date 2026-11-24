@@ -62,7 +62,7 @@ export async function syncPostHogDashboards(options = {}) {
     return {
       ok: false,
       mode,
-      blockedReason: !cfg.projectId ? 'missing_project_id' : 'missing_personal_api_key',
+      blockedReason: !cfg.personalApiKey ? 'missing_personal_api_key' : 'missing_project_id',
       detail: 'PostHog Admin REST API requires project_id and personal_api_key (phx_...) in infra/.env.posthog or POSTHOG_PERSONAL_API_KEY.',
       dashboardsPlanned: plan.dashboards.length,
       insightsPlanned: plan.insights.length,

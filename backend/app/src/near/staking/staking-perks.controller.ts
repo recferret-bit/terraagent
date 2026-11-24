@@ -27,7 +27,10 @@ export class StakingPerksController {
     @Headers('authorization') authHeader?: string,
     @Req() req?: IncomingMessage,
   ): Promise<StakerPerksResponse> {
-    const playerId = accountId?.trim() ? null : (resolveOptionalBearerPlayerId(req, this.tokens, this.env, authHeader) ?? null);
+    const playerId =
+      accountId?.trim() || colonyId?.trim()
+        ? null
+        : (resolveOptionalBearerPlayerId(req, this.tokens, this.env, authHeader) ?? null);
     return this.perks.perksFor({ colonyId, accountId, playerId });
   }
 

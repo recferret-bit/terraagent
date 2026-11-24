@@ -98,7 +98,8 @@ export class JobsService implements OnApplicationBootstrap, OnModuleDestroy {
       });
       const worker = await this.work(queue, { concurrency: 1 }, () => def.run().then(() => undefined));
       await this.port.schedule(queue, def.schedule);
-      return { stop: async () => { await this.port.unschedule(queue); await worker.stop(); } };
+      const localOrMemory = 'everyMs' in def.schedule || this.port.kind !== 'pgboss';
+      return { stop: async () => { if (localOrMemory) await this.port.unschedule(queue); await worker.stop(); } };
     });
   }
 

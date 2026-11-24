@@ -67,7 +67,7 @@ export function pillView(perks: EvaluatedStakerPerksV2 | null, apy: ApyView): Pi
   const label = tier === 0 ? '⚡ STAKE' : `⚡ TIER ${tier}`;
   const name = perks?.tierName ?? STAKING_TIERS[0]!.name;
   const title = tier === 0
-    ? `Stake NEAR to unlock Tier 1 (${STAKING_TIERS[1]!.minStakeNear} NEAR): lower fees and managed NEAR.AI`
+    ? `Stake NEAR (${STAKING_TIERS[1]!.minStakeNear}–${STAKING_TIERS[4]!.minStakeNear}+ NEAR): 80% net validator APY, 0.65%→0.25% market fees & 1–12 Managed NEAR.AI slots`
     : `${name} · ${apyText}${apy.source === 'sim' ? ' (simulated)' : ''} · open the staking dashboard`;
   return { tier, label, apyText, sim: apy.source === 'sim', title };
 }
@@ -91,7 +91,7 @@ export interface FeePillView {
 export function feePillView(perks: EvaluatedStakerPerksV2, nowMs: number): FeePillView {
   const fee = (bp: number): string => formatPct(bp);
   const ladder = STAKING_TIERS.slice(1).map((t) => fee(t.takerFeeBp)).join(' / ');
-  const title = `Taker fee ladder (Tier 1..${STAKING_TIERS.length - 1}): ${ladder}`;
+  const title = `Taker fee ladder (Tier 1..${STAKING_TIERS.length - 1}): ${ladder} (T1 instant; T2–T4 after 24h warmup)`;
   const readyAt = perks.feeWarmupReadyAtMs;
   if (readyAt !== null && readyAt > nowMs) {
     const target = STAKING_TIERS[perks.tier]?.takerFeeBp ?? perks.platformFeeBp;

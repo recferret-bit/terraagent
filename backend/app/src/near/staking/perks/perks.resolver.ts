@@ -19,6 +19,8 @@ export interface PerksQuery {
   readonly grossApyBp?: number;
   readonly protocolAccountId?: string;
   readonly env?: EnvBag;
+  /** Explicit override for whether `db` should be queried (takes precedence over `databaseEnabled(q.env)`). */
+  readonly dbEnabled?: boolean;
   /** Wave gate override; default reads `TA_WAVES` from `env` / `process.env`. */
   readonly w28?: boolean;
   readonly nowMs?: number;
@@ -49,12 +51,12 @@ export async function resolveWalletPerks(db: DbClient | null | undefined, q: Per
   const nowMs = q.nowMs ?? deps.clock();
   const w28 = isW28Enabled(q.env, q.w28);
   const ladder = resolvePerkLadder({ w28, env: q.env, standardPlatformFeeBp: q.standardPlatformFeeBp, grossApyBp: q.grossApyBp });
-  const activeDb = db && (databaseEnabled((q.env ?? process.env) as unknown as AppEnv) || !('$connect' in db)) ? db : null;
+  const activeDb = db && ((q.dbEnabled ?? databaseEnabled(q.env as unknown as AppEnv)) || !('$connect' in db)) ? db : null;
   const wallet = activeDb ? await resolveWallet(activeDb, q) : NO_WALLET;
   const clock = activeDb ? await readStakeClock(activeDb, wallet) : EMPTY_STAKE_CLOCK;
   const nearUsd = q.full ? await deps.priceProvider.nearUsd() : 0;
   const usage = q.full && activeDb ? await deps.usageReader.read(activeDb, wallet, nowMs) : EMPTY_AI_USAGE;
-  const tradeFeeUsd = q.full && activeDb ? await deps.tradeFeeProvider.dailyProtocolTradeFeeUsd(wallet, nowMs) : 0;
+  const tradeFeeUsd = q.full && activeDb ? await deps.tradeFeeProvider.dailyProtocolTradeFeeUsd(wallet, nowMs, activeDb, nearUsd) : 0;
   const seats = q.full && activeDb && w28 ? new PatronSeatService(activeDb) : null;
   const leadPatronPlanetIds = seats ? await seats.leadPlanetIdsFor(wallet, nowMs) : [];
   const perks = evaluatePerks({

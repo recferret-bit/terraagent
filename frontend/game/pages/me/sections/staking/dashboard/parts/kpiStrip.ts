@@ -180,8 +180,26 @@ function effectiveCard(p: StakingPerformanceResponse): HTMLElement {
   });
 }
 
+function renderIncomeBreakdown(p: StakingPerformanceResponse): HTMLElement {
+  const item = (label: string, usd: number, testid: string, title: string) =>
+    el(
+      'div',
+      { className: 'ta-stk-realized-item plate-sm', title },
+      el('span', { className: 'ta-stk-realized-k' }, label),
+      el('b', { className: 'ta-stk-realized-v', dataset: { testid } }, formatUsd(usd)),
+    );
+  return el(
+    'div',
+    { className: 'ta-stk-realized', dataset: { testid: 'staking-income-breakdown' } },
+    item('STAKING YIELD', p.income.stakingYieldUsd, 'staking-income-yield-usd', '80% net validator staking yield accrued over the selected window (20% goes to Protocol).'),
+    item('FEE SAVINGS', p.income.marketFeeSavingsUsd, 'staking-income-fees-usd', 'Buyer taker-fee savings versus the 1.00% standard fee across non-self fills.'),
+    item('STALL ROYALTIES', p.income.stallRoyaltiesUsd, 'staking-income-stalls-usd', '0–1.00% Trade Hub maker stall royalties collected on non-self fills (uniform cap across all tiers).'),
+    item('PATRON REVENUE', p.income.patronRevenueUsd, 'staking-income-patron-usd', 'Tier 4 Lead Planetary Patron revenue: 15% of Protocol’s trade-fee cut (12% of gross on standard 20% DAO fills; self-fills excluded).'),
+  );
+}
+
 /**
- * Portfolio Metrics block: 4 uniform top KPI cards + extended Projected Income section with live amount simulation.
+ * Portfolio Metrics block: 4 uniform top KPI cards + realized USD income breakdown + extended Projected Income simulation.
  */
 export function renderKpiStrip(p: StakingPerformanceResponse, nowMs: number, h: KpiHandlers): KpiStrip {
   const tot = totalCard(p, nowMs);
@@ -197,6 +215,7 @@ export function renderKpiStrip(p: StakingPerformanceResponse, nowMs: number, h: 
     el('span', { className: 'ta-stk-badge ta-stk-wallet-chip', dataset: { testid: 'staking-wallet-avail' } }, `Available wallet: ${formatNear(Number(p.balances.walletNear))}`),
   );
   const grid = el('div', { className: 'ta-stk-kpis', dataset: { testid: 'staking-kpi-strip' } }, tot.card, y.card, apyCard(p), effectiveCard(p));
+  const incomeBreakdown = renderIncomeBreakdown(p);
   const incomePanel = renderProjectedIncomePanel(p, h.projection);
   return {
     yieldValue: y.value,
@@ -205,6 +224,6 @@ export function renderKpiStrip(p: StakingPerformanceResponse, nowMs: number, h: 
     tick(nextNowMs: number) {
       tot.exitNode.textContent = exitChipLabel(p.timers.earlyExitFreeAtMs, p.timers.earlyExitFeeBp, nextNowMs);
     },
-    el: el('div', { className: 'ta-stk-block plate-sm ta-stk-pad', dataset: { testid: 'staking-kpi-block' } }, header.head, header.panel, grid, incomePanel),
+    el: el('div', { className: 'ta-stk-block plate-sm ta-stk-pad', dataset: { testid: 'staking-kpi-block' } }, header.head, header.panel, grid, incomeBreakdown, incomePanel),
   };
 }

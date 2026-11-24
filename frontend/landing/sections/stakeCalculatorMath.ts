@@ -16,11 +16,17 @@ export const netApyBpFrom = (grossBp: number, protocolShareBp: number): number =
   Math.round((grossBp * (BP - protocolShareBp)) / BP);
 
 export interface PillApy { readonly netApyBp: number; readonly source: 'live' | 'sim' }
+export interface OverviewApyDetails extends PillApy { readonly grossApyBp: number }
 
 /** The simulated APY shown when the overview endpoint is missing or unreachable. */
 export const fallbackApy = (): PillApy => ({
   netApyBp: netApyBpFrom(STAKING_RULES.simGrossApyBp, STAKING_RULES.protocolYieldShareBp),
   source: 'sim',
+});
+
+export const fallbackApyDetails = (): OverviewApyDetails => ({
+  ...fallbackApy(),
+  grossApyBp: STAKING_RULES.simGrossApyBp,
 });
 
 /** Reads `apy` from a `StakingOverviewResponse`-shaped payload; anything malformed yields the sim fallback. */
@@ -29,6 +35,20 @@ export function parseOverviewApy(payload: unknown): PillApy {
   const net = apy?.netApyBp;
   if (typeof net !== 'number' || !Number.isFinite(net) || net < 0) return fallbackApy();
   return { netApyBp: net, source: apy?.source === 'live' ? 'live' : 'sim' };
+}
+
+/** Reads `netApyBp`, `grossApyBp`, and `source` for the calculator, deriving gross APY cleanly when omitted. */
+export function parseOverviewApyDetails(payload: unknown): OverviewApyDetails {
+  const pill = parseOverviewApy(payload);
+  const apy = (payload as { apy?: { grossApyBp?: unknown; protocolYieldShareBp?: unknown } } | null)?.apy;
+  const rawGross = apy?.grossApyBp;
+  if (typeof rawGross === 'number' && Number.isFinite(rawGross) && rawGross >= pill.netApyBp) {
+    return { ...pill, grossApyBp: rawGross };
+  }
+  const shareRaw = apy?.protocolYieldShareBp;
+  const shareBp = typeof shareRaw === 'number' && Number.isFinite(shareRaw) && shareRaw >= 0 && shareRaw < BP ? shareRaw : STAKING_RULES.protocolYieldShareBp;
+  const derivedGross = Math.round((pill.netApyBp * BP) / Math.max(1, BP - shareBp));
+  return { ...pill, grossApyBp: pill.source === 'sim' && typeof rawGross !== 'number' ? Math.max(pill.netApyBp, derivedGross) : derivedGross };
 }
 
 export const formatApy = (bp: number): string => `${(bp / 100).toFixed(2)}%`;

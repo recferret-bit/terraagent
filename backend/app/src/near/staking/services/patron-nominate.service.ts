@@ -9,6 +9,7 @@ import { withTransaction, type DbClient, type PrismaClient } from '@terra/db';
 import { CoreException } from '../../../core/errors/index.js';
 import { NearException } from '../../domain/errors.js';
 import { lockPatronPlanets, PatronSeatService } from '../perks/patron-seat.service.js';
+import { resolveWallet } from '../perks/stake-clock.reader.js';
 import { patronView } from '../perks/staking-perks.service.js';
 
 /** `POST /v1/near/staking/patron/nominate` body. */
@@ -59,25 +60,36 @@ export class PatronNominateService {
       throw new CoreException('NOT_FOUND', { status: 404, message: 'Planet not found or not public.', details: { planetId: normalizedPlanetId } });
     }
     const runInTx = async (tx: DbClient) => {
+      const wallet = await resolveWallet(tx, { accountId });
+      const walletAccounts = Array.from(new Set([accountId, ...wallet.accountIds]));
       if (typeof (tx as { $executeRaw?: unknown }).$executeRaw === 'function') {
         const raw = tx as { $executeRaw(strings: TemplateStringsArray, ...values: unknown[]): Promise<unknown> };
-        await raw.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`patron-acct:${accountId}`}, 0))`;
+        await raw.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`patron-wallet:${wallet.walletKey}`}, 0))`;
       }
       const txSeats = new PatronSeatService(tx);
-      const previous = (await tx.stakingPatronNomination.findUnique({ where: { accountId }, select: { planetId: true } })) as
-        | { planetId: string }
-        | null;
-      await lockPatronPlanets(tx, [planet.id, ...(previous ? [previous.planetId] : [])]);
+      const priorRows =
+        typeof tx.stakingPatronNomination?.findMany === 'function'
+          ? ((await tx.stakingPatronNomination.findMany({
+              where: { accountId: { in: walletAccounts } },
+              select: { planetId: true },
+            })) as Array<{ planetId: string }>)
+          : ((await tx.stakingPatronNomination.findUnique({ where: { accountId }, select: { planetId: true } }).then((r) => (r ? [r] : []))) as Array<{ planetId: string }>);
+      const vacatedPlanets = Array.from(new Set(priorRows.map((r) => r.planetId).filter((pid) => pid !== planet.id)));
+      await lockPatronPlanets(tx, [planet.id, ...vacatedPlanets]);
       const now = this.nowMs();
       await txSeats.nominate(accountId, planet.id, now);
-      if (previous && previous.planetId !== planet.id) await txSeats.refreshPlanetUnlocked(previous.planetId, now);
-      return txSeats.refreshPlanetUnlocked(planet.id, now);
+      for (const prevPlanet of vacatedPlanets) {
+        await txSeats.refreshPlanetUnlocked(prevPlanet, now);
+      }
+      const seat = await txSeats.refreshPlanetUnlocked(planet.id, now);
+      return { seat, walletAccounts };
     };
-    const seat = typeof db.$transaction === 'function' ? await withTransaction(db, runInTx) : await runInTx(db);
+    const { seat, walletAccounts } =
+      typeof db.$transaction === 'function' ? await withTransaction(db, runInTx) : await runInTx(db);
     return {
       accountId,
       planetId: planet.id,
-      isLeadPatron: seat?.accountId === accountId,
+      isLeadPatron: Boolean(seat && walletAccounts.includes(seat.accountId)),
       leadPatron: seat ? patronView(seat) : null,
     };
   }

@@ -257,7 +257,7 @@ export class GameModule implements OnApplicationBootstrap, BeforeApplicationShut
         }
       });
     }
-    await this.pool.start();
+    if (this.simLease.canHostSim()) await this.pool.start();
     this.unsubAntiCheat = this.wireAntiCheat();
     this.unsubBridge = bridgePlanetEvents(
       this.planets,
@@ -308,7 +308,7 @@ export class GameModule implements OnApplicationBootstrap, BeforeApplicationShut
       ? localHost
       : {
           ensureLoaded: (pid: string, opts: Parameters<typeof localHost.ensureLoaded>[1]) =>
-            this.simCluster.forwardLoadNew(pid, opts),
+            this.simCluster.forwardLoadHome(pid, opts),
           submit: (pid: string, cmd: Parameters<typeof localHost.submit>[1]) =>
             this.simCluster.submitAnywhere(pid, cmd),
           onLateLanding: localHost.onLateLanding,
@@ -324,12 +324,13 @@ export class GameModule implements OnApplicationBootstrap, BeforeApplicationShut
           ? undefined
           : {
               remoteOnly: true,
-              forwardLandingSite: (pid, opts, idx, ms) => this.simCluster.forwardLandingSite(pid, opts, idx, ms),
+              forwardLandingSite: (pid, opts, idx, ms, sectorId) => this.simCluster.forwardLandingSite(pid, opts, idx, ms, sectorId),
               forwardLoadHome: (pid, opts) => this.simCluster.forwardLoadHome(pid, opts),
             },
       ),
     );
-    home.setCapacityGate(planetCapacityGate(this.lifecycle.config.cap, this.planets, this.simLease));
+    const explicitCap = this.env.TA_PLANET_CAP !== undefined && this.env.TA_PLANET_CAP !== '';
+    home.setCapacityGate(planetCapacityGate(this.lifecycle.config.cap, this.planets, this.simLease, explicitCap));
     home.setAwayHeadline(this.digests);
     home.setHardModeClock(this.hardMode);
   }
@@ -348,10 +349,12 @@ export class GameModule implements OnApplicationBootstrap, BeforeApplicationShut
     installAwayPolicyMetric(reg);
     installNotifyMetrics(reg);
     installDigestRowsGauge(reg, () => this.digests.rowCount());
-    this.readiness.register('simThreads', () => {
-      if (pool.live < pool.size) throw new Error(`${pool.size - pool.live} of ${pool.size} sim threads down`); // BE-11
-      return pool.live;
-    });
+    if (this.simLease.canHostSim()) {
+      this.readiness.register('simThreads', () => {
+        if (pool.live < pool.size) throw new Error(`${pool.size - pool.live} of ${pool.size} sim threads down`); // BE-11
+        return pool.live;
+      });
+    }
   }
 
   /** Notify is a sibling module. A test that boots Game alone has no router; live play does. */

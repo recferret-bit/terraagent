@@ -97,7 +97,9 @@ describe('PilotBridge loginSocial (W06-15)', () => {
     expect(bridge.view().isGuest).toBe(true);
     expect(bridge.view().accountId).toBeNull();
   });
+});
 
+describe('PilotBridge FastAuth signup & ActivePilotTracker persistence', () => {
   it('forwards mode: signup to authenticateFastAuthEmailPopup and clears ta_fastauth_pkce + sessionStorage NEP-413 keys on logout', async () => {
     const { target, boot } = await booted();
     const popupCalls: Array<{ email?: string; mode?: string }> = [];

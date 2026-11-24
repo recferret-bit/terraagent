@@ -138,7 +138,7 @@ fn compound_rolls_80pct_into_principal_credits_20pct_and_keeps_maturity() {
     testing_env!(ctx(OP).build());
     let day8 = T0 + 8 * GAME_DAY_MS;
     let (user_yield, proto_yield) = compute_split_reward_delta(10 * ONE_NEAR, 900, day8 - T0, 2_000);
-    let r = c.compound_yield(POOL.into(), Some("col1.testnet".into()), Some(900), Some(day8));
+    let r = c.compound_yield(POOL.into(), Some("col1.testnet".into()), Some(900), Some(day8), None);
     assert_eq!(r.compounded, user_yield.to_string());
     assert_eq!(r.protocol_cut, proto_yield.to_string());
     assert_eq!(r.position.staked, (10 * ONE_NEAR + user_yield).to_string());
@@ -160,7 +160,7 @@ fn compound_moves_backed_yield_from_reserve_to_position_backing() {
     testing_env!(ctx("terraagent.testnet").attached_deposit(NearToken::from_near(2)).build());
     c.fund_yield_reserve();
     testing_env!(ts_ctx("alice.testnet", T0 + 30 * GAME_DAY_MS).build());
-    let r = c.compound_yield(POOL.into(), None, Some(900), None);
+    let r = c.compound_yield(POOL.into(), None, Some(900), None, None);
     let rolled: u128 = r.compounded.parse().unwrap();
     assert!(rolled > 0);
     assert_eq!(c.get_position_native_backing("alice.testnet".into(), POOL.into()), (10 * ONE_NEAR + rolled).to_string());
@@ -172,7 +172,7 @@ fn compound_moves_backed_yield_from_reserve_to_position_backing() {
 fn compound_with_zero_yield_panics() {
     let mut c = staked(10, "col1.testnet", T0);
     testing_env!(ctx(OP).build());
-    c.compound_yield(POOL.into(), Some("col1.testnet".into()), Some(900), Some(T0));
+    c.compound_yield(POOL.into(), Some("col1.testnet".into()), Some(900), Some(T0), None);
 }
 
 #[test]
@@ -180,7 +180,7 @@ fn compound_with_zero_yield_panics() {
 fn compound_without_a_position_panics() {
     let mut c = new_contract();
     testing_env!(ts_ctx("nobody.testnet", T0).build());
-    c.compound_yield(POOL.into(), None, None, None);
+    c.compound_yield(POOL.into(), None, None, None, None);
 }
 
 #[test]
@@ -188,7 +188,7 @@ fn compound_without_a_position_panics() {
 fn compound_for_another_wallet_by_a_non_operator_is_rejected() {
     let mut c = staked(10, "col1.testnet", T0);
     testing_env!(ts_ctx("mallory.testnet", T0 + 9 * GAME_DAY_MS).build());
-    c.compound_yield(POOL.into(), Some("col1.testnet".into()), None, None);
+    c.compound_yield(POOL.into(), Some("col1.testnet".into()), None, None, None);
 }
 
 #[test]
@@ -196,7 +196,7 @@ fn compound_for_another_wallet_by_a_non_operator_is_rejected() {
 fn compound_by_a_wallet_cannot_inflate_apy() {
     let mut c = staked(10, "col1.testnet", T0);
     testing_env!(ts_ctx("col1.testnet", T0 + 9 * GAME_DAY_MS).build());
-    c.compound_yield(POOL.into(), None, Some(5_000), None);
+    c.compound_yield(POOL.into(), None, Some(5_000), None, None);
 }
 
 fn stake_unstake_ready(at_withdraw: u64) -> StakingVaultContract {
@@ -389,7 +389,7 @@ fn get_account_positions_projects_unbonding_maturity_and_price_mode_rewards_and_
     low_lst.prepaid_gas(near_sdk::Gas::from_tgas(30));
     testing_env!(low_lst.build());
     assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let _ = c.withdraw_lst("meta-pool.near".into(), "meta-pool.near".parse().unwrap(), ONE_NEAR.to_string(), None, None);
+        let _ = c.withdraw_lst("meta-pool.near".into(), "meta-pool.near".parse().unwrap(), ONE_NEAR.to_string(), None, None, None);
     })).is_err());
 
     // 1 yoctoNEAR attached deposit on withdraw_lst is accepted; 2 yoctoNEAR is rejected.
@@ -398,10 +398,10 @@ fn get_account_positions_projects_unbonding_maturity_and_price_mode_rewards_and_
     let lst_ready = T0 + WEEK + UNBONDING_DURATION_MS;
     testing_env!(ts_ctx("whale.testnet", lst_ready).attached_deposit(NearToken::from_yoctonear(2)).build());
     assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let _ = c.withdraw_lst("meta-pool.near".into(), "meta-pool.near".parse().unwrap(), ONE_NEAR.to_string(), None, None);
+        let _ = c.withdraw_lst("meta-pool.near".into(), "meta-pool.near".parse().unwrap(), ONE_NEAR.to_string(), None, None, None);
     })).is_err());
     testing_env!(ts_ctx("whale.testnet", lst_ready).attached_deposit(NearToken::from_yoctonear(1)).build());
-    let _ = c.withdraw_lst("meta-pool.near".into(), "meta-pool.near".parse().unwrap(), ONE_NEAR.to_string(), None, None);
+    let _ = c.withdraw_lst("meta-pool.near".into(), "meta-pool.near".parse().unwrap(), ONE_NEAR.to_string(), None, None, None);
 }
 
 #[test]
@@ -556,7 +556,7 @@ fn self_custody_withdraw_after_unbacked_compound_pays_real_principal_without_loc
     // After 7 days, Alice clicks Compound Yield while yield_reserve is still 0.
     let t_comp = T0 + WEEK;
     testing_env!(ts_ctx("alice.testnet", t_comp).build());
-    let comp = c.compound_yield(POOL.into(), None, Some(900), None);
+    let comp = c.compound_yield(POOL.into(), None, Some(900), None, None);
     let compounded = comp.compounded.parse::<u128>().unwrap();
     assert!(compounded > 0);
     let total_staked = 100 * ONE_NEAR + compounded;
@@ -589,5 +589,120 @@ fn self_custody_withdraw_after_unbacked_compound_pays_real_principal_without_loc
     assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let _ = c.withdraw("w-comp-virt".into(), "alice.testnet".into(), None, POOL.into(), 0, ready);
     })).is_err());
+}
+
+#[test]
+#[should_panic(expected = "STAKE_INVALID_APY")]
+fn get_account_positions_rejects_apy_above_5000() {
+    let c = staked(10, "col1.testnet", T0);
+    let _ = c.get_account_positions("col1.testnet".into(), Some(5_001), Some(T0 + GAME_DAY_MS));
+}
+
+#[test]
+fn get_account_positions_returns_post_settlement_entry_lst_price() {
+    let mut c = new_contract();
+    testing_env!(ctx(OP).build());
+    c.bind_lst_pool("meta-pool.near".into(), "meta-pool.near".parse().unwrap());
+    testing_env!(ts_ctx("staking.terraagent.testnet", T0).build());
+    c.on_lst_price("meta-pool.near".into(), Ok(near_sdk::json_types::U128(crate::lst::PRICE_ONE)));
+    testing_env!(ts_ctx("meta-pool.near", T0).build());
+    c.ft_on_transfer("alice.testnet".parse().unwrap(), (10 * ONE_NEAR).to_string(), r#"{"pool_id":"meta-pool.near","apy_bp":0}"#.into());
+
+    let new_price = crate::lst::PRICE_ONE * 12 / 10;
+    testing_env!(ts_ctx("staking.terraagent.testnet", T0 + GAME_DAY_MS).build());
+    c.on_lst_price("meta-pool.near".into(), Ok(near_sdk::json_types::U128(new_price)));
+    let pos = c.get_account_positions("alice.testnet".into(), None, Some(T0 + GAME_DAY_MS));
+    assert_eq!(pos[0].entry_lst_price_yocto.as_deref(), Some(new_price.to_string().as_str()));
+    assert!(pos[0].rewards.parse::<u128>().unwrap() > 0);
+}
+
+#[test]
+fn cross_method_op_id_isolation_blocks_stake_payable_frontrun() {
+    let mut c = new_contract();
+    // Attacker front-runs op_id = "shared-op" via stake_payable.
+    testing_env!(ts_ctx("mallory.testnet", T0).attached_deposit(NearToken::from_near(1)).build());
+    c.stake_payable("shared-op".into(), POOL.into(), 900, T0, None);
+
+    // Operator methods with the same op_id are isolated and neither panic nor return mallory's payload.
+    testing_env!(ts_ctx(OP, T0 + WEEK).account_balance(NearToken::from_near(40)).prepaid_gas(near_sdk::Gas::from_tgas(40)).build());
+    let bal = c.credit_near("shared-op".into(), "alice.testnet".into(), (10 * ONE_NEAR).to_string());
+    assert_eq!(bal, (10 * ONE_NEAR).to_string());
+    let s = c.stake("shared-op".into(), "alice.testnet".into(), None, POOL.into(), 900, (10 * ONE_NEAR).to_string(), T0);
+    assert_eq!(s.account_id, "alice.testnet");
+    let u = c.unstake("shared-op".into(), "alice.testnet".into(), POOL.into(), 900, (5 * ONE_NEAR).to_string(), T0 + WEEK);
+    assert_eq!(u.account_id, "alice.testnet");
+    assert!(matches!(
+        c.withdraw("shared-op".into(), "alice.testnet".into(), None, POOL.into(), 900, T0 + WEEK + UNBONDING_DURATION_MS),
+        PromiseOrValue::Promise(_)
+    ));
+    let py = c.withdraw_protocol_yield("shared-op".into(), None, None);
+    assert_eq!(py.pool_id, "protocol_yield");
+}
+
+#[test]
+fn out_of_order_operator_stake_never_rewinds_last_staked_at_ms() {
+    let mut c = staked(5, "col1.testnet", T0 + 5 * GAME_DAY_MS);
+    testing_env!(ctx(OP).build());
+    c.credit_near("fund2".into(), "col1.testnet".into(), (5 * ONE_NEAR).to_string());
+    c.stake("s-old-ts".into(), "col1.testnet".into(), None, POOL.into(), 900, (5 * ONE_NEAR).to_string(), T0 + GAME_DAY_MS);
+    let p = &c.get_account_positions("col1.testnet".into(), None, None)[0];
+    assert_eq!(p.last_staked_at_ms, Some(T0 + 5 * GAME_DAY_MS));
+}
+
+#[test]
+fn accrual_never_overflows_on_max_elapsed() {
+    let huge = crate::accrual::compute_accrued_reward_delta(ONE_NEAR * 1_000_000_000_000, 5_000, u64::MAX);
+    assert!(huge > 0);
+}
+
+#[test]
+fn dust_pre_stake_top_up_crossing_tier2_resets_staked_since_ms() {
+    let mut c = staked(1, "sniper.testnet", T0);
+    testing_env!(ctx(OP).build());
+    c.credit_near("top".into(), "sniper.testnet".into(), (50 * ONE_NEAR).to_string());
+    c.stake("top".into(), "sniper.testnet".into(), None, POOL.into(), 900, (50 * ONE_NEAR).to_string(), T0 + 2 * GAME_DAY_MS);
+    let sniper = &c.get_account_positions("sniper.testnet".into(), None, None)[0];
+    assert_eq!(sniper.staked_since_ms, Some(T0 + 2 * GAME_DAY_MS));
+
+    let mut honest = staked(50, "honest.testnet", T0);
+    testing_env!(ctx(OP).build());
+    honest.credit_near("top".into(), "honest.testnet".into(), (10 * ONE_NEAR).to_string());
+    honest.stake("top".into(), "honest.testnet".into(), None, POOL.into(), 900, (10 * ONE_NEAR).to_string(), T0 + 2 * GAME_DAY_MS);
+    let hp = &honest.get_account_positions("honest.testnet".into(), None, None)[0];
+    assert_eq!(hp.staked_since_ms, Some(T0));
+}
+
+#[test]
+fn operator_virtual_withdraw_cannot_encroach_on_real_native_user_backing() {
+    let mut c = new_contract();
+    testing_env!(ts_ctx("alice.testnet", T0).attached_deposit(NearToken::from_near(10)).build());
+    c.stake_payable("alice-s".into(), POOL.into(), 0, T0, None);
+    testing_env!(ctx(OP).build());
+    c.credit_near("virt-f".into(), "virt.testnet".into(), (10 * ONE_NEAR).to_string());
+    c.stake("virt-s".into(), "virt.testnet".into(), None, POOL.into(), 0, (10 * ONE_NEAR).to_string(), T0);
+    c.unstake("virt-u".into(), "virt.testnet".into(), POOL.into(), 0, (10 * ONE_NEAR).to_string(), T0 + WEEK);
+    let ready = T0 + WEEK + UNBONDING_DURATION_MS;
+    testing_env!(ts_ctx(OP, ready).account_balance(NearToken::from_near(16)).prepaid_gas(near_sdk::Gas::from_tgas(40)).build());
+    assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let _ = c.withdraw("virt-w".into(), "virt.testnet".into(), None, POOL.into(), 0, ready);
+    })).is_err());
+
+    testing_env!(ts_ctx("alice.testnet", T0 + WEEK).build());
+    c.unstake("alice-u".into(), "alice.testnet".into(), POOL.into(), 0, (10 * ONE_NEAR).to_string(), T0 + WEEK);
+    testing_env!(ts_ctx("alice.testnet", ready).account_balance(NearToken::from_near(16)).prepaid_gas(near_sdk::Gas::from_tgas(40)).build());
+    assert!(matches!(
+        c.withdraw("alice-w".into(), "alice.testnet".into(), None, POOL.into(), 0, ready),
+        PromiseOrValue::Promise(_)
+    ));
+}
+
+#[test]
+fn compound_yield_with_op_id_is_idempotent() {
+    let mut c = staked(10, "col1.testnet", T0);
+    testing_env!(ctx(OP).build());
+    let day8 = T0 + 8 * GAME_DAY_MS;
+    let first = c.compound_yield(POOL.into(), Some("col1.testnet".into()), Some(900), Some(day8), Some("cmp-1".into()));
+    let replay = c.compound_yield(POOL.into(), Some("col1.testnet".into()), Some(900), Some(day8), Some("cmp-1".into()));
+    assert_eq!(replay, first);
 }
 

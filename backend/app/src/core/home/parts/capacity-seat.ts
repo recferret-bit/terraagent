@@ -1,9 +1,10 @@
 import type { HomeResponse } from '@terra/contracts';
 import type { DevPlanetType } from '@terra/sim';
 import type { SectorAntiCheatService } from '../../anticheat';
+import type { ColonySlotAllowanceService } from '../colony-slot-allowance.service';
 import type { ColonyRecord, PlanetRecord } from '../home.repository';
 import { admitFromQueue, capacityTicketType, findCapacityTicket, seatOrQueue, type CapacityQueueDeps } from './capacity-queue';
-import { buildOccupiedSectorsMap, type ActiveColonyBundle } from './home-multi-colony';
+import { assertNewColonyAllowed, buildOccupiedSectorsMap, type ActiveColonyBundle } from './home-multi-colony';
 import { assertNewHomeJoinSpace, assertRequestedHomeLocation, seatNewColony, type SeatContext } from './home-seating';
 
 export { isCapacityTicket } from './capacity-queue';
@@ -15,6 +16,7 @@ type Player = { readonly id: string; readonly handle?: string };
 export interface CapacitySeatDeps {
   readonly queue: CapacityQueueDeps;
   readonly antiCheat?: SectorAntiCheatService;
+  readonly slotAllowance?: ColonySlotAllowanceService;
   readonly listActiveBundles: (playerId: string, handle?: string) => Promise<ActiveColonyBundle[]>;
   readonly seatContext: (occupiedSectorsByPlanet: ReadonlyMap<string, ReadonlySet<string>>) => SeatContext;
   readonly withRoster: (home: HomeResponse, playerId: string, bundles: readonly ActiveColonyBundle[]) => Promise<HomeResponse>;
@@ -41,6 +43,7 @@ export async function seatFreshColony(deps: CapacitySeatDeps, player: Player, ty
   const ctx = deps.seatContext(buildOccupiedSectorsMap(bundles));
   const seated = await seatOrQueue(deps.queue, player.id, type, opts.admitted ?? false, () =>
     seatNewColony(ctx, who, type, sectorId?.trim() || undefined, planetId?.trim() || undefined),
+    { sectorId, planetId },
   );
   return deps.withRoster(seated, player.id, await deps.listActiveBundles(player.id, player.handle));
 }
@@ -57,12 +60,33 @@ export async function admitCapacityQueued(
   if (!req.newColony && req.hasColonies) return null;
   const ticket = await findCapacityTicket(deps.queue.lobby, player.id);
   if (!ticket) return null;
-  assertRequestedHomeLocation({ state: 'NEW', planets: [], newPlanetTypes: [] }, deps.antiCheat, req.sectorId, req.planetId);
+  const effectiveSectorId = req.sectorId?.trim() || (ticket.sectorIntent.kind === 'chosen' ? ticket.sectorIntent.sectorId : undefined);
+  assertRequestedHomeLocation({ state: 'NEW', planets: [], newPlanetTypes: [] }, deps.antiCheat, effectiveSectorId, req.planetId);
   return admitFromQueue(deps.queue, ticket, () =>
     deps.withSeatLock(async () => {
-      const again = req.newColony ? undefined : (await deps.listActiveBundles(player.id, player.handle))[0];
-      if (again) return deps.answerExisting(again.colony, again.planet, false);
-      return seatFreshColony(deps, player, capacityTicketType(ticket), { sectorId: req.sectorId, newColony: req.newColony, admitted: true });
+      const bundles = await deps.listActiveBundles(player.id, player.handle);
+      if (!req.newColony && bundles[0]) return deps.answerExisting(bundles[0].colony, bundles[0].planet, false);
+      if (req.newColony) {
+        try {
+          await assertNewColonyAllowed({
+            playerId: player.id,
+            activeBundles: bundles,
+            slotAllowance: deps.slotAllowance,
+            requestedPlanetId: req.planetId,
+            requestedSectorId: effectiveSectorId,
+          });
+        } catch (err) {
+          await deps.queue.lobby?.updateTicketState({ ticketId: ticket.id, state: 'CANCELLED', failureCode: 'slot_allowance_revoked' }).catch(() => undefined);
+          throw err;
+        }
+      }
+      return seatFreshColony(deps, player, capacityTicketType(ticket), {
+        sectorId: effectiveSectorId,
+        planetId: req.planetId,
+        newColony: req.newColony,
+        admitted: true,
+        bundles,
+      });
     }),
   );
 }

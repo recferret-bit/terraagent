@@ -68,12 +68,13 @@ export function readStoredPilotAccount(): string | null {
   }
 }
 
-async function defaultFetchWalletTier(accountId: string): Promise<number> {
+export async function defaultFetchWalletTier(accountId: string): Promise<number> {
   try {
     const res = await fetch(`/v1/near/staking/perks?accountId=${encodeURIComponent(accountId)}`);
     if (!res.ok) return 0;
-    const body = (await res.json()) as { tier?: unknown };
-    return isKnownPrestigeTier(body.tier) ? body.tier : 0;
+    const body = (await res.json()) as { tier?: unknown; perks?: { tier?: unknown } };
+    const rawTier = body.perks?.tier ?? body.tier;
+    return isKnownPrestigeTier(rawTier) ? rawTier : 0;
   } catch {
     return 0;
   }

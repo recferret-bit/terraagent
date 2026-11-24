@@ -114,6 +114,7 @@ export class ColonySlotAllowanceService {
       const resolved = await resolveWalletPerks(activeDb, {
         ...q,
         env: envBag,
+        dbEnabled: databaseEnabled(this.env),
         w28,
       }).catch(() => null);
       if (!resolved) continue;

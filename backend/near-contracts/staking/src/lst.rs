@@ -24,6 +24,7 @@ use crate::{emit_staking, StakingVaultContract, MAX_NON_OPERATOR_APY_BP};
 use near_sdk::json_types::U128;
 use near_sdk::{
     env, ext_contract, near, require, AccountId, Gas, NearToken, Promise, PromiseError,
+    PromiseOrValue,
 };
 use serde_json::json;
 
@@ -110,7 +111,7 @@ trait ExtLstSelf {
     fn on_lst_price(&mut self, pool_id: String) -> bool;
     #[allow(clippy::too_many_arguments)]
     fn on_lst_deposit(&mut self, depositor: AccountId, target: String, pool_id: String, lst_contract: String, attached: String, price: String, now_ms: u64) -> bool;
-    fn on_withdraw_lst(&mut self, account_id: String, pool_id: String, recipient_id: String, from_withdrawable: String, from_rewards: String) -> bool;
+    fn on_withdraw_lst(&mut self, account_id: String, pool_id: String, recipient_id: String, from_withdrawable: String, from_rewards: String, op_id: Option<String>) -> bool;
     fn on_withdraw_protocol_lst(&mut self, pool_id: String, recipient_id: String, amount: String) -> bool;
 }
 
@@ -300,7 +301,8 @@ impl StakingVaultContract {
         amount: String,
         account_id: Option<String>,
         recipient_id: Option<String>,
-    ) -> Promise {
+        op_id: Option<String>,
+    ) -> PromiseOrValue<bool> {
         require!(
             env::attached_deposit().as_yoctonear() <= 1,
             "STAKE_INVALID_DEPOSIT: attach at most 1 yoctoNEAR to withdraw_lst"
@@ -320,6 +322,13 @@ impl StakingVaultContract {
             bound_lst(&pool_id).as_deref() == Some(lst_contract.as_str()),
             "STAKE_INVALID_POOL: pool is not bound to this LST contract"
         );
+        let clean_op_id = op_id.map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
+        if let Some(ref oid) = clean_op_id {
+            let okey = crate::op_key("withdraw_lst", &format!("{target}:{oid}"));
+            if self.processed_ops.contains_key(&okey) {
+                return PromiseOrValue::Value(true);
+            }
+        }
         let qty = parse_yocto(&amount);
         require!(qty > 0, "STAKE_INSUFFICIENT_BALANCE: amount must be > 0");
         let recipient: AccountId = recipient_id
@@ -345,15 +354,17 @@ impl StakingVaultContract {
         next.withdrawable -= from_withdrawable;
         next.rewards -= from_rewards;
         self.positions.insert(pos_key(&target, &pool_id), next);
-        ext_lst_token::ext(lst_contract)
-            .with_attached_deposit(NearToken::from_yoctonear(1))
-            .with_static_gas(FT_TRANSFER_GAS)
-            .ft_transfer(recipient.clone(), U128(qty), None)
-            .then(
-                ext_lst_self::ext(env::current_account_id())
-                    .with_static_gas(CALLBACK_GAS)
-                    .on_withdraw_lst(target, pool_id, recipient.to_string(), from_withdrawable.to_string(), from_rewards.to_string()),
-            )
+        PromiseOrValue::Promise(
+            ext_lst_token::ext(lst_contract)
+                .with_attached_deposit(NearToken::from_yoctonear(1))
+                .with_static_gas(FT_TRANSFER_GAS)
+                .ft_transfer(recipient.clone(), U128(qty), None)
+                .then(
+                    ext_lst_self::ext(env::current_account_id())
+                        .with_static_gas(CALLBACK_GAS)
+                        .on_withdraw_lst(target, pool_id, recipient.to_string(), from_withdrawable.to_string(), from_rewards.to_string(), clean_op_id),
+                ),
+        )
     }
 
     #[private]
@@ -364,11 +375,15 @@ impl StakingVaultContract {
         recipient_id: String,
         from_withdrawable: String,
         from_rewards: String,
+        op_id: Option<String>,
         #[callback_result] call_result: Result<(), PromiseError>,
     ) -> bool {
         let (w, r) = (parse_yocto(&from_withdrawable), parse_yocto(&from_rewards));
         if call_result.is_ok() {
             let total = (w + r).to_string();
+            if let Some(oid) = op_id.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+                self.processed_ops.insert(crate::op_key("withdraw_lst", &format!("{account_id}:{oid}")), "true".to_string());
+            }
             emit_staking("withdraw_lst", json!({ "account_id": account_id, "recipient": recipient_id, "pool_id": pool_id, "amount": total }));
             return true;
         }
@@ -390,6 +405,10 @@ impl StakingVaultContract {
         recipient_id: Option<AccountId>,
     ) -> Promise {
         self.require_operator();
+        require!(
+            env::prepaid_gas() >= Gas::from_tgas(MIN_WITHDRAW_LST_TGAS),
+            "NEAR_INSUFFICIENT_GAS: attach >= 40 TGas for withdraw_protocol_lst"
+        );
         require!(
             bound_lst(&pool_id).as_deref() == Some(lst_contract.as_str()),
             "STAKE_INVALID_POOL: pool is not bound to this LST contract"
@@ -512,9 +531,10 @@ impl StakingVaultContract {
         self.apply_settled(target, pool_id, &settled);
         let mut next = settled.record;
         let prior = next.staked;
+        let prior_rewards = next.rewards;
         next.staked = prior.checked_add(shares).expect("STAKE_INSUFFICIENT_BALANCE: overflow");
         self.positions.insert(pos_key(target, pool_id), next);
-        record_deposit(target, pool_id, lst_contract, now_ms, prior, shares, price);
+        record_deposit(target, pool_id, lst_contract, now_ms, prior, prior_rewards, shares, price);
     }
 
     pub(crate) fn credit_protocol_for_pool(&mut self, pool_id: &str, amount: u128) {

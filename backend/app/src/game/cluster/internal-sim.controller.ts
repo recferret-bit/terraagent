@@ -140,14 +140,15 @@ export class InternalSimController {
   @Post('planets/:planetId/landing-site')
   async landingSite(
     @Param('planetId') planetId: string,
-    @Body() body: { loadOptions?: LoadOptions; colonyIndex: number; timeoutMs?: number },
+    @Body() body: { loadOptions?: LoadOptions; colonyIndex: number; timeoutMs?: number; sectorId?: string },
     @Req() req: IncomingMessage,
   ): Promise<LandingSiteAnswer> {
     assertInternalAuth(req.headers, this.env);
-    await this.snapshots.loadNew(planetId, body.loadOptions ?? {});
+    if (this.snapshots.loadHome) await this.snapshots.loadHome(planetId, body.loadOptions ?? {});
+    else await this.snapshots.loadNew(planetId, body.loadOptions ?? {});
     if (this.planets.isLoaded(planetId)) {
       await this.simLease?.tryAcquire(planetId).catch(() => undefined);
     }
-    return this.planets.landingSite(planetId, body.colonyIndex, body.timeoutMs ?? 15_000);
+    return this.planets.landingSite(planetId, body.colonyIndex, body.timeoutMs ?? 15_000, body.sectorId);
   }
 }

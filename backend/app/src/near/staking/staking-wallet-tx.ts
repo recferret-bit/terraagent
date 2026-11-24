@@ -58,7 +58,14 @@ const WHITELISTED_LST_CONTRACTS = new Set([
   'linear-protocol.mock',
   'rnear.near',
   'rnear.testnet',
+  'rnear.mock',
 ]);
+
+const LST_BY_KIND: Readonly<Record<string, ReadonlySet<string>>> = {
+  mock: new Set(['meta-pool.mock', 'linear-protocol.mock', 'rnear.mock']),
+  testnet: new Set(['meta-v2.pool.testnet', 'linear-protocol.testnet', 'rnear.testnet']),
+  mainnet: new Set(['meta-pool.near', 'linear-protocol.near', 'rnear.near']),
+};
 
 export function resolveStakingContractId(env?: Record<string, string | undefined>): string {
   const source = env ?? process.env;
@@ -78,10 +85,11 @@ function defaultNativePoolFor(kind: string): string {
 function resolveLstContract(raw: string | undefined, kind: string): string {
   const defaultLst = kind === 'mock' ? 'meta-pool.mock' : kind === 'testnet' ? 'meta-v2.pool.testnet' : 'meta-pool.near';
   const lstContract = (raw ?? defaultLst).trim().toLowerCase();
-  if (!WHITELISTED_LST_CONTRACTS.has(lstContract)) {
+  const allowed = LST_BY_KIND[kind] ?? WHITELISTED_LST_CONTRACTS;
+  if (!allowed.has(lstContract)) {
     throw new CoreException('INVALID_REQUEST', {
       status: 400,
-      message: `Unsupported or unwhitelisted LST contract: ${lstContract}`,
+      message: `Unsupported or unwhitelisted LST contract for ${kind}: ${lstContract}`,
     });
   }
   return lstContract;
@@ -139,12 +147,13 @@ function buildCompoundTx(
   const poolId = query.lstContract
     ? resolveLstPoolId(query.poolId, resolveLstContract(query.lstContract, kind), source, kind)
     : requirePool(query.poolId ?? defaultPool, 'compound_yield');
+  const isLst = Boolean(query.lstContract) || WHITELISTED_LST_CONTRACTS.has(poolId.toLowerCase());
   return {
     contractId,
     methodName: 'compound_yield',
     args: {
       pool_id: poolId,
-      apy_bp: WALLET_TX_APY_BP,
+      apy_bp: isLst ? 0 : WALLET_TX_APY_BP,
       now_ms: Date.now(),
       ...(accountId ? { account_id: accountId } : {}),
     },
@@ -291,7 +300,21 @@ export function buildStakingWalletTxDescriptor(
     });
   }
   const amountNear = (query.amountNear ?? '10').trim();
-  const amountYocto = nearToYocto(amountNear);
+  let amountYocto: string;
+  try {
+    amountYocto = nearToYocto(amountNear);
+  } catch {
+    throw new CoreException('INVALID_REQUEST', {
+      status: 400,
+      message: `Invalid amountNear: ${amountNear || '(empty)'}`,
+    });
+  }
+  if (rawAction !== 'compound_yield' && rawAction !== 'withdraw' && BigInt(amountYocto) <= 0n) {
+    throw new CoreException('INVALID_REQUEST', {
+      status: 400,
+      message: `amountNear must be greater than zero for ${rawAction}`,
+    });
+  }
   const contractId = resolveStakingContractId(source);
   const accountId = query.accountId?.trim() || undefined;
   if (rawAction === 'compound_yield') return buildCompoundTx(query, contractId, accountId, kind, source);

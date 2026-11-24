@@ -212,4 +212,12 @@ describe('planet cap gate', () => {
     expect(gate.cap).toBe(12);
     expect([...(await gate.loadedPlanetIds())].sort()).toEqual(['pl_a', 'pl_b']);
   });
+
+  it('scales default cap across healthy sim workers when cap is implicit, and keeps explicit cap fixed', async () => {
+    const leases = { enabled: true, findActiveLeases: async () => [], countHealthyWorkers: async () => 3 };
+    const implicit = planetCapacityGate(12, { loadedIds: () => [] }, leases, false);
+    const explicit = planetCapacityGate(12, { loadedIds: () => [] }, leases, true);
+    expect(await implicit.effectiveCap?.()).toBe(36);
+    expect(await explicit.effectiveCap?.()).toBe(12);
+  });
 });

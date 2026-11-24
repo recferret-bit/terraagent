@@ -50,8 +50,14 @@ export class WorldStore {
   private readonly views = new Emitter<ClientView>();
   private readonly statuses = new Emitter<WorldStatus>();
   private planetId = '';
+  private colonyId: string | null = null;
+  private sectorId: string | undefined = undefined;
   /** The planet of the last welcome, or null before it. */
   currentPlanetId(): string | null { return this.planetId || null; }
+  setTargetColony(colonyId?: string | null, sectorId?: string | null): void {
+    this.colonyId = colonyId ?? null;
+    this.sectorId = sectorId ?? undefined;
+  }
   /** Flags + balance overrides of the last welcome: the server compiled its data with them (D-35). */
   private welcomeData: {
     flags: string[];
@@ -110,7 +116,7 @@ export class WorldStore {
   }>();
 
   constructor(
-    private readonly transport: Pick<Transport, 'send' | 'onMessage'> & { bindStore?: (store: WorldStore) => void },
+    private readonly transport: Pick<Transport, 'send' | 'onMessage' | 'requestResync'> & { bindStore?: (store: WorldStore) => void },
     private readonly makeWorker: () => WorkerLike = createSimWorker,
     private readonly now: () => number = () => Date.now(),
   ) {
@@ -271,6 +277,10 @@ export class WorldStore {
       case 'welcome': {
         this.planetId = m.d.planet.id;
         if (m.d.mode === 'spectator' && isLocalSpectatorAllowed()) this.spectator = true;
+        if (!this.spectator && m.d.colonyId) this.colonyId = m.d.colonyId;
+        if ('sectorId' in m.d && typeof (m.d as { sectorId?: unknown }).sectorId === 'string') {
+          this.sectorId = (m.d as { sectorId: string }).sectorId;
+        }
         this.syncWelcomeFeeds(m.d);
         this.welcomeData = {
           flags: [...m.d.flags],
@@ -429,9 +439,18 @@ export class WorldStore {
   private requestResync(): void {
     if (!this.planetId) return;
     try {
+      if (this.transport.requestResync) {
+        this.transport.requestResync();
+        return;
+      }
       this.transport.send({
         t: 'join',
-        d: { planetId: this.planetId, ...(this.spectator ? { mode: 'spectator' as const } : {}) },
+        d: {
+          planetId: this.planetId,
+          ...(!this.spectator && this.colonyId ? { colonyId: this.colonyId } : {}),
+          ...(!this.spectator && this.sectorId ? { sectorId: this.sectorId } : {}),
+          ...(this.spectator ? { mode: 'spectator' as const } : {}),
+        },
       });
     } catch (e) {
       console.warn('[world] resync join failed', e);

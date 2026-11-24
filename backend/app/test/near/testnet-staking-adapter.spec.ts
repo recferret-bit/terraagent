@@ -54,7 +54,7 @@ describe('W28-04 TestnetStakingAdapter V2 (fake RPC)', () => {
     const rpc = fakeRpc();
     const receipt = await adapter(rpc).compound({ opId: 'c1', accountId: 'w.testnet', pool: POOL });
     expect(receipt.txHash).toBe('H1');
-    expect(rpc.calls[0]).toMatchObject({ methodName: 'compound_yield', contractId: STAKING, args: { pool_id: POOL, account_id: 'w.testnet' } });
+    expect(rpc.calls[0]).toMatchObject({ methodName: 'compound_yield', contractId: STAKING, args: { pool_id: POOL, account_id: 'w.testnet', op_id: 'c1' } });
     expect(toNearException(new Error('Smart contract panicked: STAKE_NO_YIELD: no accrued yield to compound'))).toMatchObject({ errorCode: 'NOTHING_TO_COMPOUND', status: 409 });
     await expect(adapter(rpc).compound({ opId: 'c2', accountId: 'w.testnet', pool: 'other.pool.testnet' })).rejects.toMatchObject({ errorCode: 'POOL_NOT_WHITELISTED' });
     expect(rpc.calls).toHaveLength(1);
@@ -75,8 +75,13 @@ describe('W28-04 TestnetStakingAdapter V2 (fake RPC)', () => {
     await adapter(rpc).withdraw({ opId: 'l1', accountId: 'w.testnet', pool: POOL, asset: 'stNEAR' });
     expect(rpc.calls[0]).toMatchObject({
       methodName: 'withdraw_lst',
-      args: { pool_id: POOL, lst_contract: 'meta-v2.pool.testnet', amount: '40', account_id: 'w.testnet' },
+      args: { pool_id: POOL, lst_contract: 'meta-v2.pool.testnet', amount: '40', account_id: 'w.testnet', op_id: 'l1' },
     });
+    const priced = fakeRpc({
+      views: { get_position: position(), get_account_positions: [position({ asset: 'meta-v2.pool.testnet', entry_lst_price_yocto: '1000000000000000000000000' })] },
+    });
+    await adapter(priced).withdraw({ opId: 'l1-price', accountId: 'w.testnet', pool: POOL, asset: 'stNEAR' });
+    expect(priced.calls[0]).toMatchObject({ methodName: 'withdraw_lst', args: { amount: '45', op_id: 'l1-price' } });
     const empty = fakeRpc({ views: { get_position: position({ withdrawable: '0' }), get_account_positions: [] } });
     await expect(adapter(empty).withdraw({ opId: 'l2', accountId: 'w.testnet', pool: POOL, asset: 'LiNEAR' })).rejects.toMatchObject({ errorCode: 'NOTHING_TO_WITHDRAW' });
     expect(empty.calls).toHaveLength(0);

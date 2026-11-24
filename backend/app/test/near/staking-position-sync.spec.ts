@@ -168,3 +168,41 @@ describe('W20-20 StakingPositionSyncService — syncAll recovery, wave gating & 
     }
   });
 });
+
+describe('W28-04 multi-colony read-model deduplication', () => {
+  it('deduplicates multi-colony (accountId, poolId) rows when queried by accountId while keeping colonyId lookups', async () => {
+    const accountId = 'multi.near';
+    const poolId = 'astro-stakers.pool.mock';
+    const dec = (s: string) => ({ toFixed: () => s });
+    const allRows = [
+      {
+        colonyId: 'col_1', accountId, poolId,
+        stakedSnapshot: dec((100n * 10n ** 24n).toString()), unbondingSnapshot: dec('0'), unbondingReadyAt: null, withdrawableSnapshot: dec('0'), rewardsSnapshot: dec('0'),
+        stakedSinceAt: new Date(1_000), lastStakedAt: new Date(2_000), updatedAt: new Date(10_000),
+      },
+      {
+        colonyId: 'col_2', accountId, poolId,
+        stakedSnapshot: dec((100n * 10n ** 24n).toString()), unbondingSnapshot: dec('0'), unbondingReadyAt: null, withdrawableSnapshot: dec('0'), rewardsSnapshot: dec('0'),
+        stakedSinceAt: new Date(1_000), lastStakedAt: new Date(2_000), updatedAt: new Date(20_000),
+      },
+    ];
+    const fakeDb = {
+      stakingPosition: {
+        findMany: async (q?: { where?: { OR?: Array<{ accountId?: string; colonyId?: string }> } }) => {
+          const clauses = q?.where?.OR;
+          if (!clauses) return allRows;
+          return allRows.filter((r) => clauses.some((c) => (c.accountId && r.accountId === c.accountId) || (c.colonyId && r.colonyId === c.colonyId)));
+        },
+      },
+    };
+    const dbEnv = makeEnv({ DATABASE_URL: 'postgres://fake' });
+    const svc = new StakingPositionSyncService(new InMemoryStaking(), dbEnv, fakeDb as never, new FlagsService(dbEnv));
+    const byAcct = await svc.getReadModelPositions(accountId);
+    expect(byAcct).toHaveLength(1);
+    expect(byAcct[0]?.colonyId).toBe('col_2');
+
+    const byColony = await svc.getReadModelPositions('col_1');
+    expect(byColony).toHaveLength(1);
+    expect(byColony[0]?.colonyId).toBe('col_1');
+  });
+});

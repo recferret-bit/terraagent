@@ -36,6 +36,7 @@ type RelayWireMsg =
       readonly decisions: readonly AgentDecisionFeedItemV1[];
     }
   | { readonly t: 'warp'; readonly k: number }
+  | { readonly t: 'resync' }
   | { readonly t: 'planet_down' };
 
 export class InternalSimRelayServer {
@@ -125,6 +126,10 @@ export class InternalSimRelayServer {
         if (ws.readyState !== WebSocket.OPEN || !events.length) return;
         safeRelaySend(ws, JSON.stringify({ t: 'event', events } satisfies RelayWireMsg));
       },
+      onResync: () => {
+        if (ws.readyState !== WebSocket.OPEN) return;
+        safeRelaySend(ws, JSON.stringify({ t: 'resync' } satisfies RelayWireMsg));
+      },
     });
 
     ws.on('error', () => {
@@ -200,6 +205,8 @@ export function subscribeRemotePlanetStream(opts: {
         opts.onSimFeeds(msg.tick, msg.inputs, msg.decisions);
       } else if (msg.t === 'warp') {
         opts.onWarp(msg.k);
+      } else if (msg.t === 'resync') {
+        opts.subscriber.onResync?.();
       } else if (msg.t === 'planet_down') {
         closedByLocal = true;
         fireDown();

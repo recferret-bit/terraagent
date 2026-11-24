@@ -376,7 +376,7 @@ export function renderAiSettingsSection(
   const statusNode = el(
     'p',
     { className: 'ta-me-muted', role: 'status', aria: { live: 'polite' }, dataset: { testid: 'me-ai-status' } },
-    'Staking ≥10 NEAR in Colony Staking unlocks protocol-sponsored Managed NEAR.AI Autopilot exclusively on GLM 5.3 Flash (z-ai/glm-5.3-flash). To unlock custom model selection (Claude, GPT-5, DeepSeek, Qwen, or custom NEAR AI Cloud IDs), enter a valid BYOK NEAR AI Cloud API key below.',
+    'Staking 10 / 50 / 200 / 500+ NEAR in Orbital Patronage Staking (#staking, wallet-first — no Colony Deed needed) unlocks 1 / 3 / 6 / 12 Managed NEAR.AI Autopilot colony slots on GLM 5.3 Flash (z-ai/glm-5.3-flash), scaled at 35% of protocol staking yield + non-self trade fees. To unlock custom model selection (Claude, GPT-5, DeepSeek, Qwen, or custom NEAR AI Cloud IDs), enter a valid BYOK NEAR AI Cloud API key below.',
   );
   const saveBtn = el('button', { className: 'btn btn-primary btn-sm', type: 'button', dataset: { testid: 'me-ai-save-btn' } }, 'Save NEAR.AI Config');
   const clearBtn = el('button', { className: 'btn btn-ghost btn-sm', type: 'button', dataset: { testid: 'me-ai-clear-btn' } }, 'Disconnect Key');

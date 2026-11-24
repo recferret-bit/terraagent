@@ -457,6 +457,7 @@ export class JoinQueueCoordinator {
       ticketId, accessToken: this.accessToken, doFetch: this.doFetch, storage: this.storage, search: this.search,
       clearPending: clearPendingJoinIntent, bootOverlay: this.opts.bootOverlay, onCancel: this.opts.onCancel, onReturnToOrbit: this.opts.onReturnToOrbit,
       fallback: { planetId: latest?.planetId ?? this.opts.planetId, planetType: latest?.planetType ?? this.opts.planetType, sectorIntent: latest?.sectorIntent ?? this.opts.sectorIntent },
+      priorActiveColonyIds: this.priorActiveColonyIds,
       onQueued: (q) => this.recordQueueStatus(q),
     });
   }

@@ -145,7 +145,15 @@ export function earlyExitFeeBp(
   nowMs: number,
   earlyExitWindowMs: number = STAKING_RULES.earlyExitWindowMs,
 ): number {
-  if (lastStakedAtMs === null) return 0;
+  if (
+    lastStakedAtMs === null ||
+    !Number.isFinite(lastStakedAtMs) ||
+    lastStakedAtMs < 0 ||
+    !Number.isFinite(nowMs) ||
+    !Number.isFinite(earlyExitWindowMs)
+  ) {
+    return 0;
+  }
   return nowMs - lastStakedAtMs < earlyExitWindowMs ? STAKING_RULES.earlyExitFeeBp : 0;
 }
 
@@ -162,10 +170,11 @@ export interface AiBudgetInput {
  * Scales with live `NEAR/USD`, so inference never costs more than 35 % of what the wallet earns the protocol.
  */
 export function dailyAiBudgetUsd(input: AiBudgetInput): number {
-  const stake = Math.max(0, input.activeStakedNear);
-  const price = Math.max(0, input.nearUsd);
-  const dailyProtocolYieldUsd = (stake * price * input.grossApyBp * STAKING_RULES.protocolYieldShareBp) / (10_000 * 10_000 * 365);
-  const fees = Math.max(0, input.dailyProtocolTradeFeeUsd);
+  const stake = Number.isFinite(input.activeStakedNear) ? Math.max(0, input.activeStakedNear) : 0;
+  const price = Number.isFinite(input.nearUsd) ? Math.max(0, input.nearUsd) : 0;
+  const grossApyBp = Number.isFinite(input.grossApyBp) ? Math.max(0, input.grossApyBp) : 0;
+  const dailyProtocolYieldUsd = (stake * price * grossApyBp * STAKING_RULES.protocolYieldShareBp) / (10_000 * 10_000 * 365);
+  const fees = Number.isFinite(input.dailyProtocolTradeFeeUsd) ? Math.max(0, input.dailyProtocolTradeFeeUsd) : 0;
   return ((dailyProtocolYieldUsd + fees) * STAKING_RULES.aiBudgetCostShareBp) / 10_000;
 }
 

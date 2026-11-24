@@ -37,6 +37,8 @@ export interface Transport {
   /** Releases the transport for good (sockets, workers, timers); `start()` afterwards does nothing. Falls back to `stop()`. */
   dispose?(): void;
   send(msg: Outgoing): void;
+  /** Re-joins the current planet/colony/sector (e.g. after a worker diff mismatch), moving a WS into `resyncing`. */
+  requestResync?(): void;
   onMessage(fn: Listener<ServerMessage>): () => void;
   onState(fn: Listener<ConnectionState>): () => void;
   readonly state: ConnectionState;

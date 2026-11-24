@@ -33,18 +33,38 @@ pub(crate) fn read_pos_ndep(account_id: &str, pool_id: &str) -> u128 {
     read_u128_key(&pos_ndep_key(account_id, pool_id))
 }
 
-pub(crate) fn write_pos_ndep(account_id: &str, pool_id: &str, val: u128) {
-    write_u128_key(&pos_ndep_key(account_id, pool_id), val);
+const YIELD_RESERVE_KEY: &[u8] = b"ynative:pool";
+const TOTAL_NATIVE_BACKING_KEY: &[u8] = b"tnative:total";
+
+pub(crate) fn read_total_native_backing() -> u128 {
+    read_u128_key(TOTAL_NATIVE_BACKING_KEY)
 }
 
-const YIELD_RESERVE_KEY: &[u8] = b"ynative:pool";
+fn adjust_total_native_backing(old_val: u128, new_val: u128) {
+    if new_val > old_val {
+        let cur = read_total_native_backing();
+        write_u128_key(TOTAL_NATIVE_BACKING_KEY, cur.saturating_add(new_val - old_val));
+    } else if old_val > new_val {
+        let cur = read_total_native_backing();
+        write_u128_key(TOTAL_NATIVE_BACKING_KEY, cur.saturating_sub(old_val - new_val));
+    }
+}
+
+pub(crate) fn write_pos_ndep(account_id: &str, pool_id: &str, val: u128) {
+    let key = pos_ndep_key(account_id, pool_id);
+    let old_val = read_u128_key(&key);
+    write_u128_key(&key, val);
+    adjust_total_native_backing(old_val, val);
+}
 
 pub(crate) fn read_yield_reserve() -> u128 {
     read_u128_key(YIELD_RESERVE_KEY)
 }
 
 pub(crate) fn write_yield_reserve(val: u128) {
+    let old_val = read_u128_key(YIELD_RESERVE_KEY);
     write_u128_key(YIELD_RESERVE_KEY, val);
+    adjust_total_native_backing(old_val, val);
 }
 
 fn native_dep_key(account_id: &str) -> Vec<u8> {
@@ -68,7 +88,10 @@ pub(crate) fn read_native_dep(account_id: &str) -> u128 {
 }
 
 pub(crate) fn write_native_dep(account_id: &str, val: u128) {
-    write_u128_key(&native_dep_key(account_id), val);
+    let key = native_dep_key(account_id);
+    let old_val = read_u128_key(&key);
+    write_u128_key(&key, val);
+    adjust_total_native_backing(old_val, val);
 }
 
 pub(crate) fn parse_yocto(raw: &str) -> u128 {

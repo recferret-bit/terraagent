@@ -1,8 +1,8 @@
 import 'reflect-metadata';
 import type { INestApplication } from '@nestjs/common';
-import { MARKET_TOKENS, marketOrderRef, toChainUnits } from '@terra/contracts';
+import { MARKET_TOKENS, marketOrderRef, PATRONAGE_PLANET_IDS, toChainUnits } from '@terra/contracts';
 import { createTestDatabase, type TestDatabase } from '@terra/db/testing';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createApp } from '../../src/app.js';
 import type { PlanetEventOf } from '../../src/bus/channels.js';
 import { PlaceOrderService } from '../../src/market/orders/place-order.service.js';
@@ -24,6 +24,7 @@ let intents: MockIntentsAdapter;
 const USDC = MARKET_TOKENS.USDC.verifierId;
 const WATER = MARKET_TOKENS['bio.water'].verifierId;
 const acct = (c: string) => `${c}.terraagent.mock`;
+const createdDaos = new Set<string>();
 let n = 0;
 let seq = 0;
 
@@ -42,18 +43,33 @@ beforeAll(async () => {
   await intents.testRegisterSigner('protocol.terraagent.mock');
 });
 afterAll(async () => { await app?.close(); await db?.drop(); });
+beforeEach(async () => {
+  await db.prisma.stakingPatronPayout.deleteMany({});
+  await db.prisma.stakingPatronSeat.deleteMany({});
+  await db.prisma.intentTrade.deleteMany({});
+  await db.prisma.marketOrder.deleteMany({});
+  await db.prisma.chainOutbox.deleteMany({});
+  await db.prisma.mockChainIntentsBalance.deleteMany({ where: { accountId: 'king.near' } });
+});
 
-
-async function fill(opts: { patron: boolean; buyerStakeNear?: number; stakedDaysAgo?: number }) {
-  const planetId = `pp${++n}`;
-  const seller = `s${n}`;
-  const buyer = `b${n}`;
-  await dao.createDao({ opId: `dao-create:${planetId}`, name: planetId, councilAccountIds: [acct(seller)] });
+async function fill(opts: { patron: boolean; planetId?: string; buyerStakeNear?: number; stakedDaysAgo?: number }) {
+  const idx = ++n;
+  const planetId = opts.planetId ?? PATRONAGE_PLANET_IDS[(idx - 1) % PATRONAGE_PLANET_IDS.length]!;
+  const seller = `s${idx}`;
+  const buyer = `b${idx}`;
+  if (!createdDaos.has(planetId)) {
+    createdDaos.add(planetId);
+    await dao.createDao({ opId: `dao-create:${planetId}`, name: planetId, councilAccountIds: [acct(seller)] });
+  }
   for (const c of [seller, buyer]) await intents.testRegisterSigner(acct(c));
   await intents.testSeedVerifier(acct(seller), WATER, toChainUnits('bio.water', 1n));
   await intents.testSeedVerifier(acct(buyer), USDC, 20_000_000n);
   if (opts.patron) {
-    await db.prisma.stakingPatronSeat.create({ data: { planetId, accountId: 'king.near', activeStaked: '500000000000000000000000000', sinceAt: new Date() } });
+    await db.prisma.stakingPatronSeat.upsert({
+      where: { planetId },
+      create: { planetId, accountId: 'king.near', activeStaked: '500000000000000000000000000', sinceAt: new Date() },
+      update: { accountId: 'king.near', activeStaked: '500000000000000000000000000', sinceAt: new Date() },
+    });
   }
   if (opts.buyerStakeNear) {
     const since = new Date(Date.now() - (opts.stakedDaysAgo ?? 3) * DAY);
@@ -67,7 +83,7 @@ async function fill(opts: { patron: boolean; buyerStakeNear?: number; stakedDays
   } as unknown as PlanetEventOf<'marketOrderRequested'>);
   await place.handle(event(seller, { side: 'sell', price: { token: 'USDC', amount: '10000000' } }));
   await place.handle(event(buyer, { side: 'buy', price: { token: 'USDC', amount: '10000000' }, maxStallFeeBp: 100 }));
-  const trade = await db.prisma.intentTrade.findFirstOrThrow({ where: { planetId } });
+  const trade = await db.prisma.intentTrade.findFirstOrThrow({ where: { planetId }, orderBy: { createdAt: 'desc' } });
   return { planetId, trade };
 }
 
@@ -75,7 +91,7 @@ const payouts = (planetId: string) => db.prisma.stakingPatronPayout.findMany({ w
 
 describe('W28-06 King-of-the-Hill patron payout on a real market fill', () => {
   it('writes one payout of 12% of gross (DAO 20%, Protocol 68%) and is idempotent on replay', async () => {
-    const { planetId, trade } = await fill({ patron: true });
+    const { planetId, trade } = await fill({ patron: true, planetId: PATRONAGE_PLANET_IDS[0] });
     expect(trade.platformFee.toFixed()).toBe('100000');
     expect(trade.treasuryAllocation.toFixed()).toBe('20000');
     expect(await relay.pollOnce()).toBeGreaterThan(0);
@@ -98,15 +114,15 @@ describe('W28-06 King-of-the-Hill patron payout on a real market fill', () => {
   });
 
   it('a planet without a Lead Patron records no payout', async () => {
-    const { planetId } = await fill({ patron: false });
+    const { planetId } = await fill({ patron: false, planetId: PATRONAGE_PLANET_IDS[1] });
     await relay.pollOnce();
     expect(await payouts(planetId)).toHaveLength(0);
   });
 
   it('charges the effective tier fee: Tier 2 pays 65 bp inside the 24h warmup and 50 bp after it, patron share follows the fee', async () => {
-    const fresh = await fill({ patron: true, buyerStakeNear: 60, stakedDaysAgo: 0 });
+    const fresh = await fill({ patron: true, planetId: PATRONAGE_PLANET_IDS[1], buyerStakeNear: 60, stakedDaysAgo: 0 });
     expect([fresh.trade.platformFee.toFixed(), fresh.trade.treasuryAllocation.toFixed()]).toEqual(['65000', '13000']);
-    const warm = await fill({ patron: true, buyerStakeNear: 60, stakedDaysAgo: 3 });
+    const warm = await fill({ patron: true, planetId: PATRONAGE_PLANET_IDS[2], buyerStakeNear: 60, stakedDaysAgo: 3 });
     expect([warm.trade.platformFee.toFixed(), warm.trade.treasuryAllocation.toFixed()]).toEqual(['50000', '10000']);
     await relay.pollOnce();
     expect((await payouts(fresh.planetId))[0]!.amountUsdcAtomic.toFixed()).toBe('7800');
@@ -114,10 +130,16 @@ describe('W28-06 King-of-the-Hill patron payout on a real market fill', () => {
   });
 
   it('payout income is a Protocol cut: the AI spend cap (35%) leaves a margin of at least 65% of that income', async () => {
-    const { planetId } = await fill({ patron: true });
+    const { planetId } = await fill({ patron: true, planetId: PATRONAGE_PLANET_IDS[2] });
     await relay.pollOnce();
     const protocolFeeUsd = (100000 - 20000 - Number((await payouts(planetId))[0]!.amountUsdcAtomic.toFixed())) / 1e6;
     const aiCapUsd = protocolFeeUsd * 0.35;
     expect(1 - aiCapUsd / protocolFeeUsd).toBeGreaterThanOrEqual(0.65);
+  });
+
+  it('non-canonical sovereign planets never record patron payouts even if a seat row exists', async () => {
+    const { planetId } = await fill({ patron: true, planetId: 'pp-sovereign' });
+    await relay.pollOnce();
+    expect(await payouts(planetId)).toHaveLength(0);
   });
 });

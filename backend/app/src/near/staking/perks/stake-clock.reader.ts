@@ -1,4 +1,7 @@
+import { STAKING_TIERS } from '@terra/contracts';
 import type { DbClient } from '@terra/db';
+
+const WARMUP_TIER_MIN_YOCTO = BigInt(STAKING_TIERS[2]!.minStakeNear) * 10n ** 24n;
 
 /** The wallet behind a colony or account: every account id and colony it spans, and one stable wallet key. */
 export interface WalletRef {
@@ -208,6 +211,32 @@ interface MockRow {
 
 const toYocto = (d: { toFixed(n: number): string } | null | undefined): bigint => (d ? BigInt(d.toFixed(0)) : 0n);
 
+interface WarmupEntry {
+  readonly staked: bigint;
+  readonly sinceMs: number | undefined;
+}
+
+/**
+ * Resolves the wallet's effective `stakedSinceMs` for fee warmup: below Tier 2 (< 50 NEAR) the earliest position wins;
+ * at Tier 2+ the clock resolves to the position timestamp where cumulative stake (oldest first) crosses 50 NEAR so
+ * a 1 NEAR dust pre-stake topped up with a 500 NEAR flash stake cannot bypass the 24h warmup.
+ */
+function resolveWarmupSinceMs(entries: readonly WarmupEntry[], activeTotal: bigint): number | null {
+  const timed = entries.filter((e): e is { staked: bigint; sinceMs: number } => e.sinceMs !== undefined);
+  if (timed.length === 0) return null;
+  if (activeTotal < WARMUP_TIER_MIN_YOCTO) {
+    return timed.reduce((min, e) => (e.sinceMs < min ? e.sinceMs : min), timed[0]!.sinceMs);
+  }
+  const untimedStake = entries.reduce((sum, e) => (e.sinceMs === undefined ? sum + e.staked : sum), 0n);
+  const ordered = [...timed].sort((a, b) => a.sinceMs - b.sinceMs);
+  let cum = untimedStake;
+  for (const e of ordered) {
+    cum += e.staked;
+    if (cum >= WARMUP_TIER_MIN_YOCTO) return e.sinceMs;
+  }
+  return ordered[0]!.sinceMs;
+}
+
 /**
  * Reads the wallet's ACTIVE stake and stake clocks from `chain.staking_position`, falling back per account to
  * `chain.mock_chain_staking` for accounts with no read-model row. Rows without a `stakedSinceAt` (pre-W28) fall back
@@ -250,20 +279,25 @@ export async function readStakeClock(db: DbClient, wallet: WalletRef): Promise<S
         })) as MockRow[])
       : [];
 
+  const warmupEntries: WarmupEntry[] = [];
   let active = 0n;
   let unbonding = 0n;
-  let since: number | null = null;
   let last: number | null = null;
   const fold = (staked: bigint, unb: bigint, r: PositionRow | MockRow): void => {
     active += staked;
     unbonding += unb;
     if (staked <= 0n) return;
     const s = (r.stakedSinceAt ?? r.updatedAt)?.getTime();
-    if (s !== undefined && (since === null || s < since)) since = s;
+    warmupEntries.push({ staked, sinceMs: s });
     const l = (r.lastStakedAt ?? r.stakedSinceAt ?? r.updatedAt)?.getTime();
     if (l !== undefined && (last === null || l > last)) last = l;
   };
   for (const p of positions) fold(toYocto(p.stakedSnapshot), toYocto(p.unbondingSnapshot), p);
   for (const m of mocks) fold(toYocto(m.staked), toYocto(m.unbonding), m);
-  return { activeStakedYocto: active, unbondingYocto: unbonding, stakedSinceMs: since, lastStakedAtMs: last };
+  return {
+    activeStakedYocto: active,
+    unbondingYocto: unbonding,
+    stakedSinceMs: resolveWarmupSinceMs(warmupEntries, active),
+    lastStakedAtMs: last,
+  };
 }

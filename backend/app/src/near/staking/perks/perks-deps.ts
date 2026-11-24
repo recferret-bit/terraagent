@@ -1,6 +1,8 @@
 import { STAKING_RULES } from '@terra/contracts';
+import type { DbClient } from '@terra/db';
 import { dbAiUsageReader, type AiUsageReader } from './ai-usage.reader.js';
 import type { WalletRef } from './stake-clock.reader.js';
+import { dbTradeFeeProvider } from './trade-fee.reader.js';
 
 /** `NEAR/USD` source for the dynamic AI cap. W28-05 plugs a cached live price here. */
 export interface NearUsdPriceProvider {
@@ -9,7 +11,7 @@ export interface NearUsdPriceProvider {
 
 /** Protocol trade-fee income from a wallet over the current UTC day, USD (the AI cap's "trade bonus"). */
 export interface TradeFeeUsdProvider {
-  dailyProtocolTradeFeeUsd(wallet: WalletRef, nowMs: number): number | Promise<number>;
+  dailyProtocolTradeFeeUsd(wallet: WalletRef, nowMs: number, db?: DbClient, nearUsd?: number): number | Promise<number>;
 }
 
 export interface PerksDeps {
@@ -23,10 +25,10 @@ export interface PerksDeps {
   readonly clock: () => number;
 }
 
-/** Defaults: the `Est.` price from the tier table, no trade bonus, and the DB usage reads. */
+/** Defaults: the `Est.` price from the tier table, DB-backed daily trade-fee bonus, and DB usage reads. */
 export const DEFAULT_PERKS_DEPS: PerksDeps = Object.freeze({
   priceProvider: { nearUsd: () => STAKING_RULES.estNearUsd },
-  tradeFeeProvider: { dailyProtocolTradeFeeUsd: () => 0 },
+  tradeFeeProvider: dbTradeFeeProvider,
   usageReader: dbAiUsageReader,
   clock: () => Date.now(),
 });

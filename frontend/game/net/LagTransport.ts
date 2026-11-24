@@ -63,6 +63,11 @@ export class LagTransport implements Transport {
   start(): void { this.inner.start(); }
   stop(): void { this.out.clear(); this.inn.clear(); this.inner.stop(); }
   send(msg: Outgoing): void { this.out.push(() => { try { this.inner.send(msg); } catch (e) { console.warn('[lag] delayed send failed', e); } }); }
+  requestResync(): void {
+    if (this.inner.requestResync) {
+      this.out.push(() => { try { this.inner.requestResync?.(); } catch (e) { console.warn('[lag] delayed resync failed', e); } });
+    }
+  }
   onMessage(fn: Listener<ServerMessage>): () => void { return this.msgs.on(fn); }
   onState(fn: Listener<ConnectionState>): () => void { return this.inner.onState(fn); }
   /** Unsubscribes from the inner transport and disposes it (a local host's worker is terminated). */

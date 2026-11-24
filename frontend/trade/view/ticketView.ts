@@ -26,7 +26,7 @@ export function formatTicketFeeTier(policy: MarketPolicyView | null): { readonly
     : `${(stakerFeeBp / 100).toFixed(2)}% Staker Fee`;
   return {
     isStaker: false,
-    text: `Platform Fee: ${(feeBp / 100).toFixed(2)}% (Stake ≥${minStake} NEAR in Colony Staking for ${discountLabel} + Managed NEAR.AI)`,
+    text: `Platform Fee: ${(feeBp / 100).toFixed(2)}% (Stake ≥${minStake} NEAR in Orbital Patronage Staking for ${discountLabel} + Managed NEAR.AI)`,
   };
 }
 

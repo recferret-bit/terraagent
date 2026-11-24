@@ -77,7 +77,8 @@ impl StakingVaultContract {
             is_operator || apy_bp <= crate::MAX_NON_OPERATOR_APY_BP,
             "STAKE_INVALID_APY: direct non-operator apy_bp exceeds 1000 bp"
         );
-        if let Some(cached) = self.processed_ops.get(&op_id) {
+        let okey = crate::op_key("withdraw", &op_id);
+        if let Some(cached) = self.processed_ops.get(&okey) {
             return PromiseOrValue::Value(serde_json::from_str(cached).expect("STAKE_INSUFFICIENT_BALANCE: cached corrupt"));
         }
         validate_pool_and_apy(&pool_id, apy_bp);
@@ -109,10 +110,15 @@ impl StakingVaultContract {
             is_operator || recipient == caller || env::attached_deposit().as_yoctonear() == 1,
             "STAKE_ONE_YOCTO_REQUIRED: attach 1 yoctoNEAR when withdrawing to a third-party recipient"
         );
+        let released_ndep = pos_ndep.min(paid_withdrawable);
+        let unbacked_payout = payout.saturating_sub(released_ndep.saturating_add(backed_yield));
         require!(liquid_balance() >= payout, "STAKE_INSUFFICIENT_BALANCE: contract liquid balance below storage reserve");
+        require!(
+            liquid_balance() >= read_total_native_backing().saturating_add(unbacked_payout),
+            "STAKE_INSUFFICIENT_BALANCE: payout would encroach on native user backing"
+        );
         self.apply_settled(&account_id, &pool_id, &settled);
 
-        let released_ndep = pos_ndep.min(paid_withdrawable);
         write_pos_ndep(&account_id, &pool_id, pos_ndep - released_ndep);
         write_yield_reserve(yield_reserve - backed_yield);
         next.withdrawable -= paid_withdrawable;
@@ -152,7 +158,7 @@ impl StakingVaultContract {
             withdrawn: (w + r).to_string(),
         };
         if call_result.is_ok() {
-            self.processed_ops.insert(op_id, serde_json::to_string(&res).unwrap());
+            self.processed_ops.insert(crate::op_key("withdraw", &op_id), serde_json::to_string(&res).unwrap());
             emit_staking("withdraw", json!({ "account_id": account_id, "recipient": recipient_id, "pool_id": pool_id, "withdrawn": res.withdrawn }));
             return res;
         }
@@ -242,6 +248,7 @@ impl StakingVaultContract {
         account_id: Option<String>,
         apy_bp: Option<u32>,
         now_ms: Option<u64>,
+        op_id: Option<String>,
     ) -> CompoundResultView {
         let caller = env::predecessor_account_id();
         let operator = self.is_operator(&caller);
@@ -250,6 +257,12 @@ impl StakingVaultContract {
         let apy = apy_bp.unwrap_or(DEFAULT_SIM_APY_BP);
         require!(operator || apy <= crate::MAX_NON_OPERATOR_APY_BP, "STAKE_INVALID_APY: direct non-operator apy_bp exceeds 1000 bp");
         validate_pool_and_apy(&pool_id, apy);
+        let okey = op_id.as_deref().map(str::trim).filter(|s| !s.is_empty()).map(|id| crate::op_key("compound", &format!("{target}:{id}")));
+        if let Some(ref key) = okey {
+            if let Some(cached) = self.processed_ops.get(key) {
+                return serde_json::from_str(cached).expect("STAKE_INSUFFICIENT_BALANCE: cached corrupt");
+            }
+        }
         let chain_now = env::block_timestamp_ms();
         let now = if operator { now_ms.unwrap_or(chain_now) } else { chain_now };
         let settled = self.settle_pure(&target, &pool_id, apy, now);
@@ -271,12 +284,16 @@ impl StakingVaultContract {
         next.rewards = 0;
         self.positions.insert(pos_key(&target, &pool_id), next.clone());
         let protocol_cut = settled.native_cut.saturating_add(settled.lst_cut);
-        emit_staking("compound_yield", json!({ "account_id": target, "pool_id": pool_id, "compounded": rolled.to_string(), "protocol_cut": protocol_cut.to_string() }));
-        CompoundResultView {
+        let res = CompoundResultView {
             position: crate::accrual::to_view(&target, &pool_id, &next),
             compounded: rolled.to_string(),
             protocol_cut: protocol_cut.to_string(),
+        };
+        if let Some(key) = okey {
+            self.processed_ops.insert(key, serde_json::to_string(&res).unwrap());
         }
+        emit_staking("compound_yield", json!({ "account_id": target, "pool_id": pool_id, "compounded": rolled.to_string(), "protocol_cut": protocol_cut.to_string() }));
+        res
     }
 
     pub fn get_yield_reserve(&self) -> String {
@@ -317,7 +334,8 @@ impl StakingVaultContract {
     ) -> WithdrawResultView {
         require!(!op_id.is_empty(), "STAKE_INSUFFICIENT_BALANCE: op_id required");
         self.require_operator();
-        if let Some(cached) = self.processed_ops.get(&op_id) {
+        let okey = crate::op_key("withdraw_protocol_yield", &op_id);
+        if let Some(cached) = self.processed_ops.get(&okey) {
             return serde_json::from_str(cached).expect("STAKE_INSUFFICIENT_BALANCE: cached corrupt");
         }
         let protocol_id = self.resolve_protocol_account_id();
@@ -353,7 +371,7 @@ impl StakingVaultContract {
             pool_id: "protocol_yield".to_string(),
             withdrawn: withdraw_val.to_string(),
         };
-        self.processed_ops.insert(op_id, serde_json::to_string(&res).unwrap());
+        self.processed_ops.insert(okey, serde_json::to_string(&res).unwrap());
         emit_staking(
             "withdraw_protocol_yield",
             json!({

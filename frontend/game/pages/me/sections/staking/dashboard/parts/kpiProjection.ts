@@ -87,7 +87,8 @@ function syncProjectedIncomeDisplay(t: SimDisplayTargets, amt: number): void {
 
   t.yearly.val.textContent = formatNear(proj.yearlyNear);
   t.yearly.sub.textContent = formatUsd(proj.yearlyUsd);
-  t.yearly.meta.textContent = `Unlocks T${tier.id} ${tier.name} · ${formatPct(tier.takerFeeBp)} trade fee`;
+  const feeSuffix = tier.id === 0 ? '' : tier.warmupRequired ? ' (24h warmup)' : ' (instant)';
+  t.yearly.meta.textContent = `Unlocks T${tier.id} ${tier.name} · ${formatPct(tier.takerFeeBp)} trade fee${feeSuffix}`;
 
   t.activeBtn?.classList.toggle('is-active', isActiveMatch);
   SIM_PRESETS.forEach((preset, idx) => t.presetBtns[idx]!.classList.toggle('is-active', !isActiveMatch && Math.abs(amt - preset) < 0.001));

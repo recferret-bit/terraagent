@@ -53,11 +53,13 @@ export class TradeKeysService implements OnModuleInit {
     let maxKeys = MAX_ACTIVE_KEYS_PER_OWNER;
     let tier: number | undefined;
     if (this.flags?.has('W28')) {
-      const perks = await resolveWalletPerks(this.prisma, {
+      const activeDb = this.prisma && (databaseEnabled(this.env) || !('$connect' in this.prisma)) ? this.prisma : null;
+      const perks = await resolveWalletPerks(activeDb, {
         colonyId: colony.colonyId,
         playerId: p.ownerId,
         accountId: colony.accountId,
         env: (this.env ?? process.env) as Record<string, string | undefined>,
+        dbEnabled: databaseEnabled(this.env),
         w28: true,
       });
       maxKeys = Math.min(MAX_ACTIVE_KEYS_PER_OWNER, perks.perks.botKeys);

@@ -331,9 +331,15 @@ export class SimClusterService {
     return out.data.outcome;
   }
 
-  async forwardLandingSite(planetId: string, opts: LoadOptions, colonyIndex: number, timeoutMs: number): Promise<HomeLandingSite> {
+  async forwardLandingSite(
+    planetId: string,
+    opts: LoadOptions,
+    colonyIndex: number,
+    timeoutMs: number,
+    sectorId?: string,
+  ): Promise<HomeLandingSite> {
     const path = `/v1/internal/sim/planets/${encodeURIComponent(planetId)}/landing-site`;
-    const body = { loadOptions: opts, colonyIndex, timeoutMs };
+    const body = { loadOptions: opts, colonyIndex, timeoutMs, ...(sectorId ? { sectorId } : {}) };
     const existing = await this.resolveLocationWithWait(planetId);
     if (existing?.kind === 'remote') {
       try {

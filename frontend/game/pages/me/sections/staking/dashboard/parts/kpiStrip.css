@@ -253,3 +253,41 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* ---- Realized USD Income Breakdown ---- */
+.ta-stk-realized {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.ta-stk-realized-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 9px 12px;
+  min-width: 0;
+  background: var(--ta-deep);
+  border: 1px solid var(--ta-seam-2);
+}
+
+.ta-stk-realized-k {
+  font-size: 10px;
+  letter-spacing: 0.09em;
+  color: var(--ta-steel);
+  white-space: nowrap;
+}
+
+.ta-stk-realized-v {
+  font-family: var(--ta-font-mono);
+  font-size: 14px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--ta-hull);
+}
+
+@media (max-width: 720px) {
+  .ta-stk-realized {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

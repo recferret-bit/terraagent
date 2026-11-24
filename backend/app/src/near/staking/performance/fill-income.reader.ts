@@ -77,14 +77,28 @@ export async function readFillIncome(db: DbClient, wallet: WalletRef, q: FillInc
 
   const involved = new Set<string>();
   for (const r of rows) [r.buyerAccountId, r.sellerAccountId, r.stallAccountId].forEach((a) => involved.add(a));
-  const owners =
+  const [owners, socialRows] = await Promise.all([
     typeof db.nearColonyAccount?.findMany === 'function'
-      ? ((await db.nearColonyAccount.findMany({
+      ? (db.nearColonyAccount.findMany({
           where: { accountId: { in: [...involved] } },
           select: { accountId: true, playerId: true, ownerAccountId: true, claimedByAccountId: true },
-        })) as AccountOwnerRow[])
-      : [];
-  const identities = identityResolver(owners);
+        }) as Promise<AccountOwnerRow[]>)
+      : Promise.resolve([] as AccountOwnerRow[]),
+    typeof db.socialIdentity?.findMany === 'function'
+      ? (db.socialIdentity.findMany({
+          where: { accountId: { in: [...involved] } },
+          select: { accountId: true, playerId: true },
+        }) as Promise<Array<{ accountId: string | null; playerId: string }>>)
+      : Promise.resolve([] as Array<{ accountId: string | null; playerId: string }>),
+  ]);
+  const combinedOwners: AccountOwnerRow[] = [
+    ...owners,
+    ...socialRows.filter((s): s is { accountId: string; playerId: string } => Boolean(s.accountId)).map((s) => ({
+      accountId: s.accountId,
+      playerId: s.playerId,
+    })),
+  ];
+  const identities = identityResolver(combinedOwners);
 
   const accountSet = new Set(accounts);
   const colonySet = new Set(colonies);

@@ -44,6 +44,19 @@ interface PosRow {
   readonly readyAt: Date | null;
 }
 
+interface RawPosRecord {
+  readonly colonyId?: string | null;
+  readonly accountId: string;
+  readonly poolId: string;
+  readonly asset: string;
+  readonly staked: bigint;
+  readonly unbonding: bigint;
+  readonly withdrawable: bigint;
+  readonly rewards: bigint;
+  readonly readyAt: Date | null;
+  readonly updatedMs: number;
+}
+
 async function readPositions(db: DbClient, wallet: WalletRef): Promise<PosRow[]> {
   const or: Array<Record<string, unknown>> = [];
   if (wallet.colonyIds.length) or.push({ colonyId: { in: [...wallet.colonyIds] } });
@@ -53,16 +66,35 @@ async function readPositions(db: DbClient, wallet: WalletRef): Promise<PosRow[]>
     typeof db.stakingPosition?.findMany === 'function'
       ? ((await db.stakingPosition.findMany({ where: { OR: or } })) as Array<Record<string, Dec | string | Date | null>>)
       : [];
-  const rows: PosRow[] = pos.map((p) => ({
-    accountId: String(p.accountId),
-    poolId: String(p.poolId ?? ''),
-    asset: String(p.asset ?? 'near'),
-    staked: y(p.stakedSnapshot as Dec),
-    unbonding: y(p.unbondingSnapshot as Dec),
-    withdrawable: y(p.withdrawableSnapshot as Dec),
-    rewards: y(p.rewardsSnapshot as Dec),
-    readyAt: (p.unbondingReadyAt as Date | null) ?? null,
-  }));
+  const deduped = new Map<string, RawPosRecord>();
+  let anonIdx = 0;
+  for (const p of pos) {
+    const accountId = String(p.accountId ?? '');
+    const poolId = String(p.poolId ?? '');
+    const colonyId = p.colonyId ? String(p.colonyId) : null;
+    const updatedMs = p.updatedAt instanceof Date ? p.updatedAt.getTime() : 0;
+    const key = accountId && poolId
+      ? `acct:${accountId}::pool:${poolId}`
+      : accountId
+        ? `acct:${accountId}::row:${anonIdx++}`
+        : `col:${colonyId ?? anonIdx++}::pool:${poolId}`;
+    const prev = deduped.get(key);
+    if (!prev || updatedMs >= prev.updatedMs) {
+      deduped.set(key, {
+        colonyId,
+        accountId,
+        poolId,
+        asset: String(p.asset ?? 'near'),
+        staked: y(p.stakedSnapshot as Dec),
+        unbonding: y(p.unbondingSnapshot as Dec),
+        withdrawable: y(p.withdrawableSnapshot as Dec),
+        rewards: y(p.rewardsSnapshot as Dec),
+        readyAt: (p.unbondingReadyAt as Date | null) ?? null,
+        updatedMs,
+      });
+    }
+  }
+  const rows: PosRow[] = [...deduped.values()];
   const covered = new Set(rows.map((r) => r.accountId));
   const wanted = wallet.accountIds.filter((a) => !covered.has(a));
   if (wanted.length && typeof db.mockChainStaking?.findMany === 'function') {
