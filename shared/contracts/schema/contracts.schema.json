@@ -12829,6 +12829,14 @@
               "minimum": 0,
               "type": "integer"
             },
+            "own": {
+              "items": {
+                "contentEncoding": "binary",
+                "description": "engine bytes",
+                "type": "string"
+              },
+              "type": "array"
+            },
             "toTick": {
               "maximum": 9007199254740991,
               "minimum": 0,

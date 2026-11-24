@@ -71,7 +71,7 @@ const churn = defineSystem({ id: 'test.colonyChurn', slot: 5, wave: 'W00', run(s
   const g = ctx.rng('misc');
   for (const c of s.colonies) {
     if (!c) continue;
-    const col = c as ColonyState & Record<string, any>;
+    const col = c as ColonyState & Record<string, unknown>;
     col.changedAt = ctx.tick; // like many systems: bump every tick, change sometimes
     if (nextInt(g, 0, 2) === 0) col.stock = { ...(col.stock ?? {}), ore: nextInt(g, 0, 50) };
     if (nextInt(g, 0, 3) === 0) {
@@ -184,7 +184,7 @@ describe('client delta shadow: round trip per viewer', () => {
     const h = authority();
     let last = h.tick;
     bundledClientDeltaFrames(h.state, last);
-    h.step(1); bundledClientDeltaFrames(h.state, last); last = h.tick;
+    h.step(1); bundledClientDeltaFrames(h.state, last);
     const col = h.state.colonies[0] as Record<string, unknown>;
     const before = deepClone(col.stock);
     // Unsubscribed: no deltas while the value moves; a socket joins at B; the value returns to A.
