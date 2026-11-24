@@ -203,6 +203,48 @@ ProceduralTextureRegistry.register('solarHexGrid', (size = 256) =>
   }),
 );
 
+ProceduralTextureRegistry.register('flagshipSovereignHull', (size = 256) =>
+  buildBufferPbrPreset(size, 3.4, (u, v) => {
+    const row = Math.floor(v * 4);
+    const stagger = (row % 2) * 0.5;
+    const tx = (u * 2 + stagger) % 1;
+    const ty = (v * 4) % 1;
+    const majorSeam = tx < 0.028 || tx > 0.972 || ty < 0.038 || ty > 0.962;
+    const subSeam =
+      !majorSeam &&
+      ((Math.abs(tx - 0.5) < 0.011 && ty > 0.16 && ty < 0.84) ||
+        (Math.abs(ty - 0.5) < 0.014 && tx > 0.10 && tx < 0.42));
+    const bevel = Math.min(tx, 1 - tx, ty, 1 - ty);
+    const cornerBolt = !majorSeam && Math.hypot(Math.min(tx, 1 - tx) - 0.075, Math.min(ty, 1 - ty) - 0.11) < 0.02;
+    const plateId = hash2d(Math.floor(u * 2 + stagger) % 4, row % 4, 409);
+    const brush = 0.5 + 0.5 * Math.sin((u * 36 + tileableValueNoise(u, v, 20, 419) * 0.6) * Math.PI * 2);
+    const grain = tileableValueNoise(u, v, 36, 431);
+    const h = majorSeam
+      ? 24
+      : subSeam
+        ? 86
+        : cornerBolt
+          ? 240
+          : Math.min(228, 152 + Math.min(bevel * 620, 46) + plateId * 16 + brush * 7);
+    const rough = majorSeam
+      ? 232
+      : subSeam
+        ? 184
+        : cornerBolt
+          ? 64
+          : 92 + (1 - plateId) * 22 + (1 - brush) * 12 + grain * 10;
+    const luma = majorSeam
+      ? 104
+      : subSeam
+        ? 156
+        : cornerBolt
+          ? 244
+          : 208 + (plateId - 0.5) * 22 + (brush - 0.5) * 9 + (grain - 0.5) * 7;
+    const coolTint = majorSeam ? -4 : cornerBolt ? 8 : plateId > 0.62 ? 6 : -3;
+    return { r: luma - coolTint * 0.4, g: luma + coolTint * 0.15, b: luma + coolTint, h, rough };
+  }),
+);
+
 // --- Living Biosphere Botanical & Organic Presets ---
 
 ProceduralTextureRegistry.register('treeBarkFissures', (size = 256) =>

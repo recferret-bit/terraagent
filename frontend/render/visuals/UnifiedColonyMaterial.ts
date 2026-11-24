@@ -11,9 +11,11 @@ import {
 import { injectAll } from './shaderInject';
 import './unified/buildScaffold';
 import './unified/ruinVariant';
+import './unified/flagshipPlating';
 import { RUIN_VARIANT } from './unified/ruinVariant';
+import { FLAGSHIP_PLATING, SHIP_SPIN_NORMALS } from './unified/flagshipPlating';
 
-export { BiomeMaterialRegistry, ShaderPluginRegistry, RUIN_VARIANT };
+export { BiomeMaterialRegistry, ShaderPluginRegistry, RUIN_VARIANT, FLAGSHIP_PLATING, SHIP_SPIN_NORMALS };
 export type { BiomeWeatheringPreset, ShaderModifierPlugin } from './unified/registries';
 
 export interface UnifiedColonyMaterialOptions {
@@ -150,7 +152,7 @@ export function createUnifiedColonyMaterial(
       ['#include <color_fragment>', fragColor(joinPlugins((p) => p.fragmentColorChunk))],
       ['#include <roughnessmap_fragment>', FRAG_ROUGHNESS],
       ['#include <metalnessmap_fragment>', `${FRAG_METALNESS}\n${joinPlugins((p) => p.fragmentRoughnessChunk)}`],
-      ['#include <normal_fragment_maps>', '#include <normal_fragment_maps>\n' + ORGANIC_NORMAL],
+      ['#include <normal_fragment_maps>', `#include <normal_fragment_maps>\n${ORGANIC_NORMAL}\n${joinPlugins((p) => p.fragmentNormalChunk)}`],
       ['#include <opaque_fragment>', FRAG_RIM],
     ], 'unified colony fragment');
     if (shader.fragmentShader.includes('float taLightS = mix(')) {

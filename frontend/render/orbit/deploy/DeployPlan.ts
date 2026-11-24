@@ -40,13 +40,13 @@ function computeDeployCorridor(
   // descent globe must show the same surface under the pod: spinWorld_desc = Q⁻¹ · spinWorld_stage
   const qs = g.spin.getWorldQuaternion(new THREE.Quaternion());
   const spinQuat = Q.clone().invert().multiply(qs);
-  // hold shot: behind/above the carrier, looking past it at the entry point on the planet
+  // hold shot: below & aft-starboard of the carrier's launch attitude, looking across the open ventral drop bay toward entry
   const toEntry = podEnd.clone().sub(cCtr).normalize();
   const side = toEntry.clone().cross(Y_AXIS);
   if (side.lengthSq() < 1e-6) side.set(1, 0, 0);
   else side.normalize();
-  const holdCam = cCtr.clone().addScaledVector(toEntry, -11.5).addScaledVector(Y_AXIS, 1.2).addScaledVector(side, 3.2);
-  const holdTgt = cCtr.clone().addScaledVector(toEntry, 2.0).addScaledVector(Y_AXIS, -1.1);
+  const holdCam = cCtr.clone().addScaledVector(toEntry, -11.2).addScaledVector(Y_AXIS, -2.0).addScaledVector(side, 3.4);
+  const holdTgt = cCtr.clone().addScaledVector(toEntry, 1.8).addScaledVector(Y_AXIS, -1.5);
   return { ne, Q, podEnd, camEnd, tgtEnd, qEnd, spinQuat, holdCam, holdTgt };
 }
 
@@ -57,13 +57,14 @@ export function planDeploy(host: DeployHost, h: DescentHandoff, opts: { biomeKey
   const g = host.globes.current;
   const PC = g.group.position.clone(), Rs = R * g.group.scale.x, s = Rs / h.R;
   carrier.root.updateWorldMatrix(true, true);
+  const carrierQ0 = carrier.root.quaternion.clone();
+  const carrierQHold = new THREE.Quaternion().setFromEuler(new THREE.Euler(0.08, 0.62, -0.14, 'YXZ'));
   const cBox = new THREE.Box3().setFromObject(carrier.mesh), cCtr = cBox.getCenter(new THREE.Vector3());
   const { ne, Q, podEnd, camEnd, tgtEnd, qEnd, spinQuat, holdCam, holdTgt } = computeDeployCorridor(host, h, PC, cCtr, s);
 
   const rig = createDropRig(carrier.root, { biomeKey: opts.biomeKey ?? 'dune', carrierScale: h.carrierScale, podYaw: h.podYawLocal, attachPod: true });
   rig.setBayGlow(0); rig.setOpen(0); rig.podRig.visible = false;
   for (const m of [rig.pod.root, rig.group]) m.traverse((o) => { const mm = (o as THREE.Mesh).material as (THREE.Material & { fog?: boolean }) | undefined; if (mm) mm.fog = false; });
-  const dQ = carrier.root.getWorldQuaternion(new THREE.Quaternion());
   const atmU = (g.atmosphere.material as THREE.ShaderMaterial).uniforms;
   const { sunLight, hemi, rim } = sun;
   const bdU = host.backdrop.uniforms;
@@ -72,7 +73,8 @@ export function planDeploy(host: DeployHost, h: DescentHandoff, opts: { biomeKey
     p0: camera.position.clone(), t0: host.lookNow.clone(), up0: camera.up.clone(),
     holdCam: holdCam.clone(), holdTgt: holdTgt.clone(),
     holdCamGoal: holdCam, holdTgtGoal: holdTgt,
-    dropDir: new THREE.Vector3(0, -1, 0).applyQuaternion(dQ).normalize(), released: false, tgtHold1: new THREE.Vector3(),
+    carrierQ0, carrierQHold,
+    dropDir: new THREE.Vector3(0, -1, 0).applyQuaternion(carrierQHold).normalize(), released: false, tgtHold1: new THREE.Vector3(),
     P0: new THREE.Vector3(), q0: new THREE.Quaternion(), sc0: 1, O0: new THREE.Vector3(), G0: new THREE.Vector3(), upR: new THREE.Vector3(),
     camR: new THREE.Vector3(), tgtR: new THREE.Vector3(),
     sunI0: sunLight.intensity, sunC0: sunLight.color.clone(),

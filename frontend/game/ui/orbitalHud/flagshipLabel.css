@@ -13,9 +13,11 @@
   background: color-mix(in srgb, var(--ta-void) 82%, transparent);
   border-left: 2px solid var(--ta-orange);
   clip-path: polygon(0 0, calc(100% - var(--ta-chamfer-s)) 0, 100% var(--ta-chamfer-s), 100% 100%, var(--ta-chamfer-s) 100%, 0 calc(100% - var(--ta-chamfer-s)));
+  transition: opacity 0.35s ease;
   will-change: transform;
 }
 .flagship-label[hidden] { display: none; }
+#menu.hide .flagship-label { opacity: 0; }
 .flagship-label-tag {
   font-family: var(--ta-font-mono);
   font-size: 10px;
@@ -32,4 +34,12 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+@media (max-width: 960px) {
+  .flagship-label {
+    position: static;
+    align-self: flex-start;
+    max-width: 100%;
+    transform: none !important;
+  }
 }

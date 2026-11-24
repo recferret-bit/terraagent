@@ -23,6 +23,7 @@ export interface Deploy {
   podEnd: THREE.Vector3; camEnd: THREE.Vector3; tgtEnd: THREE.Vector3; qEnd: THREE.Quaternion;
   p0: THREE.Vector3; t0: THREE.Vector3; up0: THREE.Vector3; holdCam: THREE.Vector3; holdTgt: THREE.Vector3;
   holdCamGoal: THREE.Vector3; holdTgtGoal: THREE.Vector3;
+  carrierQ0: THREE.Quaternion; carrierQHold: THREE.Quaternion;
   dropDir: THREE.Vector3; released: boolean; tgtHold1: THREE.Vector3;
   P0: THREE.Vector3; q0: THREE.Quaternion; sc0: number; O0: THREE.Vector3; G0: THREE.Vector3; upR: THREE.Vector3; camR: THREE.Vector3; tgtR: THREE.Vector3;
   sunI0: number; sunC0: THREE.Color; sunDisc0: number; sunColBd0: THREE.Color;

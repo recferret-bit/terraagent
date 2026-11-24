@@ -8,6 +8,7 @@ import type { DescentHandoff } from '../descent/types';
 import { createSpaceBackdrop, type SpaceBackdrop } from '../visuals/space/SpaceBackdrop';
 import { createParallaxLayers, type ParallaxLayers } from '../visuals/space/ParallaxLayers';
 import { acquireModel, tickArchetypeMesh, type FittedModel } from '../visuals/space/placeholders';
+import { syncSpaceBiomeRim } from '../visuals/space/spaceLighting';
 import { StageGlobes, CAM_DIST } from './stage/StageGlobes';
 import { StageMoons } from './stage/StageMoons';
 import { Satellites } from './stage/Satellites';
@@ -70,12 +71,12 @@ class OrbitalStageImpl implements OrbitalStage {
 
     this.globes = new StageGlobes(scene, sunDir, spec, aspect);
     this.highlights = new GlobeHighlights(scene);
-    this.carrier = acquireModel('ship.carrier', 'dune', { size: 6.0, mode: 'max', minRatio: 0.8, maxRatio: 1.25 }, { spaceLit: true });
+    this.carrier = acquireModel('ship.carrier', spec.biomeKey, { size: 6.0, mode: 'max', minRatio: 0.8, maxRatio: 1.25 }, { spaceLit: true });
     this.carrier.root.rotation.order = 'YXZ';
     scene.add(this.carrier.root);
     this.moons = new StageMoons(scene, sunDir, spec);
     this.satellites = new Satellites(scene);
-    this.flagship = new FlagshipCarrier(scene);
+    this.flagship = new FlagshipCarrier(scene, spec.biomeKey);
     this.nebula = new NebulaTint(spec, this.backdrop.uniforms.uNebA, this.layers);
     const deployHost = { scene, camera: this.camera, viewport, sunDir, sun: this.sun, backdrop: this.backdrop, carrier: this.carrier, globes: this.globes, lookNow: this.lookNow };
     this.deploy = new DeploySequence(deployHost);
@@ -108,7 +109,9 @@ class OrbitalStageImpl implements OrbitalStage {
 
   setPlanet(next: PlanetSpec, opts: { duration?: number; continuousSpin?: boolean } = {}) {
     if (!this.globes.setPlanet(next, opts)) return;
+    this.flagship.setBiome(next.biomeKey);
     this.flagship.setLeadPatron(null); // a patron belongs to one planet; the app re-sets it for the new one
+    syncSpaceBiomeRim(this.carrier.mesh, next.biomeKey);
     clearTransientWeather();
     this.nebula.retarget(next);
     this.moons.setPlanet(next);
@@ -136,8 +139,8 @@ class OrbitalStageImpl implements OrbitalStage {
     sun.update(camera, time, globes.planetPos);
     this.moons.update(dt, time, globes.planetPos, globes.morphRate);
     this.satellites.update(time, globes.planetPos);
-    this.flagship.update(time, globes.planetPos, !transitioning);
-    if (!transitioning) driftCarrier(this.carrier, globes.planetPos, time);
+    this.flagship.update(time, globes.planetPos, !transitioning, camera);
+    if (!transitioning) driftCarrier(this.carrier, globes.planetPos, time, camera);
     tickArchetypeMesh(this.carrier.mesh, time);
   }
 

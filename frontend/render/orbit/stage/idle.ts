@@ -13,11 +13,24 @@ export function updateIdleCamera(camera: THREE.PerspectiveCamera, lookNow: THREE
   camera.updateMatrixWorld();
 }
 
-/** Carrier hover drift (lower-left of the planet, between camera and globe). */
-export function driftCarrier(carrier: FittedModel, planetPos: THREE.Vector3, time: number) {
-  const cx = planetPos.x - 13.5 + Math.sin(time * 0.11) * 1.4;
-  const cy = -5.2 + Math.sin(time * 0.17 + 0.6) * 0.45;
-  const cz = 12 + Math.sin(time * 0.083) * 2.0;
+/**
+ * Carrier inclined orbital drift (foreground-left of the planet): banked into its prograde orbit so its ventral
+ * drop-pod bay and canted launch cradles aim inward toward `planetPos` while its solar wings catch the sun.
+ */
+export function driftCarrier(carrier: FittedModel, planetPos: THREE.Vector3, time: number, camera?: THREE.PerspectiveCamera) {
+  const cz = 11.2 + Math.sin(time * 0.083) * 1.4;
+  let cx = planetPos.x - 9.6 + Math.sin(time * 0.11) * 0.9;
+  const cy = -3.4 + Math.sin(time * 0.17 + 0.6) * 0.35;
+  if (camera && camera.aspect > 0 && camera.aspect < 1.05) {
+    const dz = Math.max(10, camera.position.z - cz);
+    const halfW = Math.tan(THREE.MathUtils.degToRad(camera.fov * 0.5)) * dz * camera.aspect;
+    const horizExtent = Math.min(halfW * 0.74, Math.max(carrier.size.x, carrier.size.z) * 0.48);
+    cx = THREE.MathUtils.clamp(cx, -halfW + horizExtent, halfW - horizExtent);
+  }
   carrier.root.position.set(cx, cy, cz);
-  carrier.root.rotation.set(0.08 + Math.sin(time * 0.21) * 0.03, 0.9 + Math.sin(time * 0.07) * 0.22, -0.1 + Math.sin(time * 0.13) * 0.04);
+  carrier.root.rotation.set(
+    0.22 + Math.sin(time * 0.21) * 0.03,
+    0.68 + Math.sin(time * 0.07) * 0.14,
+    0.98 + Math.sin(time * 0.13) * 0.04,
+  );
 }

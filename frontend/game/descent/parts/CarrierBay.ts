@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { FittedModel } from '@terra/render/visuals/space/placeholders';
+import { tickArchetypeMesh, type FittedModel } from '@terra/render/visuals/space/placeholders';
 import { smoother, smoothstep } from '../math';
 import type { DropRig } from '@terra/render/descent/dropRig';
 import { Y0 } from '../constants';
@@ -19,9 +19,11 @@ export class CarrierBay implements FramePart {
     this.carrier.root.visible = tn < 14.6 && this.ctx.startAt < 6; // a late start means the menu stage already played the release
     this.carrier.root.position.set(pod0.x - 100 * cDrift, Y0 + this.podH - 0.4 + 60 * cDrift, pod0.z - 80 * cDrift);
     this.carrier.root.rotation.set(0.02 * Math.sin(tn * 0.6), 0.3 + 0.05 * cDrift, 0);
+    if (this.carrier.root.visible) tickArchetypeMesh(this.carrier.mesh, tn);
     this.rig.setOpen(smoother(2.2, 3.8, tn));
     this.rig.setBayGlow(bayGlowAt(tn));
     this.pod.root.visible = true;
+    tickArchetypeMesh(this.pod.mesh, tn);
   }
 
   dispose() { this.rig.dispose(); this.carrier.dispose(); }

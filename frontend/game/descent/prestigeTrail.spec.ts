@@ -1,8 +1,11 @@
 // @vitest-environment jsdom
 import * as THREE from 'three';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { createDropRig } from '@terra/render/descent/dropRig';
 import { createPlasmaTrail, TRAIL_LENGTH } from '@terra/render/descent/PlasmaTrail';
 import { buildTrailFragment } from '@terra/render/descent/plasmaTrailGlsl';
+import { acquireModel } from '@terra/render/visuals/space/placeholders';
+import { CarrierBay } from './parts/CarrierBay';
 import { FrameState, type DescentContext } from './parts/FrameState';
 import { ReentryFx } from './parts/ReentryFx';
 
@@ -107,8 +110,10 @@ describe('W28-12 ReentryFx prestige trail (integration)', () => {
 });
 
 describe('W28-12 DescentFlagship skybox carrier (integration)', () => {
-  it('mounts ISS flagship in orbital skybox (tn < 14.5), hides below exosphere, and allocates nothing without a Lead Patron', async () => {
-    const { DescentFlagship } = await import('./parts/DescentFlagship');
+  it('mounts ISS flagship inside the orbital chase frustum (tn < 14.5) with planet- & camera-facing ventral bay, hides below exosphere, and allocates nothing without a Lead Patron', async () => {
+    const { DESCENT_FLAGSHIP_SIZE, DescentFlagship } = await import('./parts/DescentFlagship');
+    const { CameraRig } = await import('./parts/CameraRig');
+    expect(DESCENT_FLAGSHIP_SIZE).toBeGreaterThan(70);
     const makeShipCtx = (prestige?: DescentContext['prestige']) =>
       ({ spec: { seed: 7, biomeKey: 'dune', orbital: { atmosphereColor: 0x88aaff } }, root: new THREE.Group(), prestige } as unknown as DescentContext);
 
@@ -119,18 +124,75 @@ describe('W28-12 DescentFlagship skybox carrier (integration)', () => {
     expect(emptyCtx.root.children.find((c) => c.name === 'descent:flagshipCarrier')).toBeUndefined();
     emptyShip.dispose();
 
-    // Positive + boundary: Lead Patron mounts ship at tn=6, hides at tn=14.5, disposes cleanly.
+    // Positive + real chase-camera frustum check across orbital & exosphere window (`tn = 3.8..8.5`) + boundary `tn = 14.5`.
     const patronCtx = makeShipCtx({ flagshipCarrierName: 'ISS whale.near' });
     const ship = new DescentFlagship(patronCtx);
-    ship.update(frame(6));
-    const mesh = patronCtx.root.children.find((c) => c.name === 'descent:flagshipCarrier')!;
-    expect(mesh).toBeDefined();
-    expect(mesh.visible).toBe(true);
-    expect(ship.activeName).toBe('ISS whale.near');
+    const chaseCam = new THREE.PerspectiveCamera(28, 16 / 9, 0.3, 10000);
+    for (const tn of [3.8, 5.2, 6.0, 6.5, 8.5]) {
+      const f = frame(tn);
+      f.podCenter.set(-80, 560, 52);
+      CameraRig.curve(tn, f.podCenter, f.camPos, f.camTgt);
+      chaseCam.position.copy(f.camPos);
+      chaseCam.fov = CameraRig.fov(tn);
+      chaseCam.updateProjectionMatrix();
+      chaseCam.lookAt(f.camTgt);
+      chaseCam.updateMatrixWorld();
 
+      ship.update(f);
+      const mesh = patronCtx.root.children.find((c) => c.name === 'descent:flagshipCarrier')!;
+      expect(mesh).toBeDefined();
+      expect(mesh.visible).toBe(true);
+      expect(ship.activeName).toBe('ISS whale.near');
+      mesh.updateMatrixWorld(true);
+
+      const ndc = mesh.position.clone().project(chaseCam);
+      expect(Math.abs(ndc.x), `tn=${tn} NDC.x`).toBeLessThan(0.85);
+      expect(Math.abs(ndc.y), `tn=${tn} NDC.y`).toBeLessThan(0.85);
+      expect(ndc.z).toBeGreaterThan(-1);
+      expect(ndc.z).toBeLessThan(1);
+
+      const belly = new THREE.Vector3(0, -1, 0).applyQuaternion(mesh.getWorldQuaternion(new THREE.Quaternion())).normalize();
+      const toCam = f.camPos.clone().sub(mesh.position).normalize();
+      expect(belly.y).toBeLessThan(-0.75);
+      expect(belly.dot(toCam)).toBeGreaterThan(tn <= 6.5 ? 0.38 : 0.3);
+    }
+
+    const mesh = patronCtx.root.children.find((c) => c.name === 'descent:flagshipCarrier')!;
     ship.update(frame(14.5));
     expect(mesh.visible).toBe(false);
     ship.dispose();
     expect(patronCtx.root.children.find((c) => c.name === 'descent:flagshipCarrier')).toBeUndefined();
+  });
+});
+
+describe('CarrierBay GPU moving-part tick (unit)', () => {
+  it('ticks ship.carrier and ship.dropPod GPU moving parts inside CarrierBay.update during Descent', () => {
+    const carrier = acquireModel('ship.carrier', 'dune', { size: 34, mode: 'max', force: true }, { spaceLit: true });
+    const rig = createDropRig(carrier.root, { biomeKey: 'dune', carrierScale: carrier.root.scale.x, attachPod: false });
+    const ctx = {
+      startAt: 2,
+      traj: { pod0: new THREE.Vector3(-90, 620, 60) },
+    } as unknown as DescentContext;
+    const bay = new CarrierBay(ctx, carrier, rig, rig.pod, rig.podH);
+    const f = new FrameState();
+
+    f.tn = 3.5;
+    bay.update(f);
+    expect(carrier.root.visible).toBe(true);
+    expect((carrier.mesh as THREE.Mesh).userData.uniforms.uTime.value).toBeCloseTo(3.5, 5);
+    expect((rig.pod.mesh as THREE.Mesh).userData.uniforms.uTime.value).toBeCloseTo(3.5, 5);
+
+    f.tn = 9.25;
+    bay.update(f);
+    expect((carrier.mesh as THREE.Mesh).userData.uniforms.uTime.value).toBeCloseTo(9.25, 5);
+    expect((rig.pod.mesh as THREE.Mesh).userData.uniforms.uTime.value).toBeCloseTo(9.25, 5);
+
+    f.tn = 15.2;
+    bay.update(f);
+    expect(carrier.root.visible).toBe(false);
+    expect((carrier.mesh as THREE.Mesh).userData.uniforms.uTime.value).toBeCloseTo(9.25, 5);
+    expect((rig.pod.mesh as THREE.Mesh).userData.uniforms.uTime.value).toBeCloseTo(15.2, 5);
+
+    bay.dispose();
   });
 });

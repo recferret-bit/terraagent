@@ -5,8 +5,14 @@ import { acquireModel, tickArchetypeMesh, type FittedModel } from '@terra/render
 import { smoother } from '../math';
 import type { DescentContext, FramePart, FrameState } from './FrameState';
 
-const DESCENT_FLAGSHIP_SIZE = 24;
+export const DESCENT_FLAGSHIP_SIZE = 76;
 const SKYBOX_CUTOFF_TN = 14.5;
+const _toCam = new THREE.Vector3();
+const _belly = new THREE.Vector3();
+const _up = new THREE.Vector3();
+const _nose = new THREE.Vector3();
+const _right = new THREE.Vector3();
+const _mat = new THREE.Matrix4();
 
 /**
  * W28-12 (`NEAR_STAKING_SPEC` §3): parks the planet's Tier 4 Lead Patron Flagship Orbital Carrier
@@ -33,13 +39,26 @@ export class DescentFlagship implements FramePart {
     this.carrierName = rawName;
     const m = this.ensureModel();
     const drift = smoother(2, SKYBOX_CUTOFF_TN, f.tn);
+    const chase = smoother(3.8, 6.4, f.tn);
     m.root.visible = true;
     m.root.position.set(
-      f.podCenter.x - 36 - 20 * drift,
-      f.podCenter.y + 16 + 34 * drift,
-      f.podCenter.z - 92 - 40 * drift,
+      f.podCenter.x + 122 - 42 * chase + 8 * drift,
+      f.podCenter.y + 14 - 34 * chase - 72 * drift,
+      f.podCenter.z - 160 - 26 * drift,
     );
-    m.root.rotation.set(0.05, 0.58 + 0.06 * drift, -0.04);
+    // Orient ventral drop-pod batteries downward toward the planet (`belly.y < -0.78`) AND banked toward the chase
+    // camera (`dot(belly, toCam) > 0.42`) while tilting nose across the orbital limb so all 4 solar wings read broadly.
+    _toCam.subVectors(f.camPos, m.root.position);
+    if (_toCam.lengthSq() < 1e-6) _toCam.set(0.2, -0.15, 0.96);
+    else _toCam.normalize();
+    _belly.set(0, -1, 0).addScaledVector(_toCam, 0.58 + 0.16 * drift).normalize();
+    _up.copy(_belly).negate();
+    _nose.set(-0.68, 0.34, 0.64 + 0.06 * drift);
+    _nose.addScaledVector(_up, -_nose.dot(_up)).normalize();
+    _right.crossVectors(_up, _nose).normalize();
+    _up.crossVectors(_nose, _right).normalize();
+    _mat.makeBasis(_right, _up, _nose);
+    m.root.quaternion.setFromRotationMatrix(_mat);
     tickArchetypeMesh(m.mesh, f.tn);
   }
 

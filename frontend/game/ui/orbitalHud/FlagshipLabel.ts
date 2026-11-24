@@ -36,7 +36,9 @@ export class FlagshipLabel {
       this.lastName = f.name;
       this.nameEl.textContent = f.name;
     }
-    this.el.style.transform = `translate3d(${(f.nx * 100).toFixed(2)}vw, ${(f.ny * 100).toFixed(2)}vh, 0) translate(-50%, -100%)`;
+    const xExpr = `clamp(calc(25.5vw + 162px), ${(f.nx * 100).toFixed(2)}vw, calc(66vw - 162px))`;
+    const yExpr = `max(166px, ${(f.ny * 100).toFixed(2)}vh)`;
+    this.el.style.transform = `translate3d(${xExpr}, ${yExpr}, 0) translate(-50%, -100%)`;
   }
 
   dispose(): void { this.el.remove(); }

@@ -12,7 +12,12 @@ import '../visuals/biomes';
 import { getDayNightParams } from '../core/dayNightConfig';
 import { getColonyVisionUniforms } from '../lighting/ColonyVisionAndLights';
 import { attachEntityProjectorRig, updateEntityProjectorRig } from '../lighting/EntityProjectorRig';
-import { createUnifiedColonyMaterial, RUIN_VARIANT } from '../visuals/UnifiedColonyMaterial';
+import {
+  createUnifiedColonyMaterial,
+  FLAGSHIP_PLATING,
+  RUIN_VARIANT,
+  SHIP_SPIN_NORMALS,
+} from '../visuals/UnifiedColonyMaterial';
 import { BUILD_SCAFFOLD } from '../visuals/unified/buildScaffold';
 import { BUILDING_LIT } from '../visuals/unified/buildingLit';
 import { applyBuildingLight, getBuildingLightLevel } from '../lighting/buildingLights';
@@ -267,12 +272,17 @@ export function createArchetypeMesh(id: string, biomeKey = 'dune', stage?: Depos
       SELECTION_PULSE,
       BUILDING_LIT,
       RUIN_VARIANT,
+      ...(id.startsWith('ship.') ? [SHIP_SPIN_NORMALS] : []),
+      ...(id === 'ship.flagshipCarrier' ? [FLAGSHIP_PLATING] : []),
       ...(rig ? [WEAPON_RIG] : []),
       ...(insect ? [INSECT_ANIMATION] : []),
       ...(vertebrate ? [VERTEBRATE_ANIMATION] : []),
     ],
   });
   const { material, depthMaterial } = made;
+  if (id === 'ship.flagshipCarrier' || id === 'ship.carrier') {
+    material.fog = false;
+  }
   const uniforms = made.uniforms as ArchetypeUniforms; // the scaffold plugin adds uBuild*
   if (rig) stampWeaponRig(geometry, rig);
   if (insect) stampInsectRig(geometry);

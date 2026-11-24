@@ -6,9 +6,10 @@ const Y_UP = new THREE.Vector3(0, 1, 0);
 // scratch vectors (fully rewritten before every read within one call)
 const dA = new THREE.Vector3(), dB = new THREE.Vector3(), dC = new THREE.Vector3();
 
-/** Phase A+B (T <= TB): fly to the hold shot behind the carrier, pod lowers into the bay, clamps open, pod drops. */
+/** Phase A+B (T <= TB): roll carrier onto drop-station attitude, fly below-aft to the ventral bay, clamps open, pod drops. */
 export function stepHold(host: DeployHost, d: Deploy, T: number, dt = 0) {
-  const { camera, lookNow } = host;
+  const { camera, lookNow, carrier } = host;
+  carrier.root.quaternion.slerpQuaternions(d.carrierQ0, d.carrierQHold, smoother(T / 1.5));
   if (dt > 0) {
     const kHold = 1 - Math.exp(-dt * 4.5);
     d.holdCam.lerp(d.holdCamGoal, kHold);

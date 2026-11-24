@@ -45,6 +45,7 @@ export interface ShaderModifierPlugin {
   vertexTransformChunk?: string;
   fragmentColorChunk?: string;
   fragmentRoughnessChunk?: string;
+  fragmentNormalChunk?: string;
 }
 
 /**

@@ -44,6 +44,7 @@ export const UNIT_POOL_THRESHOLDS: Readonly<Record<string, PoolThresholdSpec>> =
   'ship.dropPodShell': { initialSize: 1, threshold: 6 },
   'ship.carrier': { initialSize: 1, threshold: 6 },
   'ship.guildTrader': { initialSize: 1, threshold: 8 },
+  'ship.flagshipCarrier': { initialSize: 1, threshold: 2 },
 };
 
 /**
