@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { STAKING_RULES } from '@terra/contracts/staking/tiers';
 import type { StakingOverviewResponse } from '@terra/contracts';
 import { MePage } from './MePage';
+import { renderStakingSection } from './sections/staking/StakingSection';
 import { fallbackOverview } from './sections/staking/stakingMath';
 import { makeW12AchievementsFixture, makeW12ProfileFixture } from './testFixtures';
 
@@ -39,17 +40,24 @@ async function mountSignedOut(hash: string, overview: () => Res, search = ''): P
   return root;
 }
 
-describe('W28-09 /me.html#staking public preview', () => {
+describe('W28-09 /me.html#staking guest lock & preview', () => {
 
-  it('signed out + #staking?amount=50: full preview, no auth wall, CTA and ecosystem render (fallback path)', async () => {
+  it('signed out + #staking?amount=50: shows auth prompt, disables all tabs and internals, and locks CTA + inputs', async () => {
     const root = await mountSignedOut('#staking?amount=50', serverDown);
-    expect(q(root, 'me-auth-prompt')).toBeNull();
+    expect(q(root, 'me-auth-prompt')).not.toBeNull();
+    expect(q(root, 'me-main')?.dataset.guestDisabled).toBe('true');
+    expect(q(root, 'me-main')?.hasAttribute('inert')).toBe(true);
     expect(q(root, 'me-tab-staking')?.textContent).toBe('STAKING');
+    for (const tab of root.querySelectorAll('.ta-me-tab')) {
+      expect(tab.getAttribute('aria-disabled')).toBe('true');
+    }
     for (const id of ['staking-preview', 'staking-intro-banner', 'staking-tier-matrix', 'staking-projection', 'staking-ecosystem', 'staking-connect-cta', 'staking-apy-badge']) {
       expect(q(root, id), id).not.toBeNull();
     }
     expect(q(root, 'staking-calculator-block')).toBeNull();
     expect(q(root, 'staking-connect-cta')?.textContent).toBe('Connect NEAR Wallet to Stake 50 NEAR');
+    expect((q(root, 'staking-connect-cta') as HTMLButtonElement).disabled).toBe(true);
+    expect((q(root, 'staking-amount-input') as HTMLInputElement).disabled).toBe(true);
     expect(q(root, 'staking-apy-badge')?.textContent).toBe('7.20% Sim APY');
     expect(q(root, 'staking-price-badge')?.textContent).toContain('Est.');
     expect(q(root, 'staking-ecosystem-metapool')?.textContent).toContain('—');
@@ -91,9 +99,19 @@ describe('W28-09 /me.html#staking public preview', () => {
     expect(tiersPanel.querySelectorAll('[data-testid^="staking-tier-row-"]').length).toBe(5);
     expect(q(tiersPanel, 'staking-tier-row-2')?.textContent).toContain('24h warmup');
   });
+});
 
-  it('typing an amount updates the CTA text, projections and highlighted tier live', async () => {
-    const root = await mountSignedOut('#staking?amount=50', serverDown);
+describe('W28-09 /me.html#staking calculator & hash validation', () => {
+  it('typing an amount updates the CTA text, projections and highlighted tier live in connected-no-wallet StakingSection preview', async () => {
+    const handle = renderStakingSection({
+      amount: 50,
+      connected: false,
+      accountId: null,
+      fetch: unauthed(serverDown),
+      onConnect: () => undefined,
+    });
+    await handle.ready;
+    const root = handle.el;
     const input = q(root, 'staking-amount-input') as HTMLInputElement;
     const yearly = q(root, 'staking-projection-yearly')?.textContent;
     input.value = '500';
@@ -117,17 +135,19 @@ describe('W28-09 /me.html#staking public preview', () => {
     expect(q(huge, 'staking-connect-cta')?.dataset.amount).toBe('1000000');
   });
 
-  it('W28 off (?waves=..27): no STAKING tab and the signed-out auth wall is unchanged', async () => {
+  it('W28 off (?waves=..27): no STAKING tab and the signed-out auth wall is shown', async () => {
     const root = await mountSignedOut('#staking?amount=50', serverDown, '?waves=..27');
     expect(q(root, 'me-tab-staking')).toBeNull();
     expect(q(root, 'staking-preview')).toBeNull();
     expect(q(root, 'me-auth-prompt')).not.toBeNull();
+    expect(q(root, 'me-main')?.dataset.guestDisabled).toBe('true');
   });
 
-  it('signed out on another hash keeps the auth prompt (staking only bypasses for #staking)', async () => {
+  it('signed out on another hash keeps the auth prompt and disables all /me internals', async () => {
     const root = await mountSignedOut('#pilot', serverDown);
     expect(q(root, 'me-auth-prompt')).not.toBeNull();
-    expect(q(root, 'staking-preview')).toBeNull();
+    expect(q(root, 'me-main')?.dataset.guestDisabled).toBe('true');
+    expect(q(root, 'me-main')?.hasAttribute('inert')).toBe(true);
   });
 });
 

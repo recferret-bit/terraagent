@@ -371,7 +371,7 @@ describe('/me rework: local mode Staking -> NEAR.AI Autopilot sync & LST unstake
     expect(q(root, 'me-ai-badge')!.textContent).toBe('DETERMINISTIC FALLBACK');
     q(root, 'me-ai-verify-btn')!.click();
     await flush();
-    expect(verifyUrl).toBe('/v1/me/ai-settings/verify?waves=W12%2CW28');
+    expect(verifyUrl).toBe('/v1/me/ai-settings/verify');
     expect(verifyAuthHeader).toBe('Bearer local-mode-token');
     expect(q(root, 'me-ai-status')!.textContent).toContain('stake ≥10 NEAR');
 

@@ -108,14 +108,7 @@ function isWaveDisabledPayload(status: number, body: unknown): boolean {
   );
 }
 
-export function buildWavesQuerySuffix(rawSearch: string): string {
-  if (isProductionBuild()) return '';
-  try {
-    const waves = new URLSearchParams(rawSearch).get('waves')?.trim();
-    if (waves) return `?waves=${encodeURIComponent(waves)}`;
-  } catch {
-    // Ignore
-  }
+export function buildWavesQuerySuffix(_rawSearch: string): string {
   return '';
 }
 

@@ -28,13 +28,27 @@ export class BadHelloTokenError extends Error {
 
 const ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'; // Crockford base32
 const DEV_TOKEN = /^dev:([a-z0-9_-]{1,32})$/;
+const COMMON_DEV_ALIASES = ['w12', 'pilot1', 'w28', 'w01', 'a', 'b', 'dev', 'alice', 'bob'] as const;
 
-/** `pr_` + 26 Crockford chars derived from a sha256 of the name: the same name always maps to the same player. */
-export function devPlayerId(name: string): string {
+function computeDevPlayerId(name: string): string {
   const hash = createHash('sha256').update(`terra-dev-player:${name}`).digest();
   let s = '';
   for (let i = 0; i < 26; i++) s += ALPHABET[hash[i]! % 32];
   return `pr_${s}`;
+}
+
+const issuedDevPlayerIds = new Set<string>(COMMON_DEV_ALIASES.map((n) => computeDevPlayerId(n)));
+
+/** `pr_` + 26 Crockford chars derived from a sha256 of the name: the same name always maps to the same player. */
+export function devPlayerId(name: string): string {
+  const id = computeDevPlayerId(name);
+  issuedDevPlayerIds.add(id);
+  return id;
+}
+
+/** True when `playerId` was issued for a non-production `dev:<name>` alias. */
+export function isDevPlayerId(playerId: string): boolean {
+  return issuedDevPlayerIds.has(playerId);
 }
 
 /** W00 dev session: `dev:<name>` tokens, refused in production. */

@@ -152,6 +152,22 @@
   box-shadow: var(--ta-glow-3);
 }
 
+.ta-me-tab.is-disabled,
+.ta-me-tab[aria-disabled='true'] {
+  opacity: 0.35;
+  pointer-events: none;
+  cursor: not-allowed;
+  box-shadow: none;
+  text-shadow: none;
+}
+
+.ta-me-main.is-guest-disabled {
+  opacity: 0.42;
+  pointer-events: none;
+  user-select: none;
+  filter: saturate(0.35);
+}
+
 .ta-me-main {
   max-width: 1120px;
   margin: 20px auto 0;
@@ -247,6 +263,43 @@
   margin: 0;
   font-size: 13px;
   color: var(--ta-text-2);
+}
+
+.ta-colony-card.is-selected-colony {
+  border-color: var(--ta-orange);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ta-orange) 55%, transparent);
+}
+
+.ta-same-planet-selector {
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border-left: 3px solid var(--ta-orange);
+}
+
+.ta-same-planet-head {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ta-same-planet-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ta-same-planet-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.ta-same-planet-select {
+  flex: 1;
+  min-width: 220px;
 }
 
 .ta-play-body {

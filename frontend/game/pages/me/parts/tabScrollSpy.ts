@@ -125,6 +125,10 @@ function bindTabNavListeners(b: ListenerBinding): () => void {
   const cleanups: Array<() => void> = [];
   for (const tab of b.tabs) {
     const onClick = (e: MouseEvent): void => {
+      if (tab.dataset.guestDisabled === 'true' || tab.getAttribute('aria-disabled') === 'true') {
+        e.preventDefault();
+        return;
+      }
       const sectionId = tab.dataset.section ?? '';
       b.onSectionClick?.(sectionId);
       if (!b.hasTarget(sectionId)) return;

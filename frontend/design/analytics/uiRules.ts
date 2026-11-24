@@ -18,6 +18,8 @@ export const TESTID_MATCHERS: Readonly<Record<string, UiRuleMatch>> = {
   'me-ai-clear-btn': { area: 'profile', action: 'ai_settings_clear' },
   'me-ai-verify-btn': { area: 'profile', action: 'ai_settings_verify' },
   'me-colony-dive-in': { area: 'planets', action: 'colony_dive_in' },
+  'me-same-planet-option': { area: 'planets', action: 'same_planet_colony_select' },
+  'me-same-planet-dive': { area: 'planets', action: 'same_planet_colony_dive' },
   'me-play-cta': { area: 'cta', action: 'play_cta', target: 'play' },
   'staking-compound-btn': { area: 'staking', action: 'compound_yield' },
   'staking-share-social': { area: 'staking', action: 'share_social' },
@@ -244,6 +246,7 @@ export function classifyByTestIdPrefix(testid: string): UiRuleMatch | null {
   if (testid.startsWith('orders-filter-')) return { area: 'orders', action: 'filter_orders', target: testid.slice(14) };
   if (testid.startsWith('order-side-')) return { area: 'market', action: 'market_order_side', target: testid.slice(11) };
   if (testid.startsWith('me-tab-')) return { area: 'profile', action: 'open_section', target: testid.slice(7) };
+  if (testid.startsWith('orbital-colony-opt-')) return { area: 'orbit_lobby', action: 'select_colony', target: testid.slice(19) };
   if (testid.startsWith('build-tier-')) return { area: 'build', action: 'select_tier', target: testid.slice(11) };
   if (testid.startsWith('prod-tier-')) return { area: 'units', action: 'select_tier', target: testid.slice(10) };
   if (testid.startsWith('hq-tab-')) return { area: 'hq_ai', action: 'hq_tab', target: testid.slice(7) };

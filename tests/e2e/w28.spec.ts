@@ -52,24 +52,21 @@ test('@hack 1. /landing.html: STAKE · LIVE APY pill, 0–500 NEAR tier slider �
   await ctx.close();
 });
 
-test('@hack 2. /me.html#staking?amount=50 logged out: public preview, Sim APY, 4-tier matrix, ecosystem TVL, Connect CTA, no auth wall', async ({ browser }) => {
+test('@hack 2. /me.html#staking?amount=50 logged out: auth prompt + guest-disabled preview + locked tabs', async ({ browser }) => {
   const ctx = await browser.newContext();
   const p = await ctx.newPage();
   await p.goto('/me.html#staking?amount=50');
-  await expect(p.getByTestId('staking-preview')).toBeVisible({ timeout: 30_000 });
-  await expect(p.getByTestId('me-auth-prompt')).toHaveCount(0);
+  await expect(p.getByTestId('me-auth-prompt')).toBeVisible({ timeout: 30_000 });
+  await expect(p.getByTestId('me-main')).toHaveAttribute('data-guest-disabled', 'true');
+  await expect(p.getByTestId('staking-preview')).toBeVisible();
   await expect(p.getByTestId('staking-apy-badge')).toContainText(/APY/);
   await expect(p.getByTestId('staking-intro-banner')).toBeVisible();
   await expect(p.getByTestId('staking-calculator-block')).toHaveCount(0);
   await expect(p.getByTestId('staking-projection')).toBeVisible();
-  await p.getByTestId('help-tip-btn-staking-tiers').hover();
-  await expect(p.getByTestId('help-tip-panel-staking-tiers')).toBeVisible();
-  await expect(p.getByTestId('staking-tier-matrix')).toHaveAttribute('data-reached-tier', '2');
   await expect(p.getByTestId('staking-ecosystem')).toBeVisible();
   await expect(p.getByTestId('staking-connect-cta')).toHaveText(/Connect NEAR Wallet to Stake 50 NEAR/);
-  await p.getByTestId('staking-amount-input').fill('500');
-  await expect(p.getByTestId('staking-connect-cta')).toHaveText(/Stake 500 NEAR/);
-  await expect(p.getByTestId('staking-tier-matrix')).toHaveAttribute('data-reached-tier', '4');
+  await expect(p.getByTestId('staking-connect-cta')).toBeDisabled();
+  await expect(p.getByTestId('staking-amount-input')).toBeDisabled();
   await p.setViewportSize({ width: 375, height: 812 }); // mobile touch layout
   await noHorizontalScroll(p);
   await ctx.close();
