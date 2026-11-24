@@ -2,20 +2,15 @@ import { Inject, Injectable, Optional } from '@nestjs/common';
 import type { ColonySummary, HomeResponse, PlanetSummary } from '@terra/contracts';
 import { DEV_PLANET_TYPE, type DevPlanetType } from '@terra/sim';
 import { WorldLifecycleService } from '../../lobby/lifecycle.service';
-import { isDevPlayerId } from '../../ws/session-verifier';
-import { APP_ENV, type AppEnv } from '../tokens';
 import { LobbyPersistenceService } from '../../lobby/lobby-persistence.service';
-import type { CanonicalWorldRecord } from '../../lobby/lobby-persistence.types';
-import { normalizeColonyStatus, SectorAntiCheatService } from '../anticheat';
+import { SectorAntiCheatService } from '../anticheat';
 import { CoreException } from '../errors';
+import { APP_ENV, type AppEnv } from '../tokens';
 import {
   buildBasicColonySummary,
   buildBasicPlanetSummary,
   buildQueuedHomeResponse,
   createSpawnColonyCommand,
-  enrichColonyWithReservation,
-  findCommittedReservationColony,
-  isPlanetEndedOrArchived,
   listCanonicalPlanetSummaries,
   type ColonySeatAssignment,
   type ColonySeatListener,
@@ -25,22 +20,38 @@ import {
   type ResolveHomeOptions,
   type SeatSlot,
 } from './home-resolve.helpers';
+import { ColonySlotAllowanceService } from './colony-slot-allowance.service';
 import type { AwayHeadline } from './away-headline';
 import type { HardModeHomeClock } from './hard-mode-home';
 import { type ColonyRecord, HomeRepository, type PlanetRecord } from './home.repository';
 import {
-  askHostLandingSite,
+  adoptLateLandingHelper,
+  assertNewColonyAllowed,
+  attachHomeColonyRoster,
+  buildOccupiedSectorsMap,
+  collectActiveColonyBundles,
+  matchActiveBundle,
+  type ActiveColonyBundle,
+} from './parts/home-multi-colony';
+import {
   assertNewHomeJoinSpace,
-  notifyColonySeated,
   assertRequestedHomeLocation,
   buildHomeResponseForColony,
   errText,
-  markPlanetIndexLanded,
   SEAT_ATTEMPTS,
   SEAT_PLANETS,
   seatNewColony,
   type SeatContext,
 } from './parts/home-seating';
+import {
+  checkLockedSeatAssignShortCircuit,
+  checkPreSeatAssignShortCircuit,
+  findLatestColonyWithPlanet,
+  getExistingHomeHelper,
+  materializeW12LiveColonyHelper,
+  resumeColonyHelper,
+  type HomeServiceLookupDeps,
+} from './parts/home-service-ops';
 
 export const HOME_SEAT_NOTIFIER = Symbol('HOME_SEAT_NOTIFIER');
 
@@ -55,13 +66,8 @@ export type {
   SeatSlot,
 };
 
-export function toColonySummary(colony: ColonyRecord): ColonySummary {
-  return buildBasicColonySummary(colony);
-}
-
-export function toPlanetSummary(planet: PlanetRecord): PlanetSummary {
-  return buildBasicPlanetSummary(planet);
-}
+export function toColonySummary(colony: ColonyRecord): ColonySummary { return buildBasicColonySummary(colony); }
+export function toPlanetSummary(planet: PlanetRecord): PlanetSummary { return buildBasicPlanetSummary(planet); }
 
 @Injectable()
 export class HomeService {
@@ -82,9 +88,16 @@ export class HomeService {
     @Optional() @Inject(LobbyPersistenceService) private lobbyPersistence?: LobbyPersistenceService,
     @Optional() @Inject(WorldLifecycleService) private worldLifecycle?: WorldLifecycleService,
     @Optional() @Inject(SectorAntiCheatService) private readonly antiCheat?: SectorAntiCheatService,
+    @Optional() @Inject(ColonySlotAllowanceService) private slotAllowance?: ColonySlotAllowanceService,
     @Optional() @Inject(APP_ENV) private readonly env?: AppEnv,
   ) {
     this.antiCheat?.setLobbyPersistence(this.lobbyPersistence);
+    if (this.slotAllowance) this.antiCheat?.setSlotAllowanceService(this.slotAllowance);
+  }
+
+  setSlotAllowanceService(slotAllowance?: ColonySlotAllowanceService): void {
+    this.slotAllowance = slotAllowance;
+    this.antiCheat?.setSlotAllowanceService(slotAllowance);
   }
 
   setLobbyServices(
@@ -139,109 +152,21 @@ export class HomeService {
     return updated;
   }
 
-  async getExistingHome(playerId: string, planetId?: string): Promise<HomeResponse | null> {
-    if (planetId) {
-      const repoCol = await this.repo.findColonyByPlayerAndPlanet(playerId, planetId);
-      if (repoCol) {
-        const enriched = await enrichColonyWithReservation(this.applyOverrides(repoCol), this.lobbyPersistence);
-        const rawPlanet = (await this.repo.findPlanetById(planetId)) ?? (await this.repo.upsertDevPlanet(planetId));
-        const planet = this.applyPlanetOverrides(rawPlanet);
-        this.antiCheat?.recordColonyBase(enriched, planet);
-        return this.buildHomeResponseAsync(enriched, planet, false);
-      }
-      const committed = await findCommittedReservationColony(this.lobbyPersistence, playerId, { planetId });
-      if (committed) {
-        const col = this.applyOverrides(committed.colony);
-        const planet = this.applyPlanetOverrides(committed.planet);
-        this.antiCheat?.recordColonyBase(col, planet);
-        return this.buildHomeResponseAsync(col, planet, false);
-      }
-      return null;
-    }
-
-    const found = await this.existingColony(playerId);
-    if (found && found.colony.status === 'ACTIVE' && !isPlanetEndedOrArchived(found.planet, found.world)) {
-      this.antiCheat?.recordColonyBase(found.colony, found.planet);
-      return this.buildHomeResponseAsync(found.colony, found.planet, false);
-    }
-    const activeTicket = await this.lobbyPersistence?.findActiveTicketByPlayer(playerId);
-    if (activeTicket && this.lobbyPersistence) {
-      return buildQueuedHomeResponse(activeTicket, this.lobbyPersistence, this.worldLifecycle);
-    }
-    if (found) {
-      if (this.isRecapSeenFor(playerId, found.colony)) {
-        return this.resolveHome({ id: playerId });
-      }
-      return this.buildHomeResponseAsync(found.colony, found.planet, false);
-    }
-    return null;
+  getExistingHome(playerId: string, planetId?: string): Promise<HomeResponse | null> {
+    return getExistingHomeHelper(this.lookupDeps(), playerId, planetId);
   }
 
-  async resumeColony(
+  resumeColony(
     playerId: string,
     colonyId: string,
     requestedSectorId?: string,
     requestedPlanetId?: string,
   ): Promise<HomeResponse> {
-    let colony = await this.repo.findColonyById(colonyId);
-    if (!colony && this.isNonProduction() && colonyId === 'co_w12_live_1') {
-      colony = await this.materializeW12LiveColony(playerId, colonyId, requestedSectorId);
-    }
-    if (
-      colony &&
-      colony.playerId !== playerId &&
-      this.isNonProduction() &&
-      (colony.id === 'co_w12_live_1' || colony.playerId.startsWith('pr_dev_') || isDevPlayerId(colony.playerId))
-    ) {
-      this.antiCheat?.recordColonyRemoved(colony.id);
-      colony = (await this.repo.reassignColonyPlayer(colony.id, playerId)) ?? colony;
-    }
-    let rawPlanet: PlanetRecord | null = null;
-    if (!colony) {
-      const committed = await findCommittedReservationColony(this.lobbyPersistence, playerId, { colonyId });
-      if (committed && committed.colony.playerId === playerId) {
-        colony = this.applyOverrides(committed.colony);
-        rawPlanet = committed.planet;
-      }
-    } else {
-      colony = await enrichColonyWithReservation(this.applyOverrides(colony), this.lobbyPersistence);
-      if (colony.playerId === playerId) {
-        rawPlanet =
-          (await this.repo.findPlanetById(colony.planetId)) ??
-          (await this.repo.upsertDevPlanet(
-            colony.planetId,
-            colony.planetId === 'pl_w12_forest'
-              ? { name: 'Sylva Reach', type: 'temperate', seed: 'w12-profile-achievements', state: 'ACTIVE' }
-              : {},
-          ));
-      }
-    }
-    const planet = rawPlanet ? this.applyPlanetOverrides(rawPlanet) : null;
-
-    const world = colony && this.lobbyPersistence ? await this.lobbyPersistence.getCanonicalWorldById(colony.planetId) : null;
-    if (
-      !colony ||
-      !planet ||
-      colony.playerId !== playerId ||
-      colony.status !== 'ACTIVE' ||
-      isPlanetEndedOrArchived(planet, world)
-    ) {
-      throw new CoreException('COLONY_UNAVAILABLE', {
-        status: 404,
-        message: 'This colony is unavailable. Return to your pilot page to choose an active colony.',
-      });
-    }
-    this.antiCheat?.recordColonyBase(colony, planet);
-    return assertRequestedHomeLocation(
-      await this.answerExisting(colony, planet, false),
-      this.antiCheat,
-      requestedSectorId,
-      requestedPlanetId,
-    );
+    return resumeColonyHelper(this.lookupDeps(), playerId, colonyId, requestedSectorId, requestedPlanetId);
   }
 
   /**
-   * W11-20 `resolveHome`: pure home state machine over live colony, active queue ticket,
+   * W11-20 `resolveHome`: pure home state machine over live colonies, active queue ticket,
    * unseen elimination/planet-end recap, or `NEW` player with all three canonical worlds.
    */
   async resolveHome(
@@ -252,31 +177,41 @@ export class HomeService {
     const handle = typeof player === 'string' ? undefined : player.handle;
     if (opts?.colonyId) return this.resumeColony(playerId, opts.colonyId, opts.sectorId, opts.planetId);
 
-    const existing = await this.existingColony(playerId, handle);
-    if (existing && existing.colony.status === 'ACTIVE' && !isPlanetEndedOrArchived(existing.planet, existing.world)) {
-      this.antiCheat?.recordColonyBase(existing.colony, existing.planet);
-      return assertRequestedHomeLocation(
-        await this.answerExisting(existing.colony, existing.planet, true),
+    const activeBundles = await this.listActiveBundles(playerId, handle);
+    for (const b of activeBundles) this.antiCheat?.recordColonyBase(b.colony, b.planet);
+
+    if (opts?.newColony) {
+      return this.resolveNewColonyHome({ id: playerId, handle }, activeBundles, opts);
+    }
+
+    if (activeBundles.length > 0) {
+      const activeTicket = await this.lobbyPersistence?.findActiveTicketByPlayer(playerId);
+      if (activeTicket && this.lobbyPersistence && (!opts?.planetId || activeTicket.planetId === opts.planetId)) {
+        return this.withRoster(await buildQueuedHomeResponse(activeTicket, this.lobbyPersistence, this.worldLifecycle), playerId, activeBundles);
+      }
+      const target =
+        matchActiveBundle(activeBundles, opts?.planetId, opts?.sectorId) ??
+        (opts?.planetId ? activeBundles.find((b) => b.planet.id === opts.planetId) : undefined) ??
+        activeBundles[0]!;
+      const verified = assertRequestedHomeLocation(
+        await this.answerExisting(target.colony, target.planet, true),
         this.antiCheat,
         opts?.sectorId,
         opts?.planetId,
       );
+      return this.withRoster(verified, playerId, activeBundles);
     }
 
-    assertRequestedHomeLocation(
-      { state: 'NEW', planets: [], newPlanetTypes: [] },
-      this.antiCheat,
-      opts?.sectorId,
-      opts?.planetId,
-    );
+    assertRequestedHomeLocation({ state: 'NEW', planets: [], newPlanetTypes: [] }, this.antiCheat, opts?.sectorId, opts?.planetId);
 
     const activeTicket = await this.lobbyPersistence?.findActiveTicketByPlayer(playerId);
     if (activeTicket && this.lobbyPersistence) {
-      return buildQueuedHomeResponse(activeTicket, this.lobbyPersistence, this.worldLifecycle);
+      return this.withRoster(await buildQueuedHomeResponse(activeTicket, this.lobbyPersistence, this.worldLifecycle), playerId, activeBundles);
     }
 
+    const existing = await findLatestColonyWithPlanet(this.lookupDeps(), playerId, handle);
     if (existing && !this.isRecapSeenFor(playerId, existing.colony)) {
-      return this.buildHomeResponseAsync(existing.colony, existing.planet, true);
+      return this.withRoster(await this.buildHomeResponseAsync(existing.colony, existing.planet, true), playerId, activeBundles);
     }
 
     if (opts?.autoSeatDev === true) {
@@ -284,12 +219,11 @@ export class HomeService {
     }
 
     const planets = await listCanonicalPlanetSummaries(this.lobbyPersistence, true);
-    return {
-      state: 'NEW',
-      planets,
-      newPlanetTypes: [],
-      queuePaused: this.worldLifecycle?.isQueuePaused() ?? false,
-    };
+    return this.withRoster(
+      { state: 'NEW', planets, newPlanetTypes: [], queuePaused: this.worldLifecycle?.isQueuePaused() ?? false },
+      playerId,
+      activeBundles,
+    );
   }
 
   async getOrAssignHome(
@@ -297,35 +231,20 @@ export class HomeService {
     preferredType?: DevPlanetType,
     requestedSectorId?: string,
     requestedPlanetId?: string,
+    newColony = false,
   ): Promise<HomeResponse> {
-    const existing = await this.existingColony(player.id, player.handle);
-    if (existing && existing.colony.status === 'ACTIVE' && !isPlanetEndedOrArchived(existing.planet, existing.world)) {
-      this.antiCheat?.recordColonyBase(existing.colony, existing.planet);
-      return assertRequestedHomeLocation(
-        await this.answerExisting(existing.colony, existing.planet, false),
-        this.antiCheat,
-        requestedSectorId,
-        requestedPlanetId,
-      );
-    }
+    const activeBundles = await this.listActiveBundles(player.id, player.handle);
+    for (const b of activeBundles) this.antiCheat?.recordColonyBase(b.colony, b.planet);
 
-    const activeTicket = await this.lobbyPersistence?.findActiveTicketByPlayer(player.id);
-    if (activeTicket && this.lobbyPersistence) {
-      assertRequestedHomeLocation(
-        { state: 'NEW', planets: [], newPlanetTypes: [] },
-        this.antiCheat,
-        requestedSectorId,
-        requestedPlanetId,
-      );
-      return buildQueuedHomeResponse(activeTicket, this.lobbyPersistence, this.worldLifecycle);
-    }
-
-    if (existing) {
-      if (this.isRecapSeenFor(player.id, existing.colony)) {
-        return this.resolveHome(player);
-      }
-      return this.answerExisting(existing.colony, existing.planet, false);
-    }
+    const preShort = await checkPreSeatAssignShortCircuit(
+      this.lookupDeps(),
+      player,
+      activeBundles,
+      requestedSectorId,
+      requestedPlanetId,
+      newColony,
+    );
+    if (preShort) return preShort;
 
     const resolvedType = preferredType ?? DEV_PLANET_TYPE;
     await assertNewHomeJoinSpace({
@@ -334,57 +253,112 @@ export class HomeService {
       preferredType: resolvedType,
       requestedSectorId,
       requestedPlanetId,
+      newColony,
     });
 
     return this.withSeatLock(async () => {
-      const recheckTicket = await this.lobbyPersistence?.findActiveTicketByPlayer(player.id);
-      if (recheckTicket && this.lobbyPersistence) {
-        return buildQueuedHomeResponse(recheckTicket, this.lobbyPersistence, this.worldLifecycle);
-      }
-      const recheck = await this.existingColony(player.id, player.handle);
-      if (recheck) {
-        if (recheck.colony.status !== 'ACTIVE' && this.isRecapSeenFor(player.id, recheck.colony)) {
-          return this.resolveHome(player);
-        }
-        this.antiCheat?.recordColonyBase(recheck.colony, recheck.planet);
-        return assertRequestedHomeLocation(
-          await this.answerExisting(recheck.colony, recheck.planet, false),
-          this.antiCheat,
-          requestedSectorId,
-          requestedPlanetId,
-        );
-      }
+      const lockedBundles = await this.listActiveBundles(player.id, player.handle);
+      const lockedShort = await checkLockedSeatAssignShortCircuit(
+        this.lookupDeps(),
+        player,
+        lockedBundles,
+        requestedSectorId,
+        requestedPlanetId,
+        newColony,
+      );
+      if (lockedShort) return lockedShort;
+
       await assertNewHomeJoinSpace({
         antiCheat: this.antiCheat,
         playerId: player.id,
         preferredType: resolvedType,
         requestedSectorId,
         requestedPlanetId,
+        newColony,
       });
-      return seatNewColony(
-        this.seatContext(),
+      const occupiedSectorsByPlanet = buildOccupiedSectorsMap(lockedBundles);
+      const seated = await seatNewColony(
+        this.seatContext(occupiedSectorsByPlanet),
         { id: player.id, handle: player.handle?.trim() || `Colonist-${player.id.slice(-4)}` },
         resolvedType,
         requestedSectorId?.trim() || undefined,
         requestedPlanetId?.trim() || undefined,
       );
+      const afterBundles = await this.listActiveBundles(player.id, player.handle);
+      return this.withRoster(seated, player.id, afterBundles);
     });
   }
 
   adoptLateLanding(assignment: ColonySeatAssignment): Promise<boolean> {
-    return this.withSeatLock(async () => {
-      const { player, colony, planet } = assignment;
-      if (await this.repo.findLatestColonyByPlayerId(player.id)) {
-        markPlanetIndexLanded(this.landedIndices, colony.planetId, colony.colonyIndex);
-        return false;
-      }
-      const created = await this.repo.createColony({ ...colony });
-      this.antiCheat?.recordColonyBase(created.colony, planet, true);
-      return true;
-    });
+    return this.withSeatLock(() =>
+      adoptLateLandingHelper({
+        assignment,
+        repo: this.repo,
+        landedIndices: this.landedIndices,
+        listActiveBundles: (pid, h) => this.listActiveBundles(pid, h),
+        slotAllowance: this.slotAllowance,
+        antiCheat: this.antiCheat,
+      }),
+    );
   }
 
-  private seatContext(): SeatContext {
+  private async resolveNewColonyHome(
+    player: { readonly id: string; readonly handle?: string },
+    activeBundles: readonly ActiveColonyBundle[],
+    opts: ResolveHomeOptions,
+  ): Promise<HomeResponse> {
+    await assertNewColonyAllowed({
+      playerId: player.id,
+      activeBundles,
+      slotAllowance: this.slotAllowance,
+      requestedPlanetId: opts.planetId,
+      requestedSectorId: opts.sectorId,
+    });
+    await assertNewHomeJoinSpace({
+      antiCheat: this.antiCheat,
+      playerId: player.id,
+      preferredType: opts.preferredType ?? DEV_PLANET_TYPE,
+      requestedSectorId: opts.sectorId,
+      requestedPlanetId: opts.planetId,
+      newColony: true,
+    });
+    const activeTicket = await this.lobbyPersistence?.findActiveTicketByPlayer(player.id);
+    if (activeTicket && this.lobbyPersistence) {
+      return this.withRoster(await buildQueuedHomeResponse(activeTicket, this.lobbyPersistence, this.worldLifecycle), player.id, activeBundles);
+    }
+    if (opts.autoSeatDev === true) {
+      return this.getOrAssignHome(player, opts.preferredType, opts.sectorId, opts.planetId, true);
+    }
+    const planets = await listCanonicalPlanetSummaries(this.lobbyPersistence, true);
+    return this.withRoster(
+      { state: 'NEW', planets, newPlanetTypes: [], queuePaused: this.worldLifecycle?.isQueuePaused() ?? false },
+      player.id,
+      activeBundles,
+    );
+  }
+
+  private lookupDeps(): HomeServiceLookupDeps {
+    return {
+      repo: this.repo,
+      lobbyPersistence: this.lobbyPersistence,
+      worldLifecycle: this.worldLifecycle,
+      antiCheat: this.antiCheat,
+      slotAllowance: this.slotAllowance,
+      nonProduction: this.isNonProduction(),
+      applyOverrides: (col) => this.applyOverrides(col),
+      applyPlanetOverrides: (pl) => this.applyPlanetOverrides(pl),
+      isRecapSeenFor: (playerId, col) => this.isRecapSeenFor(playerId, col),
+      buildHomeResponse: (col, pl, canonical) => this.buildHomeResponseAsync(col, pl, canonical),
+      answerExisting: (col, pl, canonical) => this.answerExisting(col, pl, canonical),
+      withRoster: (home, playerId, bundles) => this.withRoster(home, playerId, bundles),
+      listActiveBundles: (playerId, handle) => this.listActiveBundles(playerId, handle),
+      resolveHomeFallback: (player) => this.resolveHome(player),
+      materializeW12LiveColony: (playerId, colonyId, requestedSectorId) =>
+        this.materializeW12LiveColony(playerId, colonyId, requestedSectorId),
+    };
+  }
+
+  private seatContext(occupiedSectorsByPlanet?: ReadonlyMap<string, ReadonlySet<string>>): SeatContext {
     return {
       repo: this.repo,
       exhausted: this.exhausted,
@@ -394,8 +368,31 @@ export class HomeService {
       notifier: this.notifier,
       seatListeners: this.seatListeners,
       antiCheat: this.antiCheat,
+      occupiedSectorsByPlanet,
       buildHomeResponse: (col, pl, canonical) => this.buildHomeResponseAsync(col, pl, canonical),
     };
+  }
+
+  private listActiveBundles(playerId: string, handle?: string): Promise<ActiveColonyBundle[]> {
+    return collectActiveColonyBundles({
+      repo: this.repo,
+      lobbyPersistence: this.lobbyPersistence,
+      hardMode: this.hardMode,
+      applyOverrides: (col) => this.applyOverrides(col),
+      applyPlanetOverrides: (pl) => this.applyPlanetOverrides(pl),
+      playerId,
+      handle,
+    });
+  }
+
+  private withRoster(home: HomeResponse, playerId: string, activeBundles: readonly ActiveColonyBundle[]): Promise<HomeResponse> {
+    return attachHomeColonyRoster({
+      home,
+      playerId,
+      activeBundles,
+      slotAllowance: this.slotAllowance,
+      lobbyPersistence: this.lobbyPersistence,
+    });
   }
 
   private isRecapSeenFor(playerId: string, colony: ColonyRecord): boolean {
@@ -432,34 +429,6 @@ export class HomeService {
       return { ...planet, status: 'ENDED', state: 'ENDED' };
     }
     return planet;
-  }
-
-  private async existingColony(
-    playerId: string,
-    handle?: string,
-  ): Promise<{ colony: ColonyRecord; planet: PlanetRecord; world: CanonicalWorldRecord | null } | null> {
-    const repoColony = await this.repo.findLatestColonyByPlayerId(playerId);
-    const enriched = repoColony
-      ? await enrichColonyWithReservation(this.applyOverrides(repoColony), this.lobbyPersistence)
-      : null;
-    if (!enriched || normalizeColonyStatus(enriched.status) !== 'ACTIVE') {
-      const committed = await findCommittedReservationColony(this.lobbyPersistence, playerId, { handle });
-      if (committed) {
-        const col = this.applyOverrides(committed.colony);
-        const planet = this.applyPlanetOverrides(committed.planet);
-        const world = this.lobbyPersistence ? await this.lobbyPersistence.getCanonicalWorldById(planet.id) : null;
-        if (!enriched || (normalizeColonyStatus(col.status) === 'ACTIVE' && !isPlanetEndedOrArchived(planet, world))) {
-          return { colony: col, planet, world };
-        }
-      }
-    }
-    if (!enriched) return null;
-    const rawPlanet =
-      (await this.repo.findPlanetById(enriched.planetId)) ??
-      (await this.repo.upsertDevPlanet(enriched.planetId));
-    const planet = this.applyPlanetOverrides(rawPlanet);
-    const world = this.lobbyPersistence ? await this.lobbyPersistence.getCanonicalWorldById(planet.id) : null;
-    return { colony: enriched, planet, world };
   }
 
   private async answerExisting(
@@ -502,71 +471,17 @@ export class HomeService {
     return (this.env?.NODE_ENV ?? process.env.NODE_ENV) !== 'production';
   }
 
-  private async materializeW12LiveColony(
-    playerId: string,
-    colonyId: string,
-    requestedSectorId?: string,
-  ): Promise<ColonyRecord | null> {
-    const w12Planet = await this.repo.upsertDevPlanet('pl_w12_forest', {
-      name: 'Sylva Reach',
-      type: 'temperate',
-      seed: 'w12-profile-achievements',
-      state: 'ACTIVE',
+  private materializeW12LiveColony(playerId: string, colonyId: string, requestedSectorId?: string): Promise<ColonyRecord | null> {
+    return materializeW12LiveColonyHelper({
+      repo: this.repo,
+      landingHost: this.landingHost,
+      notifier: this.notifier,
+      seatListeners: this.seatListeners,
+      antiCheat: this.antiCheat,
+      playerId,
+      colonyId,
+      requestedSectorId,
     });
-    const slot = await this.repo.findFreeSlotOnPlanet(w12Planet.id);
-    const colonyIndex = slot?.colonyIndex ?? 0;
-    let spawnQ = 0;
-    let spawnR = 0;
-    let landingSlotId: string | null = null;
-    let foundingSectorId = requestedSectorId?.trim() || 'sec_0_0';
-    if (this.landingHost) {
-      const site = await askHostLandingSite(this.landingHost, w12Planet, colonyIndex, requestedSectorId);
-      if (site.ok) {
-        spawnQ = site.q;
-        spawnR = site.r;
-        landingSlotId = site.landingSlotId ?? null;
-        if (!requestedSectorId?.trim() && site.sectorId) foundingSectorId = site.sectorId;
-      }
-    }
-    try {
-      const created = await this.repo.createColony({
-        id: colonyId,
-        playerId,
-        planetId: w12Planet.id,
-        colonyIndex,
-        name: 'Aegis Basin',
-        color: colonyIndex,
-        status: 'ACTIVE',
-        foundingSectorId,
-        landingSlotId,
-        spawnQ,
-        spawnR,
-      });
-      this.antiCheat?.recordColonyBase(created.colony, created.planet, true);
-      await notifyColonySeated(
-        this.repo,
-        this.notifier,
-        this.seatListeners,
-        {
-          player: { id: playerId, handle: 'Aegis' },
-          colony: created.colony,
-          planet: created.planet,
-          slot: {
-            index: colonyIndex,
-            q: spawnQ,
-            r: spawnR,
-            ...(foundingSectorId ? { sectorId: foundingSectorId } : {}),
-            ...(landingSlotId ? { landingSlotId } : {}),
-          },
-        },
-        this.antiCheat,
-      );
-      return created.colony;
-    } catch (err) {
-      const existing = await this.repo.findColonyById(colonyId);
-      if (existing) return existing;
-      throw err;
-    }
   }
 
   private withSeatLock<T>(fn: () => Promise<T>): Promise<T> {

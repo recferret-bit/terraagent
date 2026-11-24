@@ -1,21 +1,35 @@
 import type { PlanetSummaryV1 } from '@terra/contracts';
 import type { PlanetKind } from '@terra/render/planets/PlanetSpec';
 import type { OrbitalGlobeMarkerInput, OrbitalProjectedFrame } from '@terra/render/orbit/types';
-import type { ActiveHomeColony } from '../../../design/pilot/activeHomeColony';
+import { canFoundAnotherColony, type ActiveHomeColony, type PilotColonyRoster } from '../../../design/pilot/activeHomeColony';
 import { noteUiAction } from '../../../design/analytics/ui';
 import type { SectorIntentV1 } from '../lobby/orbitalPickerModel';
 import { bindSectorChooserEvents, renderSectorChooserHtml } from '../lobby/sectorChooser';
 import {
+  NEW_COLONY_SELECTION_ID,
+  renderColonyPickerHtml,
   renderLaunchCardShellHtml,
   renderPresenceCardInnerHtml,
   renderScanCardInnerHtml,
+  resolveOrbitalDeployAction,
+  type OrbitalDeployAction,
 } from './arHudTemplates';
 import { ArLeaderLines } from './arLeaderLines';
+import {
+  clampAxis,
+  createFloatWrapper,
+  dampPtr,
+  floatTransform,
+  gyroDwellWave,
+  poseFloatWrap,
+  prefersReducedMotion,
+} from './arFloatPose';
 import { FlagshipLabel } from './FlagshipLabel';
 import { buildOrbitalGlobeMarkers, resolveHomeBaseSectorId, resolveTargetSectorId } from './sectorGlobeMap';
 
 export interface OrbitalArHudCallbacks {
   onSectorSelect(intent: SectorIntentV1): void;
+  onColonySelect?(colonyId: string, sectorId: string): void;
   onDeploy(): void;
   onMarkerHover?(sectorId: string | null): void;
 }
@@ -26,75 +40,11 @@ export interface OrbitalArState {
   readonly intent: SectorIntentV1;
   readonly queuePaused: boolean;
   readonly activeColony: ActiveHomeColony | null;
+  readonly colonyRoster?: PilotColonyRoster | null;
+  readonly selectedColonyId?: string | null;
 }
 
 type ArCardKey = 'scan' | 'presence' | 'launch';
-
-function prefersReducedMotion(): boolean {
-  return (
-    typeof window !== 'undefined' &&
-    typeof window.matchMedia === 'function' &&
-    window.matchMedia('(prefers-reduced-motion: reduce)').matches
-  );
-}
-
-/** C1-smooth quintic wave that glides in 3D then hovers weightlessly at apex/trough (~0.9s dwell). */
-function gyroDwellWave(u: number): number {
-  const s = Math.sin(u);
-  const a = Math.abs(s);
-  if (a >= 0.78) return Math.sign(s);
-  const x = a / 0.78;
-  const smooth = x * x * x * (x * (x * 6 - 15) + 10);
-  return Math.sign(s) * smooth;
-}
-
-function clampAxis(v: number, limit: number): number {
-  return Math.max(-limit, Math.min(limit, v));
-}
-
-function dampPtr(current: number, target: number): number {
-  if (Math.abs(target - current) < 0.012) return target;
-  return current + (target - current) * 0.25;
-}
-
-function floatTransform(tx: number, ty: number, tz: number, ry: number, rx: number, rz: number): string {
-  return `perspective(780px) translate3d(${tx.toFixed(2)}px, ${ty.toFixed(2)}px, ${tz.toFixed(2)}px) ` +
-    `rotateY(${ry.toFixed(2)}deg) rotateX(${rx.toFixed(2)}deg) rotateZ(${rz.toFixed(2)}deg)`;
-}
-
-/** Y travel stays inside the rail gap so the blue card and the orange sector card cannot cross. */
-function poseFloatWrap(
-  wrap: HTMLDivElement,
-  t: number,
-  phase: number,
-  amp: number,
-  px: number,
-  py: number,
-  baseRy: number,
-  baseRx: number,
-  baseRz: number,
-  hovered: boolean,
-): void {
-  const rotSin = Math.sin(t * 0.24 + phase);
-  const rotCos = Math.cos(t * 0.48 + phase);
-  const tx = clampAxis(rotSin * 3.8 * amp - px * 8 * amp, 10);
-  const ty = clampAxis(rotCos * 4.2 * amp + py * 4 * amp, 5);
-  const tz = rotCos * 12 * amp + (hovered ? 12 : 0);
-  const ry = baseRy + rotSin * 2.4 * amp + px * 3.2;
-  const rx = baseRx + rotCos * 1.2 * amp + py * 1.6;
-  const rz = baseRz + rotSin * 0.45 * amp;
-  wrap.style.transform = floatTransform(tx, ty, tz, ry, rx, rz);
-}
-
-function createFloatWrapper(wrapClass: string): HTMLDivElement {
-  const wrap = document.createElement('div');
-  wrap.className = `ar-float-wrap ${wrapClass}`;
-  const back = document.createElement('div');
-  back.className = 'ar-holo-back plate';
-  back.setAttribute('aria-hidden', 'true');
-  wrap.appendChild(back);
-  return wrap;
-}
 
 /**
  * Ship Enchanted-Reality (AR) 3D HUD overlay around the orbital globe:
@@ -114,6 +64,7 @@ export class OrbitalArHud {
   private readonly scanCard = document.createElement('section');
   private readonly presenceCard = document.createElement('section');
   private readonly launchCard = document.createElement('section');
+  private colonyHostEl!: HTMLElement;
   private sectorHostEl!: HTMLElement;
   private deployBtn!: HTMLButtonElement;
   private errEl!: HTMLElement;
@@ -130,6 +81,7 @@ export class OrbitalArHud {
   private lastKind: PlanetKind | null = null;
   private lastScanHtml = '';
   private lastPresenceHtml = '';
+  private lastColonyHtml = '';
   private lastSectorHtml = '';
   private cachedMarkers: OrbitalGlobeMarkerInput[] = [];
   private latestState: OrbitalArState;
@@ -182,12 +134,14 @@ export class OrbitalArHud {
       initial.activeColony,
       resolveHomeBaseSectorId(initial.summary, initial.activeColony),
     );
+    this.colonyHostEl = this.launchCard.querySelector('#colony-picker-host')!;
     this.sectorHostEl = this.launchCard.querySelector('#sector-picker-host')!;
     this.deployBtn = this.launchCard.querySelector('#deploy')!;
     this.errEl = this.launchCard.querySelector('#menu-err')!;
     this.deployBtn.onclick = () => {
-      if (this.deployBtn.disabled || this.isForeignSectorSelected()) return;
-      noteUiAction('orbit_lobby', this.latestState.activeColony ? 'enter_colony' : 'deploy_colony', this.latestState.kind);
+      const action = this.resolveDeployAction();
+      if (this.deployBtn.disabled || !action.allowed) return;
+      noteUiAction('orbit_lobby', action.mode === 'enter' ? 'enter_colony' : 'deploy_colony', this.latestState.kind);
       this.deployBtn.disabled = true;
       this.cb.onDeploy();
     };
@@ -271,18 +225,20 @@ export class OrbitalArHud {
       this.scanCard.innerHTML = scanHtml;
       this.lastScanHtml = scanHtml;
     }
-    const homeBaseSectorId = resolveHomeBaseSectorId(state.summary, state.activeColony);
+    const action = this.resolveDeployAction();
+    const homeBaseSectorId = action.ownedSectorIds[0] ?? resolveHomeBaseSectorId(state.summary, state.activeColony);
     const targetSector = resolveTargetSectorId(
       state.summary,
       state.intent,
       this.hoveredSectorId,
-      state.activeColony ? homeBaseSectorId : null,
+      action.ownedOnPlanet.length > 0 && action.mode === 'enter' ? homeBaseSectorId : null,
     );
     const presenceHtml = renderPresenceCardInnerHtml(
       state.summary,
-      state.activeColony,
+      action.colony ?? state.activeColony,
       targetSector,
       homeBaseSectorId,
+      state.colonyRoster,
     );
     if (presenceHtml !== this.lastPresenceHtml) {
       this.presenceCard.innerHTML = presenceHtml;
@@ -291,13 +247,38 @@ export class OrbitalArHud {
 
     const launchBadge = this.launchCard.querySelector<HTMLElement>('.ar-eyebrow .ar-code');
     if (launchBadge) launchBadge.textContent = state.summary.availability.toUpperCase();
+    const canExpand = canFoundAnotherColony(state.colonyRoster ?? null);
+    const pickerSelectionId =
+      state.selectedColonyId === NEW_COLONY_SELECTION_ID || action.mode === 'new'
+        ? NEW_COLONY_SELECTION_ID
+        : (action.colony?.colonyId ?? state.selectedColonyId);
+    const colonyHtml = renderColonyPickerHtml(
+      state.summary,
+      action.ownedOnPlanet,
+      pickerSelectionId,
+      canExpand,
+    );
+    this.colonyHostEl.hidden = !colonyHtml;
+    if (colonyHtml !== this.lastColonyHtml) {
+      this.colonyHostEl.innerHTML = colonyHtml;
+      this.lastColonyHtml = colonyHtml;
+      this.colonyHostEl.querySelectorAll<HTMLElement>('[data-colony-id]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const cid = btn.dataset.colonyId;
+          const sid = btn.dataset.sectorId ?? 'sec_0_0';
+          if (!cid) return;
+          noteUiAction('orbit_lobby', 'select_colony', cid);
+          this.cb.onColonySelect?.(cid, sid);
+        });
+      });
+    }
     this.sectorHostEl.hidden = false;
     const sectorHtml = renderSectorChooserHtml(
       state.kind,
       state.summary,
       state.intent,
       state.queuePaused,
-      homeBaseSectorId,
+      action.ownedSectorIds.length > 0 ? action.ownedSectorIds : homeBaseSectorId,
     );
     if (sectorHtml !== this.lastSectorHtml) {
       this.rebindingSectors = true;
@@ -319,18 +300,18 @@ export class OrbitalArHud {
     if (planetChanged) this.triggerRetargetPulse();
   }
 
+  resolveDeployAction(): OrbitalDeployAction {
+    return resolveOrbitalDeployAction(this.latestState);
+  }
+
   isForeignSectorSelected(): boolean {
-    const { summary, intent, activeColony } = this.latestState;
-    if (!activeColony) return false;
-    const homeBaseSectorId = resolveHomeBaseSectorId(summary, activeColony);
-    if (!homeBaseSectorId) return false;
-    return intent.mode === 'chosen' && intent.sectorId !== homeBaseSectorId;
+    return !this.resolveDeployAction().allowed;
   }
 
   syncLockState(): void {
-    const { summary, activeColony } = this.latestState;
-    this.deployBtn.textContent = activeColony ? 'ENTER COLONY' : 'DEPLOY';
-    if (!activeColony) {
+    const action = this.resolveDeployAction();
+    this.deployBtn.textContent = action.buttonLabel;
+    if (!this.latestState.activeColony && !(this.latestState.colonyRoster?.colonies.length)) {
       this.deployBtn.disabled = false;
       this.deployBtn.removeAttribute('aria-disabled');
       delete this.deployBtn.dataset.sectorLocked;
@@ -340,14 +321,12 @@ export class OrbitalArHud {
       }
       return;
     }
-    const homeBaseSectorId = resolveHomeBaseSectorId(summary, activeColony);
-    const foreignSector = this.isForeignSectorSelected();
-    this.deployBtn.disabled = foreignSector;
-    this.deployBtn.setAttribute('aria-disabled', foreignSector ? 'true' : 'false');
-    this.deployBtn.dataset.sectorLocked = foreignSector ? 'true' : 'false';
-    if (foreignSector && homeBaseSectorId) {
-      this.errEl.textContent =
-        `Colony ${activeColony.colonyName} is deployed in ${homeBaseSectorId.toUpperCase()} — select ${homeBaseSectorId.toUpperCase()} to enter.`;
+    const locked = !action.allowed;
+    this.deployBtn.disabled = locked;
+    this.deployBtn.setAttribute('aria-disabled', locked ? 'true' : 'false');
+    this.deployBtn.dataset.sectorLocked = locked ? 'true' : 'false';
+    if (locked && action.lockNotice) {
+      this.errEl.textContent = action.lockNotice;
       this.sectorLockNoticeShown = true;
     } else if (this.sectorLockNoticeShown) {
       this.errEl.textContent = '';
@@ -364,18 +343,20 @@ export class OrbitalArHud {
   }
 
   private refreshPresence(): void {
-    const homeBaseSectorId = resolveHomeBaseSectorId(this.latestState.summary, this.latestState.activeColony);
+    const action = this.resolveDeployAction();
+    const homeBaseSectorId = action.ownedSectorIds[0] ?? resolveHomeBaseSectorId(this.latestState.summary, this.latestState.activeColony);
     const targetSector = resolveTargetSectorId(
       this.latestState.summary,
       this.latestState.intent,
       this.hoveredSectorId,
-      this.latestState.activeColony ? homeBaseSectorId : null,
+      action.ownedOnPlanet.length > 0 && action.mode === 'enter' ? homeBaseSectorId : null,
     );
     const presenceHtml = renderPresenceCardInnerHtml(
       this.latestState.summary,
-      this.latestState.activeColony,
+      action.colony ?? this.latestState.activeColony,
       targetSector,
       homeBaseSectorId,
+      this.latestState.colonyRoster,
     );
     if (presenceHtml !== this.lastPresenceHtml) {
       this.presenceCard.innerHTML = presenceHtml;
@@ -431,12 +412,13 @@ export class OrbitalArHud {
     this.update3dFloat(frame);
     this.flagshipLabel.sync(frame);
     const { summary, intent, activeColony } = this.latestState;
-    const homeBaseSectorId = resolveHomeBaseSectorId(summary, activeColony);
+    const action = this.resolveDeployAction();
+    const homeBaseSectorId = action.ownedSectorIds[0] ?? resolveHomeBaseSectorId(summary, activeColony);
     const targetSector = resolveTargetSectorId(
       summary,
       intent,
       this.hoveredSectorId,
-      activeColony ? homeBaseSectorId : null,
+      action.ownedOnPlanet.length > 0 && action.mode === 'enter' ? homeBaseSectorId : null,
     );
     const selectedSectorLabel = `SECTOR // ${targetSector}`;
     const homeBaseLabel = homeBaseSectorId ? `ACTIVE BASE · ${homeBaseSectorId}` : `DROP // ${targetSector}`;
@@ -457,12 +439,14 @@ export class OrbitalArHud {
 
   private refreshMarkers(): void {
     const { summary, intent, kind, activeColony } = this.latestState;
+    const action = this.resolveDeployAction();
     this.cachedMarkers = buildOrbitalGlobeMarkers(
       summary,
       intent,
       this.hoveredSectorId,
       kind,
-      activeColony,
+      action.colony ?? activeColony,
+      action.ownedOnPlanet,
     );
   }
 

@@ -11,6 +11,7 @@ import {
   BootCancelledError,
   JoinQueueCoordinator,
   extractActiveHomePayload,
+  type ActiveHomeTargetFilter,
   type QueuedHomeStatus,
 } from './joinQueueFlow';
 
@@ -118,6 +119,10 @@ export interface BootAuthOptions {
   planetType?: DevPlanetType;
   /** Canonical planet id for W11 ticket enqueue (`POST /v1/match/tickets`). */
   planetId?: string;
+  /** Explicit colony ID to resume when pilot owns multiple colonies. */
+  colonyId?: string;
+  /** When true, founds a new additional colony (`GET /v1/me/home?new=1`). */
+  newColony?: boolean;
   /** Sector placement intent (`{ mode: 'auto' }` or `{ mode: 'chosen', sectorId }`) from the orbital picker. */
   sectorIntent?: SectorIntentInput;
   /** When true, polls `/v1/me/home` while `state === 'QUEUED'` until `ACTIVE` or cancelled. */
@@ -239,6 +244,9 @@ const realWait = (ms: number): Promise<void> => new Promise((ok) => setTimeout(o
 
 interface HomeRequest {
   colonyId?: string;
+  newColony?: boolean;
+  planetId?: string;
+  sectorId?: string;
   deviceSecret: string;
   doFetch: FetchLike;
   planetType?: DevPlanetType;
@@ -258,6 +266,11 @@ async function fetchHomeWithRetry(initialToken: string, o: HomeRequest): Promise
   const query = new URLSearchParams();
   if (o.planetType) query.set('type', o.planetType);
   if (o.colonyId) query.set('colonyId', o.colonyId);
+  if (o.newColony) {
+    query.set('new', '1');
+    if (o.planetId) query.set('planetId', o.planetId);
+    if (o.sectorId) query.set('sector', o.sectorId);
+  }
   const url = '/v1/me/home' + (query.size ? `?${query}` : '');
   for (let attempt = 1; ; attempt++) {
     const res = await o.doFetch(url, { method: 'GET', headers: { Authorization: `Bearer ${token}` }, credentials: 'include' });
@@ -290,7 +303,7 @@ const HOME_STATE_TEXT: Record<string, string> = {
  * state (`NEW` with its `newPlanetTypes`, `QUEUED`, `ELIMINATED`, `PLANET_ENDED`) is a `BootError` naming it, never a
  * made-up colony on a default planet.
  */
-function normalizeHomePayload(raw: unknown): {
+function normalizeHomePayload(raw: unknown, target?: ActiveHomeTargetFilter): {
   state: string;
   planet: BootPlanetSummary;
   colony: BootColonySummary;
@@ -298,7 +311,7 @@ function normalizeHomePayload(raw: unknown): {
 } {
   const parsed = HomeResponse.safeParse(raw);
   if (!parsed.success) {
-    const fallbackActive = extractActiveHomePayload(raw);
+    const fallbackActive = extractActiveHomePayload(raw, target);
     if (fallbackActive) return fallbackActive;
     throw new BootError('GET /v1/me/home: unexpected answer', 200, 'BAD_HOME');
   }
@@ -307,6 +320,8 @@ function normalizeHomePayload(raw: unknown): {
     const types = 'newPlanetTypes' in home ? ` (new colonies: ${home.newPlanetTypes.join(', ')})` : '';
     throw new BootError(`${HOME_STATE_TEXT[home.state]}${types}`, 200, `HOME_${home.state}`);
   }
+  const targeted = target ? extractActiveHomePayload(home, target) : null;
+  if (targeted) return targeted;
   const { planet: p, colony: c } = home;
   const spawn = { q: c.spawnQ ?? 0, r: c.spawnR ?? 0 };
   return {
@@ -359,8 +374,17 @@ export async function bootAuthAndHome(opts: BootAuthOptions = {}): Promise<BootA
 
   try {
     const auth = opts.tryRefresh ? await refreshOrGuest(deviceSecret, doFetch) : await guestLogin(deviceSecret, doFetch);
+    const rawChosenSector =
+      typeof opts.sectorIntent === 'string' && opts.sectorIntent !== 'auto'
+        ? opts.sectorIntent
+        : typeof opts.sectorIntent === 'object' && opts.sectorIntent !== null && 'sectorId' in opts.sectorIntent && typeof opts.sectorIntent.sectorId === 'string'
+          ? opts.sectorIntent.sectorId
+          : undefined;
+    const effectiveColonyId =
+      opts.colonyId ?? (opts.newColony ? undefined : (query.get('colonyId') ?? query.get('colony') ?? undefined));
     const { accessToken, expiresIn, home } = await fetchHomeWithRetry(auth.accessToken, {
-      deviceSecret, doFetch, colonyId: query.get('colonyId') ?? undefined, planetType: opts.planetType, wait: opts.wait, random: opts.random, onStatus: opts.onStatus,
+      deviceSecret, doFetch, colonyId: effectiveColonyId, newColony: opts.newColony, planetId: opts.planetId, sectorId: rawChosenSector,
+      planetType: opts.planetType, wait: opts.wait, random: opts.random, onStatus: opts.onStatus,
     });
     const playerId = auth.player?.id ?? 'pr_guest';
     const handle = auth.player?.handle ?? 'Colonist';
@@ -375,6 +399,8 @@ export async function bootAuthAndHome(opts: BootAuthOptions = {}): Promise<BootA
         search,
         planetType: opts.planetType,
         planetId: opts.planetId,
+        colonyId: effectiveColonyId,
+        newColony: opts.newColony,
         sectorIntent: opts.sectorIntent,
         enqueueOnNew: opts.enqueueOnNew,
         pollIntervalMs: opts.pollIntervalMs,
@@ -402,7 +428,12 @@ export async function bootAuthAndHome(opts: BootAuthOptions = {}): Promise<BootA
       return res;
     }
 
-    const { state, planet, colony, foundingSectorId } = normalizeHomePayload(home);
+    const { state, planet, colony, foundingSectorId } = normalizeHomePayload(home, {
+      colonyId: effectiveColonyId,
+      planetId: opts.planetId,
+      planetType: opts.planetType,
+      sectorId: rawChosenSector,
+    });
     opts.onStatus?.(`Entering orbit: ${planet.id}…`);
 
     return {

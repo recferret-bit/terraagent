@@ -15,6 +15,7 @@ import {
   checkSectorCapacityForReservation,
   checkWorldAdmissionForReservation,
   isActiveReservationState,
+  isConflictingPlayerReservation,
   matchesIdempotentReservationInput,
 } from './parts/reservation-ops-parts';
 import { mapLandingSlotRow, mapReservationRow, mapSectorRow } from './prisma-lobby-mappers';
@@ -58,7 +59,13 @@ export class PrismaReservationOps {
         OR: [
           { ticketId: input.ticketId },
           { colonyId: input.colonyId },
-          { playerId: input.playerId, state: { in: ['HELD', 'COMMITTED'] } },
+          { playerId: input.playerId, state: { in: ['HELD', 'SPAWNING'] } },
+          {
+            playerId: input.playerId,
+            planetId: input.planetId,
+            sectorId: input.sectorId,
+            state: 'COMMITTED',
+          },
         ],
       },
     });
@@ -89,7 +96,7 @@ export class PrismaReservationOps {
           `ticket "${input.ticketId}" or colony "${input.colonyId}" already has a reservation`,
         );
       }
-      if (isActive && r.playerId === input.playerId) {
+      if (isConflictingPlayerReservation(r, input)) {
         throw new LobbyPersistenceConflictError(
           'duplicate_active_reservation',
           `player "${input.playerId}" already holds an active reservation "${r.id}"`,

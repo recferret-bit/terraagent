@@ -160,14 +160,19 @@ export async function resolveTargetSectorForTicket(
   persistence: LobbyPersistenceService,
   ticket: MatchTicketRecord,
   explicitSectorId?: SectorId,
+  excludedSectorIds?: ReadonlySet<string>,
 ): Promise<SectorId | null> {
   if (explicitSectorId) return explicitSectorId;
   if (ticket.sectorIntent.kind === 'chosen') {
     return ticket.sectorIntent.sectorId;
   }
   const sectors = await persistence.listSectors(ticket.planetId);
-  const availableLand = sectors.find((s) => s.kind === 'land' && s.freeSeats > 0);
-  return availableLand?.sectorId ?? sectors.find((s) => s.kind === 'land')?.sectorId ?? null;
+  const candidateLand = sectors.filter(
+    (s) => s.kind === 'land' && (!excludedSectorIds || !excludedSectorIds.has(s.sectorId)),
+  );
+  if (candidateLand.length === 0) return null;
+  const availableLand = candidateLand.find((s) => s.freeSeats > 0);
+  return availableLand?.sectorId ?? candidateLand[0]?.sectorId ?? null;
 }
 
 export async function findCandidateFreeSlots(

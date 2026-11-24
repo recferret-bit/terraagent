@@ -3,6 +3,7 @@ import { Inject, Injectable, Optional } from '@nestjs/common';
 import type { CurrentColonySummary, PastColonyOutcome, PastColonySummary } from '@terra/contracts';
 import type { PrismaClient } from '@terra/db';
 import { devPlanetTypeOf } from '@terra/sim';
+import { HomeRepository } from '../core/home/index.js';
 import { databaseEnabled } from '../core/persistence.js';
 import { APP_ENV, type AppEnv } from '../core/tokens.js';
 import { PRISMA } from '../db/db.module.js';
@@ -14,6 +15,7 @@ export const W12_SEED_CURRENT_COLONIES: readonly CurrentColonySummary[] = [
     planetId: 'pl_w12_forest',
     planetName: 'Sylva Reach',
     planetType: 'temperate',
+    foundingSectorId: 'sec_0_0',
     stage: 4,
     status: 'active',
     foundedAt: '2026-10-25T08:00:00.000Z',
@@ -81,6 +83,7 @@ export class ColonyHistoryStore {
   constructor(
     @Optional() @Inject(PRISMA) private readonly prisma?: PrismaClient,
     @Optional() @Inject(APP_ENV) env?: AppEnv,
+    @Optional() @Inject(HomeRepository) private readonly homeRepo?: HomeRepository,
   ) {
     this.useDb = Boolean(this.prisma && (!env || databaseEnabled(env)));
   }
@@ -107,7 +110,27 @@ export class ColonyHistoryStore {
   }
 
   async getCurrent(playerId: string): Promise<CurrentColonySummary[]> {
-    if (!this.useDb || !this.prisma) return this.mem.getCurrent(playerId);
+    if (!this.useDb || !this.prisma) {
+      const memRows = await this.mem.getCurrent(playerId);
+      if (memRows.length > 0 || !this.homeRepo) return memRows;
+      const repoCols = (await this.homeRepo.listColoniesByPlayerId(playerId)).filter((c) => c.status === 'ACTIVE');
+      const out: CurrentColonySummary[] = [];
+      for (const c of repoCols) {
+        const planet = await this.homeRepo.findPlanetById(c.planetId);
+        out.push({
+          colonyId: c.id,
+          name: c.name,
+          planetId: c.planetId,
+          planetName: planet?.name ?? c.planetId,
+          planetType: planet?.type ?? (devPlanetTypeOf(c.planetId) ?? 'temperate'),
+          foundingSectorId: c.foundingSectorId ?? 'sec_0_0',
+          stage: 1,
+          status: 'active',
+          foundedAt: c.createdAt.toISOString(),
+        });
+      }
+      return out;
+    }
     const colonies = await this.prisma.colony.findMany({ where: { playerId, status: 'ACTIVE' }, orderBy: { createdAt: 'desc' } });
     const planets = await this.prisma.planet.findMany({ where: { id: { in: colonies.map(c => c.planetId) } } });
     return colonies.map((c) => {
@@ -118,6 +141,7 @@ export class ColonyHistoryStore {
         planetId: c.planetId,
         planetName: planet?.name ?? (c.planetId === 'pl_w12_forest' ? 'Sylva Reach' : c.planetId),
         planetType: planet?.type ?? (c.planetId === 'pl_w12_forest' ? 'temperate' : (devPlanetTypeOf(c.planetId) ?? 'temperate')),
+        foundingSectorId: c.foundingSectorId ?? 'sec_0_0',
         stage: c.stage,
         status: 'active',
         foundedAt: c.createdAt.toISOString(),

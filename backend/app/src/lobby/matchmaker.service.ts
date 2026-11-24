@@ -1,5 +1,8 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import type { MatchTicketV1, SectorId } from '@terra/contracts';
+import { SectorAntiCheatService } from '../core/anticheat';
+import { ColonySlotAllowanceService } from '../core/home/colony-slot-allowance.service';
+import { HomeRepository } from '../core/home/home.repository';
 import { WorldLifecycleService } from './lifecycle.service';
 import {
   getSharedCapacityMetricsState,
@@ -21,6 +24,7 @@ import {
   computeAlternativeSectorIds,
   evaluateWorldMatchmakingEligibility,
   extractAcceptAlternativeArgs,
+  getPlayerOccupiedSectorIdsOnPlanet,
   isValidTransferCarry,
   loadAndSyncTicketRecord,
   refreshRemainingQueuePositionsHelper,
@@ -70,6 +74,9 @@ export class MatchmakerService {
     @Optional()
     @Inject(WorldLifecycleService)
     thirdArg?: WorldLifecycleService | SectorReservationService,
+    @Optional() @Inject(HomeRepository) private readonly homeRepo?: HomeRepository,
+    @Optional() @Inject(SectorAntiCheatService) private readonly antiCheat?: SectorAntiCheatService,
+    @Optional() @Inject(ColonySlotAllowanceService) private readonly slotAllowance?: ColonySlotAllowanceService,
   ) {
     this.lifecycle =
       (secondArg instanceof WorldLifecycleService ? secondArg : undefined) ??
@@ -78,24 +85,32 @@ export class MatchmakerService {
     this.reservations =
       (secondArg instanceof SectorReservationService ? secondArg : undefined) ??
       (thirdArg instanceof SectorReservationService ? thirdArg : undefined) ??
-      new SectorReservationService(this.persistence, this.lifecycle);
+      new SectorReservationService(this.persistence, this.lifecycle, undefined, this.antiCheat, this.slotAllowance, this.homeRepo);
+    if (this.homeRepo && !this.reservations.getHomeRepository()) this.reservations.setHomeRepository(this.homeRepo);
+    if (this.slotAllowance && !this.reservations.getSlotAllowanceService()) this.reservations.setSlotAllowanceService(this.slotAllowance);
+  }
+
+  private occupiedDeps() {
+    return {
+      homeRepo: this.homeRepo ?? this.reservations.getHomeRepository(),
+      antiCheat: this.antiCheat ?? this.reservations.getAntiCheatService(),
+    };
   }
 
   async getEligibleSectorsForPlanet(
     planetId: string,
     excludeSectorId?: SectorId,
+    excludedSectorIds?: ReadonlySet<string>,
   ): Promise<PlanetSectorRecord[]> {
-    return sortEligibleLandSectorsFillFirst(
-      await this.persistence.listSectors(planetId),
-      excludeSectorId,
-    );
+    return sortEligibleLandSectorsFillFirst(await this.persistence.listSectors(planetId), excludeSectorId, excludedSectorIds);
   }
 
   async computeAlternativeSectors(
     planetId: string,
     chosenSectorId: SectorId,
+    excludedSectorIds?: ReadonlySet<string>,
   ): Promise<SectorId[]> {
-    return computeAlternativeSectorIds(await this.persistence.listSectors(planetId), chosenSectorId);
+    return computeAlternativeSectorIds(await this.persistence.listSectors(planetId), chosenSectorId, excludedSectorIds);
   }
 
   async processTicket(
@@ -187,44 +202,32 @@ export class MatchmakerService {
       );
     }
 
+    const occupied = await getPlayerOccupiedSectorIdsOnPlanet(
+      this.persistence, ticket.planetId, ticket.playerId, ticket.colonyId, this.occupiedDeps(),
+    );
     const normalizedIntent = normalizeSectorIntentInput(newSectorIntent);
     if (normalizedIntent.kind === 'chosen') {
       const sector = await this.persistence.getSector(ticket.planetId, normalizedIntent.sectorId);
       if (!sector) {
-        throw new MatchTicketBadRequestException(
-          'invalid_sector',
-          `Sector "${normalizedIntent.sectorId}" does not exist on planet "${ticket.planetId}"`,
-          { planetId: ticket.planetId, sectorId: normalizedIntent.sectorId },
-        );
+        throw new MatchTicketBadRequestException('invalid_sector', `Sector "${normalizedIntent.sectorId}" does not exist on planet "${ticket.planetId}"`, { planetId: ticket.planetId, sectorId: normalizedIntent.sectorId });
       }
       if (sector.kind === 'ocean') {
-        throw new MatchTicketBadRequestException(
-          'sector_not_land',
-          `Sector "${normalizedIntent.sectorId}" is an ocean sector and cannot admit founding colonies`,
-          { planetId: ticket.planetId, sectorId: normalizedIntent.sectorId },
-        );
+        throw new MatchTicketBadRequestException('sector_not_land', `Sector "${normalizedIntent.sectorId}" is an ocean sector and cannot admit founding colonies`, { planetId: ticket.planetId, sectorId: normalizedIntent.sectorId });
+      }
+      if (occupied.has(normalizedIntent.sectorId)) {
+        throw new MatchTicketConflictException('sector_already_colonized', `Player already owns a colony in sector "${normalizedIntent.sectorId}" on "${ticket.planetId}"`, { planetId: ticket.planetId, sectorId: normalizedIntent.sectorId });
       }
     }
 
     const now = options.now ?? new Date();
-    const updated = await this.persistence.updateTicket({
-      ticketId: ticket.id,
-      sectorIntent: normalizedIntent,
-      now,
-    });
+    const updated = await this.persistence.updateTicket({ ticketId: ticket.id, sectorIntent: normalizedIntent, now });
 
     if (options.processImmediately === false) {
       const alternatives =
         normalizedIntent.kind === 'chosen'
-          ? await this.computeAlternativeSectors(updated.planetId, normalizedIntent.sectorId)
+          ? await this.computeAlternativeSectors(updated.planetId, normalizedIntent.sectorId, occupied)
           : [];
-      return buildQueuedProcessResult(
-        'skipped',
-        updated,
-        alternatives,
-        resolveTransferCarry(updated),
-        'intent_updated',
-      );
+      return buildQueuedProcessResult('skipped', updated, alternatives, resolveTransferCarry(updated), 'intent_updated');
     }
     return this.processTicket(updated, options);
   }
@@ -239,13 +242,7 @@ export class MatchmakerService {
       const batchSize = Math.max(1, opts.batchSize ?? MM_BATCH);
 
       if (this.lifecycle.isQueuePaused()) {
-        return buildPausedTickSummaryHelper(
-          this.persistence,
-          batchSize,
-          opts.planetId,
-          this.avgAssignmentS,
-          now,
-        );
+        return buildPausedTickSummaryHelper(this.persistence, batchSize, opts.planetId, this.avgAssignmentS, now, this.occupiedDeps());
       }
 
       const expiredRecords = await this.reservations.sweepExpiredReservations({
@@ -265,11 +262,7 @@ export class MatchmakerService {
       }
 
       const remainingQueued = await refreshRemainingQueuePositionsHelper(
-        this.persistence,
-        opts.planetId,
-        false,
-        this.avgAssignmentS,
-        now,
+        this.persistence, opts.planetId, false, this.avgAssignmentS, now, this.occupiedDeps(),
       );
       const reservedTickets = results.filter((r) => r.reserved).map((r) => r.ticket);
       const transferPendingTickets = remainingQueued.filter((t) => t.mode === 'TRANSFER');
@@ -403,7 +396,10 @@ export class MatchmakerService {
       return buildReservedProcessResult(res, updated, transferCarry ?? resolveTransferCarry(updated));
     }
 
-    const alternatives = await this.computeAlternativeSectors(world.id, chosenSectorId);
+    const occupied = await getPlayerOccupiedSectorIdsOnPlanet(
+      this.persistence, world.id, ticket.playerId, ticket.colonyId, this.occupiedDeps(),
+    );
+    const alternatives = await this.computeAlternativeSectors(world.id, chosenSectorId, occupied);
     const updated = await updateQueuedTicketPositionAndEtaHelper(
       this.persistence,
       ticket,
@@ -427,7 +423,10 @@ export class MatchmakerService {
     transferCarry: TransferCarryRecord | null,
     now: Date,
   ): Promise<ProcessTicketResult> {
-    const eligibleSectors = await this.getEligibleSectorsForPlanet(world.id);
+    const occupied = await getPlayerOccupiedSectorIdsOnPlanet(
+      this.persistence, world.id, ticket.playerId, ticket.colonyId, this.occupiedDeps(),
+    );
+    const eligibleSectors = await this.getEligibleSectorsForPlanet(world.id, undefined, occupied);
     let lastFailureCode = 'sector_full';
 
     for (const candidate of eligibleSectors) {

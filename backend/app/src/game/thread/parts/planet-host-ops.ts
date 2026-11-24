@@ -106,12 +106,17 @@ export function replyLandingSite(
   reqId: number,
   colony: number,
   post: Post,
+  sectorId?: string,
 ): void {
   if (!p) return post({ t: 'landingSite', planetId, reqId, answer: { ok: false, code: 'planet_not_loaded' } });
-  const next = nextLandingSite(p.state, colony, { slotIndex: colony, data: p.pipeline.config.data });
   const atlas = getAtlasBlob(p.state);
   const secRadius = atlas?.sectorRadius ?? W11_DEFAULT_SECTOR_RADIUS;
   const hasMultiSector = Boolean(atlas) && p.state.grid.radius > secRadius;
+  const next = nextLandingSite(p.state, colony, {
+    slotIndex: colony,
+    ...(sectorId && hasMultiSector ? { sectorId } : {}),
+    data: p.pipeline.config.data,
+  });
   const answer = next.ok
     ? {
         ok: true as const,

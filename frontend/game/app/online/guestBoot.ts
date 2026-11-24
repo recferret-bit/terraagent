@@ -13,6 +13,10 @@ export interface GuestBootOptions {
   planetType?: DevPlanetType;
   /** Canonical planet id for W11 ticket enqueue. */
   planetId?: string;
+  /** Explicit colony ID to resume when pilot owns multiple colonies. */
+  colonyId?: string;
+  /** When true, founds an additional colony using an open NEAR.AI staking slot. */
+  newColony?: boolean;
   /** Sector placement intent from the W11 orbital picker. */
   sectorIntent?: SectorIntentInput;
   /** When true, polls `/v1/me/home` while `state === 'QUEUED'` until `ACTIVE` or cancelled. */
@@ -49,6 +53,8 @@ export interface GuestBootOptions {
  */
 export class GuestBootTarget implements SessionTarget {
   accessToken = '';
+  colonyId?: string;
+  sectorId?: string;
   tokenExpiresAtMs?: number;
   private current: BootAuthResult | null = null;
   private coordinator: JoinQueueCoordinator | null = null;
@@ -109,6 +115,8 @@ export class GuestBootTarget implements SessionTarget {
       search,
       planetType,
       planetId,
+      colonyId,
+      newColony,
       sectorIntent,
       pollQueuedHome,
       enqueueOnNew,
@@ -125,6 +133,8 @@ export class GuestBootTarget implements SessionTarget {
       search,
       planetType,
       planetId,
+      colonyId,
+      newColony,
       sectorIntent,
       pollQueuedHome,
       enqueueOnNew,
@@ -143,6 +153,8 @@ export class GuestBootTarget implements SessionTarget {
 
   private adopt(boot: BootAuthResult): BootAuthResult {
     this.current = boot;
+    this.colonyId = boot.colony.id || undefined;
+    this.sectorId = boot.colony.foundingSectorId ?? boot.foundingSectorId ?? undefined;
     this.setToken(boot.accessToken, boot.tokenExpiresInS);
     this.o.onBooted(boot);
     return boot;

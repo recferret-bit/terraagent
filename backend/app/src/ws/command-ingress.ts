@@ -6,6 +6,8 @@ export interface CommandContext {
   readonly playerId: string;
   readonly planetId: string;
   readonly transport?: AntiCheatTransport;
+  /** Validated colony ID pinned when the session joined (disambiguates same-planet multi-colony). */
+  readonly colonyId?: string;
   /** Validated base sector pinned when the session joined. */
   readonly sectorId?: string;
   /** Real-time FNV-1a 64-bit colony/planet/sector hash pinned when the session joined. */
@@ -17,7 +19,7 @@ export interface CommandContext {
    * remembered for the socket's lifetime on that planet, so gameplay commands do not query the database again.
    * Owned by the socket.
    */
-  readonly memo?: { planetId?: string; colony?: MemoColony | null };
+  readonly memo?: { planetId?: string; colonyId?: string; colony?: MemoColony | null };
   /** Sends a server message on the socket (or resolves the HTTP command response). */
   reply(msg: object): void;
 }

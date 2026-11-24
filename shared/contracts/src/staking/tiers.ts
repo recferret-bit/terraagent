@@ -175,3 +175,14 @@ export const dailyAiCallLimit = (budgetUsd: number): number =>
 
 /** The next tier above `tier`, or `null` at Tier 4. */
 export const nextStakingTier = (tier: StakingTierRow): StakingTierRow | null => STAKING_TIERS[tier.id + 1] ?? null;
+
+/** Concurrent active colonies a pilot may command: 1 base colony at T0–T1, scaling 1:1 with `aiColonySlots` (`3 / 6 / 12` at T2–T4). */
+export function maxColoniesForAiSlots(aiColonySlots: number): number {
+  const slots = Number.isFinite(aiColonySlots) ? Math.floor(aiColonySlots) : 0;
+  return Math.max(1, slots);
+}
+
+/** Concurrent active colonies unlocked by `tier` (`1 / 1 / 3 / 6 / 12` across T0–T4). */
+export function maxColoniesForTier(tier: Pick<StakingTierRow, 'aiColonySlots'>): number {
+  return maxColoniesForAiSlots(tier.aiColonySlots);
+}

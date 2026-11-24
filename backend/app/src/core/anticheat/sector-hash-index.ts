@@ -63,21 +63,24 @@ export class SectorHashIndex {
     return out;
   }
 
-  getActiveBaseByPlayer(playerId: string): ColonyBaseBinding | undefined {
-    const binding = this.byPlayerId.get(playerId);
-    if (binding && binding.status === 'ACTIVE') {
-      const planet = this.planetsById.get(binding.planetId);
-      if (!planet || (planet.status !== 'ENDED' && planet.status !== 'ARCHIVED')) return binding;
-    }
-    const ownedIds = this.coloniesByPlayer.get(playerId);
-    if (!ownedIds) return undefined;
-    for (const colId of ownedIds) {
-      const col = this.byColonyId.get(colId);
-      if (!col || col.status !== 'ACTIVE') continue;
+  listActiveBasesByPlayer(playerId: string): ColonyBaseBinding[] {
+    const out: ColonyBaseBinding[] = [];
+    const seen = new Set<string>();
+    const pushIfActive = (col: ColonyBaseBinding | undefined) => {
+      if (!col || col.status !== 'ACTIVE' || seen.has(col.colonyId)) return;
       const planet = this.planetsById.get(col.planetId);
-      if (!planet || (planet.status !== 'ENDED' && planet.status !== 'ARCHIVED')) return col;
-    }
-    return undefined;
+      if (!planet || (planet.status !== 'ENDED' && planet.status !== 'ARCHIVED')) {
+        seen.add(col.colonyId);
+        out.push(col);
+      }
+    };
+    pushIfActive(this.byPlayerId.get(playerId));
+    for (const colId of this.coloniesByPlayer.get(playerId) ?? []) pushIfActive(this.byColonyId.get(colId));
+    return out;
+  }
+
+  getActiveBaseByPlayer(playerId: string): ColonyBaseBinding | undefined {
+    return this.listActiveBasesByPlayer(playerId)[0];
   }
 
   getLatestBindingByPlayer(playerId: string): ColonyBaseBinding | undefined {
@@ -397,11 +400,9 @@ export class SectorHashIndex {
       const colonyId = col.colonyId ?? known?.colonyId ?? `col_${planetId}_${col.colonyIndex}`;
       const playerId = col.playerId ?? known?.playerId ?? (col.isRivalAi ? `ai:${planetId}:${col.colonyIndex}` : '');
       const foundingSectorId =
-        spatial.hasMultiSectorGrid && col.baseSectorId !== 'sec_0_0'
-          ? col.baseSectorId
-          : known?.baseSectorId && known.baseSectorId !== 'sec_0_0'
-            ? known.baseSectorId
-            : col.baseSectorId;
+        known?.baseSectorId && known.baseSectorId !== 'sec_0_0'
+          ? known.baseSectorId
+          : col.baseSectorId;
       this.upsertColonyBase({
         playerId,
         colonyId,

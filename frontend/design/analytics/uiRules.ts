@@ -20,6 +20,8 @@ export const TESTID_MATCHERS: Readonly<Record<string, UiRuleMatch>> = {
   'me-colony-dive-in': { area: 'planets', action: 'colony_dive_in' },
   'me-same-planet-option': { area: 'planets', action: 'same_planet_colony_select' },
   'me-same-planet-dive': { area: 'planets', action: 'same_planet_colony_dive' },
+  'me-deploy-new-colony': { area: 'planets', action: 'deploy_new_colony', target: 'play' },
+  'me-unlock-colony-slots': { area: 'staking', action: 'unlock_colony_slots', target: 'staking' },
   'me-play-cta': { area: 'cta', action: 'play_cta', target: 'play' },
   'staking-compound-btn': { area: 'staking', action: 'compound_yield' },
   'staking-share-social': { area: 'staking', action: 'share_social' },

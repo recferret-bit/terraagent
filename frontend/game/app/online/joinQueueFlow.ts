@@ -17,11 +17,24 @@ import {
   deviceSecretKey,
   getOrCreateDeviceSecret,
   type BootAuthResult,
-  type BootColonySummary,
-  type BootPlanetSummary,
   type FetchLike,
   type StorageLike,
 } from './bootOnline';
+import {
+  collectKnownActiveColonyIds,
+  extractActiveHomePayload,
+  extractQueuedHomeStatus,
+  type ActiveHomeTargetFilter,
+  type QueuedHomeStatus,
+} from './joinQueueHomeExtract';
+
+export {
+  collectKnownActiveColonyIds,
+  extractActiveHomePayload,
+  extractQueuedHomeStatus,
+  type ActiveHomeTargetFilter,
+  type QueuedHomeStatus,
+};
 
 export const PENDING_JOIN_TICKET_KEY = 'ta_pending_join_ticket';
 export const DEFAULT_QUEUE_POLL_MS = 1000;
@@ -35,19 +48,6 @@ export interface PersistedJoinIntent {
   readonly createdAtMs: number;
 }
 
-export interface QueuedHomeStatus {
-  readonly state: 'QUEUED';
-  readonly ticketId: string;
-  readonly ticketState: string;
-  readonly planetId: string;
-  readonly planetType: PlanetType;
-  readonly sectorIntent: SectorPlacementIntentV1;
-  readonly reservedSectorId: string | null;
-  readonly alternativeSectors: readonly string[];
-  readonly position: number;
-  readonly etaS: number | null;
-}
-
 export interface JoinQueueOptions {
   readonly fetch?: FetchLike;
   readonly storage?: StorageLike;
@@ -55,6 +55,8 @@ export interface JoinQueueOptions {
   readonly tryRefresh?: boolean;
   readonly planetType?: PlanetType;
   readonly planetId?: string;
+  readonly colonyId?: string;
+  readonly newColony?: boolean;
   readonly sectorIntent?: SectorIntentInput;
   /** When true, enqueues a ticket via `POST /v1/match/tickets` if `/v1/me/home` is `NEW` (or `ELIMINATED` / `PLANET_ENDED`). */
   readonly enqueueOnNew?: boolean;
@@ -190,13 +192,14 @@ export function getOrCreatePendingJoinIntent(
     planetType?: PlanetType;
     planetId?: string;
     sectorIntent?: SectorIntentInput;
+    newColony?: boolean;
     now?: () => number;
   },
 ): PersistedJoinIntent {
   const search = input.search ?? '';
   const existing = readPendingJoinIntent(storage, search);
   const hasExplicitTarget = Boolean(input.planetType || input.planetId || input.sectorIntent);
-  if (existing && !hasExplicitTarget) {
+  if (existing && !hasExplicitTarget && !input.newColony) {
     return existing;
   }
   const planetType = inferPlanetTypeFromId(input.planetId, input.planetType ?? existing?.planetType ?? 'desert');
@@ -215,8 +218,9 @@ export function getOrCreatePendingJoinIntent(
   const secret = getOrCreateDeviceSecret(storage, deviceSecretKey(search) || DEVICE_SECRET_KEY).slice(0, 12);
   const sectorTag = sectorIntent.kind === 'chosen' ? sectorIntent.sectorId : 'auto';
   const createdAtMs = (input.now ?? Date.now)();
+  const suffix = input.newColony ? `_${createdAtMs.toString(36)}` : '';
   const next: PersistedJoinIntent = {
-    idempotencyKey: `idem_${secret}_${planetId}_${sectorTag}`,
+    idempotencyKey: `idem_${secret}_${planetId}_${sectorTag}${suffix}`,
     planetId,
     planetType,
     sectorIntent,
@@ -224,129 +228,6 @@ export function getOrCreatePendingJoinIntent(
   };
   writePendingJoinIntent(storage, next, search);
   return next;
-}
-
-export function extractQueuedHomeStatus(
-  raw: unknown,
-  fallback?: { planetType?: PlanetType; planetId?: string; sectorIntent?: SectorIntentInput },
-): QueuedHomeStatus | null {
-  if (!isObject(raw)) return null;
-  const nestedTicket = isObject(raw.ticket) ? raw.ticket : null;
-  const rawState = typeof raw.state === 'string' ? raw.state : undefined;
-  const isTicketObject =
-    rawState === 'QUEUED' ||
-    rawState === 'WAITING' ||
-    rawState === 'RESERVED' ||
-    rawState === 'SPAWNING' ||
-    (rawState === undefined && typeof raw.id === 'string' && ('sectorIntent' in raw || 'position' in raw));
-  if (!isTicketObject) return null;
-
-  const src = nestedTicket ?? raw;
-  const ticketId =
-    (typeof src.ticketId === 'string' && src.ticketId) ||
-    (typeof src.id === 'string' && src.id) ||
-    (typeof raw.ticketId === 'string' && raw.ticketId) ||
-    'tkt_pending';
-  const ticketState =
-    (typeof src.ticketState === 'string' && src.ticketState) ||
-    (typeof src.status === 'string' && src.status) ||
-    (typeof src.state === 'string' && src.state !== 'QUEUED' ? src.state : undefined) ||
-    (typeof raw.ticketState === 'string' && raw.ticketState) ||
-    'QUEUED';
-  const rawPlanetId =
-    (typeof src.planetId === 'string' && src.planetId) ||
-    (typeof src.targetPlanetId === 'string' && src.targetPlanetId) ||
-    (typeof raw.planetId === 'string' && raw.planetId) ||
-    fallback?.planetId;
-  const rawPlanetType =
-    (typeof src.planetType === 'string' ? (src.planetType as PlanetType) : undefined) ??
-    (typeof raw.planetType === 'string' ? (raw.planetType as PlanetType) : undefined) ??
-    fallback?.planetType;
-  const planetType = inferPlanetTypeFromId(rawPlanetId, rawPlanetType ?? 'desert');
-  const planetId = resolveCanonicalOrCustomPlanetId(rawPlanetId, planetType);
-  const rawSectorIntent = (src.sectorIntent ?? raw.sectorIntent ?? src.sectorId ?? fallback?.sectorIntent) as SectorIntentInput;
-  const sectorIntent = toSectorPlacementIntentV1(normalizeSectorIntent(rawSectorIntent));
-  const reservedSectorId =
-    typeof src.reservedSectorId === 'string'
-      ? src.reservedSectorId
-      : typeof raw.reservedSectorId === 'string'
-        ? raw.reservedSectorId
-        : null;
-  const rawAlt = Array.isArray(src.alternativeSectors)
-    ? src.alternativeSectors
-    : Array.isArray(raw.alternativeSectors)
-      ? raw.alternativeSectors
-      : [];
-  const alternativeSectors = rawAlt.filter((s): s is string => typeof s === 'string');
-  const position =
-    typeof src.position === 'number'
-      ? src.position
-      : typeof raw.position === 'number'
-        ? raw.position
-        : 1;
-  const etaRaw = src.etaS ?? src.estimatedWaitS ?? raw.etaS ?? raw.estimatedWaitS;
-  const etaS = typeof etaRaw === 'number' ? etaRaw : null;
-
-  return {
-    state: 'QUEUED',
-    ticketId,
-    ticketState,
-    planetId,
-    planetType,
-    sectorIntent,
-    reservedSectorId,
-    alternativeSectors,
-    position,
-    etaS,
-  };
-}
-
-export function extractActiveHomePayload(raw: unknown): {
-  state: 'ACTIVE';
-  planet: BootPlanetSummary;
-  colony: BootColonySummary;
-  foundingSectorId?: string;
-} | null {
-  if (!isObject(raw) || raw.state !== 'ACTIVE') return null;
-  const p = isObject(raw.planet) ? raw.planet : null;
-  const c = isObject(raw.colony) ? raw.colony : null;
-  if (!p || !c || typeof p.id !== 'string' || typeof c.id !== 'string') return null;
-
-  const planetType = inferPlanetTypeFromId(
-    p.id,
-    typeof p.type === 'string' ? (p.type as PlanetType) : 'desert',
-  );
-  const canonicalDef = canonicalPlanetById(p.id) ?? CANONICAL_PLANETS[planetType];
-  const spawnObj = isObject(c.spawn) ? c.spawn : null;
-  const spawnQ = typeof c.spawnQ === 'number' ? c.spawnQ : typeof spawnObj?.q === 'number' ? spawnObj.q : 0;
-  const spawnR = typeof c.spawnR === 'number' ? c.spawnR : typeof spawnObj?.r === 'number' ? spawnObj.r : 0;
-  const foundingSectorId = typeof c.foundingSectorId === 'string' ? c.foundingSectorId : undefined;
-  const landingSlotId = typeof c.landingSlotId === 'string' ? c.landingSlotId : undefined;
-
-  return {
-    state: 'ACTIVE',
-    planet: {
-      id: p.id,
-      name: typeof p.name === 'string' && p.name ? p.name : canonicalDef.name,
-      type: planetType,
-      ...(typeof p.seed === 'string' ? { seed: p.seed } : {}),
-      ...(typeof p.radius === 'number' ? { radius: p.radius } : {}),
-      state: typeof p.state === 'string' ? p.state : typeof p.lifecycle === 'string' ? p.lifecycle : 'ACTIVE',
-    },
-    colony: {
-      id: c.id,
-      colonyIndex: typeof c.colonyIndex === 'number' ? c.colonyIndex : 0,
-      name: typeof c.name === 'string' && c.name ? c.name : 'Colony',
-      color: typeof c.color === 'number' ? c.color : 0,
-      state: typeof c.state === 'string' ? c.state : typeof c.status === 'string' ? c.status : 'ACTIVE',
-      ...(foundingSectorId ? { foundingSectorId } : {}),
-      ...(landingSlotId ? { landingSlotId } : {}),
-      spawnQ,
-      spawnR,
-      spawn: { q: spawnQ, r: spawnR },
-    },
-    ...(foundingSectorId ? { foundingSectorId } : {}),
-  };
 }
 
 export function formatQueueStatusMessage(status: QueuedHomeStatus): string {
@@ -363,6 +244,7 @@ export async function enqueueMatchTicket(
   accessToken: string,
   intent: PersistedJoinIntent,
   doFetch: FetchLike,
+  newColony = false,
 ): Promise<{ kind: 'ticket'; status: QueuedHomeStatus } | { kind: 'active'; rawHome: unknown }> {
   const sectorPayload =
     intent.sectorIntent.kind === 'chosen'
@@ -394,7 +276,7 @@ export async function enqueueMatchTicket(
   const payload = await res.json().catch(() => ({}));
   if (res.status === 409 && isObject(payload)) {
     const code = (payload.code ?? payload.errorCode) as string | undefined;
-    if (code === 'already_has_colony' && isObject(payload.home)) {
+    if (!newColony && code === 'already_has_colony' && isObject(payload.home)) {
       return { kind: 'active', rawHome: payload.home };
     }
     if (code === 'already_queued' || code === 'ticket_open') {

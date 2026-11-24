@@ -57,12 +57,31 @@ export const ColonySummary = z.object({
 });
 export type ColonySummary = z.infer<typeof ColonySummary>;
 
+export const ColonySlotAllowanceSchema = z.object({
+  used: z.number().int().nonnegative(),
+  max: z.number().int().positive(),
+  aiColonySlots: z.number().int().nonnegative(),
+  isStaker: z.boolean(),
+  tier: z.number().int().min(0).max(4),
+  tierName: z.string().min(1).max(64).optional(),
+  stakedNear: z.string().min(1).max(64),
+});
+export type ColonySlotAllowance = z.infer<typeof ColonySlotAllowanceSchema>;
+
+export const ActiveColonyEntrySchema = z.object({
+  colony: ColonySummary,
+  planet: PlanetSummary,
+});
+export type ActiveColonyEntry = z.infer<typeof ActiveColonyEntrySchema>;
+
 export const HomeResponse = z.discriminatedUnion('state', [
   z.object({
     state: z.literal('NEW'),
     planets: z.array(PlanetSummary),
     newPlanetTypes: z.array(PlanetType).default([]),
     queuePaused: z.boolean().optional(),
+    colonySlots: ColonySlotAllowanceSchema.optional(),
+    activeColonies: z.array(ActiveColonyEntrySchema).optional(),
   }),
   z.object({
     state: z.literal('QUEUED'),
@@ -80,6 +99,8 @@ export const HomeResponse = z.discriminatedUnion('state', [
     alternativeSectors: z.array(z.string()).optional(),
     position: z.number().int(),
     etaS: z.number().int().nullable(),
+    colonySlots: ColonySlotAllowanceSchema.optional(),
+    activeColonies: z.array(ActiveColonyEntrySchema).optional(),
   }),
   z.object({
     state: z.literal('ACTIVE'),
@@ -88,6 +109,8 @@ export const HomeResponse = z.discriminatedUnion('state', [
     away: z.record(z.string(), z.unknown()).optional(),
     /** CT-32 headline. Omitted when the colony has no unseen digest, or the read misses its budget. */
     awaySummary: AwaySummarySchema.optional(),
+    colonySlots: ColonySlotAllowanceSchema.optional(),
+    activeColonies: z.array(ActiveColonyEntrySchema).optional(),
   }),
   // PROTOCOL §8: the recap / results, the open planets and the new planet types are required (BE-21).
   z.object({
@@ -98,6 +121,8 @@ export const HomeResponse = z.discriminatedUnion('state', [
     recapSeen: z.boolean().optional(),
     planets: z.array(PlanetSummary),
     newPlanetTypes: z.array(PlanetType).default([]),
+    colonySlots: ColonySlotAllowanceSchema.optional(),
+    activeColonies: z.array(ActiveColonyEntrySchema).optional(),
   }),
   z.object({
     state: z.literal('PLANET_ENDED'),
@@ -107,6 +132,8 @@ export const HomeResponse = z.discriminatedUnion('state', [
     recapSeen: z.boolean().optional(),
     planets: z.array(PlanetSummary),
     newPlanetTypes: z.array(PlanetType).default([]),
+    colonySlots: ColonySlotAllowanceSchema.optional(),
+    activeColonies: z.array(ActiveColonyEntrySchema).optional(),
   }),
 ]);
 export const HomeResponseSchema = HomeResponse;

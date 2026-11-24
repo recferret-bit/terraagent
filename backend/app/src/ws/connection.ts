@@ -93,7 +93,7 @@ export class Connection implements RoomMember {
   private readonly market = new MarketTopics();
   private resyncing = false;
   /** Per-socket colony-lookup memo for the ingress (BE-09); reset when the socket leaves its planet. */
-  private readonly colonyMemo: { planetId?: string; colony?: MemoColony | null } = {};
+  private readonly colonyMemo: { planetId?: string; colonyId?: string; colony?: MemoColony | null } = {};
   /** This socket has incremented the colony presence refcount (CT-38). Released once in `leaveRoom`. */
   private colonyHeld = false;
   private chain: Promise<void> = Promise.resolve();
@@ -216,6 +216,7 @@ export class Connection implements RoomMember {
     this.releaseColony();
     if (this.planetId) this.d.rooms.leave(this.planetId, this);
     delete this.colonyMemo.planetId;
+    delete this.colonyMemo.colonyId;
     delete this.colonyMemo.colony;
     this.planetId = undefined;
     this.market.reset();
@@ -443,6 +444,7 @@ export class Connection implements RoomMember {
       transport: 'ws',
       playerId: this.playerId,
       planetId: this.planetId,
+      colonyId: this.colonyId ?? undefined,
       sectorId: this.sectorId,
       bindingHash: this.bindingHash,
       dev: this.session?.dev === true,

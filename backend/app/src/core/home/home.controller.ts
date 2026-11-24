@@ -26,17 +26,24 @@ export class HomeController {
     @CurrentPlayer() player: AuthenticatedPlayer,
     @Query('type') type?: string,
     @Query('colonyId') colonyId?: string,
+    @Query('colony') colonyAlias?: string,
     @Query('planetId') planetId?: string,
+    @Query('planet') planetAlias?: string,
     @Query('resolve') resolve?: string,
     @Query('mode') mode?: string,
     @Query('sector') sector?: string,
     @Query('sectorId') sectorId?: string,
+    @Query('new') newFlag?: string,
+    @Query('newColony') newColonyFlag?: string,
   ): Promise<HomeResponse> {
     const authPlayer = req?.player ?? player;
+    const requestedColonyId = (colonyId ?? colonyAlias)?.trim() || undefined;
     const requestedSectorId = (sectorId ?? sector)?.trim() || undefined;
-    const requestedPlanetId = planetId?.trim() || undefined;
-    if (colonyId) {
-      return this.homeService.resumeColony(authPlayer.id, colonyId, requestedSectorId, requestedPlanetId);
+    const requestedPlanetId = (planetId ?? (planetAlias?.startsWith('pl_') ? planetAlias : undefined))?.trim() || undefined;
+    const newColony =
+      newFlag === '1' || newFlag === 'true' || newColonyFlag === '1' || newColonyFlag === 'true';
+    if (requestedColonyId) {
+      return this.homeService.resumeColony(authPlayer.id, requestedColonyId, requestedSectorId, requestedPlanetId);
     }
     const preferredType = isDevPlanetType(type) ? type : undefined;
     if (resolve === '1' || resolve === 'true' || mode === 'lobby') {
@@ -44,6 +51,7 @@ export class HomeController {
         preferredType,
         sectorId: requestedSectorId,
         planetId: requestedPlanetId,
+        newColony,
       });
     }
     return this.homeService.getOrAssignHome(
@@ -51,6 +59,7 @@ export class HomeController {
       preferredType,
       requestedSectorId,
       requestedPlanetId,
+      newColony,
     );
   }
 

@@ -56,18 +56,18 @@ const INCOME_LANE_CARDS: ReadonlyArray<WebFeatureCard> = [
 
 const AI_ACCESS_MODES: ReadonlyArray<WebFeatureCard> = [
   {
-    title: '5 Free TEE Turns + 4-Tier Staker AI (10–500+ NEAR)',
+    title: '5 Free TEE Turns + 4-Tier Multi-Colony Staker AI (10–500+ NEAR)',
     layer: 'WEB3',
     badge: 'INCLUDED PERK',
-    summary: 'Verified pilots receive 5 free `z-ai/glm-5.3-flash` TEE trial turns; staking `10 / 50 / 200 / 500+ NEAR` wallet-first unlocks `1 / 3 / 6 / 12` managed colony slots (`>= 65%` USD margin) and `0.65% → 0.25%` taker fees with zero combat buffs.',
-    chips: ['5 Free TEE Turns', '1–12 Colony Slots', 'Zero Combat P2W'],
+    summary: 'Verified pilots receive 5 free `z-ai/glm-5.3-flash` TEE trial turns on 1 colony; staking `10 / 50 / 200 / 500+ NEAR` wallet-first unlocks `1 / 3 / 6 / 12` concurrent colonies + managed `z-ai/glm-5.3-flash` slots across planets or distinct sectors (never two colonies in the same sector, `>= 65%` USD margin) and `0.65% → 0.25%` taker fees with zero combat buffs.',
+    chips: ['GLM 5.3 Flash Managed', '1–12 Colony Slots', 'Distinct Sectors Only'],
   },
   {
     title: 'Personal Encrypted BYOK Vault (/me.html)',
     layer: 'NEAR.AI',
     badge: 'CUSTOM MODEL',
-    summary: 'Prefer another NEAR AI Cloud model (`GLM-5.3`, `GLM-5.3 Flash`, `DeepSeek V3.2`, `DeepSeek V4.1 Flash`, `Qwen 3.8 27B`, `GPT-5 Mini`, `Claude Sonnet 4.6`, or any custom model ID) without staking? Save a personal key on `/me.html` encrypted at rest with AES-256-GCM.',
-    chips: ['AES-256-GCM Vault', '7 Presets + Custom ID', 'Attested Logs'],
+    summary: 'Model selection stays locked to `z-ai/glm-5.3-flash` until you enter a valid NEAR AI Cloud API key on `/me.html` (encrypted at rest via AES-256-GCM), unlocking `GLM-5.3`, `DeepSeek V3.2`, `DeepSeek V4.1 Flash`, `Qwen 3.8 27B`, `GPT-5 Mini`, `Claude Sonnet 4.6`, or any custom model ID.',
+    chips: ['API Key Unlocks Dropdown', 'AES-256-GCM Vault', '7 Presets + Custom ID'],
   },
 ];
 

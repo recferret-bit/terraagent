@@ -247,3 +247,69 @@ describe('MainMenu deployed colony sector lock', () => {
     menu.dispose();
   });
 });
+
+describe('MainMenu same-planet multi-colony selector', () => {
+  it('renders orbital colony picker when pilot owns multiple colonies on the same planet and switches selected colony', () => {
+    const onDeploy = vi.fn();
+    const onSector = vi.fn();
+    const cb: MenuCallbacks = { onPlanet: vi.fn(), onDeploy, onSettings: vi.fn(), onSector };
+    const menu = new MainMenu(document.body, cb, 'dune', undefined, { planetList: makePlanetListFixture() });
+
+    menu.setColonyRoster({
+      primary: {
+        kind: 'dune',
+        planetType: 'desert',
+        planetId: CANONICAL_PLANETS.desert.id,
+        planetName: 'Kharon Dunes',
+        colonyId: 'col_kharon_0',
+        colonyName: 'Solace Bastion',
+        foundingSectorId: 'sec_0_0',
+      },
+      colonies: [
+        {
+          kind: 'dune',
+          planetType: 'desert',
+          planetId: CANONICAL_PLANETS.desert.id,
+          planetName: 'Kharon Dunes',
+          colonyId: 'col_kharon_0',
+          colonyName: 'Solace Bastion',
+          foundingSectorId: 'sec_0_0',
+        },
+        {
+          kind: 'dune',
+          planetType: 'desert',
+          planetId: CANONICAL_PLANETS.desert.id,
+          planetName: 'Kharon Dunes',
+          colonyId: 'col_kharon_1',
+          colonyName: 'Red Mesa',
+          foundingSectorId: 'sec_1_0',
+        },
+      ],
+      slots: {
+        used: 2,
+        max: 3,
+        aiColonySlots: 3,
+        tier: 2,
+        tierName: 'Commander',
+        stakedNear: '50',
+        isStaker: true,
+      },
+    });
+
+    const picker = menu.el.querySelector('[data-testid="orbital-colony-picker"]');
+    expect(picker).not.toBeNull();
+    const opt0 = menu.el.querySelector<HTMLButtonElement>('[data-testid="orbital-colony-opt-col_kharon_0"]')!;
+    const opt1 = menu.el.querySelector<HTMLButtonElement>('[data-testid="orbital-colony-opt-col_kharon_1"]')!;
+    expect(opt0.getAttribute('aria-pressed')).toBe('true');
+    expect(menu.resolveDeployAction().colony?.colonyId).toBe('col_kharon_0');
+
+    opt1.click();
+    const updatedOpt1 = menu.el.querySelector<HTMLButtonElement>('[data-testid="orbital-colony-opt-col_kharon_1"]')!;
+    expect(updatedOpt1.getAttribute('aria-pressed')).toBe('true');
+    expect(menu.getSelectedColonyId()).toBe('col_kharon_1');
+    expect(menu.resolveDeployAction().colony?.colonyId).toBe('col_kharon_1');
+    expect(menu.getSectorIntent()).toEqual({ mode: 'chosen', sectorId: 'sec_1_0' });
+    expect(onSector).toHaveBeenCalledWith({ mode: 'chosen', sectorId: 'sec_1_0' });
+    menu.dispose();
+  });
+});

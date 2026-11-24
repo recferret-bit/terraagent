@@ -298,12 +298,29 @@ export const HomeResultsV1Schema = z.strictObject({
 });
 export type HomeResultsV1 = z.infer<typeof HomeResultsV1Schema>;
 
+export const HomeSlotAllowanceV1Schema = z.strictObject({
+  used: z.number().int().nonnegative(),
+  max: z.number().int().positive(),
+  aiColonySlots: z.number().int().nonnegative(),
+  isStaker: z.boolean(),
+  tier: z.number().int().min(0).max(4),
+  tierName: z.string().min(1).max(64).optional(),
+  stakedNear: z.string().min(1).max(64),
+});
+
+export const HomeActiveColonyEntryV1Schema = z.strictObject({
+  colony: HomeColonyV1Schema,
+  planet: PlanetSummaryV1Schema.or(z.record(z.string(), z.unknown())),
+});
+
 export const HomeV1Schema = z.discriminatedUnion('state', [
   z.strictObject({
     state: z.literal('NEW'),
     planets: z.array(PlanetSummaryV1Schema).length(3),
     newPlanetTypes: z.array(PlanetType).max(0).optional(),
     queuePaused: z.boolean().optional(),
+    colonySlots: HomeSlotAllowanceV1Schema.optional(),
+    activeColonies: z.array(HomeActiveColonyEntryV1Schema).optional(),
   }),
   z.strictObject({
     state: z.literal('QUEUED'),
@@ -316,12 +333,16 @@ export const HomeV1Schema = z.discriminatedUnion('state', [
     alternativeSectors: z.array(SectorIdSchema).optional(),
     position: z.number().int().nonnegative(),
     etaS: z.number().int().nonnegative().nullable(),
+    colonySlots: HomeSlotAllowanceV1Schema.optional(),
+    activeColonies: z.array(HomeActiveColonyEntryV1Schema).optional(),
   }),
   z.strictObject({
     state: z.literal('ACTIVE'),
     colony: HomeColonyV1Schema,
     planet: PlanetSummaryV1Schema,
     away: z.record(z.string(), z.unknown()).optional(),
+    colonySlots: HomeSlotAllowanceV1Schema.optional(),
+    activeColonies: z.array(HomeActiveColonyEntryV1Schema).optional(),
   }),
   z.strictObject({
     state: z.literal('ELIMINATED'),
@@ -331,6 +352,8 @@ export const HomeV1Schema = z.discriminatedUnion('state', [
     recapSeen: z.boolean(),
     planets: z.array(PlanetSummaryV1Schema).length(3),
     newPlanetTypes: z.array(PlanetType).max(0).optional(),
+    colonySlots: HomeSlotAllowanceV1Schema.optional(),
+    activeColonies: z.array(HomeActiveColonyEntryV1Schema).optional(),
   }),
   z.strictObject({
     state: z.literal('PLANET_ENDED'),
@@ -340,6 +363,8 @@ export const HomeV1Schema = z.discriminatedUnion('state', [
     recapSeen: z.boolean(),
     planets: z.array(PlanetSummaryV1Schema).length(3),
     newPlanetTypes: z.array(PlanetType).max(0).optional(),
+    colonySlots: HomeSlotAllowanceV1Schema.optional(),
+    activeColonies: z.array(HomeActiveColonyEntryV1Schema).optional(),
   }),
 ]);
 export type HomeV1 = z.infer<typeof HomeV1Schema>;

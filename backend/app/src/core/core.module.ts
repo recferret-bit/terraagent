@@ -12,7 +12,7 @@ import { CommandPrechecks } from './command-prechecks';
 import { SectorAntiCheatService } from './anticheat';
 import { HealthController } from './health.controller';
 import { DEFAULT_AUTH_RATE_PER_MIN, IpThrottleGuard } from './ip-throttle.guard';
-import { HomeController, HomeRepository, HomeService } from './home';
+import { ColonySlotAllowanceService, HomeController, HomeRepository, HomeService } from './home';
 import { DEV_JWT_SECRET } from './auth/auth-token.service';
 import { MetricsRegistry } from './metrics.registry';
 import { ReadinessRegistry } from './readiness.registry';
@@ -61,6 +61,7 @@ export const env: EnvSection = (() => {
     AuthService,
     BearerAuthGuard,
     IpThrottleGuard,
+    ColonySlotAllowanceService,
     HomeRepository,
     HomeService,
     PlayerAiSettingsStore,
@@ -74,6 +75,7 @@ export const env: EnvSection = (() => {
     AuthRepository,
     AuthService,
     BearerAuthGuard,
+    ColonySlotAllowanceService,
     HomeRepository,
     HomeService,
     PlayerAiSettingsStore,

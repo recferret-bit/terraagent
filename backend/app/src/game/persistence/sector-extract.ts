@@ -102,6 +102,9 @@ function resolveParticipantSectorId(state: PlanetState, col: ColonyState, anchor
   if (typeof explicit === 'string' && explicit.startsWith('sec_')) return explicit;
   const legacy = (col as { sectorId?: unknown }).sectorId;
   if (typeof legacy === 'string' && legacy.startsWith('sec_')) return legacy;
+  const slotId = typeof col.landingSlotId === 'string' ? col.landingSlotId : '';
+  const slotMatch = /^slot_(sec_-?\d+_-?\d+)_\d+$/.exec(slotId);
+  if (slotMatch?.[1]) return slotMatch[1];
   if (anchorQ !== null && anchorR !== null) {
     const resolved = resolveTileSector(state, anchorQ, anchorR);
     if (resolved?.sectorId) return resolved.sectorId;

@@ -14,6 +14,7 @@ import {
   DEFAULT_QUEUE_POLL_MS,
   cancelMatchTicketRequest,
   clearPendingJoinIntent,
+  collectKnownActiveColonyIds,
   enqueueMatchTicket,
   extractActiveHomePayload,
   extractQueuedHomeStatus,
@@ -21,10 +22,16 @@ import {
   getOrCreatePendingJoinIntent,
   readPendingJoinIntent,
   updatePendingJoinTicketId,
+  type ActiveHomeTargetFilter,
   type JoinQueueOptions,
   type PersistedJoinIntent,
   type QueuedHomeStatus,
 } from './joinQueueFlow';
+import {
+  buildActiveQueueFilter,
+  buildCoordinatorHomeUrl,
+  inspectTrackedNewColonyTicketHelper,
+} from './joinQueueHomeExtract';
 
 export class BootCancelledError extends Error {
   constructor(readonly ticketId: string | null = null) {
@@ -45,41 +52,26 @@ export interface PreloadedBootContext {
 }
 
 const realWait = (ms: number): Promise<void> => new Promise((ok) => setTimeout(ok, ms));
-
-function isObject(v: unknown): v is Record<string, unknown> {
-  return typeof v === 'object' && v !== null;
-}
-
+const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null;
 async function errorCodeOf(res: { json(): Promise<unknown> }): Promise<string | undefined> {
   try {
     const body = (await res.json()) as { errorCode?: unknown; code?: unknown } | null;
-    if (typeof body?.errorCode === 'string') return body.errorCode;
-    if (typeof body?.code === 'string') return body.code;
-    return undefined;
-  } catch {
-    return undefined;
-  }
+    return typeof body?.errorCode === 'string' ? body.errorCode : typeof body?.code === 'string' ? body.code : undefined;
+  } catch { return undefined; }
 }
-
 const retryableHome = (status: number, code: string | undefined): boolean =>
   status === 429 || (status === 503 && code === 'HOME_UNAVAILABLE');
-
 const memMap = new Map<string, string>();
 const fallbackMemStorage: StorageLike = {
   getItem: (k) => memMap.get(k) ?? null,
-  setItem: (k, v) => {
-    memMap.set(k, v);
-  },
+  setItem: (k, v) => { memMap.set(k, v); },
 };
-
 function resolveStorage(s?: StorageLike): StorageLike {
   if (s) return s;
   try {
     const ls = (globalThis as unknown as { localStorage?: StorageLike }).localStorage;
     if (ls && typeof ls.getItem === 'function' && typeof ls.setItem === 'function') return ls;
-  } catch {
-    /* ignore */
-  }
+  } catch { /* ignore */ }
   return fallbackMemStorage;
 }
 
@@ -106,6 +98,7 @@ export class JoinQueueCoordinator {
   private accountId?: string;
 
   private latestQueue: QueuedHomeStatus | null = null;
+  private readonly priorActiveColonyIds = new Set<string>();
   private assigned: BootAuthResult | null = null;
   private handedOffColonyId: string | null = null;
   private descentTriggeredCount = 0;
@@ -167,18 +160,15 @@ export class JoinQueueCoordinator {
     if (this.disposed || this.cancelled) return null;
 
     if (initialHome !== null) {
-      const active = extractActiveHomePayload(initialHome);
+      if (this.opts.newColony) {
+        for (const id of collectKnownActiveColonyIds(initialHome, true)) this.priorActiveColonyIds.add(id);
+      }
+      const active = extractActiveHomePayload(initialHome, this.buildActiveFilter());
       if (active) return this.completeWithActive(active);
       const queued = extractQueuedHomeStatus(initialHome, {
-        planetId: this.opts.planetId,
-        planetType: this.opts.planetType,
-        sectorIntent: this.opts.sectorIntent,
+        planetId: this.opts.planetId, planetType: this.opts.planetType, sectorIntent: this.opts.sectorIntent,
       });
-      if (queued) {
-        this.wasQueued = true;
-        this.recordQueueStatus(queued);
-        return this.pollUntilAssigned();
-      }
+      if (queued) { this.wasQueued = true; this.recordQueueStatus(queued); return this.pollUntilAssigned(); }
     }
 
     const shouldEnqueue =
@@ -192,7 +182,7 @@ export class JoinQueueCoordinator {
     }
 
     const intent = this.prepareJoinIntent();
-    const enqueued = await enqueueMatchTicket(this.accessToken, intent, this.doFetch);
+    const enqueued = await enqueueMatchTicket(this.accessToken, intent, this.doFetch, Boolean(this.opts.newColony));
     if (this.disposed || this.cancelled) return null;
 
     if (enqueued.kind === 'active') {
@@ -274,11 +264,8 @@ export class JoinQueueCoordinator {
 
   private prepareJoinIntent(): PersistedJoinIntent {
     return getOrCreatePendingJoinIntent(this.storage, {
-      search: this.search,
-      planetType: this.opts.planetType,
-      planetId: this.opts.planetId,
-      sectorIntent: this.opts.sectorIntent,
-      now: this.opts.now,
+      search: this.search, planetType: this.opts.planetType, planetId: this.opts.planetId,
+      sectorIntent: this.opts.sectorIntent, newColony: this.opts.newColony, now: this.opts.now,
     });
   }
 
@@ -307,7 +294,7 @@ export class JoinQueueCoordinator {
         if (this.disposed || this.cancelled) return null;
         if (!rawHome) continue;
 
-        const active = extractActiveHomePayload(rawHome);
+        const active = extractActiveHomePayload(rawHome, this.buildActiveFilter());
         if (active) {
           this.polling = false;
           return this.completeWithActive(active);
@@ -332,6 +319,17 @@ export class JoinQueueCoordinator {
             throw new BootError(`Queue ticket ${queued.ticketState.toLowerCase()}`, 200, `TICKET_${queued.ticketState}`);
           }
           this.recordQueueStatus(queued);
+          continue;
+        }
+
+        if (this.opts.newColony && this.latestQueue?.ticketId && this.latestQueue.ticketId !== 'tkt_pending') {
+          const ticketActive = await this.inspectTrackedNewColonyTicket(this.latestQueue.ticketId);
+          if (this.disposed || this.cancelled) return null;
+          if (ticketActive === 'cancelled') return null;
+          if (ticketActive) {
+            this.polling = false;
+            return this.completeWithActive(ticketActive);
+          }
         }
       }
       throw new BootError('Timed out waiting in planet queue', 408, 'QUEUE_POLL_TIMEOUT');
@@ -445,42 +443,42 @@ export class JoinQueueCoordinator {
     if (typeof acc === 'string' && acc.length > 0) this.accountId = acc;
   }
 
-  private async fetchHomeOnce(isInitial: boolean): Promise<unknown> {
-    const query = new URLSearchParams();
-    if (this.opts.planetType) query.set('type', this.opts.planetType);
-    const colonyId = new URLSearchParams(this.search).get('colonyId');
-    if (colonyId) query.set('colonyId', colonyId);
-    const url = '/v1/me/home' + (query.size ? `?${query}` : '');
-    let renewed = false;
+  private buildActiveFilter(): ActiveHomeTargetFilter {
+    return buildActiveQueueFilter({
+      colonyId: this.opts.colonyId, newColony: this.opts.newColony, search: this.search,
+      planetId: this.opts.planetId, planetType: this.opts.planetType, sectorIntent: this.opts.sectorIntent,
+      latestQueue: this.latestQueue, priorActiveColonyIds: this.priorActiveColonyIds,
+    });
+  }
 
+  private inspectTrackedNewColonyTicket(ticketId: string) {
+    const latest = this.latestQueue;
+    return inspectTrackedNewColonyTicketHelper({
+      ticketId, accessToken: this.accessToken, doFetch: this.doFetch, storage: this.storage, search: this.search,
+      clearPending: clearPendingJoinIntent, bootOverlay: this.opts.bootOverlay, onCancel: this.opts.onCancel, onReturnToOrbit: this.opts.onReturnToOrbit,
+      fallback: { planetId: latest?.planetId ?? this.opts.planetId, planetType: latest?.planetType ?? this.opts.planetType, sectorIntent: latest?.sectorIntent ?? this.opts.sectorIntent },
+      onQueued: (q) => this.recordQueueStatus(q),
+    });
+  }
+
+  private async fetchHomeOnce(isInitial: boolean): Promise<unknown> {
+    const url = buildCoordinatorHomeUrl({
+      isInitial, planetType: this.opts.planetType, colonyId: this.opts.colonyId, newColony: this.opts.newColony,
+      search: this.search, planetId: this.opts.planetId, latestQueue: this.latestQueue,
+    });
+    let renewed = false;
     for (let attempt = 1; ; attempt++) {
       if (this.disposed || this.cancelled) return null;
-      const res = await this.doFetch(url, {
-        method: 'GET',
-        headers: { Authorization: `Bearer ${this.accessToken}` },
-        credentials: 'include',
-      });
+      const res = await this.doFetch(url, { method: 'GET', headers: { Authorization: `Bearer ${this.accessToken}` }, credentials: 'include' });
       if (res.ok) return res.json();
       if (res.status === 404 && isInitial && !this.opts.strictAuth) return null;
-      if (res.status === 401 && !renewed) {
-        renewed = true;
-        this.accessToken = '';
-        await this.ensureAuthenticated();
-        continue;
-      }
+      if (res.status === 401 && !renewed) { renewed = true; this.accessToken = ''; await this.ensureAuthenticated(); continue; }
       const code = await errorCodeOf(res);
       if (!retryableHome(res.status, code) || attempt >= HOME_ATTEMPTS) {
-        if (!isInitial && attempt < HOME_ATTEMPTS) {
-          await this.cancellableWait(backoffDelay(attempt, this.randomFn));
-          continue;
-        }
+        if (!isInitial && attempt < HOME_ATTEMPTS) { await this.cancellableWait(backoffDelay(attempt, this.randomFn)); continue; }
         throw new BootError(`GET /v1/me/home: ${res.status}${code ? ` ${code}` : ''}`, res.status, code);
       }
-      this.opts.onStatus?.(
-        res.status === 429
-          ? `Orbit is busy, retrying (${attempt}/${HOME_ATTEMPTS - 1})…`
-          : `Home planet is starting, retrying (${attempt}/${HOME_ATTEMPTS - 1})…`,
-      );
+      this.opts.onStatus?.(res.status === 429 ? `Orbit is busy, retrying (${attempt}/${HOME_ATTEMPTS - 1})…` : `Home planet is starting, retrying (${attempt}/${HOME_ATTEMPTS - 1})…`);
       await this.cancellableWait(backoffDelay(attempt, this.randomFn));
     }
   }

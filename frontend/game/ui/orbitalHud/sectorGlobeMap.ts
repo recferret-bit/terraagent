@@ -275,6 +275,35 @@ export function resolveSectorPopulationMap(summary: PlanetSummaryV1): Map<Sector
   return counts;
 }
 
+export function resolveColonySectorOnSummary(
+  summary: PlanetSummaryV1,
+  colony: ActiveHomeColony,
+): SectorId | null {
+  if (planetLookForType(summary.type) !== colony.kind) return null;
+  const land = summary.sectors.filter((s) => s.kind === 'land');
+  const landSet = new Set(land.map((s) => s.sectorId));
+  if (colony.foundingSectorId && (landSet.size === 0 || landSet.has(colony.foundingSectorId))) {
+    return colony.foundingSectorId;
+  }
+  const match = (summary.colonies ?? []).find(
+    (c) => c.colonyId === colony.colonyId || c.displayName === colony.colonyName,
+  );
+  if (match && landSet.has(match.foundingSectorId)) return match.foundingSectorId;
+  return land.find((s) => s.foundedSeats > 0)?.sectorId ?? land[0]?.sectorId ?? 'sec_0_0';
+}
+
+export function resolveHomeBaseSectorIds(
+  summary: PlanetSummaryV1,
+  coloniesOnPlanet: readonly ActiveHomeColony[],
+): SectorId[] {
+  const seen = new Set<SectorId>();
+  for (const col of coloniesOnPlanet) {
+    const sid = resolveColonySectorOnSummary(summary, col);
+    if (sid) seen.add(sid);
+  }
+  return [...seen];
+}
+
 /**
  * Resolves the fixed sector for ACTIVE BASE so selecting or hovering target drop sectors never makes it jump.
  */
@@ -287,17 +316,7 @@ export function resolveHomeBaseSectorId(
   const colonies = summary.colonies ?? [];
 
   if (activeColony && planetLookForType(summary.type) === activeColony.kind) {
-    if (
-      activeColony.foundingSectorId &&
-      (landSet.size === 0 || landSet.has(activeColony.foundingSectorId))
-    ) {
-      return activeColony.foundingSectorId;
-    }
-    const match = colonies.find(
-      (c) => c.colonyId === activeColony.colonyId || c.displayName === activeColony.colonyName,
-    );
-    if (match && landSet.has(match.foundingSectorId)) return match.foundingSectorId;
-    return land.find((s) => s.foundedSeats > 0)?.sectorId ?? land[0]?.sectorId ?? 'sec_0_0';
+    return resolveColonySectorOnSummary(summary, activeColony);
   }
 
   const humanCol = colonies.find((c) => !c.isBot && landSet.has(c.foundingSectorId));
@@ -348,14 +367,19 @@ export function buildOrbitalGlobeMarkers(
   hoveredSectorId: string | null,
   kind?: PlanetKind,
   activeColony: ActiveHomeColony | null = null,
+  ownedColoniesOnPlanet?: readonly ActiveHomeColony[],
 ): OrbitalGlobeMarkerInput[] {
   const resolvedKind = kind ?? planetLookForType(summary.type);
-  const homeBaseSectorId = resolveHomeBaseSectorId(summary, activeColony);
+  const ownedSectorIds = ownedColoniesOnPlanet && ownedColoniesOnPlanet.length > 0
+    ? resolveHomeBaseSectorIds(summary, ownedColoniesOnPlanet)
+    : [];
+  const homeBaseSectorId = ownedSectorIds[0] ?? resolveHomeBaseSectorId(summary, activeColony);
+  const homeBaseSet = new Set<string>(ownedSectorIds.length > 0 ? ownedSectorIds : homeBaseSectorId ? [homeBaseSectorId] : []);
   const targetSectorId = resolveTargetSectorId(
     summary,
     intent,
     hoveredSectorId,
-    activeColony ? homeBaseSectorId : null,
+    (ownedColoniesOnPlanet?.length ?? 0) > 0 || activeColony ? homeBaseSectorId : null,
   );
   const popMap = resolveSectorPopulationMap(summary);
   const landSectors = summary.sectors.filter((s) => s.kind === 'land').slice(0, 8);
@@ -378,7 +402,7 @@ export function buildOrbitalGlobeMarkers(
       role,
       players: pop.players,
       bots: pop.bots,
-      isHomeBase: sec.sectorId === homeBaseSectorId,
+      isHomeBase: homeBaseSet.has(sec.sectorId),
     };
   });
 }

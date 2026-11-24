@@ -59,11 +59,11 @@ export const WEB3_FEATURES: ReadonlyArray<WebFeatureCard> = [
     chips: ['res.terraagent.testnet', '1Click Ramp', 'Hosted MCP /v1/mcp'],
   },
   {
-    title: 'Wallet-First 4-Tier Staking & Wealth Dashboard',
+    title: 'Wallet-First 4-Tier Staking & Multi-Colony Slots',
     layer: 'WEB3',
     badge: '4-TIER PATRONAGE',
-    summary: 'Stake native NEAR or `stNEAR` / `LiNEAR` on `/me.html#staking` with zero Colony Deed (`stake_payable`, `compound_yield`, `withdraw_lst`). Keep 100% principal + 7.20% net APY, unlock `0.65%–0.25%` fees (`24h` warmup, `<7d` `25 bp` exit), and compete for the Tier 4 Lead Patron seat.',
-    chips: ['10 / 50 / 200 / 500+ NEAR', '1-Click Compound', 'Lead Patron Flagship'],
+    summary: 'Stake native NEAR or `stNEAR` / `LiNEAR` on `/me.html#staking` with zero Colony Deed (`stake_payable`, `compound_yield`, `withdraw_lst`). Keep 100% principal + 7.20% net APY, unlock `1 / 3 / 6 / 12` concurrent colonies across planets or distinct sectors on `z-ai/glm-5.3-flash`, cut fees `0.65%–0.25%`, and compete for Lead Patron.',
+    chips: ['1–12 Multi-Colony Slots', '1-Click Compound', 'Lead Patron Flagship'],
   },
   {
     title: 'Payable Escrows, Shade MPC & SputnikDAO Export',

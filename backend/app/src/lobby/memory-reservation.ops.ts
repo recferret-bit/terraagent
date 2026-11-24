@@ -21,6 +21,7 @@ import {
   checkSectorCapacityForReservation,
   checkWorldAdmissionForReservation,
   isActiveReservationState,
+  isConflictingPlayerReservation,
   matchesIdempotentReservationInput,
 } from './parts/reservation-ops-parts';
 
@@ -76,7 +77,7 @@ export class MemoryReservationOps {
           { ticketId: input.ticketId, colonyId: input.colonyId },
         );
       }
-      if (isActive && r.playerId === input.playerId) {
+      if (isConflictingPlayerReservation(r, input)) {
         throw new LobbyPersistenceConflictError(
           'duplicate_active_reservation',
           `player "${input.playerId}" already holds an active reservation "${r.reservationId}"`,

@@ -14,9 +14,9 @@ export const PRESTIGE_COPY: Readonly<Record<StakingTierKey, string>> = {
 };
 
 export const ORBITAL_PATRONAGE_DESCRIPTION =
-  'Compares all 5 staking tiers. Perks unlock lower market taker fees, managed NEAR.AI TEE colony slots, higher gasless relayer caps, and cosmetic 3D prestige — never sim combat or harvest advantages (Zero Pay-to-Win).';
+  'Compares all 5 staking tiers. Perks unlock lower market taker fees, concurrent multi-colony NEAR.AI TEE slots (1 / 3 / 6 / 12 colonies on GLM 5.3 Flash across planets or distinct sectors), higher gasless relayer caps, and cosmetic 3D prestige — never sim combat or harvest advantages (Zero Pay-to-Win).';
 
-const HEADERS = ['Tier', 'Min stake', 'Taker fee', 'AI colony slots', 'Gas cap', 'Prestige'] as const;
+const HEADERS = ['Tier', 'Min stake', 'Taker fee', 'Colonies & AI slots', 'Gas cap', 'Prestige'] as const;
 
 export function formatWarmupDuration(feeWarmupMs: number): string {
   if (feeWarmupMs >= 3_600_000) return `${Math.round(feeWarmupMs / 3_600_000)}h`;
@@ -35,7 +35,7 @@ function tierRow(tier: StakingTierRow, reached: boolean, warmupLabel: string, ro
     el('th', { className: 'ta-stk-tier-name', aria: { label: `Tier ${tier.id} ${tier.name}` } }, `T${tier.id} · ${tier.name}`),
     el('td', null, `${tier.minStakeNear} NEAR`),
     el('td', null, feeCell(tier, warmupLabel)),
-    el('td', null, tier.aiColonySlots === 0 ? 'Script AI' : `${tier.aiColonySlots} slot${tier.aiColonySlots === 1 ? '' : 's'}`),
+    el('td', null, tier.aiColonySlots === 0 ? '1 colony · Script AI' : `${tier.aiColonySlots} colon${tier.aiColonySlots === 1 ? 'y' : 'ies'} · GLM 5.3 Flash`),
     el('td', null, `${tier.gasMultiplier}x`),
     el('td', { className: 'ta-stk-prestige' }, PRESTIGE_COPY[tier.key]),
   ];

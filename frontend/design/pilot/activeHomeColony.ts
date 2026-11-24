@@ -1,3 +1,4 @@
+import type { ColonySlotAllowance } from '@terra/contracts';
 import { isProductionBuild } from '@terra/render/ui/buildEnv';
 import { refreshPilotSession } from './PilotAccess';
 
@@ -14,6 +15,12 @@ export interface ActiveHomeColony {
   readonly foundingSectorId?: string;
 }
 
+export interface PilotColonyRoster {
+  readonly primary: ActiveHomeColony | null;
+  readonly colonies: readonly ActiveHomeColony[];
+  readonly slots: ColonySlotAllowance;
+}
+
 const PLANET_TYPE_TO_KIND: Readonly<Record<string, ActivePlanetKind>> = {
   desert: 'dune',
   ocean: 'oceanForest',
@@ -22,6 +29,32 @@ const PLANET_TYPE_TO_KIND: Readonly<Record<string, ActivePlanetKind>> = {
 
 export function kindOfPlanetType(type: string): ActivePlanetKind | null {
   return PLANET_TYPE_TO_KIND[type] ?? null;
+}
+
+export function defaultSingleSlotAllowance(used: number): ColonySlotAllowance {
+  return {
+    used,
+    max: Math.max(1, used),
+    aiColonySlots: 0,
+    tier: 0,
+    tierName: 'Free Cadet',
+    stakedNear: '0',
+    isStaker: false,
+  };
+}
+
+export function canFoundAnotherColony(roster: PilotColonyRoster | null | undefined): boolean {
+  if (!roster || roster.colonies.length === 0) return true;
+  return roster.slots.isStaker && roster.colonies.length < roster.slots.max;
+}
+
+export function rosterFromSingleActiveColony(active: ActiveHomeColony | null): PilotColonyRoster | null {
+  if (!active) return null;
+  return {
+    primary: active,
+    colonies: [active],
+    slots: defaultSingleSlotAllowance(1),
+  };
 }
 
 const DEVICE_SECRET_KEY = 'ta_device_secret';
@@ -86,11 +119,50 @@ export interface ProbeActiveColonyOptions {
   readonly dev?: boolean;
 }
 
+interface RawColonyItem {
+  readonly id?: string;
+  readonly name?: string;
+  readonly foundingSectorId?: unknown;
+}
+
+interface RawPlanetItem {
+  readonly id?: string;
+  readonly name?: string;
+  readonly type?: string;
+}
+
+function mapRawActiveColony(
+  colony: RawColonyItem | undefined,
+  planet: RawPlanetItem | undefined,
+  fallbackSector?: unknown,
+): ActiveHomeColony | null {
+  if (!colony || !planet) return null;
+  const kind = kindOfPlanetType(planet.type ?? '');
+  if (!kind) return null;
+  const rawSector =
+    typeof colony.foundingSectorId === 'string' && colony.foundingSectorId.trim().length > 0
+      ? colony.foundingSectorId.trim()
+      : typeof fallbackSector === 'string' && fallbackSector.trim().length > 0
+        ? fallbackSector.trim()
+        : undefined;
+  return {
+    kind,
+    planetType: planet.type as ActivePlanetType,
+    planetId: String(planet.id ?? ''),
+    planetName: String(planet.name ?? kind),
+    colonyId: String(colony.id ?? ''),
+    colonyName: String(colony.name ?? 'Colony'),
+    ...(rawSector ? { foundingSectorId: rawSector } : {}),
+  };
+}
+
 /**
- * Resolves the caller's existing ACTIVE home colony (if any) via `GET /v1/me/home?resolve=1` without creating
- * a new guest secret or founding a colony.
+ * Resolves the caller's full active colony roster + NEAR.AI staking slot allowance via `GET /v1/me/home?resolve=1`
+ * without creating a new guest secret or founding a colony.
  */
-export async function probeActiveHomeColony(opts: ProbeActiveColonyOptions = {}): Promise<ActiveHomeColony | null> {
+export async function probePilotColonyRoster(
+  opts: ProbeActiveColonyOptions = {},
+): Promise<PilotColonyRoster | null> {
   const doFetch = opts.fetch ?? (typeof fetch === 'function' ? fetch : undefined);
   if (!doFetch) return null;
   const search = opts.search ?? (typeof location !== 'undefined' ? location.search : '');
@@ -133,28 +205,42 @@ export async function probeActiveHomeColony(opts: ProbeActiveColonyOptions = {})
     const body = (await homeRes.json()) as {
       state?: string;
       foundingSectorId?: unknown;
-      colony?: { id?: string; name?: string; foundingSectorId?: unknown };
-      planet?: { id?: string; name?: string; type?: string };
+      colony?: RawColonyItem;
+      planet?: RawPlanetItem;
+      colonySlots?: ColonySlotAllowance;
+      activeColonies?: ReadonlyArray<{ colony?: RawColonyItem; planet?: RawPlanetItem }>;
     };
-    if (body?.state !== 'ACTIVE' || !body.planet || !body.colony) return null;
-    const kind = kindOfPlanetType(body.planet.type ?? '');
-    if (!kind) return null;
-    const rawSector =
-      typeof body.colony.foundingSectorId === 'string' && body.colony.foundingSectorId.trim().length > 0
-        ? body.colony.foundingSectorId.trim()
-        : typeof body.foundingSectorId === 'string' && body.foundingSectorId.trim().length > 0
-          ? body.foundingSectorId.trim()
-          : undefined;
+
+    const primary =
+      body?.state === 'ACTIVE'
+        ? mapRawActiveColony(body.colony, body.planet, body.foundingSectorId)
+        : null;
+    const listFromRoster = Array.isArray(body?.activeColonies)
+      ? body.activeColonies
+          .map((e) => mapRawActiveColony(e.colony, e.planet))
+          .filter((x): x is ActiveHomeColony => x !== null)
+      : [];
+    const colonies =
+      listFromRoster.length > 0 ? listFromRoster : primary ? [primary] : [];
+
+    const slots = body?.colonySlots ?? defaultSingleSlotAllowance(colonies.length);
+    if (colonies.length === 0 && !slots.isStaker) return null;
     return {
-      kind,
-      planetType: body.planet.type as ActivePlanetType,
-      planetId: String(body.planet.id ?? ''),
-      planetName: String(body.planet.name ?? kind),
-      colonyId: String(body.colony.id ?? ''),
-      colonyName: String(body.colony.name ?? 'Colony'),
-      ...(rawSector ? { foundingSectorId: rawSector } : {}),
+      primary: primary ?? colonies[0] ?? null,
+      colonies,
+      slots,
     };
   } catch {
     return null;
   }
+}
+
+/**
+ * Resolves the caller's existing primary ACTIVE home colony (if any) via `GET /v1/me/home?resolve=1`.
+ */
+export async function probeActiveHomeColony(
+  opts: ProbeActiveColonyOptions = {},
+): Promise<ActiveHomeColony | null> {
+  const roster = await probePilotColonyRoster(opts);
+  return roster?.primary ?? null;
 }

@@ -1,4 +1,4 @@
-import { ACHIEVEMENTS, resolveDefaultPatronagePlanetId, type MeAchievementsResponse, type MeProfileResponse } from '@terra/contracts';
+import { resolveDefaultPatronagePlanetId, type MeAchievementsResponse, type MeProfileResponse } from '@terra/contracts';
 import {
   consentedAuthHeaders, failAuthHttp, failAuthThrown, rememberAuthProvider, succeedAuth,
 } from '../../../design/analytics/auth';
@@ -9,7 +9,13 @@ import { PilotAccess, type PilotAccessOptions, type PilotAccessSession } from '.
 import { clearMeCachedToken, fetchMeData, resolveMeBearerToken, type MeFetchFn } from './api';
 import { clearChildren, el } from './dom';
 import { createLocalModeFetch, isBrowserLocalHost } from './localModeSim';
-import { createBlockHelpTip } from './parts/helpTip';
+import {
+  buildGuestPlaceholderData,
+  buildMeNavLinks,
+  disableGuestInternals,
+  renderMeSectionPlate,
+  stripParamsFromWindowUrl,
+} from './parts/mePageGuest';
 import { attachMeTabNavigation, parseHashSectionId, type MeTabNavigationHandle } from './parts/tabScrollSpy';
 import { renderAchievementsSection } from './sections/AchievementsSection';
 import { renderAiSettingsSection, type AiSettingsController } from './sections/AiSettingsSection';
@@ -18,6 +24,7 @@ import {
   renderHistorySection,
   renderPlanetsSection,
   renderPlaySection,
+  type PlanetsSectionController,
 } from './sections/PlanetsHistoryPlaySections';
 import { renderProgressSection } from './sections/ProgressSection';
 import { renderStatsSection } from './sections/StatsSection';
@@ -43,85 +50,6 @@ export interface MountMePageOptions {
   readonly search?: string;
   /** Test seam: the location hash (`#staking?amount=200`); defaults to `location.hash`. */
   readonly hash?: string;
-}
-
-function buildGuestPlaceholderData(): {
-  readonly profile: MeProfileResponse;
-  readonly achievements: MeAchievementsResponse;
-} {
-  const nowIso = new Date(0).toISOString();
-  return {
-    profile: {
-      identity: {
-        playerId: 'guest',
-        handle: 'Guest Pilot',
-        accountId: null,
-        isGuest: true,
-        pilotSince: nowIso,
-        avatarSeed: 'guest',
-        frame: 'default',
-      },
-      progression: {
-        level: 1,
-        xp: 0,
-        currentLevelXp: 0,
-        nextLevelXp: 500,
-        title: 'Cadet',
-        titles: ['Cadet'],
-        frames: ['default'],
-        unlockStage: 0,
-        nextStageCondition: 'Sign in to track your colony progression.',
-      },
-      stats: {
-        coloniesFounded: 0,
-        coloniesSettled: 0,
-        coloniesEliminated: 0,
-        highestStageReached: 0,
-        tilesGraded: 0,
-        obstaclesRemoved: 0,
-        waterTilesReclaimed: 0,
-        livingTilesCreated: 0,
-        buildingsCompleted: 0,
-        peakNetPower: 0,
-        nightsNoBrownout: 0,
-        resourcesProduced: 0,
-        faunaKilled: 0,
-        nestsDestroyed: 0,
-        raidsRepelled: 0,
-        marketTradesSettled: 0,
-      },
-      currentColonies: [],
-      pastColonies: [],
-      nextAchievements: [],
-      earnedAchievementsCount: 0,
-      totalAchievementsCount: ACHIEVEMENTS.length,
-    },
-    achievements: {
-      earnedCount: 0,
-      totalCount: ACHIEVEMENTS.length,
-      achievements: [],
-    },
-  };
-}
-
-function disableGuestInternals(main: HTMLElement): void {
-  main.classList.add('is-guest-disabled');
-  main.dataset.guestDisabled = 'true';
-  main.setAttribute('aria-disabled', 'true');
-  main.setAttribute('inert', '');
-  if ('inert' in main) (main as HTMLElement & { inert: boolean }).inert = true;
-
-  for (const ctrl of main.querySelectorAll<HTMLButtonElement | HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>(
-    'button, input, select, textarea',
-  )) {
-    if (!ctrl.disabled) ctrl.disabled = true;
-    if (ctrl.getAttribute('aria-disabled') !== 'true') ctrl.setAttribute('aria-disabled', 'true');
-    if (ctrl.tabIndex !== -1) ctrl.tabIndex = -1;
-  }
-  for (const node of main.querySelectorAll<HTMLElement>('a, [tabindex]')) {
-    if (node.getAttribute('aria-disabled') !== 'true') node.setAttribute('aria-disabled', 'true');
-    if (node.tabIndex !== -1) node.tabIndex = -1;
-  }
 }
 
 export class MePage {
@@ -281,17 +209,10 @@ export class MePage {
       const body = (await res.json()) as PilotAccessSession;
       if (!body?.accessToken || !body.player || body.accessToken === 'local-mode-token' || this.localHost) return;
       const isGuest = body.player.isGuest !== false;
-      localStorage.setItem(
-        'ta_active_pilot',
-        JSON.stringify({
-          playerId: body.player.id,
-          accessToken: body.accessToken,
-          updatedAt: Date.now(),
-          isGuest,
-          handle: body.player.handle,
-          ...(body.accountId ? { accountId: body.accountId } : {}),
-        }),
-      );
+      localStorage.setItem('ta_active_pilot', JSON.stringify({
+        playerId: body.player.id, accessToken: body.accessToken, updatedAt: Date.now(), isGuest,
+        handle: body.player.handle, ...(body.accountId ? { accountId: body.accountId } : {}),
+      }));
       if (!isGuest) localStorage.setItem('ta_trade_token', body.accessToken);
     } catch (err) {
       failAuthThrown(err);
@@ -303,12 +224,7 @@ export class MePage {
     this.disposeAuthControls();
     clearChildren(this.root);
     this.root.appendChild(this.renderStickyNav({ mountAuth: false }));
-    const loading = el(
-      'div',
-      { className: 'plate ta-me-loading', dataset: { testid: 'me-loading' } },
-      'Loading pilot profile…',
-    );
-    this.root.appendChild(loading);
+    this.root.appendChild(el('div', { className: 'plate ta-me-loading', dataset: { testid: 'me-loading' } }, 'Loading pilot profile…'));
 
     await this.consumeRedirectLoginIfPresent();
     const res = await fetchMeData(this.effectiveFetch, this.opts.search);
@@ -391,6 +307,7 @@ export class MePage {
     const main = el('main', { className: 'ta-me-main', dataset: { testid: 'me-main' } });
     const defaultPlanetId = resolveDefaultPatronagePlanetId(profile.currentColonies[0]?.planetId);
     let aiCtrl: AiSettingsController | null = null;
+    let planetsCtrl: PlanetsSectionController | null = null;
 
     main.appendChild(
       this.renderSectionPlate(
@@ -405,9 +322,7 @@ export class MePage {
           renderAiSettingsSection(profile, {
             fetch: this.effectiveFetch,
             search: this.opts.search,
-            onReady: (ctrl) => {
-              aiCtrl = ctrl;
-            },
+            onReady: (ctrl) => { aiCtrl = ctrl; },
           }),
         ],
         'Your Pilot identity, progression XP, and NEAR.AI Bot Decision Manager settings.',
@@ -425,6 +340,7 @@ export class MePage {
         defaultPlanetId,
         (total) => {
           aiCtrl?.syncStakerState(total);
+          planetsCtrl?.syncStakerState(total);
         },
         stakingFetchOverride,
       );
@@ -432,14 +348,12 @@ export class MePage {
       stakingReady = stk.ready;
     }
     main.appendChild(
-      this.renderSectionPlate(
-        'progress',
-        'PROGRESS',
-        [renderProgressSection(profile), renderStatsSection(profile.stats)],
-      ),
+      this.renderSectionPlate('progress', 'PROGRESS', [renderProgressSection(profile), renderStatsSection(profile.stats)]),
     );
     main.appendChild(
-      this.renderSectionPlate('planets', 'PLANETS', [renderPlanetsSection(profile, { localHost: this.localHost })]),
+      this.renderSectionPlate('planets', 'PLANETS', [
+        renderPlanetsSection(profile, { localHost: this.localHost, onReady: (ctrl) => { planetsCtrl = ctrl; } }),
+      ]),
     );
     main.appendChild(
       this.renderSectionPlate('history', 'HISTORY', [renderHistorySection(profile)]),
@@ -521,29 +435,7 @@ export class MePage {
     const tabs = this.waveStakingOn
       ? [ME_SECTION_TABS[0], STAKING_TAB, ...ME_SECTION_TABS.slice(1)]
       : ME_SECTION_TABS;
-    const guestDisabled = Boolean(navOpts.guestDisabled);
-    const links = tabs.map((t) => {
-      const baseCls = t.id === STAKING_SECTION_ID ? 'ta-me-tab ta-me-tab--staking' : 'ta-me-tab';
-      const link = el(
-        'a',
-        {
-          className: guestDisabled ? `${baseCls} is-disabled` : baseCls,
-          href: `#${t.id}`,
-          ...(guestDisabled ? { tabIndex: -1 } : {}),
-          dataset: {
-            testid: `me-tab-${t.id}`,
-            section: t.id,
-            ...(guestDisabled ? { guestDisabled: 'true' } : {}),
-          },
-        },
-        t.label,
-      );
-      if (guestDisabled) {
-        link.setAttribute('aria-disabled', 'true');
-        link.addEventListener('click', (e) => e.preventDefault());
-      }
-      return link;
-    });
+    const links = buildMeNavLinks(tabs, STAKING_SECTION_ID, Boolean(navOpts.guestDisabled));
 
     const authHost = el('div', { dataset: { testid: 'me-header-auth' } });
     if (navOpts.mountAuth !== false) {
@@ -579,25 +471,11 @@ export class MePage {
   }
 
   private stripWaveParamsFromUrl(): void {
-    if (this.opts.search !== undefined || typeof window === 'undefined' || !window.location) return;
-    const params = new URLSearchParams(window.location.search);
-    if (!params.has('waves') && !params.has('scenario')) return;
-    params.delete('waves');
-    params.delete('scenario');
-    const qs = params.toString();
-    const nextUrl = `${window.location.pathname}${qs ? `?${qs}` : ''}${window.location.hash}`;
-    window.history?.replaceState?.(null, '', nextUrl);
+    stripParamsFromWindowUrl(['waves', 'scenario'], this.opts.search);
   }
 
   private clearDevQueryParamsOnAuthChange(): void {
-    if (this.opts.search !== undefined || typeof window === 'undefined' || !window.location) return;
-    const params = new URLSearchParams(window.location.search);
-    if (!params.has('as') && !params.has('playerId')) return;
-    params.delete('as');
-    params.delete('playerId');
-    const qs = params.toString();
-    const nextUrl = `${window.location.pathname}${qs ? `?${qs}` : ''}${window.location.hash}`;
-    window.history?.replaceState?.(null, '', nextUrl);
+    stripParamsFromWindowUrl(['as', 'playerId'], this.opts.search);
   }
 
   private renderSectionPlate(
@@ -606,35 +484,7 @@ export class MePage {
     children: HTMLElement | readonly HTMLElement[],
     tipDescription?: string,
   ): HTMLElement {
-    const childList = Array.isArray(children) ? children : [children];
-    const tip = tipDescription
-      ? createBlockHelpTip({ id: `section-${id}`, title: eyebrowText, description: tipDescription })
-      : null;
-    return el(
-      'section',
-      {
-        id,
-        className: 'plate ta-me-section',
-        tabIndex: -1,
-        dataset: { testid: `me-section-${id}` },
-      },
-      el(
-        'div',
-        { className: 'ta-me-section-head' },
-        el(
-          'div',
-          { className: 'ta-help-title-group' },
-          tip ? tip.button : null,
-          el(
-            'h2',
-            { className: 'label ta-me-eyebrow', dataset: { testid: `me-eyebrow-${id}` } },
-            eyebrowText,
-          ),
-        ),
-      ),
-      tip ? tip.panel : null,
-      ...childList,
-    );
+    return renderMeSectionPlate(id, eyebrowText, children, tipDescription);
   }
 }
 

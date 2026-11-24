@@ -3,6 +3,8 @@ import {
   type MatchTicketV1,
   type SectorId,
 } from '@terra/contracts';
+import type { SectorAntiCheatService } from '../core/anticheat';
+import type { HomeRepository } from '../core/home/home.repository';
 import type { LobbyPersistenceService } from './lobby-persistence.service';
 import type {
   CanonicalWorldRecord,
@@ -19,6 +21,7 @@ import {
   type MatchmakerTickSummary,
   type ProcessTicketResult,
 } from './matchmaker.types';
+import { listPlayerOwnedSectorIdsOnPlanet } from './parts/reservation-service-parts';
 import { resolveCanonicalPlanetType } from './planets.helpers';
 import type { SectorReservationSuccessResult } from './reservation.types';
 import { MatchTicketNotFoundException } from './tickets.types';
@@ -30,11 +33,13 @@ import { MatchTicketNotFoundException } from './tickets.types';
 export function sortEligibleLandSectorsFillFirst(
   sectors: readonly PlanetSectorRecord[],
   excludeSectorId?: SectorId,
+  excludedSectorIds?: ReadonlySet<string>,
 ): PlanetSectorRecord[] {
   return sectors
     .filter((s) => {
       if (s.kind !== 'land') return false;
       if (excludeSectorId && s.sectorId === excludeSectorId) return false;
+      if (excludedSectorIds?.has(s.sectorId)) return false;
       const effectiveCap = Math.min(s.foundingCapacity, s.validatedCapacity);
       const taken = s.reservedSeats + s.foundedSeats;
       return effectiveCap > 0 && taken < effectiveCap && s.freeSeats > 0;
@@ -53,8 +58,33 @@ export function sortEligibleLandSectorsFillFirst(
 export function computeAlternativeSectorIds(
   sectors: readonly PlanetSectorRecord[],
   chosenSectorId: SectorId,
+  excludedSectorIds?: ReadonlySet<string>,
 ): SectorId[] {
-  return sortEligibleLandSectorsFillFirst(sectors, chosenSectorId).map((s) => s.sectorId);
+  return sortEligibleLandSectorsFillFirst(sectors, chosenSectorId, excludedSectorIds).map(
+    (s) => s.sectorId,
+  );
+}
+
+export interface PlayerOccupiedSectorDeps {
+  readonly homeRepo?: HomeRepository;
+  readonly antiCheat?: SectorAntiCheatService;
+}
+
+export async function getPlayerOccupiedSectorIdsOnPlanet(
+  persistence: LobbyPersistenceService,
+  planetId: string,
+  playerId: string,
+  excludeColonyId?: string,
+  deps?: PlayerOccupiedSectorDeps,
+): Promise<Set<string>> {
+  return listPlayerOwnedSectorIdsOnPlanet({
+    persistence,
+    homeRepo: deps?.homeRepo,
+    antiCheat: deps?.antiCheat,
+    playerId,
+    planetId,
+    excludeColonyId,
+  });
 }
 
 /**
@@ -306,6 +336,7 @@ export async function refreshRemainingQueuePositionsHelper(
   paused: boolean,
   avgAssignmentS: number,
   now: Date,
+  deps?: PlayerOccupiedSectorDeps,
 ): Promise<MatchTicketRecord[]> {
   const remaining = sortQueuedTicketsByPriority(
     await persistence.listTickets({
@@ -335,9 +366,13 @@ export async function refreshRemainingQueuePositionsHelper(
         paused || !worldEligible || planetFull
           ? null
           : Math.max(1, (position + 1) * Math.round(avgAssignmentS));
+      const occupied =
+        t.sectorIntent.kind === 'chosen'
+          ? await getPlayerOccupiedSectorIdsOnPlanet(persistence, pId, t.playerId, t.colonyId, deps)
+          : undefined;
       const alternatives =
         t.sectorIntent.kind === 'chosen'
-          ? computeAlternativeSectorIds(sectors, t.sectorIntent.sectorId)
+          ? computeAlternativeSectorsIdsForTicket(sectors, t.sectorIntent.sectorId, occupied)
           : (t.alternativeSectors ?? []);
       const carry = resolveTransferCarry(t);
       const updated = await persistence.updateTicket({
@@ -354,12 +389,21 @@ export async function refreshRemainingQueuePositionsHelper(
   return sortQueuedTicketsByPriority(updatedAll);
 }
 
+function computeAlternativeSectorsIdsForTicket(
+  sectors: readonly PlanetSectorRecord[],
+  chosenSectorId: SectorId,
+  occupied?: ReadonlySet<string>,
+): SectorId[] {
+  return computeAlternativeSectorIds(sectors, chosenSectorId, occupied && occupied.size > 0 ? occupied : undefined);
+}
+
 export async function buildPausedTickSummaryHelper(
   persistence: LobbyPersistenceService,
   batchSize: number,
   planetId: string | undefined,
   avgAssignmentS: number,
   now: Date,
+  deps?: PlayerOccupiedSectorDeps,
 ): Promise<MatchmakerTickSummary> {
   const queuedTickets = await refreshRemainingQueuePositionsHelper(
     persistence,
@@ -367,6 +411,7 @@ export async function buildPausedTickSummaryHelper(
     true,
     avgAssignmentS,
     now,
+    deps,
   );
   const transferPendingTickets = queuedTickets.filter((t) => t.mode === 'TRANSFER');
   return {

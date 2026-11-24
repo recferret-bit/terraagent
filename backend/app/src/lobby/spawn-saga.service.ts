@@ -1,5 +1,7 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import type { SimCommandV1 } from '@terra/contracts';
+import { SectorAntiCheatService } from '../core/anticheat';
+import { ColonySlotAllowanceService } from '../core/home/colony-slot-allowance.service';
 import { HomeRepository, type ColonyRecord } from '../core/home/home.repository';
 import { GamePlanets } from '../game/game-planets.service';
 import { WorldLifecycleService } from './lifecycle.service';
@@ -19,6 +21,7 @@ import {
   resolveSagaClock,
 } from './spawn-saga-reconcile.helpers';
 import { SpawnSagaStateStore } from './spawn-saga-state';
+import { findSpawnMultiColonyRejection } from './parts/spawn-saga-index';
 import {
   buildProvisionalColonyRecord,
   buildSpawnExecutionRequest,
@@ -61,23 +64,14 @@ export class SpawnSagaService implements ReservationSlotFencePolicy {
   private defaultSleepFn: SpawnBackoffSleepFn = async () => {};
 
   constructor(
-    @Inject(LobbyPersistenceService)
-    private readonly persistence: LobbyPersistenceService,
-    @Optional()
-    @Inject(SectorReservationService)
-    arg2?: SectorReservationService | HomeRepository | WorldLifecycleService | ColonySpawnExecutor,
-    @Optional()
-    @Inject(HomeRepository)
-    arg3?: HomeRepository | SectorReservationService | WorldLifecycleService | ColonySpawnExecutor,
-    @Optional()
-    @Inject(WorldLifecycleService)
-    arg4?: WorldLifecycleService | HomeRepository | SectorReservationService | ColonySpawnExecutor,
-    @Optional()
-    @Inject(COLONY_SPAWN_EXECUTOR)
-    arg5?: ColonySpawnExecutor,
-    @Optional()
-    @Inject(GamePlanets)
-    private readonly gamePlanets?: GamePlanets,
+    @Inject(LobbyPersistenceService) private readonly persistence: LobbyPersistenceService,
+    @Optional() @Inject(SectorReservationService) arg2?: SectorReservationService | HomeRepository | WorldLifecycleService | ColonySpawnExecutor,
+    @Optional() @Inject(HomeRepository) arg3?: HomeRepository | SectorReservationService | WorldLifecycleService | ColonySpawnExecutor,
+    @Optional() @Inject(WorldLifecycleService) arg4?: WorldLifecycleService | HomeRepository | SectorReservationService | ColonySpawnExecutor,
+    @Optional() @Inject(COLONY_SPAWN_EXECUTOR) arg5?: ColonySpawnExecutor,
+    @Optional() @Inject(GamePlanets) private readonly gamePlanets?: GamePlanets,
+    @Optional() @Inject(SectorAntiCheatService) private readonly antiCheat?: SectorAntiCheatService,
+    @Optional() @Inject(ColonySlotAllowanceService) private readonly slotAllowance?: ColonySlotAllowanceService,
   ) {
     const candidates = [arg2, arg3, arg4, arg5];
     this.lifecycle =
@@ -97,6 +91,7 @@ export class SpawnSagaService implements ReservationSlotFencePolicy {
         !(c instanceof WorldLifecycleService),
     );
     this.reservations.setSlotFencePolicy(this);
+    if (!this.reservations.getHomeRepository()) this.reservations.setHomeRepository(this.homeRepo);
   }
 
   setSpawnExecutor(executor: ColonySpawnExecutor | undefined): void {
@@ -217,6 +212,21 @@ export class SpawnSagaService implements ReservationSlotFencePolicy {
       });
     }
 
+    const multiBlock = await findSpawnMultiColonyRejection({
+      persistence: this.persistence,
+      homeRepo: this.homeRepo,
+      antiCheat: this.antiCheat ?? this.reservations.getAntiCheatService(),
+      slotAllowance: this.slotAllowance ?? this.reservations.getSlotAllowanceService(),
+      reservation,
+      ticket: initialTicket,
+    });
+    if (multiBlock) {
+      return this.expireAndFence({
+        reservation, ticket: initialTicket, now: getNow(), reason: 'cancelled', attemptsUsed: 0,
+        backoffDelaysMs: [], spawnCommand: null, error: multiBlock, maxTicketAttempts: 1, options,
+      });
+    }
+
     this.state.provisionalColoniesById.set(
       reservation.colonyId,
       buildProvisionalColonyRecord(reservation, 'FOUNDING', options),
@@ -273,15 +283,7 @@ export class SpawnSagaService implements ReservationSlotFencePolicy {
       const ticket = (await this.persistence.getTicketById(reservation.ticketId)) ?? initialTicket;
       if (!ticket) throw new Error(`Ticket ${reservation.ticketId} not found for reservation ${reservation.reservationId}`);
 
-      const request = await buildSpawnExecutionRequest({
-        persistence: this.persistence,
-        homeRepo: this.homeRepo,
-        reservation,
-        ticket,
-        attempt,
-        maxRetries,
-        options,
-      });
+      const request = await this.claimPlanetIndexAndBuildRequest(reservation, ticket, attempt, maxRetries, options);
       lastCommand = request.command;
       this.state.spawnCommandsSent.push(request.command);
       this.state.setPendingLateSpawn(reservation, attempt, getNow());
@@ -307,6 +309,8 @@ export class SpawnSagaService implements ReservationSlotFencePolicy {
           backoffDelaysMs,
           appliedAtTick: attemptResult.appliedAtTick ?? 1,
           spawnCommand: lastCommand,
+          preferredColonyIndex: request.colonyIndex,
+          runPlanetIndexCritical: (fn) => this.sagaMutex.run(`planet-idx:${reservation.planetId}`, fn),
           maxTicketAttempts,
           options,
           reconcileOrphan: (inp, opts) => this.reconcileOrphanColony(inp, opts),
@@ -342,6 +346,29 @@ export class SpawnSagaService implements ReservationSlotFencePolicy {
       error: lastError ?? 'spawnColony retries exhausted',
       maxTicketAttempts,
       options,
+    });
+  }
+
+  private claimPlanetIndexAndBuildRequest(
+    reservation: ManagedSectorReservationRecord,
+    ticket: MatchTicketRecord,
+    attempt: number,
+    maxRetries: number,
+    options: ExecuteSpawnSagaOptions,
+  ) {
+    return this.sagaMutex.run(`planet-idx:${reservation.planetId}`, async () => {
+      const built = await buildSpawnExecutionRequest({
+        persistence: this.persistence,
+        homeRepo: this.homeRepo,
+        reservation,
+        ticket,
+        attempt,
+        maxRetries,
+        options,
+        provisionalColonies: this.state.provisionalColoniesById.values(),
+      });
+      this.state.provisionalColoniesById.set(reservation.colonyId, built.assignment.colony);
+      return built;
     });
   }
 
@@ -452,38 +479,17 @@ export class SpawnSagaService implements ReservationSlotFencePolicy {
   ): void {
     void inFlightPromise
       .then(async (res) => {
-        if (!res.ok) {
-          this.state.clearPendingLateSpawn(reservation);
-          return;
-        }
-        const expired = await this.state.isReservationFencedOrExpired(
-          this.persistence,
-          reservation,
-          resolveSagaClock(options.now)(),
-        );
+        if (!res.ok) { this.state.clearPendingLateSpawn(reservation); return; }
+        const expired = await this.state.isReservationFencedOrExpired(this.persistence, reservation, resolveSagaClock(options.now)());
         if (expired) {
-          await this.reconcileOrphanColony(
-            {
-              colonyId: reservation.colonyId,
-              reservationId: reservation.reservationId,
-              ticketId: reservation.ticketId,
-              playerId: reservation.playerId,
-              planetId: reservation.planetId,
-              sectorId: reservation.sectorId,
-              landingSlotId: reservation.landingSlotId,
-              slotIndex: reservation.slotIndex,
-              q: reservation.q,
-              r: reservation.r,
-              epoch: reservation.epoch,
-              appliedAtTick: res.appliedAtTick ?? 1,
-              reason: ORPHAN_RETIRE_REASON,
-            },
-            options,
-          );
+          await this.reconcileOrphanColony({
+            colonyId: reservation.colonyId, reservationId: reservation.reservationId, ticketId: reservation.ticketId,
+            playerId: reservation.playerId, planetId: reservation.planetId, sectorId: reservation.sectorId,
+            landingSlotId: reservation.landingSlotId, slotIndex: reservation.slotIndex, q: reservation.q, r: reservation.r,
+            epoch: reservation.epoch, appliedAtTick: res.appliedAtTick ?? 1, reason: ORPHAN_RETIRE_REASON,
+          }, options);
         }
       })
-      .catch(() => {
-        this.state.clearPendingLateSpawn(reservation);
-      });
+      .catch(() => { this.state.clearPendingLateSpawn(reservation); });
   }
 }

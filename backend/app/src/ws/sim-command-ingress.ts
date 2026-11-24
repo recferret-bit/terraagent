@@ -14,6 +14,8 @@ const isRejectCode = (c: string): c is RejectCode => (REJECT_CODES as readonly s
 /** The colony lookup the ingress needs (`HomeRepository`): cached first, the store on a miss. */
 export interface ColonyLookup {
   findColonyByPlayerAndPlanet(playerId: string, planetId: string): Promise<ColonyRecord | null>;
+  findColonyById?(id: string): Promise<ColonyRecord | null>;
+  listColoniesByPlayerAndPlanet?(playerId: string, planetId: string): Promise<ColonyRecord[]>;
 }
 
 export interface SimCommandIngressOptions {
@@ -77,32 +79,61 @@ export class SimCommandIngress implements CommandIngress {
 
   /** The player's colony row on the planet; else live anti-cheat binding; else colony 0 for a dev session on a scenario planet; else none. */
   private async resolveColony(ctx: CommandContext): Promise<ColonyRecord | null> {
-    const { playerId, planetId, memo } = ctx;
-    if (memo?.planetId === planetId && memo.colony) return memo.colony as ColonyRecord;
-    const rememberedMiss = memo?.planetId === planetId && memo.colony === null;
-    const row = rememberedMiss || !this.o.homeRepo ? null : await this.o.homeRepo.findColonyByPlayerAndPlanet(playerId, planetId);
+    const { playerId, planetId, colonyId, sectorId, memo } = ctx;
+    const memoColonyKey = colonyId ?? sectorId ?? '';
+    if (memo?.planetId === planetId && (memo.colonyId ?? '') === memoColonyKey && memo.colony) {
+      return memo.colony as ColonyRecord;
+    }
+    const rememberedMiss = memo?.planetId === planetId && (memo.colonyId ?? '') === memoColonyKey && memo.colony === null;
+    const row = rememberedMiss || !this.o.homeRepo ? null : await this.lookupRepoColony(playerId, planetId, colonyId, sectorId);
     if (row) {
       this.o.antiCheat?.recordColonyBase({
         ...row,
         playerId: row.playerId ?? playerId,
         planetId: row.planetId ?? planetId,
       });
-      this.rememberColony(memo, planetId, row);
+      this.rememberColony(memo, planetId, memoColonyKey, row);
       return row;
     }
     const live = this.liveColony(ctx);
     if (live) {
-      this.rememberColony(memo, planetId, live);
+      this.rememberColony(memo, planetId, memoColonyKey, live);
       return live;
     }
-    if (memo && !rememberedMiss) { memo.planetId = planetId; memo.colony = null; }
+    if (memo && !rememberedMiss) { memo.planetId = planetId; memo.colonyId = memoColonyKey; memo.colony = null; }
     return null;
+  }
+
+  private async lookupRepoColony(
+    playerId: string,
+    planetId: string,
+    colonyId?: string,
+    sectorId?: string,
+  ): Promise<ColonyRecord | null> {
+    if (!this.o.homeRepo) return null;
+    if (colonyId && this.o.homeRepo.findColonyById) {
+      const byId = await this.o.homeRepo.findColonyById(colonyId);
+      if (byId && byId.playerId === playerId && byId.planetId === planetId) return byId;
+    }
+    if (sectorId && this.o.homeRepo.listColoniesByPlayerAndPlanet) {
+      const list = await this.o.homeRepo.listColoniesByPlayerAndPlanet(playerId, planetId);
+      const bySector = list.find(
+        (c) => (c.foundingSectorId ?? 'sec_0_0') === sectorId && normalizeColonyStatus(c.status) === 'ACTIVE',
+      ) ?? list.find((c) => (c.foundingSectorId ?? 'sec_0_0') === sectorId);
+      if (bySector) return bySector;
+    }
+    return this.o.homeRepo.findColonyByPlayerAndPlanet(playerId, planetId);
   }
 
   /** Anti-cheat binding, or colony 0 for a dev session on a scenario planet. */
   private liveColony(ctx: CommandContext): ColonyRecord | null {
-    const { playerId, planetId } = ctx;
-    const liveActive = this.o.antiCheat?.index.getActiveBaseByPlayer(playerId);
+    const { playerId, planetId, colonyId, sectorId } = ctx;
+    const liveList = this.o.antiCheat?.index.listActiveBasesByPlayer(playerId) ?? [];
+    const onPlanet = liveList.filter((b) => b.planetId === planetId);
+    const liveActive =
+      (colonyId ? onPlanet.find((b) => b.colonyId === colonyId) : undefined) ??
+      (sectorId ? onPlanet.find((b) => b.baseSectorId === sectorId) : undefined) ??
+      onPlanet[0];
     if (liveActive && liveActive.planetId === planetId) {
       return {
         id: liveActive.colonyId, playerId, planetId, colonyIndex: liveActive.colonyIndex,
@@ -117,9 +148,10 @@ export class SimCommandIngress implements CommandIngress {
     return null;
   }
 
-  private rememberColony(memo: CommandContext['memo'], planetId: string, colony: ColonyRecord): void {
+  private rememberColony(memo: CommandContext['memo'], planetId: string, colonyKey: string, colony: ColonyRecord): void {
     if (!memo) return;
     memo.planetId = planetId;
+    memo.colonyId = colonyKey;
     memo.colony = colony;
   }
 

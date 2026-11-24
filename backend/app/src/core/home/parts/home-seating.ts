@@ -75,10 +75,11 @@ export async function askHostLandingSite(
   landingHost: HomeLandingHost | undefined,
   planet: PlanetRecord,
   colonyIndex: number,
+  sectorId?: string,
 ): Promise<HomeLandingSite> {
   if (!landingHost) throw hostUnavailable(planet.id, `no game host to land a colony on ${planet.id}`);
   try {
-    return await landingHost.landingSite(planet, colonyIndex);
+    return await landingHost.landingSite(planet, colonyIndex, sectorId);
   } catch (e) {
     throw hostUnavailable(planet.id, `planet ${planet.id} cannot be asked for a landing site: ${errText(e)}`);
   }
@@ -180,6 +181,7 @@ export async function assertNewHomeJoinSpace(opts: {
   readonly preferredType: PlanetType;
   readonly requestedSectorId?: string;
   readonly requestedPlanetId?: string;
+  readonly newColony?: boolean;
 }): Promise<void> {
   const trimmedSector = opts.requestedSectorId?.trim();
   if (trimmedSector && !isValidSectorIdFormat(trimmedSector)) {
@@ -198,6 +200,7 @@ export async function assertNewHomeJoinSpace(opts: {
     targetPlanetType: opts.preferredType,
     requestedSectorId: trimmedSector,
     allowNewJoin: true,
+    newColony: opts.newColony,
   });
   if (!verdict.ok) {
     throw new CoreException(verdict.errorCode, {
@@ -221,11 +224,58 @@ export interface SeatContext {
   readonly notifier: HomeSeatNotifier | undefined;
   readonly seatListeners: ReadonlySet<ColonySeatListener>;
   readonly antiCheat?: SectorAntiCheatService;
+  readonly occupiedSectorsByPlanet?: ReadonlyMap<string, ReadonlySet<string>>;
   readonly buildHomeResponse: (
     colony: ColonyRecord,
     planet: PlanetRecord,
     alwaysIncludeCanonicalPlanets: boolean,
   ) => Promise<HomeResponse>;
+}
+
+async function resolveTargetSectorBeforeSeat(
+  ctx: SeatContext,
+  openPlanet: PlanetRecord,
+  requestedSectorId: string | undefined,
+  occupiedOnPlanet: ReadonlySet<string> | undefined,
+): Promise<string | undefined | 'sector_full' | 'occupied_planet'> {
+  if (requestedSectorId && occupiedOnPlanet?.has(requestedSectorId)) {
+    throw new CoreException('SECTOR_ALREADY_COLONIZED', {
+      status: 409,
+      message: `You already operate an active colony in sector ${requestedSectorId} on ${openPlanet.id}`,
+      details: { code: 'sector_already_colonized', planetId: openPlanet.id, sectorId: requestedSectorId },
+    });
+  }
+  if (!ctx.antiCheat) return requestedSectorId;
+
+  const sectors = await ctx.antiCheat.hydratePlanetSectors(openPlanet.id);
+  if (requestedSectorId) {
+    const sec = ctx.antiCheat.index.getSectorSpace(openPlanet.id, requestedSectorId);
+    if (sec?.kind === 'ocean') {
+      ctx.antiCheat.recordRejection('http', 'join', 'sector_not_land');
+      throw new CoreException('INVALID_SECTOR', {
+        status: 400,
+        message: `Sector ${requestedSectorId} is an ocean sector`,
+        details: { code: 'sector_not_land', planetId: openPlanet.id, sectorId: requestedSectorId },
+      });
+    }
+    if (sec && sec.freeSeats <= 0) {
+      ctx.antiCheat.recordRejection('http', 'join', 'sector_full');
+      return 'sector_full';
+    }
+    return requestedSectorId;
+  }
+
+  if (occupiedOnPlanet && occupiedOnPlanet.size > 0) {
+    if (sectors.length > 1) {
+      const candidate = sectors.find((s) => s.kind === 'land' && s.freeSeats > 0 && !occupiedOnPlanet.has(s.sectorId));
+      return candidate ? candidate.sectorId : 'occupied_planet';
+    }
+    const planetMeta = ctx.antiCheat.index.getPlanet(openPlanet.id);
+    if (!planetMeta?.hasMultiSectorGrid && occupiedOnPlanet.has('sec_0_0')) {
+      return 'occupied_planet';
+    }
+  }
+  return undefined;
 }
 
 export async function seatColonyOnPlanet(
@@ -234,27 +284,12 @@ export async function seatColonyOnPlanet(
   openPlanet: PlanetRecord,
   colonyIndex: number,
   requestedSectorId?: string,
-): Promise<HomeResponse | SeatMiss> {
-  if (ctx.antiCheat) {
-    await ctx.antiCheat.hydratePlanetSectors(openPlanet.id);
-    if (requestedSectorId) {
-      const sec = ctx.antiCheat.index.getSectorSpace(openPlanet.id, requestedSectorId);
-      if (sec?.kind === 'ocean') {
-        ctx.antiCheat.recordRejection('http', 'join', 'sector_not_land');
-        throw new CoreException('INVALID_SECTOR', {
-          status: 400,
-          message: `Sector ${requestedSectorId} is an ocean sector`,
-          details: { code: 'sector_not_land', planetId: openPlanet.id, sectorId: requestedSectorId },
-        });
-      }
-      if (sec && sec.freeSeats <= 0) {
-        ctx.antiCheat.recordRejection('http', 'join', 'sector_full');
-        return 'sector_full';
-      }
-    }
-  }
+): Promise<HomeResponse | SeatMiss | 'occupied_planet'> {
+  const occupiedOnPlanet = ctx.occupiedSectorsByPlanet?.get(openPlanet.id);
+  const preSector = await resolveTargetSectorBeforeSeat(ctx, openPlanet, requestedSectorId, occupiedOnPlanet);
+  if (preSector === 'sector_full' || preSector === 'occupied_planet') return preSector;
 
-  const site = await askHostLandingSite(ctx.landingHost, openPlanet, colonyIndex);
+  const site = await askHostLandingSite(ctx.landingHost, openPlanet, colonyIndex, preSector);
   if (!site.ok) {
     if (site.code === 'already_landed') return 'index_landed';
     if (NO_SITE_CODES.includes(site.code)) return 'no_site';
@@ -283,6 +318,9 @@ export async function seatColonyOnPlanet(
 
   const effectiveSector =
     site.sectorId ?? (isMultiSector ? resolveTileSectorFast(site.q, site.r, sectorRadius) : 'sec_0_0');
+  if (occupiedOnPlanet?.has(effectiveSector)) {
+    return requestedSectorId ? 'sector_full' : 'occupied_planet';
+  }
   if (requestedSectorId && effectiveSector !== requestedSectorId) {
     return 'sector_full';
   }
@@ -315,7 +353,7 @@ export async function seatColonyOnPlanet(
         index: site.slotIndex ?? colonyIndex,
         q: site.q,
         r: site.r,
-        ...((site.sectorId ?? requestedSectorId) ? { sectorId: effectiveSector } : {}),
+        ...((site.sectorId ?? preSector) ? { sectorId: effectiveSector } : {}),
         ...(site.landingSlotId ? { landingSlotId: site.landingSlotId } : {}),
       },
     }, ctx.antiCheat);
@@ -350,6 +388,13 @@ async function seatOnExplicitPlanet(
     if (!free) throw sectorFullConflict(requestedSectorId ?? 'sec_0_0', [planetId]);
     const out = await seatColonyOnPlanet(ctx, player, free.planet, free.colonyIndex, requestedSectorId);
     if (typeof out === 'object') return out;
+    if (out === 'occupied_planet') {
+      throw new CoreException('SECTOR_ALREADY_COLONIZED', {
+        status: 409,
+        message: `You already operate an active colony in every available sector on ${planetId}`,
+        details: { code: 'sector_already_colonized', planetId },
+      });
+    }
     if (out === 'sector_full' || out === 'no_site') {
       throw sectorFullConflict(requestedSectorId ?? 'sec_0_0', [planetId]);
     }
@@ -370,9 +415,10 @@ export async function seatNewColony(
   }
   const emptyTried: string[] = [];
   const allTried: string[] = [];
+  const callSkipPlanets = new Set<string>(ctx.exhausted);
   let emptyAttempts = 0;
   for (let scan = 0; scan < MAX_PLANET_SCANS && emptyAttempts < SEAT_ATTEMPTS; scan++) {
-    const { planet, colonyIndex } = await ctx.repo.findOrCreateOpenDevPlanet(type, ctx.exhausted, ctx.landedIndices);
+    const { planet, colonyIndex } = await ctx.repo.findOrCreateOpenDevPlanet(type, callSkipPlanets, ctx.landedIndices);
     const isEmpty = (planet.seatsTaken ?? 0) === 0;
     if (!allTried.includes(planet.id)) allTried.push(planet.id);
     if (isEmpty && !emptyTried.includes(planet.id)) {
@@ -381,12 +427,18 @@ export async function seatNewColony(
     }
     const out = await seatColonyOnPlanet(ctx, player, planet, colonyIndex, requestedSectorId);
     if (typeof out === 'object') return out;
+    if (out === 'occupied_planet') {
+      callSkipPlanets.add(planet.id);
+      continue;
+    }
     if (out === 'sector_full') {
       throw sectorFullConflict(requestedSectorId ?? 'sec_0_0', allTried);
     }
     if (isEmpty || out !== 'no_site') emptyAttempts++;
-    if (out === 'no_site') ctx.exhausted.add(planet.id);
-    else if (out === 'index_landed') markPlanetIndexLanded(ctx.landedIndices, planet.id, colonyIndex);
+    if (out === 'no_site') {
+      ctx.exhausted.add(planet.id);
+      callSkipPlanets.add(planet.id);
+    } else if (out === 'index_landed') markPlanetIndexLanded(ctx.landedIndices, planet.id, colonyIndex);
   }
   const triedList = emptyTried.length > 0 ? emptyTried : allTried;
   throw noLandingSite(triedList);

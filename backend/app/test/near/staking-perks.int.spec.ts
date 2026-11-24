@@ -263,3 +263,18 @@ describe('W28-03 PatronSeatService (King-of-the-Hill on Postgres)', () => {
     expect(off.leadPatronPlanetIds).toEqual([]);
   });
 });
+
+describe('Multi-colony staking_position deduplication on PostgreSQL', () => {
+  it('counts the same (accountId, poolId) stake once even when synced under multiple colonyIds', async () => {
+    await link('col_m1', 'col-m1.pilots.terraagent.mock', 'vega.near', 'vega.near', 'pr_vega_pg');
+    await link('col_m2', 'col-m2.pilots.terraagent.mock', 'vega.near', 'vega.near', 'pr_vega_pg');
+    await position('vega.near', 'vega.near', 50, NOW - 2 * DAY);
+    await position('col_m1', 'vega.near', 50, NOW - 2 * DAY);
+    await position('col_m2', 'vega.near', 50, NOW - 2 * DAY);
+
+    const perks = await resolveDbStakerPerks(db.prisma, { playerId: 'pr_vega_pg', w28: true, nowMs: NOW });
+    expect(perks.activeStakedNear).toBe('50');
+    expect(perks.tier).toBe(2);
+    expect(perks.maxAiColonySlots).toBe(3);
+  });
+});

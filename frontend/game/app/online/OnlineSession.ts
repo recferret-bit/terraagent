@@ -54,7 +54,7 @@ export interface OnlineSessionOptions {
   viewport?: ColonyViewport; transport?: Transport; store?: WorldStore; localHost?: LocalHost;
   fetch?: FetchLike; storage?: StorageLike; search?: string; uiParent?: HTMLElement;
   makeMesh?: MeshFactory; wsDeps?: WsTransportDeps; planetKind?: PlanetKind;
-  planetId?: string; sectorIntent?: SectorIntentInput;
+  planetId?: string; colonyId?: string; newColony?: boolean; sectorIntent?: SectorIntentInput;
   pollQueuedHome?: boolean; enqueueOnNew?: boolean; pollIntervalMs?: number;
   wait?: (ms: number) => Promise<void>; onQueueCancelled?: (ticketId: string | null) => void;
   skipDescent?: boolean; fromSpaceDescent?: boolean; freshDeployment?: boolean; orbitalCameraDrop?: boolean; deferReveal?: boolean; loadMode?: ColonyLoadMode; onReturnToOrbit?: (kind: PlanetKind) => void;

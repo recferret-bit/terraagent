@@ -63,7 +63,7 @@ export type HomeLandingSite =
  * and a home's planet is loaded before it is answered ACTIVE (BE-14). Both throw when the planet cannot be loaded.
  */
 export interface HomeLandingHost {
-  landingSite(planet: PlanetRecord, colonyIndex: number): Promise<HomeLandingSite>;
+  landingSite(planet: PlanetRecord, colonyIndex: number, sectorId?: string): Promise<HomeLandingSite>;
   ensureHomeLoaded(planet: PlanetRecord, colonies: () => Promise<ColonyRecord[]>): Promise<void>;
 }
 
@@ -73,6 +73,7 @@ export interface ResolveHomeOptions {
   readonly colonyId?: string;
   readonly sectorId?: string;
   readonly planetId?: string;
+  readonly newColony?: boolean;
 }
 
 export function createSpawnColonyCommand(assignment: ColonySeatAssignment): SimCommandV1 {
@@ -241,55 +242,70 @@ export async function enrichColonyWithReservation(
   };
 }
 
+export async function listCommittedReservationColonies(
+  lobbyPersistence: LobbyPersistenceService | undefined,
+  playerId: string,
+  options?: { readonly colonyId?: string; readonly planetId?: string; readonly handle?: string },
+): Promise<Array<{ readonly colony: ColonyRecord; readonly planet: PlanetRecord; readonly reservation: SectorReservationRecord }>> {
+  if (!lobbyPersistence) return [];
+  const out: Array<{ readonly colony: ColonyRecord; readonly planet: PlanetRecord; readonly reservation: SectorReservationRecord }> = [];
+  const worlds = await lobbyPersistence.listCanonicalWorlds();
+  for (const world of worlds) {
+    if (options?.planetId && world.id !== options.planetId) continue;
+    const reservations = await lobbyPersistence.listReservations(world.id);
+    const usedIdx = new Set<number>();
+    for (const committed of reservations) {
+      if (committed.state !== 'COMMITTED') continue;
+      let resolvedIdx = committed.slotIndex;
+      if (usedIdx.has(resolvedIdx)) {
+        resolvedIdx = 0;
+        while (usedIdx.has(resolvedIdx)) resolvedIdx++;
+      }
+      usedIdx.add(resolvedIdx);
+      if (options?.colonyId ? committed.colonyId !== options.colonyId : committed.playerId !== playerId) continue;
+      const handle = options?.handle?.trim() || `Colonist-${committed.playerId.slice(-4)}`;
+      const colony: ColonyRecord = {
+        id: committed.colonyId,
+        playerId: committed.playerId,
+        planetId: committed.planetId,
+        colonyIndex: resolvedIdx,
+        name: `${handle.slice(0, 22)}'s Colony`,
+        color: resolvedIdx,
+        status: 'ACTIVE',
+        state: 'ACTIVE',
+        foundingSectorId: committed.sectorId,
+        landingSlotId: committed.landingSlotId,
+        recapSeen: false,
+        spawnQ: committed.q,
+        spawnR: committed.r,
+        spawn: { q: committed.q, r: committed.r },
+        createdAt: committed.createdAt,
+      };
+      const planet: PlanetRecord = {
+        id: world.id,
+        name: world.name,
+        type: world.type,
+        seed: world.seed,
+        radius: DEV_PLANET_RADIUS,
+        state: world.lifecycle === 'ARCHIVED' ? 'ENDED' : 'ACTIVE',
+        status: world.lifecycle === 'ARCHIVED' ? 'ENDED' : 'ACTIVE',
+        capacity: world.capacity || DEV_PLANET_CAPACITY,
+        seatsTaken: world.seatsTaken,
+        createdAt: world.createdAt,
+      };
+      out.push({ colony, planet, reservation: committed });
+    }
+  }
+  return out.sort((a, b) => b.colony.createdAt.getTime() - a.colony.createdAt.getTime());
+}
+
 export async function findCommittedReservationColony(
   lobbyPersistence: LobbyPersistenceService | undefined,
   playerId: string,
   options?: { readonly colonyId?: string; readonly planetId?: string; readonly handle?: string },
 ): Promise<{ readonly colony: ColonyRecord; readonly planet: PlanetRecord; readonly reservation: SectorReservationRecord } | null> {
-  if (!lobbyPersistence) return null;
-  const worlds = await lobbyPersistence.listCanonicalWorlds();
-  for (const world of worlds) {
-    if (options?.planetId && world.id !== options.planetId) continue;
-    const reservations = await lobbyPersistence.listReservations(world.id);
-    const committed = reservations.find(
-      (r) =>
-        r.state === 'COMMITTED' &&
-        (options?.colonyId ? r.colonyId === options.colonyId : r.playerId === playerId),
-    );
-    if (!committed) continue;
-    const handle = options?.handle?.trim() || `Colonist-${committed.playerId.slice(-4)}`;
-    const colony: ColonyRecord = {
-      id: committed.colonyId,
-      playerId: committed.playerId,
-      planetId: committed.planetId,
-      colonyIndex: committed.slotIndex,
-      name: `${handle.slice(0, 22)}'s Colony`,
-      color: committed.slotIndex,
-      status: 'ACTIVE',
-      state: 'ACTIVE',
-      foundingSectorId: committed.sectorId,
-      landingSlotId: committed.landingSlotId,
-      recapSeen: false,
-      spawnQ: committed.q,
-      spawnR: committed.r,
-      spawn: { q: committed.q, r: committed.r },
-      createdAt: committed.createdAt,
-    };
-    const planet: PlanetRecord = {
-      id: world.id,
-      name: world.name,
-      type: world.type,
-      seed: world.seed,
-      radius: DEV_PLANET_RADIUS,
-      state: world.lifecycle === 'ARCHIVED' ? 'ENDED' : 'ACTIVE',
-      status: world.lifecycle === 'ARCHIVED' ? 'ENDED' : 'ACTIVE',
-      capacity: world.capacity || DEV_PLANET_CAPACITY,
-      seatsTaken: world.seatsTaken,
-      createdAt: world.createdAt,
-    };
-    return { colony, planet, reservation: committed };
-  }
-  return null;
+  const all = await listCommittedReservationColonies(lobbyPersistence, playerId, options);
+  return all[0] ?? null;
 }
 
 export function isPlanetEndedOrArchived(

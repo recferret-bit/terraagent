@@ -25,7 +25,7 @@ export function renderStakingCalculatorHtml(): string {
           </div>
           <span class="badge badge-ai" id="econ-apy-badge">${formatApy(NET_BP)} SIM APY</span>
         </div>
-        <p class="econ-calc-lead">Stake NEAR, stNEAR, or LiNEAR from any connected human wallet — even before founding a colony. Principal stays yours and never buffs unit damage or mining speed. Each tier cuts your trade fee from ${STAKING_TIERS[0]!.takerFeeBp} bp and adds Managed NEAR.AI colony slots.</p>
+        <p class="econ-calc-lead">Stake NEAR, stNEAR, or LiNEAR from any connected human wallet — even before founding a colony. Principal stays yours and never buffs unit damage or mining speed. Each tier cuts your trade fee from ${STAKING_TIERS[0]!.takerFeeBp} bp and unlocks Managed NEAR.AI (GLM 5.3 Flash) plus up to 3 / 6 / 12 concurrent colonies across planets or distinct sectors.</p>
         <div class="econ-slider-row">
           <label for="econ-stake-slider"><span>STAKED PRINCIPAL (TIERS AT ${tierMarkers().map((m) => m.minNear).join(' / ')} NEAR)</span><output id="econ-stake-out">${start} NEAR</output></label>
           <input id="econ-stake-slider" type="range" min="0" max="${max}" step="1" value="${start}">
@@ -51,7 +51,7 @@ export function renderStakingCalculatorHtml(): string {
           <div class="econ-metric"><span>COLONY AUTOPILOT</span><strong id="econ-ai-mode">Managed AI Included</strong></div>
         </div>
         <p class="econ-calc-note" id="econ-fee-note"></p>
-        <p class="econ-calc-note">Prefer your own model without staking? Connect an encrypted NEAR AI Cloud key anytime on <a href="/me.html">/me.html</a>. Tier ${t1.id} (${t1.minStakeNear} NEAR) applies at once; yield figures use the simulated ${formatApy(NET_BP)} net APY.</p>
+        <p class="econ-calc-note">Managed Staker AI runs exclusively on GLM 5.3 Flash. Want Claude, GPT-5, DeepSeek, or custom models? Enter a valid encrypted NEAR AI Cloud API key on <a href="/me.html">/me.html</a> to unlock the model dropdown. Tier ${t1.id} (${t1.minStakeNear} NEAR) applies at once; yield figures use the simulated ${formatApy(NET_BP)} net APY.</p>
       </div>
     </div>
   </div>`;
@@ -87,7 +87,7 @@ export function bindStakeCalculator(root: HTMLElement): void {
     e.userYield.textContent = `${quote.netYieldNear.toFixed(2)} NEAR / yr`;
     e.protoYield.textContent = `${quote.protocolYieldNear.toFixed(2)} NEAR / yr`;
     e.feeSaved.textContent = `${quote.feeSavedUsdc.toFixed(2)} USDC / mo (${quote.feeBp} bp fee)`;
-    e.aiMode.textContent = quote.tier.id >= 1 ? `Managed AI · ${quote.tier.aiColonySlots} colony slot${quote.tier.aiColonySlots === 1 ? '' : 's'}` : '5 Free TEE Turns → Rule / BYOK';
+    e.aiMode.textContent = quote.tier.id >= 1 ? `GLM 5.3 Flash · ${quote.tier.aiColonySlots} colon${quote.tier.aiColonySlots === 1 ? 'y' : 'ies'}` : '1 Colony · 5 Free TEE Turns';
     e.feeNote.textContent = feeText(quote.feeBp, quote.standardFeeBp, quote.warmupHours);
     e.banner.className = `econ-tier-banner ${quote.tier.id >= 1 ? 'is-unlocked' : ''}`;
     e.banner.textContent = quote.tier.id >= 1

@@ -87,6 +87,8 @@ export const REST_ERROR_CODES = [
   // USDC profits below the wallet balance, wallet colony-slot cap reached, staking needs a wallet account
   'nothing_to_compound', 'nothing_to_withdraw', 'insufficient_usdc', 'ai_slot_limit', 'wallet_required',
   'NOTHING_TO_COMPOUND', 'NOTHING_TO_WITHDRAW', 'INSUFFICIENT_USDC', 'AI_SLOT_LIMIT', 'WALLET_REQUIRED',
+  'staking_required', 'sector_already_colonized',
+  'STAKING_REQUIRED', 'SECTOR_ALREADY_COLONIZED',
   // W22 planet treasury (NEAR §10):
   'dao_not_found', 'not_a_member', 'already_voted', 'treasury_insufficient', 'proposal_closed',
   'DAO_NOT_FOUND', 'NOT_A_MEMBER', 'ALREADY_VOTED', 'TREASURY_INSUFFICIENT', 'PROPOSAL_CLOSED',

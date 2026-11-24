@@ -121,20 +121,51 @@ describe('W12-09 MeProfileController and wave gating', () => {
       apiKey: 'sk-nearai-secret-key-9876',
       model: 'deepseek/deepseek-v3.2',
     });
+  });
+});
 
-    // Clearing key via DELETE /v1/me/ai-settings sets hasApiKey=false while preserving model
+describe('W12-09 MeProfileController AI key clearing & model lock enforcement', () => {
+  it('resets model on DELETE and rejects non-default models whenever no valid API key is stored', async () => {
+    const stack = createProfileStack('all');
+    const req = { url: '/v1/me/ai-settings?as=w12', headers: {} } as never;
+    await stack.controller.putAiSettings(req, {
+      apiKey: 'sk-nearai-secret-key-9876',
+      model: 'deepseek/deepseek-v3.2',
+    });
+
+    // Clearing key via DELETE /v1/me/ai-settings sets hasApiKey=false and resets model to Managed Default
     const deleted = await stack.controller.deleteAiSettings(req);
     expect(deleted.hasApiKey).toBe(false);
     expect(deleted.apiKeyPreview).toBeNull();
-    expect(deleted.model).toBe('deepseek/deepseek-v3.2');
+    expect(deleted.model).toBe('z-ai/glm-5.3-flash');
 
-    // Clearing key via PUT null also sets hasApiKey=false
+    // Without a stored or provided valid API key, non-default models are rejected even when clearing apiKey
+    await expect(
+      stack.controller.putAiSettings(req, {
+        apiKey: null,
+        model: 'z-ai/glm-5.3',
+      }),
+    ).rejects.toMatchObject({
+      errorCode: 'invalid_ai_settings',
+      status: 400,
+    });
+    await expect(
+      stack.controller.putAiSettings(req, {
+        apiKey: '',
+        model: 'anthropic/claude-sonnet-4-6',
+      }),
+    ).rejects.toMatchObject({
+      errorCode: 'invalid_ai_settings',
+      status: 400,
+    });
+
+    // Clearing key via PUT null with default model succeeds
     const cleared = await stack.controller.putAiSettings(req, {
       apiKey: null,
-      model: 'z-ai/glm-5.3',
     });
     expect(cleared.hasApiKey).toBe(false);
     expect(cleared.apiKeyPreview).toBeNull();
+    expect(cleared.model).toBe('z-ai/glm-5.3-flash');
 
     // Schema trims valid custom model IDs and rejects whitespace-only, __custom__, or space/control characters
     expect(UpdatePlayerAiSettingsSchema.parse({ model: '  mistralai/Mistral-Large-2411  ' }).model).toBe(

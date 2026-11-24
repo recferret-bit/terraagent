@@ -21,7 +21,7 @@ export interface ConnectionState {
 /** A message the client sends after the handshake (`cmd`, `ping`, `join`, `leave`); the transport fills `v`. */
 export type Outgoing =
   | { t: 'cmd'; id: string; d: { kind: string; args: unknown } }
-  | { t: 'join'; d: { planetId: string; mode?: 'play' | 'spectator' } }
+  | { t: 'join'; d: { planetId: string; colonyId?: string; sectorId?: string; mode?: 'play' | 'spectator' } }
   | { t: 'leave'; d: Record<string, never> }
   | { t: 'ping'; d: { clientTimeMs: number } };
 
@@ -47,6 +47,8 @@ export interface SessionTarget {
   url: string;
   accessToken: string;
   mode?: 'play' | 'spectator';
+  colonyId?: string;
+  sectorId?: string;
   /** When `accessToken` expires (ms, the transport clock); undefined for tokens that do not expire (dev tokens). */
   tokenExpiresAtMs?: number;
   resolve(): Promise<{ planetId: string }>;

@@ -103,7 +103,7 @@ export class HttpCommandController {
     const requestedColonyId = (body.colonyId ?? colonyHeader)?.trim() || undefined;
     const isScenario = this.planets.isScenarioColonyPlanet(planetId);
 
-    const { pinnedSectorId, bindingHash } = await this.verifyHttpCommandAdmission(
+    const { pinnedColonyId, pinnedSectorId, bindingHash } = await this.verifyHttpCommandAdmission(
       session,
       planetId,
       requestedSectorId,
@@ -126,6 +126,7 @@ export class HttpCommandController {
             transport: 'http',
             playerId: session.playerId,
             planetId,
+            colonyId: pinnedColonyId,
             sectorId: pinnedSectorId,
             bindingHash,
             dev: session.dev === true,
@@ -159,8 +160,10 @@ export class HttpCommandController {
     requestedSectorId: string | undefined,
     requestedColonyId: string | undefined,
     isScenarioPlanet: boolean,
-  ): Promise<{ readonly pinnedSectorId: string | undefined; readonly bindingHash: string | undefined }> {
-    if (!this.antiCheat) return { pinnedSectorId: requestedSectorId, bindingHash: undefined };
+  ): Promise<{ readonly pinnedColonyId: string | undefined; readonly pinnedSectorId: string | undefined; readonly bindingHash: string | undefined }> {
+    if (!this.antiCheat) {
+      return { pinnedColonyId: requestedColonyId, pinnedSectorId: requestedSectorId, bindingHash: undefined };
+    }
     if (!this.antiCheat.index.getPlanet(planetId)?.syncedFromSim) {
       const full = await (this.cluster
         ? this.cluster.fullStateAnywhere(planetId, 2000)
@@ -168,13 +171,30 @@ export class HttpCommandController {
       ).catch(() => null);
       if (full) this.antiCheat.syncFromSnapshotBytes(planetId, full.bytes);
     }
-    const fastActive = this.antiCheat.index.getActiveBaseByPlayer(session.playerId);
+    const fastActiveOnTarget = this.antiCheat.index
+      .listActiveBasesByPlayer(session.playerId)
+      .find(
+        (b) =>
+          b.planetId === planetId &&
+          (!requestedColonyId || b.colonyId === requestedColonyId) &&
+          (!requestedSectorId || b.baseSectorId === requestedSectorId),
+      );
+    const fastTargetColony = requestedColonyId
+      ? this.antiCheat.index.getColonyById(requestedColonyId)
+      : undefined;
     const fastLatest = this.antiCheat.index.getLatestBindingByPlayer(session.playerId);
+    const hasOtherActiveBase = this.antiCheat.index.listActiveBasesByPlayer(session.playerId).length > 0;
     const hasLiveTerminalOnTarget = Boolean(
-      fastLatest?.planetId === planetId && fastLatest.terminalFromLive && fastLatest.status !== 'ACTIVE',
+      fastTargetColony
+        ? fastTargetColony.planetId === planetId && fastTargetColony.terminalFromLive && fastTargetColony.status !== 'ACTIVE'
+        : !hasOtherActiveBase &&
+            fastLatest?.planetId === planetId &&
+            fastLatest.terminalFromLive &&
+            fastLatest.status !== 'ACTIVE' &&
+            (!requestedSectorId || fastLatest.baseSectorId === requestedSectorId),
     );
     const effectiveHome =
-      fastActive || hasLiveTerminalOnTarget ? undefined : await this.resolveEffectiveHome(session.playerId, planetId);
+      fastActiveOnTarget || hasLiveTerminalOnTarget ? undefined : await this.resolveEffectiveHome(session.playerId, planetId);
 
     const joinVerdict = await this.antiCheat.verifyJoin({
       transport: 'http',
@@ -194,7 +214,11 @@ export class HttpCommandController {
         details: { code: joinVerdict.reason, planetId },
       });
     }
-    return { pinnedSectorId: joinVerdict.sectorId, bindingHash: joinVerdict.bindingHash };
+    return {
+      pinnedColonyId: joinVerdict.colonyId ?? requestedColonyId,
+      pinnedSectorId: joinVerdict.sectorId,
+      bindingHash: joinVerdict.bindingHash,
+    };
   }
 
   private async authenticate(req: IncomingMessage): Promise<VerifiedSession> {

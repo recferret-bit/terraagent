@@ -32,12 +32,12 @@ export function gameLandingHost(
   cluster?: Pick<SimClusterService, 'forwardLandingSite' | 'forwardLoadHome'> & { readonly remoteOnly?: boolean },
 ): HomeLandingHost {
   return {
-    async landingSite(planet, colonyIndex) {
+    async landingSite(planet, colonyIndex, sectorId) {
       if (cluster?.remoteOnly) {
         return within(cluster.forwardLandingSite(planet.id, paramsOf(planet), colonyIndex, timeoutMs), timeoutMs, `loading ${planet.id}`);
       }
       await within(snapshots.loadNew(planet.id, paramsOf(planet)), timeoutMs, `loading ${planet.id}`);
-      return planets.landingSite(planet.id, colonyIndex, timeoutMs);
+      return planets.landingSite(planet.id, colonyIndex, timeoutMs, sectorId);
     },
     async ensureHomeLoaded(planet, colonies) {
       const outcome = cluster?.remoteOnly

@@ -4,9 +4,10 @@ import { enqueueDeferredDispose } from '@terra/render/core/deferredDispose';
 import { getPresetDimensions, setFpsCap, setShaderOptimized, setViewportPreset } from '@terra/render/core/perfConfig';
 import { setShadowQuality } from '@terra/render/core/shadowQuality';
 import { clearTransientWeather } from '@terra/render/core/weatherConfig';
-import type { PlanetKind } from '@terra/render/planets/PlanetSpec';
+import { PLANET_SPECS, type PlanetKind } from '@terra/render/planets/PlanetSpec';
 import { getSharedTerrainPrep } from '@terra/render/planets/prep';
 import type { OrbitalGlobeMarkerInput, OrbitalStage } from '@terra/render/orbit/types';
+import type { ActiveHomeColony, PilotColonyRoster } from '../../design/pilot/activeHomeColony';
 import { track } from '../core/analytics';
 import { isProductionBuild } from '../core/buildEnv';
 import type { ClientFlagsStore } from '../core/flags';
@@ -34,9 +35,61 @@ export function resolveColonyLoadMode(opts: {
   return opts.isReturning ? 'direct' : 'pod';
 }
 
+export function resolveEnteringDeployTarget(opts: {
+  readonly kind: PlanetKind;
+  readonly seed: number;
+  readonly sessionSearch: string;
+  readonly mode: 'enter' | 'new' | 'locked';
+  readonly actionColony: ActiveHomeColony | null;
+  readonly roster: PilotColonyRoster | null;
+}): {
+  readonly kind: PlanetKind;
+  readonly seed: number;
+  readonly enteringColonyId?: string;
+  readonly enteringPlanetId?: string;
+} {
+  if (opts.mode === 'new') {
+    return { kind: opts.kind, seed: opts.seed };
+  }
+  const params = new URLSearchParams(opts.sessionSearch);
+  const explicitColonyId = params.get('colonyId') ?? params.get('colony');
+  const explicitColony = explicitColonyId
+    ? opts.roster?.colonies.find((c) => c.colonyId === explicitColonyId) ?? null
+    : null;
+  const enteringColony = opts.mode === 'enter' && opts.actionColony ? opts.actionColony : explicitColony;
+  const enteringColonyId = enteringColony?.colonyId ?? (opts.mode === 'enter' ? explicitColonyId ?? undefined : undefined);
+  const kind = enteringColony ? enteringColony.kind : opts.kind;
+  const seed = enteringColony ? PLANET_SPECS[kind].seed : opts.seed;
+  return { kind, seed, enteringColonyId, enteringPlanetId: enteringColony?.planetId };
+}
+
+export function stripColonyIdFromSearch(rawSearch: string): string {
+  if (!rawSearch) return '';
+  const params = new URLSearchParams(rawSearch);
+  params.delete('colonyId');
+  params.delete('colony');
+  params.delete('new');
+  const str = params.toString();
+  return str ? `?${str}` : '';
+}
+
+export function parseInitialMenuColonyOptions(rawSearch: string): {
+  readonly initialNewColony: boolean;
+  readonly initialColonyId: string | null;
+} {
+  const q = new URLSearchParams(rawSearch);
+  const initialNewColony = q.get('new') === '1';
+  const explicitColonyId = q.get('colonyId')?.trim() || q.get('colony')?.trim() || null;
+  return {
+    initialNewColony,
+    initialColonyId: initialNewColony ? null : explicitColonyId,
+  };
+}
+
 export async function resolveAutoDeployPlanetKind(opts: {
   readonly requestedKind: PlanetKind;
   readonly probeOnline: boolean;
+  readonly forceRequestedPlanet?: boolean;
   readonly probeActiveColony: () => Promise<unknown>;
   readonly getActiveColonyKind: () => PlanetKind | null;
 }): Promise<PlanetKind> {
@@ -48,6 +101,7 @@ export async function resolveAutoDeployPlanetKind(opts: {
   } else {
     await new Promise((r) => setTimeout(r, 50));
   }
+  if (opts.forceRequestedPlanet) return opts.requestedKind;
   return opts.getActiveColonyKind() ?? opts.requestedKind;
 }
 
@@ -91,6 +145,9 @@ export interface BootOnlineSessionOpts {
   readonly root: HTMLElement;
   readonly viewport: ColonyViewport;
   readonly planetKind: PlanetKind;
+  readonly planetId?: string;
+  readonly colonyId?: string;
+  readonly newColony?: boolean;
   readonly sectorIntent: SectorIntentV1;
   readonly loadMode?: ColonyLoadMode;
   readonly skipDescent: boolean;
@@ -104,9 +161,16 @@ export interface BootOnlineSessionOpts {
 }
 
 export function mountBootOnlineSession(opts: BootOnlineSessionOpts): OnlineSession {
+  const effectiveSearch =
+    opts.newColony || opts.colonyId
+      ? stripColonyIdFromSearch(opts.search ?? '')
+      : (opts.search ?? '');
   const session = new OnlineSession(opts.root, 'boot', {
     viewport: opts.viewport,
     planetKind: opts.planetKind,
+    planetId: opts.planetId,
+    colonyId: opts.colonyId,
+    newColony: opts.newColony,
     sectorIntent: opts.sectorIntent,
     loadMode: opts.loadMode,
     skipDescent: opts.skipDescent,
@@ -116,7 +180,7 @@ export function mountBootOnlineSession(opts: BootOnlineSessionOpts): OnlineSessi
     deferReveal: opts.deferReveal,
     tryRefresh: opts.tryRefresh,
     externalFrameLoop: true,
-    search: opts.search ?? '',
+    search: effectiveSearch,
     onReturnToOrbit: opts.onReturnToOrbit,
   });
   (window as unknown as { __online?: OnlineSession }).__online = session;
@@ -131,6 +195,8 @@ export function startReturningColonyEntry(opts: {
   readonly root: HTMLElement;
   readonly viewport: ColonyViewport;
   readonly planetKind: PlanetKind;
+  readonly planetId?: string;
+  readonly colonyId?: string;
   readonly sectorIntent: SectorIntentV1;
   readonly skipCinematic: boolean;
   readonly stage: OrbitalStage | null;
@@ -145,6 +211,8 @@ export function startReturningColonyEntry(opts: {
     root: opts.root,
     viewport: opts.viewport,
     planetKind: opts.planetKind,
+    planetId: opts.planetId,
+    colonyId: opts.colonyId,
     sectorIntent: opts.sectorIntent,
     loadMode: opts.skipCinematic ? 'instant' : 'direct',
     skipDescent: opts.skipCinematic,
@@ -245,16 +313,21 @@ export function applyColonyViewportSettings(viewport: ColonyViewport, settings: 
   viewport.setResolution(getPresetDimensions(settings.resolution), dpr);
 }
 
-/** Keeps `?planet=<kind>` in the URL while the orbital planet selector is open so F5 refreshes back to orbit. */
-export function syncOrbitSelectorUrl(kind: PlanetKind): void {
+/** Keeps `?planet=<kind>` (and `&new=1` when deploying a fresh sector) in the URL while the orbital selector is open. */
+export function syncOrbitSelectorUrl(kind: PlanetKind, keepNew = false): void {
   if (typeof history === 'undefined' || typeof location === 'undefined') return;
   const q = new URLSearchParams(location.search);
   q.set('planet', kind);
+  if (keepNew) q.set('new', '1');
+  else q.delete('new');
   q.delete('skip');
   q.delete('deploy');
   q.delete('t');
   q.delete('waves');
   q.delete('scenario');
+  q.delete('colonyId');
+  q.delete('colony');
+  q.delete('sector');
   history.replaceState(null, '', `${location.pathname}?${q.toString()}`);
 }
 

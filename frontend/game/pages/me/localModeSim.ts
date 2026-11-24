@@ -5,7 +5,9 @@ import {
   earlyExitFeeBp,
   effectiveTakerFee,
   isPatronageEligiblePlanetId,
+  isValidNearAiApiKey,
   MANAGED_AI_MODEL,
+  maxColoniesForTier,
   NEAR_AI_AVAILABLE_MODELS,
   nextStakingTier,
   PATRONAGE_NON_ELIGIBLE_MESSAGE,
@@ -324,17 +326,38 @@ function handleLocalAuthAndMe(
   if (pathname === '/v1/me/profile') {
     settle(s, nowMs);
     const total = s.nativeStaked + s.stNear + s.liNear;
+    const tier = stakingTierFor(total);
+    const isStaker = tier.id >= 1 && tier.aiColonySlots > 0;
+    const effectiveModel = s.hasApiKey ? s.aiModel : MANAGED_AI_MODEL;
     const aiSettings: PlayerAiSettings = {
-      hasApiKey: s.hasApiKey, apiKeyPreview: s.apiKeyPreview, model: s.aiModel,
-      availableModels: [...NEAR_AI_AVAILABLE_MODELS], stakerAutopilotActive: total >= 10, stakedNear: fmt6(total),
+      hasApiKey: s.hasApiKey, apiKeyPreview: s.apiKeyPreview, model: effectiveModel,
+      availableModels: [...NEAR_AI_AVAILABLE_MODELS], stakerAutopilotActive: isStaker, stakedNear: fmt6(total),
     };
     const base = makeW12ProfileFixture(s.handle);
-    return { status: 200, payload: { ...base, identity: { ...base.identity, playerId: LOCAL_PLAYER_ID, handle: s.handle, accountId: s.accountId, isGuest: false }, aiSettings } };
+    const colonySlots = {
+      used: base.currentColonies.length,
+      max: isStaker ? maxColoniesForTier(tier) : 1,
+      aiColonySlots: tier.aiColonySlots,
+      tier: tier.id,
+      tierName: tier.name,
+      stakedNear: fmt6(total),
+      isStaker,
+    };
+    return { status: 200, payload: { ...base, colonySlots, identity: { ...base.identity, playerId: LOCAL_PLAYER_ID, handle: s.handle, accountId: s.accountId, isGuest: false }, aiSettings } };
   }
   if (pathname === '/v1/me/achievements') return { status: 200, payload: makeW12AchievementsFixture() };
   if (pathname === '/v1/me/ai-settings' && method === 'PUT') {
-    if (typeof body.model === 'string') s.aiModel = body.model;
-    if (body.apiKey === null) { s.hasApiKey = false; s.apiKeyPreview = null; }
+    if (typeof body.apiKey === 'string' && body.apiKey.trim() !== '' && !isValidNearAiApiKey(body.apiKey)) {
+      return { status: 400, payload: { message: 'Enter a valid NEAR.AI API key (8–256 printable non-space characters).' } };
+    }
+    const clearing = body.apiKey === null || (typeof body.apiKey === 'string' && body.apiKey.trim() === '');
+    const nextHasKey = typeof body.apiKey === 'string' && body.apiKey.trim() !== '' ? true : clearing ? false : s.hasApiKey;
+    const reqModel = typeof body.model === 'string' ? body.model.trim() : (clearing ? MANAGED_AI_MODEL : s.aiModel);
+    if (!nextHasKey && reqModel !== MANAGED_AI_MODEL) {
+      return { status: 400, payload: { message: 'Model selection is locked until you enter a valid NEAR.AI API key.' } };
+    }
+    s.aiModel = nextHasKey ? reqModel : MANAGED_AI_MODEL;
+    if (clearing) { s.hasApiKey = false; s.apiKeyPreview = null; }
     else if (typeof body.apiKey === 'string' && body.apiKey.trim()) {
       const k = body.apiKey.trim();
       s.hasApiKey = true;
@@ -342,7 +365,8 @@ function handleLocalAuthAndMe(
     }
     save(s);
     const total = s.nativeStaked + s.stNear + s.liNear;
-    return { status: 200, payload: { hasApiKey: s.hasApiKey, apiKeyPreview: s.apiKeyPreview, model: s.aiModel, availableModels: [...NEAR_AI_AVAILABLE_MODELS], stakerAutopilotActive: total >= 10, stakedNear: fmt6(total) } };
+    const isStaker = total >= 10;
+    return { status: 200, payload: { hasApiKey: s.hasApiKey, apiKeyPreview: s.apiKeyPreview, model: s.hasApiKey ? s.aiModel : MANAGED_AI_MODEL, availableModels: [...NEAR_AI_AVAILABLE_MODELS], stakerAutopilotActive: isStaker, stakedNear: fmt6(total) } };
   }
   if (pathname === '/v1/me/ai-settings/verify') {
     const total = s.nativeStaked + s.stNear + s.liNear;

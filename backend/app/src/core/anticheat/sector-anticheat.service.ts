@@ -8,13 +8,10 @@ import {
 import type { PlanetState, SimEvent } from '@terra/sim';
 import { Counter } from 'prom-client';
 import type { LobbyPersistenceService } from '../../lobby/lobby-persistence.service';
+import { ColonySlotAllowanceService } from '../home/colony-slot-allowance.service';
 import { HomeRepository, type ColonyRecord, type PlanetRecord } from '../home/home.repository';
 import { MetricsRegistry } from '../metrics.registry';
-import {
-  inferAuthoritativeBaseSector,
-  isValidSectorIdFormat,
-  normalizeColonyStatus,
-} from './anticheat.hash';
+import { isValidSectorIdFormat } from './anticheat.hash';
 import type {
   AntiCheatCategory,
   AntiCheatTransport,
@@ -26,6 +23,7 @@ import type {
   ValidateCommandInputContext,
 } from './anticheat.types';
 import { validateInputAgainstPlanetAndSector } from './parts/command-input-checks';
+import { evaluateMultiColonyJoin, resolvePlayerActiveBases } from './parts/multi-colony-join';
 import { SectorHashIndex } from './sector-hash-index';
 
 export const ANTICHEAT_REJECTED_METRIC = 'ta_anticheat_rejected_total';
@@ -41,18 +39,22 @@ export interface VerifySectorJoinInput {
   readonly isScenarioPlanet?: boolean;
   readonly resolvedHome?: HomeResponse;
   readonly allowNewJoin?: boolean;
+  readonly newColony?: boolean;
 }
 
 @Injectable()
 export class SectorAntiCheatService {
   readonly index = new SectorHashIndex();
   private lobbyPersistence?: LobbyPersistenceService;
+  private slotAllowance?: ColonySlotAllowanceService;
   private rejectedCounter?: Counter<'transport' | 'category' | 'reason'>;
 
   constructor(
     @Optional() @Inject(HomeRepository) private readonly homeRepo?: HomeRepository,
     @Optional() @Inject(MetricsRegistry) metrics?: MetricsRegistry,
+    @Optional() @Inject(ColonySlotAllowanceService) slotAllowance?: ColonySlotAllowanceService,
   ) {
+    this.slotAllowance = slotAllowance;
     if (metrics) {
       const existing = metrics.registry.getSingleMetric(ANTICHEAT_REJECTED_METRIC) as
         | Counter<'transport' | 'category' | 'reason'>
@@ -70,6 +72,10 @@ export class SectorAntiCheatService {
 
   setLobbyPersistence(persistence?: LobbyPersistenceService): void {
     if (persistence) this.lobbyPersistence = persistence;
+  }
+
+  setSlotAllowanceService(slotAllowance?: ColonySlotAllowanceService): void {
+    this.slotAllowance = slotAllowance;
   }
 
   recordRejection(transport: AntiCheatTransport, category: AntiCheatCategory, reason: string): void {
@@ -201,65 +207,36 @@ export class SectorAntiCheatService {
   }
 
   /**
-   * Resolves the player's authoritative active base binding (O(1) hash hit first, hydrating from repo/lobby on miss).
+   * Resolves all authoritative active base bindings of `playerId`.
+   */
+  async resolveAuthoritativeActiveBases(
+    playerId: string,
+    resolvedHome?: HomeResponse,
+  ): Promise<ColonyBaseBinding[]> {
+    return resolvePlayerActiveBases({
+      index: this.index,
+      homeRepo: this.homeRepo,
+      recordColonyBase: (col, pl, auth) => this.recordColonyBase(col, pl, auth),
+      playerId,
+      resolvedHome,
+    });
+  }
+
+  /**
+   * Resolves the player's primary authoritative active base binding (O(1) hash hit first, hydrating from repo/lobby on miss).
    */
   async resolveAuthoritativeActiveBase(
     playerId: string,
     resolvedHome?: HomeResponse,
   ): Promise<ColonyBaseBinding | null> {
-    if (resolvedHome?.state === 'ACTIVE') {
-      const col = resolvedHome.colony;
-      if (normalizeColonyStatus(col.status ?? col.state ?? 'ACTIVE') !== 'ACTIVE') {
-        return null;
-      }
-      const existing = this.index.getColonyById(col.id);
-      if (existing && existing.status !== 'ACTIVE') {
-        return null;
-      }
-      const pl = resolvedHome.planet;
-      const planetState = this.index.getPlanet(pl.id);
-      const baseSectorId = inferAuthoritativeBaseSector({
-        foundingSectorId: col.foundingSectorId,
-        spawnQ: col.spawnQ,
-        spawnR: col.spawnR,
-        sectorRadius: planetState?.sectorRadius,
-        hasMultiSectorGrid: planetState?.hasMultiSectorGrid,
-      });
-      const updated = this.index.upsertColonyBase({
-        playerId,
-        colonyId: col.id,
-        planetId: col.planetId,
-        colonyIndex: col.colonyIndex ?? 0,
-        foundingSectorId: baseSectorId,
-        spawnQ: col.spawnQ,
-        spawnR: col.spawnR,
-        status: 'ACTIVE',
-      });
-      return updated.status === 'ACTIVE' ? updated : null;
-    }
-
-    const cached = this.index.getActiveBaseByPlayer(playerId);
-    if (cached) return cached;
-
-    if (this.homeRepo) {
-      const latest = await this.homeRepo.findLatestColonyByPlayerId(playerId);
-      if (latest && latest.status === 'ACTIVE') {
-        const known = this.index.getColonyById(latest.id);
-        if (known?.terminalFromLive && known.status !== 'ACTIVE') return null;
-        const planet = await this.homeRepo.findPlanetById(latest.planetId);
-        if (!planet || (planet.status !== 'ENDED' && planet.status !== 'PLANET_ENDED')) {
-          const rec = this.recordColonyBase(latest, planet, false);
-          return rec.status === 'ACTIVE' ? rec : null;
-        }
-      }
-    }
-    return null;
+    const bases = await this.resolveAuthoritativeActiveBases(playerId, resolvedHome);
+    return bases[0] ?? null;
   }
 
   /**
    * Unified real-time join check for BOTH HTTP and WebSockets:
    * 1. Rejects malformed `sectorId`.
-   * 2. Rejects joining any planet, colony, or sector different from the user's active base.
+   * 2. Validates multi-colony NEAR.AI staking slot allowance and forbids founding two colonies in the same sector.
    * 3. Rejects joining an ocean sector, unknown sector, or a sector with 0 free space when not returning to own base.
    */
   async verifyJoin(input: VerifySectorJoinInput): Promise<JoinSectorVerdict> {
@@ -268,54 +245,23 @@ export class SectorAntiCheatService {
       return this.failJoin(input.transport, 'invalid_sector', 400, 'INVALID_SECTOR', `Sector "${trimmedSector}" has invalid format`);
     }
 
-    const activeBase = await this.resolveAuthoritativeActiveBase(input.playerId, input.resolvedHome);
-    if (activeBase && !(input.isScenarioPlanet && input.dev)) {
-      if (input.targetPlanetId && input.targetPlanetId !== activeBase.planetId) {
-        return this.failJoin(
-          input.transport,
-          'not_your_planet',
-          409,
-          'COLONY_PLANET_LOCKED',
-          `Active colony is located on planet ${activeBase.planetId}`,
-          activeBase.planetId,
-          activeBase.baseSectorId,
-        );
-      }
-      if (input.requestedColonyId && input.requestedColonyId !== activeBase.colonyId) {
-        return this.failJoin(
-          input.transport,
-          'not_your_colony',
-          403,
-          'NOT_YOUR_COLONY',
-          'Requested colonyId does not match caller active colony',
-          activeBase.planetId,
-          activeBase.baseSectorId,
-        );
-      }
-      if (trimmedSector && trimmedSector !== activeBase.baseSectorId) {
-        return this.failJoin(
-          input.transport,
-          'not_your_sector',
-          409,
-          'COLONY_SECTOR_LOCKED',
-          `Active base is located in sector ${activeBase.baseSectorId}; cannot join ${trimmedSector}`,
-          activeBase.planetId,
-          activeBase.baseSectorId,
-        );
-      }
-      return {
-        ok: true,
-        planetId: activeBase.planetId,
-        sectorId: activeBase.baseSectorId,
-        colonyId: activeBase.colonyId,
-        colonyIndex: activeBase.colonyIndex,
-        bindingHash: activeBase.bindingHash,
-      };
-    }
-
     const planetId =
       input.targetPlanetId ??
       (input.targetPlanetType && this.lobbyPersistence ? CANONICAL_PLANETS[input.targetPlanetType]?.id : undefined);
+
+    const activeBases = await this.resolveAuthoritativeActiveBases(input.playerId, input.resolvedHome);
+    let occupiedSectorsOnTarget: ReadonlySet<SectorId> = new Set();
+    if (activeBases.length > 0 && !(input.isScenarioPlanet && input.dev)) {
+      const multi = await evaluateMultiColonyJoin({
+        input,
+        activeBases,
+        targetPlanetId: planetId,
+        slotAllowance: this.slotAllowance,
+        failJoin: (...args) => this.failJoin(...args),
+      });
+      if (multi.kind === 'matched' || multi.kind === 'rejected') return multi.verdict;
+      occupiedSectorsOnTarget = multi.occupiedSectorsOnTarget;
+    }
 
     if (planetId) {
       const isDevSpectator = Boolean(input.dev && !trimmedSector && input.transport === 'ws');
@@ -325,6 +271,7 @@ export class SectorAntiCheatService {
           planetId,
           trimmedSector,
           Boolean(input.targetPlanetId),
+          occupiedSectorsOnTarget,
         );
         if (spaceErr) return spaceErr;
       }
@@ -359,9 +306,13 @@ export class SectorAntiCheatService {
     planetId: string,
     requestedSectorId: string | undefined,
     explicitPlanetTarget: boolean,
+    occupiedSectors: ReadonlySet<SectorId> = new Set(),
   ): Promise<JoinSectorVerdict | null> {
     const sectors = await this.hydratePlanetSectors(planetId);
     if (requestedSectorId) {
+      if (occupiedSectors.has(requestedSectorId)) {
+        return this.failJoin(transport, 'not_your_sector', 409, 'SECTOR_ALREADY_COLONIZED', `You already operate an active colony in sector ${requestedSectorId} on ${planetId}`);
+      }
       const sec = this.index.getSectorSpace(planetId, requestedSectorId);
       if (sec) {
         if (sec.kind === 'ocean') {
@@ -376,9 +327,9 @@ export class SectorAntiCheatService {
         return this.failJoin(transport, 'invalid_sector', 400, 'INVALID_SECTOR', `Sector ${requestedSectorId} does not exist on ${planetId}`);
       }
     } else if (sectors.length > 0) {
-      const landWithSpace = sectors.some((s) => s.kind === 'land' && s.freeSeats > 0);
+      const landWithSpace = sectors.some((s) => s.kind === 'land' && s.freeSeats > 0 && !occupiedSectors.has(s.sectorId));
       if (!landWithSpace) {
-        return this.failJoin(transport, 'sector_full', 409, 'SECTOR_FULL', `Planet ${planetId} has no sectors with free space`);
+        return this.failJoin(transport, 'sector_full', 409, 'SECTOR_FULL', `Planet ${planetId} has no uncolonized sectors with free space`);
       }
       return null;
     }
@@ -393,6 +344,9 @@ export class SectorAntiCheatService {
         if (!isMulti && requestedSectorId && requestedSectorId !== 'sec_0_0') {
           return this.failJoin(transport, 'invalid_sector', 400, 'INVALID_SECTOR', `Sector ${requestedSectorId} does not exist on ${planetId}`);
         }
+        if (!isMulti && occupiedSectors.has('sec_0_0')) {
+          return this.failJoin(transport, 'not_your_sector', 409, 'SECTOR_ALREADY_COLONIZED', `You already operate an active colony in sector sec_0_0 on ${planetId}`);
+        }
         if (cap > 0 && taken >= cap) {
           return this.failJoin(transport, 'sector_full', 409, 'SECTOR_FULL', `Sector ${requestedSectorId ?? 'sec_0_0'} on ${planetId} has no free space`);
         }
@@ -403,6 +357,9 @@ export class SectorAntiCheatService {
     if (explicitPlanetTarget && planetMeta) {
       if (!planetMeta.hasMultiSectorGrid && sectors.length <= 1 && requestedSectorId && requestedSectorId !== 'sec_0_0') {
         return this.failJoin(transport, 'invalid_sector', 400, 'INVALID_SECTOR', `Sector ${requestedSectorId} does not exist on ${planetId}`);
+      }
+      if (!planetMeta.hasMultiSectorGrid && sectors.length <= 1 && occupiedSectors.has('sec_0_0')) {
+        return this.failJoin(transport, 'not_your_sector', 409, 'SECTOR_ALREADY_COLONIZED', `You already operate an active colony in sector sec_0_0 on ${planetId}`);
       }
       if (planetMeta.capacity > 0 && this.index.countActiveColoniesOnPlanet(planetId) >= planetMeta.capacity) {
         return this.failJoin(transport, 'sector_full', 409, 'SECTOR_FULL', `Sector ${requestedSectorId ?? 'sec_0_0'} on ${planetId} has no free space`);

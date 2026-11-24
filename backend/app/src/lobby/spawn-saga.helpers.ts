@@ -196,6 +196,10 @@ export function buildProvisionalColonyRecord(
   };
 }
 
+import { resolvePlanetUniqueColonyIndex, upsertActiveColonyInHomeRepo } from './parts/spawn-saga-index';
+
+export { upsertActiveColonyInHomeRepo };
+
 export async function buildSpawnExecutionRequest(params: {
   readonly persistence: LobbyPersistenceService;
   readonly homeRepo: HomeRepository;
@@ -204,8 +208,9 @@ export async function buildSpawnExecutionRequest(params: {
   readonly attempt: number;
   readonly maxRetries: number;
   readonly options: ExecuteSpawnSagaOptions;
+  readonly provisionalColonies?: Iterable<ColonyRecord>;
 }): Promise<SpawnColonyExecutionRequest> {
-  const { persistence, homeRepo, reservation, ticket, attempt, maxRetries, options } = params;
+  const { persistence, homeRepo, reservation, ticket, attempt, maxRetries, options, provisionalColonies } = params;
   const world = await persistence.getCanonicalWorldById(reservation.planetId);
   const planet: PlanetRecord =
     (await homeRepo.findPlanetById(reservation.planetId)) ??
@@ -218,19 +223,26 @@ export async function buildSpawnExecutionRequest(params: {
       capacity: world?.capacity ?? DEV_PLANET_CAPACITY,
     }));
 
+  const resolvedColonyIndex = await resolvePlanetUniqueColonyIndex({
+    homeRepo,
+    planetId: reservation.planetId,
+    colonyId: reservation.colonyId,
+    preferredSlotIndex: reservation.slotIndex,
+    provisionalColonies,
+  });
   const handle = options.handle?.trim() || `Colonist-${reservation.playerId.slice(-4)}`;
   const displayName = options.displayName?.trim() || `${handle.slice(0, 22)}'s Colony`;
   const colonyRecord = buildProvisionalColonyRecord(reservation, 'FOUNDING', {
     handle,
     displayName,
-    colonyIndex: reservation.slotIndex,
+    colonyIndex: resolvedColonyIndex,
   });
   const assignment: ColonySeatAssignment = {
     player: { id: reservation.playerId, handle },
     colony: colonyRecord,
     planet,
     slot: {
-      index: reservation.slotIndex,
+      index: resolvedColonyIndex,
       q: reservation.q,
       r: reservation.r,
       sectorId: reservation.sectorId,
@@ -246,7 +258,7 @@ export async function buildSpawnExecutionRequest(params: {
     q: reservation.q,
     r: reservation.r,
     colonyId: reservation.colonyId,
-    colonyIndex: reservation.slotIndex,
+    colonyIndex: resolvedColonyIndex,
     ticketId: reservation.ticketId,
     reservationId: reservation.reservationId,
     playerId: reservation.playerId,
@@ -409,65 +421,13 @@ export async function invokeRetireColonyExecutor(params: {
   }
 }
 
-export async function upsertActiveColonyInHomeRepo(
-  homeRepo: HomeRepository,
-  reservation: ManagedSectorReservationRecord,
-  options?: { readonly handle?: string; readonly displayName?: string },
-): Promise<ColonyRecord> {
-  const existingById = await homeRepo.findColonyById(reservation.colonyId);
-  if (existingById) {
-    if (
-      existingById.status === 'ACTIVE' &&
-      existingById.foundingSectorId === reservation.sectorId &&
-      existingById.landingSlotId === reservation.landingSlotId
-    ) {
-      return existingById;
-    }
-    await homeRepo.deleteColony(reservation.colonyId);
-  }
-  const onPlanet = await homeRepo.listColoniesByPlanetId(reservation.planetId);
-  for (const col of onPlanet) {
-    if (col.colonyIndex === reservation.slotIndex && (col.status === 'ABANDONED' || col.status === 'RETIRED')) {
-      await homeRepo.deleteColony(col.id);
-    }
-  }
-  const refreshed = await homeRepo.listColoniesByPlanetId(reservation.planetId);
-  const usedIndices = new Set(refreshed.map((c) => c.colonyIndex));
-  let colonyIndex = reservation.slotIndex;
-  if (usedIndices.has(colonyIndex)) {
-    colonyIndex = 0;
-    while (usedIndices.has(colonyIndex)) colonyIndex++;
-  }
-  const handle = options?.handle?.trim() || `Colonist-${reservation.playerId.slice(-4)}`;
-  const name = options?.displayName?.trim() || `${handle.slice(0, 22)}'s Colony`;
-  const { colony } = await homeRepo.createColony({
-    id: reservation.colonyId,
-    playerId: reservation.playerId,
-    planetId: reservation.planetId,
-    colonyIndex,
-    name,
-    color: colonyIndex,
-    status: 'ACTIVE',
-    foundingSectorId: reservation.sectorId,
-    landingSlotId: reservation.landingSlotId,
-    spawnQ: reservation.q,
-    spawnR: reservation.r,
-  });
-  return colony;
-}
-
 export async function resolveReservationAndTicket(
   persistence: LobbyPersistenceService,
   input: SpawnSagaInput,
-): Promise<{
-  readonly reservation: ManagedSectorReservationRecord | null;
-  readonly ticket: MatchTicketRecord | null;
-}> {
+): Promise<{ readonly reservation: ManagedSectorReservationRecord | null; readonly ticket: MatchTicketRecord | null }> {
   if (typeof input === 'string') {
     const byResId = await persistence.getReservationById(input);
-    if (byResId) {
-      return { reservation: toManagedReservationRecord(byResId), ticket: await persistence.getTicketById(byResId.ticketId) };
-    }
+    if (byResId) return { reservation: toManagedReservationRecord(byResId), ticket: await persistence.getTicketById(byResId.ticketId) };
     const byTicketId = await persistence.getReservationByTicketId(input);
     return { reservation: byTicketId ? toManagedReservationRecord(byTicketId) : null, ticket: await persistence.getTicketById(input) };
   }
@@ -481,17 +441,9 @@ export async function resolveReservationAndTicket(
     const res = await persistence.getReservationByTicketId(ticket.id);
     return { reservation: res ? toManagedReservationRecord(res) : null, ticket };
   }
-  const wrapper = input as {
-    readonly reservationId?: string;
-    readonly ticketId?: string;
-    readonly reservation?: SectorReservationRecord;
-    readonly ticket?: MatchTicketRecord | null;
-  };
-  const resRecord =
-    wrapper.reservation ??
-    (wrapper.reservationId ? await persistence.getReservationById(wrapper.reservationId) : null) ??
-    (wrapper.ticketId ? await persistence.getReservationByTicketId(wrapper.ticketId) : null);
-  const ticketId = wrapper.ticket?.id ?? wrapper.ticketId ?? resRecord?.ticketId;
-  const ticket = ticketId ? await persistence.getTicketById(ticketId) : (wrapper.ticket ?? null);
+  const w = input as { reservationId?: string; ticketId?: string; reservation?: SectorReservationRecord; ticket?: MatchTicketRecord | null };
+  const resRecord = w.reservation ?? (w.reservationId ? await persistence.getReservationById(w.reservationId) : null) ?? (w.ticketId ? await persistence.getReservationByTicketId(w.ticketId) : null);
+  const ticketId = w.ticket?.id ?? w.ticketId ?? resRecord?.ticketId;
+  const ticket = ticketId ? await persistence.getTicketById(ticketId) : (w.ticket ?? null);
   return { reservation: resRecord ? toManagedReservationRecord(resRecord) : null, ticket };
 }

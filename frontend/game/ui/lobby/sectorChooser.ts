@@ -39,8 +39,15 @@ export function renderSectorChooserHtml(
   summary: PlanetSummaryV1,
   intent: SectorIntentV1,
   queuePaused = false,
-  homeBaseSectorId: string | null = null,
+  homeBaseSectorIdOrList: string | readonly string[] | null = null,
 ): string {
+  const homeBaseSet = new Set<string>(
+    Array.isArray(homeBaseSectorIdOrList)
+      ? homeBaseSectorIdOrList
+      : typeof homeBaseSectorIdOrList === 'string' && homeBaseSectorIdOrList
+        ? [homeBaseSectorIdOrList]
+        : [],
+  );
   const landSectors = summary.sectors.filter((s) => s.kind === 'land');
   const oceanCount = summary.oceanSectors ?? summary.sectors.filter((s) => s.kind === 'ocean').length;
   const popMap = resolveSectorPopulationMap(summary);
@@ -61,7 +68,7 @@ export function renderSectorChooserHtml(
         sec,
         intent.mode === 'chosen' && intent.sectorId === sec.sectorId,
         popMap.get(sec.sectorId),
-        Boolean(homeBaseSectorId && sec.sectorId === homeBaseSectorId),
+        homeBaseSet.has(sec.sectorId),
       ),
     )
     .join('');

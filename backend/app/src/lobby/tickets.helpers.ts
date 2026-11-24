@@ -181,6 +181,7 @@ export function parseAndValidateTicketIntent(raw: unknown): {
 export function computeAlternativeSectorsForIntent(
   sectors: readonly PlanetSectorRecord[],
   sectorIntent: SectorPlacementIntentV1,
+  excludedSectorIds?: ReadonlySet<string>,
 ): SectorId[] {
   const kind =
     (sectorIntent as { kind?: string; mode?: string }).kind ??
@@ -190,7 +191,13 @@ export function computeAlternativeSectorsForIntent(
   const chosen = sectors.find((s) => s.sectorId === chosenSectorId);
   if (!chosen || chosen.freeSeats > 0) return [];
   return sectors
-    .filter((s) => s.kind === 'land' && s.freeSeats > 0 && s.sectorId !== chosenSectorId)
+    .filter(
+      (s) =>
+        s.kind === 'land' &&
+        s.freeSeats > 0 &&
+        s.sectorId !== chosenSectorId &&
+        (!excludedSectorIds || !excludedSectorIds.has(s.sectorId)),
+    )
     .sort(
       (a, b) =>
         b.reservedSeats + b.foundedSeats - (a.reservedSeats + a.foundedSeats) ||

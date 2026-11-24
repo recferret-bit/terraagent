@@ -1,8 +1,19 @@
-import type { CurrentColonySummary, MeProfileResponse } from '@terra/contracts';
+import {
+  maxColoniesForTier,
+  stakingTierFor,
+  type ColonySlotAllowance,
+  type CurrentColonySummary,
+  type MeProfileResponse,
+} from '@terra/contracts';
 import { el } from '../dom';
+
+export interface PlanetsSectionController {
+  syncStakerState(totalStakedNear: number): void;
+}
 
 export interface PlanetsPlayRenderOptions {
   readonly localHost?: boolean;
+  readonly onReady?: (ctrl: PlanetsSectionController) => void;
 }
 
 function buildColonyDiveHref(
@@ -119,16 +130,101 @@ function buildSamePlanetSelector(
   );
 }
 
+function resolveProfileColonySlots(
+  profile: MeProfileResponse,
+  overrideStakedNear?: number,
+): ColonySlotAllowance {
+  const used = profile.currentColonies.length;
+  if (overrideStakedNear !== undefined) {
+    const clean = Math.max(0, Number.isFinite(overrideStakedNear) ? overrideStakedNear : 0);
+    const tier = stakingTierFor(clean);
+    const isStaker = tier.id >= 1 && tier.aiColonySlots > 0;
+    const max = isStaker ? maxColoniesForTier(tier) : 1;
+    return {
+      used,
+      max,
+      aiColonySlots: tier.aiColonySlots,
+      tier: tier.id,
+      tierName: tier.name,
+      stakedNear: clean.toFixed(6).replace(/\.?0+$/, '') || '0',
+      isStaker,
+    };
+  }
+  if (profile.colonySlots) return profile.colonySlots;
+  const stakedNum = Number(profile.aiSettings?.stakedNear ?? '0') || 0;
+  return resolveProfileColonySlots(profile, stakedNum);
+}
+
+function buildSlotsBanner(
+  slots: ColonySlotAllowance,
+  localHost: boolean | undefined,
+): HTMLElement {
+  const canFoundAnother = slots.used === 0 || (slots.isStaker && slots.used < slots.max);
+  const deployHref =
+    slots.used === 0
+      ? localHost ? '/play.html?host=local' : '/play.html'
+      : localHost ? '/play.html?host=local&new=1' : '/play.html?new=1';
+  const summaryText =
+    slots.aiColonySlots > 0
+      ? `Tier ${slots.tier} ${slots.tierName} · ${slots.used} / ${slots.max} active colonies (${slots.aiColonySlots} NEAR.AI slot${slots.aiColonySlots === 1 ? '' : 's'}). Deploy across any planet or distinct sector — never two colonies in the same sector.`
+      : `${slots.used} / ${slots.max} active colony (Free Cadet). Stake 50+ NEAR (Tier 2 Commander) to unlock 3 NEAR.AI colony slots across planets or distinct sectors.`;
+
+  const actionNode = canFoundAnother
+    ? el(
+        'a',
+        {
+          className: 'btn btn-primary btn-sm',
+          href: deployHref,
+          dataset: { testid: 'me-deploy-new-colony' },
+        },
+        slots.used === 0 ? 'Deploy First Colony →' : `+ Deploy Colony (${slots.used}/${slots.max}) →`,
+      )
+    : el(
+        'a',
+        {
+          className: 'btn btn-ghost btn-sm',
+          href: '#staking',
+          dataset: { testid: 'me-unlock-colony-slots' },
+        },
+        slots.tier >= 4 ? 'Max 12/12 Slots Active' : 'Stake NEAR for More Slots →',
+      );
+
+  return el(
+    'div',
+    {
+      className: 'plate-sm ta-colony-slots-bar',
+      dataset: {
+        testid: 'me-colony-slots-bar',
+        used: slots.used,
+        max: slots.max,
+        tier: slots.tier,
+      },
+    },
+    el(
+      'div',
+      { className: 'ta-colony-slots-copy' },
+      el(
+        'span',
+        { className: 'label c-orange', dataset: { testid: 'me-colony-slots-count' } },
+        `ACTIVE COLONIES · ${slots.used} / ${slots.max}`,
+      ),
+      el('p', { className: 'ta-me-muted' }, summaryText),
+    ),
+    actionNode,
+  );
+}
+
 export function renderPlanetsSection(
   profile: MeProfileResponse,
   opts: PlanetsPlayRenderOptions = {},
 ): HTMLElement {
+  let bannerEl = buildSlotsBanner(resolveProfileColonySlots(profile), opts.localHost);
   const byPlanet = groupColoniesByPlanet(profile.currentColonies);
+  const hasMultipleColonies = profile.currentColonies.length > 1;
 
   const currentCards = profile.currentColonies.map((c) => {
-    const multiOnPlanet = (byPlanet.get(c.planetId)?.length ?? 0) > 1;
     const sectorTag = c.foundingSectorId ? ` · ${c.foundingSectorId}` : '';
-    const diveHref = buildColonyDiveHref(c, multiOnPlanet, opts.localHost);
+    const diveHref = buildColonyDiveHref(c, hasMultipleColonies, opts.localHost);
     return el(
       'div',
       {
@@ -157,23 +253,45 @@ export function renderPlanetsSection(
     ),
   );
 
-  return el(
+  const root = el(
     'div',
     { className: 'ta-planets-body', dataset: { testid: 'me-planets-body' } },
+    bannerEl,
     ...selectors,
     el('div', { className: 'ta-colony-grid' }, ...currentCards, ...pastCards),
   );
+
+  opts.onReady?.({
+    syncStakerState(totalStakedNear: number) {
+      const nextBanner = buildSlotsBanner(
+        resolveProfileColonySlots(profile, totalStakedNear),
+        opts.localHost,
+      );
+      bannerEl.replaceWith(nextBanner);
+      bannerEl = nextBanner;
+    },
+  });
+
+  return root;
 }
 
 export function renderHistorySection(profile: MeProfileResponse): HTMLElement {
+  const activeNoun = profile.currentColonies.length === 1 ? 'active colony' : 'active colonies';
   return el(
     'div',
     { className: 'ta-history-body', dataset: { testid: 'me-history-body' } },
-    ...(profile.activity ?? []).map(n => el('div', { className: 'plate-sm ta-colony-card' }, el('strong', null, n.title), el('p', { className: 'ta-me-muted' }, new Date(n.createdAt).toLocaleString()))),
+    ...(profile.activity ?? []).map((n) =>
+      el(
+        'div',
+        { className: 'plate-sm ta-colony-card' },
+        el('strong', null, n.title),
+        el('p', { className: 'ta-me-muted' }, new Date(n.createdAt).toLocaleString()),
+      ),
+    ),
     el(
       'p',
       { className: 'ta-me-muted' },
-      `${profile.currentColonies.length} active colony · ${profile.pastColonies.length} archived colonies. Latest achievement activity (up to 50).`,
+      `${profile.currentColonies.length} ${activeNoun} · ${profile.pastColonies.length} archived colonies. Latest achievement activity (up to 50).`,
     ),
   );
 }
@@ -183,7 +301,7 @@ export function renderPlaySection(opts: PlanetsPlayRenderOptions = {}): HTMLElem
   return el(
     'div',
     { className: 'ta-play-body', dataset: { testid: 'me-play-body' } },
-    el('p', { className: 'ta-me-muted' }, 'Deploy to an orbital drop or resume your active colony.'),
+    el('p', { className: 'ta-me-muted' }, 'Deploy to an orbital drop, switch sectors, or resume an active colony.'),
     el('a', { className: 'btn btn-primary', href: playHref, dataset: { testid: 'me-play-cta' } }, 'Play TerraAgent →'),
   );
 }

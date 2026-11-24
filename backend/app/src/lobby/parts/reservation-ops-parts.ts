@@ -9,6 +9,20 @@ export function isActiveReservationState(state: string): boolean {
   return state === 'HELD' || state === 'COMMITTED' || state === 'SPAWNING';
 }
 
+export function isConflictingPlayerReservation(
+  r: {
+    readonly playerId: string;
+    readonly state: string;
+    readonly planetId: string;
+    readonly sectorId: string;
+  },
+  input: ReserveSectorSlotInput,
+): boolean {
+  if (r.playerId !== input.playerId) return false;
+  if (r.state === 'HELD' || r.state === 'SPAWNING') return true;
+  return r.state === 'COMMITTED' && r.planetId === input.planetId && r.sectorId === input.sectorId;
+}
+
 export function checkWorldAdmissionForReservation(
   planetId: string,
   world:

@@ -438,6 +438,8 @@ export async function finalizeSuccessfulSpawnAttemptHelper(params: {
   readonly backoffDelaysMs: readonly number[];
   readonly appliedAtTick: number;
   readonly spawnCommand: SimCommandV1;
+  readonly preferredColonyIndex?: number;
+  readonly runPlanetIndexCritical?: <T>(fn: () => Promise<T>) => Promise<T>;
   readonly maxTicketAttempts: number;
   readonly options: ExecuteSpawnSagaOptions;
   readonly reconcileOrphan: (
@@ -445,7 +447,7 @@ export async function finalizeSuccessfulSpawnAttemptHelper(params: {
     options: ExecuteSpawnSagaOptions,
   ) => Promise<ReconcileOrphanColonyResult>;
 }): Promise<SpawnSagaOutcome> {
-  const { persistence, reservations, homeRepo, state, reservation, ticket, getNow, attemptsUsed, backoffDelaysMs, appliedAtTick, spawnCommand, options } = params;
+  const { persistence, reservations, homeRepo, state, reservation, ticket, getNow, attemptsUsed, backoffDelaysMs, appliedAtTick, spawnCommand, preferredColonyIndex, runPlanetIndexCritical, options } = params;
   if (await state.isReservationFencedOrExpired(persistence, reservation, getNow())) {
     return handleExpiredDuringSpawnAttempt({ ...params, now: getNow() });
   }
@@ -467,8 +469,16 @@ export async function finalizeSuccessfulSpawnAttemptHelper(params: {
   }
 
   state.clearPendingLateSpawn(reservation);
-  const colony = await upsertActiveColonyInHomeRepo(homeRepo, committed, options);
-  state.provisionalColoniesById.set(colony.id, colony);
+  const runCritical = runPlanetIndexCritical ?? (<T>(fn: () => Promise<T>) => fn());
+  const colony = await runCritical(async () => {
+    const created = await upsertActiveColonyInHomeRepo(homeRepo, committed, {
+      ...options,
+      ...(preferredColonyIndex !== undefined ? { preferredColonyIndex } : {}),
+    });
+    reservations.syncCommittedColonyRecord(created);
+    state.provisionalColoniesById.set(created.id, created);
+    return created;
+  });
   const assignedTicket = await persistence.getTicketById(committed.ticketId);
   state.spawnsCommittedCount++;
 

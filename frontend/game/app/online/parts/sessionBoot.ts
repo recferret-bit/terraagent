@@ -252,30 +252,15 @@ export function createSessionBootRig(params: {
   const useGuestBoot = mode === 'boot' && flags.set.has('W01') && (!devBuild || (!scenarioParam(search) && !joinParam(search)));
   const guest = useGuestBoot
     ? new GuestBootTarget(`${loc.protocol === 'https:' ? 'wss' : 'ws'}://${loc.host}/ws`, {
-      fetch: opts.fetch,
-      storage: opts.storage,
-      search,
-      planetType: devPlanetTypeOfKind(planetKind),
-      planetId: opts.planetId,
-      sectorIntent: opts.sectorIntent,
+      fetch: opts.fetch, storage: opts.storage, search, planetType: devPlanetTypeOfKind(planetKind),
+      planetId: opts.planetId, colonyId: opts.colonyId, newColony: opts.newColony, sectorIntent: opts.sectorIntent,
       pollQueuedHome: opts.pollQueuedHome ?? flags.set.has('W11'),
       enqueueOnNew: opts.enqueueOnNew ?? Boolean(opts.sectorIntent),
-      pollIntervalMs: opts.pollIntervalMs,
-      wait: opts.wait,
-      allowLocalFallback,
-      tryRefresh: opts.tryRefresh,
+      pollIntervalMs: opts.pollIntervalMs, wait: opts.wait, allowLocalFallback, tryRefresh: opts.tryRefresh,
       onStatus: (s) => getBootOverlay()?.setSplashStatus(s),
       onQueueStatus: (status, cancel) => getBootOverlay()?.showQueueStatus(status, cancel),
-      onQueueCancelled: (ticketId) => {
-        getBootOverlay()?.hideQueueStatus();
-        opts.onQueueCancelled?.(ticketId);
-        onQueueCancelled();
-      },
-      onError: (m) => {
-        const bo = getBootOverlay();
-        if (!bo) noteBootFailure(m);
-        return bo ? bo.showError(m) : Promise.reject(new Error(m));
-      },
+      onQueueCancelled: (ticketId) => { getBootOverlay()?.hideQueueStatus(); opts.onQueueCancelled?.(ticketId); onQueueCancelled(); },
+      onError: (m) => { const bo = getBootOverlay(); if (!bo) noteBootFailure(m); return bo ? bo.showError(m) : Promise.reject(new Error(m)); },
       onBooted,
     })
     : null;

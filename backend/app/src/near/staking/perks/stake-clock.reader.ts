@@ -187,6 +187,8 @@ export async function resolveWallet(
 }
 
 interface PositionRow {
+  readonly colonyId?: string;
+  readonly poolId?: string;
   readonly accountId?: string;
   readonly stakedSnapshot?: { toFixed(n: number): string };
   readonly unbondingSnapshot?: { toFixed(n: number): string } | null;
@@ -217,13 +219,27 @@ export async function readStakeClock(db: DbClient, wallet: WalletRef): Promise<S
   if (wallet.accountIds.length > 0) or.push({ accountId: { in: [...wallet.accountIds] } });
   if (or.length === 0) return EMPTY_STAKE_CLOCK;
 
-  const positions =
+  const rawPositions =
     typeof db.stakingPosition?.findMany === 'function'
       ? ((await db.stakingPosition.findMany({
           where: { OR: or },
-          select: { accountId: true, stakedSnapshot: true, unbondingSnapshot: true, stakedSinceAt: true, lastStakedAt: true, updatedAt: true },
+          select: { colonyId: true, poolId: true, accountId: true, stakedSnapshot: true, unbondingSnapshot: true, stakedSinceAt: true, lastStakedAt: true, updatedAt: true },
         })) as PositionRow[])
       : [];
+  const dedupedPositions = new Map<string, PositionRow>();
+  let anonIdx = 0;
+  for (const p of rawPositions) {
+    const key = p.accountId && p.poolId
+      ? `acct:${p.accountId}::pool:${p.poolId}`
+      : p.accountId
+        ? `acct:${p.accountId}::row:${anonIdx++}`
+        : `col:${p.colonyId ?? anonIdx++}::pool:${p.poolId ?? ''}`;
+    const prev = dedupedPositions.get(key);
+    if (!prev || (p.updatedAt?.getTime() ?? 0) >= (prev.updatedAt?.getTime() ?? 0)) {
+      dedupedPositions.set(key, p);
+    }
+  }
+  const positions = [...dedupedPositions.values()];
   const covered = new Set(positions.map((p) => p.accountId).filter((a): a is string => Boolean(a)));
   const wanted = wallet.accountIds.filter((a) => !covered.has(a));
   const mocks =

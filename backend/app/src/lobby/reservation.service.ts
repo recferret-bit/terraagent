@@ -1,6 +1,8 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import type { SectorId } from '@terra/contracts';
 import { SectorAntiCheatService } from '../core/anticheat';
+import { ColonySlotAllowanceService } from '../core/home/colony-slot-allowance.service';
+import { HomeRepository, type ColonyRecord } from '../core/home/home.repository';
 import { WorldLifecycleService } from './lifecycle.service';
 import { LobbyPersistenceService } from './lobby-persistence.service';
 import {
@@ -14,6 +16,9 @@ import {
 import { KeyedMutex } from './lobby-store.helpers';
 import {
   checkIdempotentTicketReservation,
+  evaluateMultiColonyReservationGuard,
+  listPlayerOwnedSectorIdsOnPlanet,
+  syncCommittedReservationAntiCheat,
   tryCandidateSlotsWithAuthorityHelper,
 } from './parts/reservation-service-parts';
 import {
@@ -68,8 +73,25 @@ export class SectorReservationService {
     @Optional()
     @Inject(SectorAntiCheatService)
     private readonly antiCheat?: SectorAntiCheatService,
+    @Optional()
+    @Inject(ColonySlotAllowanceService)
+    private slotAllowance?: ColonySlotAllowanceService,
+    @Optional()
+    @Inject(HomeRepository)
+    private homeRepo?: HomeRepository,
   ) {
     this.antiCheat?.setLobbyPersistence(this.persistence);
+    if (this.slotAllowance) this.antiCheat?.setSlotAllowanceService(this.slotAllowance);
+  }
+
+  setHomeRepository(homeRepo?: HomeRepository): void { this.homeRepo = homeRepo; }
+  getHomeRepository(): HomeRepository | undefined { return this.homeRepo; }
+  getAntiCheatService(): SectorAntiCheatService | undefined { return this.antiCheat; }
+  getSlotAllowanceService(): ColonySlotAllowanceService | undefined { return this.slotAllowance; }
+
+  setSlotAllowanceService(slotAllowance?: ColonySlotAllowanceService): void {
+    this.slotAllowance = slotAllowance;
+    this.antiCheat?.setSlotAllowanceService(slotAllowance);
   }
 
   setAuthorityValidator(validator: SimLandingAuthorityValidator | undefined): void {
@@ -106,10 +128,20 @@ export class SectorReservationService {
       return makeFailureResult('ticket_not_found', `Match ticket "${ticketId}" not found`);
     }
 
+    const excludedSectorIds = await listPlayerOwnedSectorIdsOnPlanet({
+      persistence: this.persistence,
+      homeRepo: this.homeRepo,
+      antiCheat: this.antiCheat,
+      playerId: initialTicket.playerId,
+      planetId: initialTicket.planetId,
+      excludeColonyId: initialTicket.colonyId,
+    });
+
     const resolvedSectorId = await resolveTargetSectorForTicket(
       this.persistence,
       initialTicket,
       opts.sectorId,
+      excludedSectorIds.size > 0 ? excludedSectorIds : undefined,
     );
     if (!resolvedSectorId) {
       return makeFailureResult(
@@ -162,17 +194,15 @@ export class SectorReservationService {
     const idempotentHit = await this.checkIdempotentReservation(input, ticket);
     if (idempotentHit) return idempotentHit;
 
-    if (!ticket || ticket.mode !== 'TRANSFER') {
-      const existingBase = await this.antiCheat?.resolveAuthoritativeActiveBase(input.playerId);
-      if (existingBase && existingBase.colonyId !== input.colonyId) {
-        this.antiCheat?.recordRejection('http', 'join', 'not_your_sector');
-        return makeFailureResult(
-          'ticket_not_reservable',
-          `Player "${input.playerId}" already owns active colony "${existingBase.colonyId}" in ${existingBase.baseSectorId}`,
-          { ticket },
-        );
-      }
-    }
+    const multiGuard = await evaluateMultiColonyReservationGuard({
+      persistence: this.persistence,
+      homeRepo: this.homeRepo,
+      antiCheat: this.antiCheat,
+      slotAllowance: this.slotAllowance,
+      input,
+      ticket,
+    });
+    if (multiGuard) return multiGuard;
 
     const world = await this.persistence.getCanonicalWorldById(input.planetId);
     if (!world) {
@@ -314,6 +344,21 @@ export class SectorReservationService {
     });
   }
 
+  syncCommittedColonyRecord(colony: ColonyRecord): void {
+    this.antiCheat?.index.upsertColonyBase({
+      playerId: colony.playerId,
+      colonyId: colony.id,
+      planetId: colony.planetId,
+      colonyIndex: colony.colonyIndex,
+      name: colony.name,
+      foundingSectorId: colony.foundingSectorId ?? 'sec_0_0',
+      spawnQ: colony.spawnQ,
+      spawnR: colony.spawnR,
+      status: colony.status,
+      authoritativeStatus: true,
+    });
+  }
+
   async commitReservation(
     reservationId: string,
     options?: CommitReservationOptions | number,
@@ -321,30 +366,7 @@ export class SectorReservationService {
     const expectedEpoch = typeof options === 'number' ? options : options?.expectedEpoch;
     return this.runWithReservationMutex(reservationId, async () => {
       const committed = await this.persistence.commitReservation(reservationId, expectedEpoch);
-      if (this.antiCheat) {
-        const ticket = await this.persistence.getTicketById(committed.ticketId);
-        if (ticket?.mode === 'TRANSFER') {
-          const priorSourceColonyId =
-            ticket.sourceColonyId ??
-            ticket.transferCarry?.sourceColonyId ??
-            this.antiCheat.index.getActiveBaseByPlayer(committed.playerId)?.colonyId;
-          if (priorSourceColonyId && priorSourceColonyId !== committed.colonyId) {
-            this.antiCheat.recordColonyStatus(priorSourceColonyId, 'TRANSFERRED');
-          }
-        }
-        this.antiCheat.index.upsertColonyBase({
-          playerId: committed.playerId,
-          colonyId: committed.colonyId,
-          planetId: committed.planetId,
-          colonyIndex: committed.slotIndex,
-          foundingSectorId: committed.sectorId,
-          spawnQ: committed.q,
-          spawnR: committed.r,
-          status: 'ACTIVE',
-          authoritativeStatus: true,
-        });
-        await this.antiCheat.hydratePlanetSectors(committed.planetId);
-      }
+      await syncCommittedReservationAntiCheat({ persistence: this.persistence, antiCheat: this.antiCheat, committed });
       return this.decorateRecord(committed, 'COMMITTED');
     });
   }

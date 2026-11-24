@@ -348,8 +348,8 @@ export class GamePlanets {
   }
 
   /** Where the loaded planet's sim would land colony `colony` now (`nextLandingSite`, LED-14). */
-  landingSite(planetId: string, colony: number, timeoutMs = 10_000): Promise<LandingSiteAnswer> {
-    return this.requests.ask(planetId, 'landingSite', timeoutMs, (reqId) => this.loaded.has(planetId) && this.pool.sendToPlanet(planetId, { t: 'landingSite', planetId, reqId, colony }));
+  landingSite(planetId: string, colony: number, timeoutMs = 10_000, sectorId?: string): Promise<LandingSiteAnswer> {
+    return this.requests.ask(planetId, 'landingSite', timeoutMs, (reqId) => this.loaded.has(planetId) && this.pool.sendToPlanet(planetId, { t: 'landingSite', planetId, reqId, colony, ...(sectorId ? { sectorId } : {}) }));
   }
 
   /** Registers work to run before threads stop (a later issue snapshots every planet here). */

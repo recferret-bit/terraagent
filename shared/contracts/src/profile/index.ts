@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { PlayerAchievementEntrySchema } from '../progression';
+import { ColonySlotAllowanceSchema } from '../rest/home';
 import { LocalMockPlayerNameSchema } from '../rest/social';
 
 export const PROFILE_STAT_KEYS = [
@@ -100,6 +101,7 @@ export const CurrentColonySummarySchema = z.strictObject({
   planetId: z.string().min(1),
   planetName: z.string().min(1),
   planetType: z.string().min(1),
+  foundingSectorId: z.string().min(1).optional(),
   stage: z.number().int().min(0).max(10),
   status: z.string().min(1),
   foundedAt: z.string().min(1),
@@ -134,6 +136,19 @@ export const NEAR_AI_AVAILABLE_MODELS = [
 
 export const DEFAULT_PLAYER_NEAR_AI_MODEL = 'z-ai/glm-5.3-flash';
 
+export const MIN_NEAR_AI_API_KEY_LENGTH = 8;
+
+/** Printable non-whitespace ASCII API key (`8..256` chars) required to unlock non-default BYOK model selection. */
+export function isValidNearAiApiKey(raw: string | null | undefined): boolean {
+  if (typeof raw !== 'string') return false;
+  const trimmed = raw.trim();
+  return (
+    trimmed.length >= MIN_NEAR_AI_API_KEY_LENGTH &&
+    trimmed.length <= 256 &&
+    /^[!-~]+$/.test(trimmed)
+  );
+}
+
 export const PlayerAiSettingsSchema = z.strictObject({
   hasApiKey: z.boolean(),
   apiKeyPreview: z.string().nullable(),
@@ -145,7 +160,14 @@ export const PlayerAiSettingsSchema = z.strictObject({
 export type PlayerAiSettings = z.infer<typeof PlayerAiSettingsSchema>;
 
 export const UpdatePlayerAiSettingsSchema = z.strictObject({
-  apiKey: z.string().max(256).optional().nullable(),
+  apiKey: z
+    .string()
+    .max(256)
+    .refine((v) => v.trim() === '' || isValidNearAiApiKey(v), {
+      message: 'Enter a valid NEAR.AI API key (at least 8 characters, no spaces)',
+    })
+    .optional()
+    .nullable(),
   model: z
     .string()
     .trim()
@@ -153,7 +175,8 @@ export const UpdatePlayerAiSettingsSchema = z.strictObject({
     .max(128)
     .refine((v) => v !== '__custom__' && /^[!-~]+$/.test(v), {
       message: 'Invalid NEAR.AI model identifier',
-    }),
+    })
+    .default(DEFAULT_PLAYER_NEAR_AI_MODEL),
 });
 export type UpdatePlayerAiSettings = z.infer<typeof UpdatePlayerAiSettingsSchema>;
 
@@ -179,5 +202,6 @@ export const MeProfileResponseSchema = z.strictObject({
   earnedAchievementsCount: z.number().int().nonnegative(),
   totalAchievementsCount: z.number().int().positive(),
   aiSettings: PlayerAiSettingsSchema.optional(),
+  colonySlots: ColonySlotAllowanceSchema.optional(),
 });
 export type MeProfileResponse = z.infer<typeof MeProfileResponseSchema>;

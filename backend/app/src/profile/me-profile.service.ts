@@ -4,7 +4,9 @@ import { ProgressionEngine } from '../progression/progression-engine.js';
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import {
   ACHIEVEMENTS,
+  isValidNearAiApiKey,
   levelForXp,
+  MANAGED_AI_MODEL,
   STAGE_UNLOCK_CONDITIONS,
   titleForLevel,
   type CurrentColonySummary,
@@ -18,10 +20,11 @@ import {
   type UpdatePlayerAiSettings,
 } from '@terra/contracts';
 import { CoreException } from '../core/errors/index.js';
+import { allowanceFromStakedNear, ColonySlotAllowanceService } from '../core/home/colony-slot-allowance.service.js';
 import { databaseEnabled } from '../core/persistence.js';
 import { APP_ENV, type AppEnv } from '../core/tokens.js';
 import { FlagsService } from '../flags/flags.service.js';
-import { DEFAULT_NEAR_AI_MODEL } from '../ai/nearai-models.js';
+import { normalizeNearAiModel } from '../ai/nearai-models.js';
 import { isLocalStakingFastTimings } from '../near/staking/local-staking-timings.js';
 import { resolveDbStakerPerks } from '../near/staking/staker-perks.js';
 import { isTeeAttestationRejected, LlmProviderPort, type LlmAttestation } from '../ports/llm-provider.port.js';
@@ -133,6 +136,7 @@ export class MeProfileService {
     @Optional() @Inject(PlayerAiSettingsStore) aiSettings?: PlayerAiSettingsStore,
     @Optional() @Inject(LlmProviderPort) private readonly llm?: LlmProviderPort,
     @Optional() @Inject(APP_ENV) private readonly env?: AppEnv,
+    @Optional() @Inject(ColonySlotAllowanceService) private readonly slotAllowance?: ColonySlotAllowanceService,
   ) {
     this.aiSettings = aiSettings ?? new PlayerAiSettingsStore();
     if (this.seed) {
@@ -152,7 +156,8 @@ export class MeProfileService {
       this.aiSettings.getSettings(playerId),
       this.resolvePlayerStakerSummary(playerId),
     ]);
-    return { ...base, ...staker };
+    const effectiveModel = base.hasApiKey ? base.model : MANAGED_AI_MODEL;
+    return { ...base, ...staker, model: effectiveModel };
   }
 
   async verifyAiEnclave(playerId: string): Promise<{
@@ -173,10 +178,10 @@ export class MeProfileService {
         message: 'Save a BYOK NEAR.AI key or stake >=10 NEAR in Colony Staking before running a TEE enclave check.',
       });
     }
+    const model = hasKey ? creds.model : MANAGED_AI_MODEL;
     if (!this.llm) {
-      return { ok: false, model: creds.model, managedStaker: staker.stakerAutopilotActive, usedPlayerKey: hasKey, attestation: null };
+      return { ok: false, model, managedStaker: staker.stakerAutopilotActive, usedPlayerKey: hasKey, attestation: null };
     }
-    const model = hasKey ? creds.model : DEFAULT_NEAR_AI_MODEL;
     const res = await this.llm.complete({
       system: 'Reply strictly with JSON {"ok":true} for a TEE attestation probe.',
       messages: [{ role: 'user', content: 'ping' }],
@@ -192,7 +197,7 @@ export class MeProfileService {
       : envMap.AI_PROVIDER !== 'nearai';
     return {
       ok,
-      model: res.model,
+      model: hasKey ? res.model : MANAGED_AI_MODEL,
       managedStaker: !hasKey && staker.stakerAutopilotActive,
       usedPlayerKey: hasKey,
       attestation: res.attestation ?? null,
@@ -208,6 +213,10 @@ export class MeProfileService {
   ): Promise<{ readonly stakerAutopilotActive: boolean; readonly stakedNear: string }> {
     const liveDb = this.activeDb();
     if (!liveDb || typeof liveDb.socialIdentity?.findFirst !== 'function') {
+      if (this.slotAllowance) {
+        const fallback = await this.slotAllowance.resolveForPlayer(playerId, 0);
+        return { stakerAutopilotActive: fallback.isStaker, stakedNear: fallback.stakedNear };
+      }
       return { stakerAutopilotActive: false, stakedNear: '0' };
     }
     const envMap = (this.env ?? process.env) as Record<string, string | undefined>;
@@ -217,8 +226,8 @@ export class MeProfileService {
         ? `${sanitizeHandle(playerId)}.terraagent.mock`
         : null;
     const [linked, cols] = await Promise.all([
-      liveDb.socialIdentity.findFirst({ where: { playerId }, orderBy: { createdAt: 'asc' }, select: { accountId: true } }),
-      liveDb.colony.findMany({ where: { playerId }, take: 5, select: { id: true } }),
+      liveDb.socialIdentity.findFirst({ where: { playerId }, orderBy: { createdAt: 'asc' }, select: { accountId: true } }).catch(() => null),
+      liveDb.colony.findMany({ where: { playerId }, take: 5, select: { id: true } }).catch(() => []),
     ]);
     let bestYocto = 0n;
     let active = false;
@@ -235,6 +244,12 @@ export class MeProfileService {
         stakedNear = perks.totalStakedNear;
       }
     }
+    if (!active && this.slotAllowance) {
+      const fallback = await this.slotAllowance.resolveForPlayer(playerId, 0);
+      if (fallback.isStaker) {
+        return { stakerAutopilotActive: true, stakedNear: fallback.stakedNear };
+      }
+    }
     return { stakerAutopilotActive: active, stakedNear };
   }
 
@@ -249,14 +264,37 @@ export class MeProfileService {
         details: { code: 'wave_disabled' },
       });
     }
+    if (typeof input.apiKey === 'string' && input.apiKey.trim() !== '' && !isValidNearAiApiKey(input.apiKey)) {
+      throw new CoreException('invalid_ai_settings', {
+        status: 400,
+        message: 'Enter a valid NEAR.AI API key (8–256 printable non-space characters).',
+      });
+    }
+    const current = await this.aiSettings.getCredentials(player.id);
+    const clearingKey = input.apiKey === null || (typeof input.apiKey === 'string' && input.apiKey.trim() === '');
+    const effectiveHasKey =
+      typeof input.apiKey === 'string' && input.apiKey.trim() !== ''
+        ? true
+        : clearingKey
+          ? false
+          : Boolean(current.apiKey);
+    const requestedModel = normalizeNearAiModel(input.model || MANAGED_AI_MODEL);
+    if (!effectiveHasKey && requestedModel !== MANAGED_AI_MODEL) {
+      throw new CoreException('invalid_ai_settings', {
+        status: 400,
+        message: 'Model selection is locked until you enter a valid NEAR.AI API key.',
+      });
+    }
+    const normalizedInput: UpdatePlayerAiSettings = {
+      ...input,
+      model: effectiveHasKey ? requestedModel : MANAGED_AI_MODEL,
+    };
     const [saved, staker] = await Promise.all([
-      this.aiSettings.updateSettings(
-        { id: player.id, handle: player.handle },
-        input,
-      ),
+      this.aiSettings.updateSettings({ id: player.id, handle: player.handle }, normalizedInput),
       this.resolvePlayerStakerSummary(player.id),
     ]);
-    return { ...saved, ...staker };
+    const effectiveModel = saved.hasApiKey ? saved.model : MANAGED_AI_MODEL;
+    return { ...saved, ...staker, model: effectiveModel };
   }
 
   async updateHandle(
@@ -325,9 +363,11 @@ export class MeProfileService {
     const handleSlug = sanitizeHandle(resolved.handle);
     const liveDb = this.activeDb();
     const [player, linked] = await Promise.all([
-      typeof liveDb?.player?.findUnique === 'function' ? liveDb.player.findUnique({ where: { id: playerId } }) : null,
+      typeof liveDb?.player?.findUnique === 'function'
+        ? liveDb.player.findUnique({ where: { id: playerId } }).catch(() => null)
+        : null,
       typeof liveDb?.socialIdentity?.findFirst === 'function'
-        ? liveDb.socialIdentity.findFirst({ where: { playerId }, orderBy: { createdAt: 'asc' } })
+        ? liveDb.socialIdentity.findFirst({ where: { playerId }, orderBy: { createdAt: 'asc' } }).catch(() => null)
         : null,
     ]);
     if (liveDb && linked && typeof liveDb.progressionEffect?.updateMany === 'function') {
@@ -408,10 +448,17 @@ export class MeProfileService {
     const [identity, notices] = await Promise.all([
       this.resolveIdentity(resolved, xpState.frame || (levelProg.level >= 4 ? 'surveyor' : 'default')),
       typeof liveDb?.playerNotification?.findMany === 'function'
-        ? liveDb.playerNotification.findMany({ where: { playerId }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: 50 })
+        ? liveDb.playerNotification
+            .findMany({ where: { playerId }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: 50 })
+            .catch(() => undefined)
         : undefined,
     ]);
     const stats = buildProfileStats(facts, unlockStage, currentColonies, allPastColonies);
+
+    const aiSettings = await this.getAiSettings(playerId);
+    const colonySlots = this.slotAllowance
+      ? await this.slotAllowance.resolveForPlayer(playerId, currentColonies.length)
+      : allowanceFromStakedNear(Number(aiSettings.stakedNear ?? '0') || 0, currentColonies.length);
 
     return {
       identity,
@@ -428,12 +475,13 @@ export class MeProfileService {
       },
       stats,
       currentColonies,
+      colonySlots,
       pastColonies: visiblePastColonies,
       activity: formatActivity(notices),
       nextAchievements: this.achievements.nextAchievements(achRes.achievements, 3),
       earnedAchievementsCount: achRes.earnedCount,
       totalAchievementsCount: ACHIEVEMENTS.length,
-      aiSettings: await this.getAiSettings(playerId),
+      aiSettings,
     };
   }
 

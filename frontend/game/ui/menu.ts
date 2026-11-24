@@ -6,8 +6,15 @@ import { PLANET_KINDS, PLANET_SPECS, type PlanetKind } from '@terra/render/plane
 import { mountPlanetThumbnails, type PlanetThumbnailsHandle } from '@terra/render/planets/PlanetThumbnails';
 import { notePlanetPickerViewed, notePlanetSelected } from '../../design/analytics/play';
 import { PilotAccess } from '../../design/pilot/PilotAccess';
-import { probeActiveHomeColony, type ActiveHomeColony } from '../../design/pilot/activeHomeColony';
-import { applyActiveColonyToMenuDom } from './lobby/activeColonyLock';
+import {
+  canFoundAnotherColony,
+  probePilotColonyRoster,
+  rosterFromSingleActiveColony,
+  type ActiveHomeColony,
+  type PilotColonyRoster,
+} from '../../design/pilot/activeHomeColony';
+import { applyColonyRosterToMenuDom } from './lobby/activeColonyLock';
+import { NEW_COLONY_SELECTION_ID, type OrbitalDeployAction } from './orbitalHud/arHudTemplates';
 import {
   LobbyPlanetFeed,
   type LobbyPlanetFeedOptions,
@@ -63,6 +70,8 @@ export interface MainMenuOptions {
   readonly autoStartFeed?: boolean;
   readonly autoProbeColony?: boolean;
   readonly probeFetch?: typeof fetch;
+  readonly initialNewColony?: boolean;
+  readonly initialColonyId?: string | null;
 }
 
 function buildMenuShellHtml(planetsByKind: Readonly<Record<PlanetKind, PlanetSummaryV1>>): string {
@@ -100,6 +109,8 @@ export class MainMenu {
   private readonly offFpsCap: () => void;
   private readonly offShadowQuality: () => void;
   private activeColony: ActiveHomeColony | null = null;
+  private colonyRoster: PilotColonyRoster | null = null;
+  private selectedColonyId: string | null = null;
   private disposed = false;
   private readonly autoProbeColony: boolean;
   private readonly probeFetch?: typeof fetch;
@@ -123,6 +134,9 @@ export class MainMenu {
       this.queuePaused = Boolean((options.planetList as PlanetListV1).queuePaused);
     }
     this.sectorIntent = normalizeSectorIntent(options?.sectorIntent);
+    this.selectedColonyId = options?.initialNewColony
+      ? NEW_COLONY_SELECTION_ID
+      : (options?.initialColonyId ?? null);
     this.el.id = 'menu';
     this.el.className = 'ui-layer';
     this.el.innerHTML = buildMenuShellHtml(this.planetsByKind);
@@ -142,9 +156,11 @@ export class MainMenu {
         intent: this.sectorIntent,
         queuePaused: this.queuePaused,
         activeColony: this.activeColony,
+        selectedColonyId: this.selectedColonyId,
       },
       {
         onSectorSelect: (intent) => this.setSectorIntent(intent, true),
+        onColonySelect: (colonyId, sectorId) => { this.selectColony(colonyId, sectorId); },
         onDeploy: () => {
           if (!this.canDeploy()) return;
           this.cb.onDeploy(this.kind, this.seed, this.settings, this.getSectorIntent());
@@ -232,6 +248,8 @@ export class MainMenu {
       intent: this.sectorIntent,
       queuePaused: this.queuePaused,
       activeColony: this.activeColony,
+      colonyRoster: this.colonyRoster,
+      selectedColonyId: this.selectedColonyId,
     });
   }
 
@@ -243,11 +261,23 @@ export class MainMenu {
     this.arHud.syncProjection(frame);
   }
 
+  private canSelectPlanet(k: PlanetKind): boolean {
+    if (!this.colonyRoster || this.colonyRoster.colonies.length === 0) return true;
+    if (canFoundAnotherColony(this.colonyRoster)) return true;
+    return this.colonyRoster.colonies.some((c) => c.kind === k);
+  }
+
   select(k: PlanetKind, notify: boolean): void {
-    if (this.activeColony && k !== this.activeColony.kind) return;
+    if (!this.canSelectPlanet(k)) return;
     const changed = k !== this.kind;
     this.kind = k;
-    if (changed) this.seed = this.explicitSeed ?? PLANET_SPECS[k].seed;
+    if (changed) {
+      this.seed = this.explicitSeed ?? PLANET_SPECS[k].seed;
+      this.sectorIntent = { mode: 'auto' };
+      const onKind = this.colonyRoster?.colonies.filter((c) => c.kind === k) ?? [];
+      this.selectedColonyId = onKind[0]?.colonyId ?? null;
+      if (onKind[0]) this.activeColony = onKind[0];
+    }
     this.el
       .querySelectorAll<HTMLElement>('.world-card')
       .forEach((c) => c.classList.toggle('sel', c.dataset.k === k));
@@ -261,24 +291,77 @@ export class MainMenu {
   /** Id of the planet selected in the menu (the orbit stage shows its prestige), or null when unknown. */
   selectedPlanetId(): string | null { return this.planetsByKind[this.kind]?.id ?? null; }
   getActiveColony(): ActiveHomeColony | null { return this.activeColony; }
-  hasActiveColony(): boolean { return this.activeColony !== null; }
+  getColonyRoster(): PilotColonyRoster | null { return this.colonyRoster; }
+  getSelectedColonyId(): string | null { return this.selectedColonyId; }
+  hasActiveColony(): boolean { return (this.colonyRoster?.colonies.length ?? 0) > 0 || this.activeColony !== null; }
+  resolveDeployAction(): OrbitalDeployAction { return this.arHud.resolveDeployAction(); }
   canDeploy(): boolean { return !this.arHud.isForeignSectorSelected(); }
 
-  setActiveColony(active: ActiveHomeColony | null): void {
-    this.activeColony = active;
-    applyActiveColonyToMenuDom(this.el, active);
-    if (active && this.kind !== active.kind) {
-      this.select(active.kind, true);
-      applyActiveColonyToMenuDom(this.el, active);
+  selectColony(colonyId: string, sectorId?: string): ActiveHomeColony | null {
+    if (colonyId === NEW_COLONY_SELECTION_ID) {
+      this.selectedColonyId = NEW_COLONY_SELECTION_ID;
+      const ownedSectors = this.arHud.resolveDeployAction().ownedSectorIds;
+      if (this.sectorIntent.mode === 'chosen' && ownedSectors.includes(this.sectorIntent.sectorId)) {
+        this.sectorIntent = { mode: 'auto' };
+      }
+      this.renderArHud();
+      this.cb.onSector?.(this.getSectorIntent());
+      return null;
+    }
+    const picked =
+      this.colonyRoster?.colonies.find((c) => c.colonyId === colonyId) ??
+      (this.activeColony?.colonyId === colonyId ? this.activeColony : null);
+    if (picked) {
+      this.activeColony = picked;
+      if (picked.kind !== this.kind) this.select(picked.kind, true);
+      this.selectedColonyId = picked.colonyId;
+      const targetSector = sectorId ?? picked.foundingSectorId;
+      if (targetSector) {
+        const normalized = normalizeSectorIntent(targetSector);
+        const sectors = this.planetsByKind[this.kind].sectors;
+        const validLand =
+          normalized.mode !== 'chosen' ||
+          sectors.length === 0 ||
+          sectors.some((s) => s.kind === 'land' && s.sectorId === normalized.sectorId);
+        if (validLand) this.sectorIntent = normalized;
+      }
+      this.renderArHud();
+      this.cb.onSector?.(this.getSectorIntent());
+      return picked;
+    }
+    this.selectedColonyId = colonyId;
+    this.renderArHud();
+    return null;
+  }
+
+  setColonyRoster(roster: PilotColonyRoster | null): void {
+    this.colonyRoster = roster;
+    const preserveNew = this.selectedColonyId === NEW_COLONY_SELECTION_ID && canFoundAnotherColony(roster);
+    const kept =
+      preserveNew || !this.selectedColonyId
+        ? null
+        : roster?.colonies.find((c) => c.colonyId === this.selectedColonyId) ?? null;
+    this.selectedColonyId = preserveNew ? NEW_COLONY_SELECTION_ID : (kept?.colonyId ?? null);
+    this.activeColony = kept ?? roster?.primary ?? roster?.colonies[0] ?? null;
+    applyColonyRosterToMenuDom(this.el, roster);
+    if (roster && roster.colonies.length > 0 && (!this.canSelectPlanet(this.kind) || (kept && kept.kind !== this.kind))) {
+      const targetKind = (kept ?? this.activeColony ?? roster.colonies[0]!).kind;
+      this.select(targetKind, true);
+      if (kept) this.selectedColonyId = kept.colonyId;
+      applyColonyRosterToMenuDom(this.el, roster);
     } else {
       this.renderArHud();
     }
   }
 
+  setActiveColony(active: ActiveHomeColony | null): void {
+    this.setColonyRoster(rosterFromSingleActiveColony(active));
+  }
+
   async probeActiveColony(): Promise<ActiveHomeColony | null> {
-    const found = await probeActiveHomeColony({ fetch: this.probeFetch });
-    if (!this.disposed) this.setActiveColony(found);
-    return found;
+    const roster = await probePilotColonyRoster({ fetch: this.probeFetch });
+    if (!this.disposed) this.setColonyRoster(roster);
+    return roster?.primary ?? null;
   }
 
   getSectorIntent(): SectorIntentV1 {
@@ -295,6 +378,12 @@ export class MainMenu {
         (s) => s.kind === 'land' && s.sectorId === normalized.sectorId,
       );
       this.sectorIntent = validLand ? normalized : { mode: 'auto' };
+      if (validLand && this.selectedColonyId !== NEW_COLONY_SELECTION_ID) {
+        const matched = this.colonyRoster?.colonies.find(
+          (c) => c.kind === this.kind && c.foundingSectorId === normalized.sectorId,
+        );
+        if (matched) this.selectedColonyId = matched.colonyId;
+      }
     } else {
       this.sectorIntent = { mode: 'auto' };
     }
@@ -329,7 +418,7 @@ export class MainMenu {
         updateWorldCardElement(cardEl, this.planetsByKind[k]);
       }
     });
-    if (this.activeColony) applyActiveColonyToMenuDom(this.el, this.activeColony);
+    if (this.colonyRoster) applyColonyRosterToMenuDom(this.el, this.colonyRoster);
     this.renderArHud();
   }
 

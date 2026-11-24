@@ -82,6 +82,32 @@ export async function resolveConnectionHome(
   }
 }
 
+function selectActiveColonyFromHome(
+  effectiveHome: HomeResponse | undefined,
+  planetId: string,
+  requestedColonyId: string | undefined,
+  trimmedSector: string | undefined,
+): Extract<HomeResponse, { state: 'ACTIVE' }>['colony'] | null {
+  const rosterColoniesOnPlanet = (effectiveHome?.activeColonies ?? [])
+    .filter((e) => e.planet.id === planetId || e.colony.planetId === planetId)
+    .map((e) => e.colony);
+  return (
+    rosterColoniesOnPlanet.find(
+      (c) =>
+        (!requestedColonyId || c.id === requestedColonyId) &&
+        (!trimmedSector ||
+          inferAuthoritativeBaseSector({
+            foundingSectorId: c.foundingSectorId,
+            spawnQ: c.spawnQ,
+            spawnR: c.spawnR,
+          }) === trimmedSector),
+    ) ??
+    (effectiveHome?.state === 'ACTIVE' && effectiveHome.colony.planetId === planetId
+      ? effectiveHome.colony
+      : null)
+  );
+}
+
 export async function verifyConnectionJoin(opts: {
   readonly homeProvider: HomeProvider | undefined;
   readonly antiCheat: SectorAntiCheatService | undefined;
@@ -95,17 +121,8 @@ export async function verifyConnectionJoin(opts: {
   readonly mode?: 'play' | 'spectator';
   readonly spectatorAllowed?: boolean;
 }): Promise<
-  | {
-      readonly ok: true;
-      readonly colonyId: string | null;
-      readonly colonyIndex?: number;
-      readonly sectorId?: string;
-      readonly bindingHash?: string;
-    }
-  | {
-      readonly ok: false;
-      readonly reason: string;
-    }
+  | { readonly ok: true; readonly colonyId: string | null; readonly colonyIndex?: number; readonly sectorId?: string; readonly bindingHash?: string }
+  | { readonly ok: false; readonly reason: string }
 > {
   const { homeProvider, antiCheat, log, playerId, planetId, requestedSectorId, requestedColonyId, dev, isScenarioPlanet, mode, spectatorAllowed } = opts;
   const trimmedSector = requestedSectorId?.trim() || undefined;
@@ -114,63 +131,57 @@ export async function verifyConnectionJoin(opts: {
     return { ok: false, reason: 'invalid_sector' };
   }
   if (mode === 'spectator') {
-    if (spectatorAllowed === false) {
-      return { ok: false, reason: 'spectator_local_only' };
-    }
+    if (spectatorAllowed === false) return { ok: false, reason: 'spectator_local_only' };
     return { ok: true, colonyId: null, sectorId: trimmedSector };
   }
 
-  const fastActive = playerId ? antiCheat?.index.getActiveBaseByPlayer(playerId) : undefined;
+  const fastActiveOnTarget = playerId
+    ? antiCheat?.index
+        .listActiveBasesByPlayer(playerId)
+        .find((b) => b.planetId === planetId && (!requestedColonyId || b.colonyId === requestedColonyId) && (!trimmedSector || b.baseSectorId === trimmedSector))
+    : undefined;
+  const fastTargetColony = requestedColonyId
+    ? antiCheat?.index.getColonyById(requestedColonyId)
+    : undefined;
   const fastLatest = playerId ? antiCheat?.index.getLatestBindingByPlayer(playerId) : undefined;
+  const hasOtherActiveBase = playerId
+    ? (antiCheat?.index.listActiveBasesByPlayer(playerId).length ?? 0) > 0
+    : false;
   const hasLiveTerminalOnTarget = Boolean(
-    fastLatest?.planetId === planetId && fastLatest.terminalFromLive && fastLatest.status !== 'ACTIVE',
+    fastTargetColony
+      ? fastTargetColony.planetId === planetId && fastTargetColony.terminalFromLive && fastTargetColony.status !== 'ACTIVE'
+      : !hasOtherActiveBase &&
+          fastLatest?.planetId === planetId &&
+          fastLatest.terminalFromLive &&
+          fastLatest.status !== 'ACTIVE' &&
+          (!trimmedSector || fastLatest.baseSectorId === trimmedSector),
   );
 
   let effectiveHome: HomeResponse | undefined;
-  if (playerId && (!antiCheat || (!fastActive && !hasLiveTerminalOnTarget))) {
+  if (playerId && (!antiCheat || (!fastActiveOnTarget && !hasLiveTerminalOnTarget))) {
     const onTarget = await resolveConnectionHome(homeProvider, log, playerId, planetId);
-    effectiveHome =
-      onTarget.state === 'ACTIVE'
-        ? onTarget
-        : await resolveConnectionHome(homeProvider, log, playerId);
+    effectiveHome = onTarget.state === 'ACTIVE' ? onTarget : await resolveConnectionHome(homeProvider, log, playerId);
   }
-
-  const activeColony =
-    effectiveHome?.state === 'ACTIVE' && effectiveHome.colony.planetId === planetId
-      ? effectiveHome.colony
-      : null;
+  const activeColony = selectActiveColonyFromHome(effectiveHome, planetId, requestedColonyId, trimmedSector);
 
   if (antiCheat && playerId) {
     const verdict = await antiCheat.verifyJoin({
-      transport: 'ws',
-      playerId,
-      targetPlanetId: planetId,
-      requestedSectorId: trimmedSector,
-      requestedColonyId,
-      dev,
-      isScenarioPlanet,
-      ...(effectiveHome ? { resolvedHome: effectiveHome } : {}),
-      allowNewJoin: false,
+      transport: 'ws', playerId, targetPlanetId: planetId, requestedSectorId: trimmedSector,
+      requestedColonyId, dev, isScenarioPlanet, ...(effectiveHome ? { resolvedHome: effectiveHome } : {}), allowNewJoin: false,
     });
     if (!verdict.ok) return { ok: false, reason: verdict.reason };
-    const resolvedColonyId = activeColony ? activeColony.id : verdict.colonyId;
+    const resolvedColonyId = verdict.colonyId ?? (activeColony ? activeColony.id : null);
     return {
       ok: true,
       colonyId: resolvedColonyId,
-      colonyIndex: activeColony ? activeColony.colonyIndex : verdict.colonyIndex,
+      colonyIndex: verdict.colonyIndex ?? activeColony?.colonyIndex,
       sectorId: resolvedColonyId ? verdict.sectorId : trimmedSector,
       bindingHash: resolvedColonyId ? verdict.bindingHash : undefined,
     };
   }
 
   return verifyConnectionJoinWithoutAntiCheat({
-    effectiveHome: effectiveHome ?? DEFAULT_HOME,
-    activeColony,
-    planetId,
-    trimmedSector,
-    requestedColonyId,
-    dev,
-    isScenarioPlanet,
+    effectiveHome: effectiveHome ?? DEFAULT_HOME, activeColony, planetId, trimmedSector, requestedColonyId, dev, isScenarioPlanet,
   });
 }
 
@@ -187,6 +198,7 @@ function verifyConnectionJoinWithoutAntiCheat(opts: {
   | { readonly ok: false; readonly reason: string } {
   const { effectiveHome, activeColony, planetId, trimmedSector, requestedColonyId, dev, isScenarioPlanet } = opts;
   const hasActiveElsewhere =
+    !activeColony &&
     effectiveHome.state === 'ACTIVE' &&
     effectiveHome.colony.planetId !== planetId &&
     !(isScenarioPlanet && dev);

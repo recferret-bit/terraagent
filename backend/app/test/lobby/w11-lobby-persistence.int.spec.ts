@@ -6,9 +6,15 @@ import {
   buildDefaultCanonicalAtlasManifest,
   ConcurrencyConflictError,
   LobbyPersistenceService,
+  MatchmakerService,
+  MatchTicketsService,
   PrismaLobbyStore,
+  SectorReservationService,
+  SpawnSagaService,
   WorldLifecycleService,
 } from '../../src/lobby';
+import { ColonySlotAllowanceService, HomeRepository, HomeService } from '../../src/core/home';
+import { SectorAntiCheatService } from '../../src/core/anticheat';
 
 let db: TestDatabase;
 beforeAll(async () => {
@@ -157,5 +163,90 @@ describe('W11-03 — WorldLifecycleService & PrismaLobbyStore on PostgreSQL', ()
       admission: 'OPEN',
       availability: 'open',
     });
+  });
+});
+
+describe('Multi-colony PostgreSQL persistence — PrismaLobbyStore + PrismaHomeStore', () => {
+  it('commits multiple distinct-sector colonies on one planet concurrently without P2002 index collisions and blocks same-sector duplicates', async () => {
+    const svc = new LobbyPersistenceService(db.prisma, undefined, new PrismaLobbyStore(db.prisma));
+    const lifecycle = new WorldLifecycleService(svc);
+    const homeRepo = new HomeRepository(db.prisma, { DATABASE_URL: db.url } as never);
+    const slotAllowance = new ColonySlotAllowanceService();
+    const antiCheat = new SectorAntiCheatService(homeRepo, undefined, slotAllowance);
+    antiCheat.setLobbyPersistence(svc);
+    const home = new HomeService(homeRepo, undefined, svc, lifecycle, antiCheat, slotAllowance);
+    const reservations = new SectorReservationService(svc, lifecycle, undefined, antiCheat, slotAllowance);
+    const tickets = new MatchTicketsService(svc, lifecycle, homeRepo, home, antiCheat, slotAllowance);
+    const matchmaker = new MatchmakerService(svc, reservations, lifecycle);
+    const saga = new SpawnSagaService(svc, reservations, homeRepo, lifecycle);
+
+    const tempManifest = buildDefaultCanonicalAtlasManifest('temperate', {
+      foundingSeatsPerSector: 4,
+      validatedSeatsPerSector: 4,
+    });
+    const { world } = await svc.provisionCanonicalWorld({ type: 'temperate', manifest: tempManifest });
+    const landSectors = (await svc.listSectors(world.id)).filter((s) => s.kind === 'land');
+    expect(landSectors.length).toBeGreaterThanOrEqual(2);
+    const [secA, secB] = [landSectors[0]!.sectorId, landSectors[1]!.sectorId];
+
+    const stakerId = 'pr_pg_multi_staker';
+    slotAllowance.setTestStakedNear(stakerId, 50);
+
+    // First colony in secA via ticket + matchmaker + saga on PostgreSQL
+    const tk1 = await tickets.enqueueTicket(stakerId, { mode: 'JOIN_PLANET', planetId: world.id, sectorId: secA });
+    expect((await matchmaker.processTicket(tk1.id)).reserved).toBe(true);
+    const sp1 = await saga.executeSpawnForTicket(tk1.id);
+    expect(sp1.ok).toBe(true);
+
+    // Same-sector reservation in secA on PostgreSQL is rejected even after COMMITTED
+    await expect(
+      svc.reserveSectorSlot({
+        planetId: world.id,
+        sectorId: secA,
+        playerId: stakerId,
+        ticketId: 'tk_pg_dup_same_sec',
+        colonyId: 'co_pg_dup_same_sec',
+      }),
+    ).rejects.toMatchObject({ code: 'duplicate_active_reservation' });
+    const dupViaService = await reservations.reserveSectorSlot({
+      planetId: world.id,
+      sectorId: secA,
+      playerId: stakerId,
+      ticketId: 'tk_pg_dup_same_sec_2',
+      colonyId: 'co_pg_dup_same_sec_2',
+    });
+    expect(dupViaService.ok).toBe(false);
+
+    // Second staker + first staker's 2nd colony spawn CONCURRENTLY in distinct sectors (both slotIndex 0)
+    const rivalId = 'pr_pg_rival_staker';
+    const tk2 = await tickets.enqueueTicket(stakerId, { mode: 'JOIN_PLANET', planetId: world.id, sectorId: secB });
+    const tkRival = await tickets.enqueueTicket(rivalId, { mode: 'JOIN_PLANET', planetId: world.id, sectorId: secA });
+    await matchmaker.processTicket(tk2.id);
+    await matchmaker.processTicket(tkRival.id);
+
+    const [sp2, spRival] = await Promise.all([
+      saga.executeSpawnForTicket(tk2.id, {
+        executor: async () => {
+          await new Promise((r) => setTimeout(r, 15));
+          return { ok: true, appliedAtTick: 2 };
+        },
+      }),
+      saga.executeSpawnForTicket(tkRival.id, {
+        executor: async () => {
+          await new Promise((r) => setTimeout(r, 15));
+          return { ok: true, appliedAtTick: 2 };
+        },
+      }),
+    ]);
+    expect(sp2.ok).toBe(true);
+    expect(spRival.ok).toBe(true);
+
+    const pgColonies = await homeRepo.listColoniesByPlayerId(stakerId);
+    expect(pgColonies).toHaveLength(2);
+    expect(new Set(pgColonies.map((c) => c.foundingSectorId))).toEqual(new Set([secA, secB]));
+
+    const allOnPlanet = await homeRepo.listColoniesByPlanetId(world.id);
+    expect(allOnPlanet).toHaveLength(3);
+    expect(new Set(allOnPlanet.map((c) => c.colonyIndex)).size).toBe(3);
   });
 });

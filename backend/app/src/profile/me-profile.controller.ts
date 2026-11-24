@@ -1,6 +1,7 @@
 import { Body, Controller, Delete, Get, HttpCode, Inject, Optional, Post, Put, Req } from '@nestjs/common';
 import type { IncomingMessage } from 'node:http';
 import {
+  MANAGED_AI_MODEL,
   UpdatePilotHandleSchema,
   UpdatePlayerAiSettingsSchema,
   type MeProfileResponse,
@@ -92,8 +93,7 @@ export class MeProfileController {
   @Delete('ai-settings')
   async deleteAiSettings(@Req() req: IncomingMessage): Promise<PlayerAiSettings> {
     const player = await this.mePlayer(req);
-    const current = await this.service.getAiSettings(player.id);
-    return this.service.updateAiSettings(player, { apiKey: null, model: current.model });
+    return this.service.updateAiSettings(player, { apiKey: null, model: MANAGED_AI_MODEL });
   }
 
   @Post('ai-settings/verify')

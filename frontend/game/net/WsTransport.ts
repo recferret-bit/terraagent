@@ -158,6 +158,8 @@ export class WsTransport implements Transport {
           t: 'join',
           d: {
             planetId: this.planetId,
+            ...(this.target.colonyId ? { colonyId: this.target.colonyId } : {}),
+            ...(this.target.sectorId ? { sectorId: this.target.sectorId } : {}),
             ...(this.target.mode ? { mode: this.target.mode } : {}),
           },
         });
@@ -203,6 +205,8 @@ export class WsTransport implements Transport {
         t: 'join',
         d: {
           planetId: this.planetId,
+          ...(this.target.colonyId ? { colonyId: this.target.colonyId } : {}),
+          ...(this.target.sectorId ? { sectorId: this.target.sectorId } : {}),
           ...(this.target.mode ? { mode: this.target.mode } : {}),
         },
       });

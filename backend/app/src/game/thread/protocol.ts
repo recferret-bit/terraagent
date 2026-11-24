@@ -106,7 +106,7 @@ export type ToThread =
   /** Dev `tune` (D-35): set a field live / drop live tunes / export the merged overrides. Answered with `tuned`. */
   | { readonly t: 'tune'; readonly planetId: string; readonly reqId: number; readonly req: TuneRequest }
   /** Seating (LED-14): where colony `colony` would land now. Answered with `landingSite`. */
-  | { readonly t: 'landingSite'; readonly planetId: string; readonly reqId: number; readonly colony: number }
+  | { readonly t: 'landingSite'; readonly planetId: string; readonly reqId: number; readonly colony: number; readonly sectorId?: string }
   /**
    * Economy profile swap (W13-39): `overrides` is the new thread base (file ⊕ env ⊕ active profile). Every loaded planet
    * rebuilds its pipeline from it once its tick reaches `effectiveTick` (later loads use it at once). Answered with

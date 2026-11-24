@@ -103,7 +103,7 @@ export class PlanetHost {
       case 'fullState': return this.fullState(msg.planetId, msg.reqId);
       case 'profile': return this.scheduleProfile(msg);
       case 'tune': return this.tune(msg.planetId, msg.reqId, msg.req);
-      case 'landingSite': return this.landingSite(msg.planetId, msg.reqId, msg.colony);
+      case 'landingSite': return this.landingSite(msg.planetId, msg.reqId, msg.colony, msg.sectorId);
       case 'ctl': return this.ctl(msg);
     }
   }
@@ -248,8 +248,8 @@ export class PlanetHost {
   }
 
   /** Reply to `landingSite`: the landing planner on the live state, with the planet's compiled data (LED-14). */
-  private landingSite(planetId: string, reqId: number, colony: number): void {
-    replyLandingSite(this.planets.get(planetId), planetId, reqId, colony, this.post);
+  private landingSite(planetId: string, reqId: number, colony: number, sectorId?: string): void {
+    replyLandingSite(this.planets.get(planetId), planetId, reqId, colony, this.post, sectorId);
   }
 
   private setSubscribed(planetId: string, p: Planet, on: boolean): void {
