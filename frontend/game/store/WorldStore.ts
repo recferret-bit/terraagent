@@ -303,7 +303,8 @@ export class WorldStore {
         this.baseLocalMs = this.now();
         if (m.d.events?.length) this.retune(m.d.events);
         const diff = ownBytes(m.d.diff);
-        w.postMessage({ t: 'delta', fromTick: m.d.fromTick, toTick: m.d.toTick, diff }, [diff.buffer]);
+        const own = m.d.own?.map(ownBytes);
+        w.postMessage({ t: 'delta', fromTick: m.d.fromTick, toTick: m.d.toTick, diff, ...(own ? { own } : {}) }, [diff.buffer, ...(own ?? []).map((b) => b.buffer)]);
         if (m.d.events?.length) this.serverEvents.emit(m.d.events);
         return;
       }

@@ -13,7 +13,8 @@ export interface WelcomeInput {
   /** Balance overrides the server compiled its data with (`welcome.overrides`, D-35). */
   overrides?: BalanceOverrides;
 }
-export interface DeltaInput { fromTick: number; toTick: number; diff: Uint8Array }
+/** `own`: the window's owner-field frames (own colony, or all colonies for a full viewer), applied after `diff`. */
+export interface DeltaInput { fromTick: number; toTick: number; diff: Uint8Array; own?: readonly Uint8Array[] }
 
 /**
  * `empty`: nothing loaded. `ready`: replica is exact at `tick`. `versionMismatch`: engine or data differs from the
@@ -117,8 +118,8 @@ export class ReplicaCore {
     if (this.current === 'needsResync') return { ok: false, reason: 'awaitingResync', detail: 'waiting for welcome', request: false };
     if (!this.host) return { ok: false, reason: 'noState', detail: 'delta before welcome', request: true };
     try {
-      this.host.applyDiff(d.diff);
-      this.faunaMotion?.apply(d.diff, this.host.state, this.host.pipeline.config.data);
+      this.host.applyDiff(d.diff, d.own);
+      this.faunaMotion?.apply(d.diff, this.host.state, this.host.pipeline.config.data, d.own);
     } catch (e) {
       this.current = 'needsResync';
       if (e instanceof DiffGapError) return { ok: false, reason: 'gap', detail: e.message, request: true };

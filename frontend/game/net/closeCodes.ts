@@ -12,6 +12,8 @@ export const REPEAT_WINDOW_MS = 30_000;
  */
 export const NOT_YOUR_PLANET = 'not_your_planet';
 export const SPECTATOR_LOCAL_ONLY = 'spectator_local_only';
+/** `bye 4000 unsupported_proto`: the app speaks a newer ws protocol than this page; only a reload can fix it. */
+export const UNSUPPORTED_PROTO = 'unsupported_proto';
 
 export function closeAction(code: number, reason = ''): CloseAction {
   switch (code) {
@@ -22,7 +24,7 @@ export function closeAction(code: number, reason = ''): CloseAction {
     case CLOSE_CODES.forbidden:
       return reason === NOT_YOUR_PLANET || reason === SPECTATOR_LOCAL_ONLY ? 'terminal' : 'reconnect-once';
     case CLOSE_CODES.bad_hello:
-      return 'reconnect-once';
+      return reason === UNSUPPORTED_PROTO ? 'terminal' : 'reconnect-once';
     default:
       return 'reconnect'; // 4012 server_restarting / planet_down (the planet restarts), 1000/1001/1006, unknown
   }
@@ -40,5 +42,6 @@ const TERMINAL_TEXT: Record<number, string> = {
 export function terminalText(code: number | undefined, reason: string | undefined): string {
   if (code === CLOSE_CODES.forbidden && reason === NOT_YOUR_PLANET) return "Not your colony's planet";
   if (code === CLOSE_CODES.forbidden && reason === SPECTATOR_LOCAL_ONLY) return 'Spectator mode is local-only';
+  if (code === CLOSE_CODES.bad_hello && reason === UNSUPPORTED_PROTO) return 'Game updated. Reload to continue';
   return TERMINAL_TEXT[code ?? 0] ?? 'Disconnected';
 }

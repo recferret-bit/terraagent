@@ -88,7 +88,7 @@ async function openAuthedWs(wsUrl: string, accessToken: string) {
       await new Promise<void>((r) => waiters.push(r));
     }
   };
-  send({ t: 'hello', d: { accessToken, proto: [1], client: { app: 'game', version: '0.1.0' } } });
+  send({ t: 'hello', d: { accessToken, proto: [2], client: { app: 'game', version: '0.1.0' } } });
   await next(['ready']);
   return { send, next };
 }

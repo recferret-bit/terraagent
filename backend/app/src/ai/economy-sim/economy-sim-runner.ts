@@ -18,7 +18,7 @@ import {
   TERRAIN,
 } from '@terra/sim';
 import { checkAllowance } from '../../market/trade/allowance.js';
-import type { LlmAttestation } from '../../ports/llm-provider.port.js';
+import type { LlmAttestation, LlmFailureKind } from '../../ports/llm-provider.port.js';
 import { executeContractorTaskPlan, type ContractorPlanReport } from '../colony-agent/agent-commerce.js';
 import { DEFAULT_AGENT_ALLOWANCE } from '../colony-agent/colony-agent-types.js';
 import { runScriptedSwarmRounds, type SwarmSimulationSummary } from './swarm-rounds.js';
@@ -78,6 +78,8 @@ export interface EconomySimReport {
     readonly providerModel: string;
     readonly summary: string;
     readonly attestation?: LlmAttestation;
+    /** The provider failed (or its circuit is open): the summary is the deterministic one. */
+    readonly providerFailure?: LlmFailureKind;
   };
 }
 

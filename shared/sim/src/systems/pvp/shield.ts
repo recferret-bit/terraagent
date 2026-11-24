@@ -6,6 +6,7 @@ import {
   getEffectiveColonyStageForShield,
   getPvpState,
   isW18PvpActive,
+  peekPvpState,
   resolvePvpConfig,
   savePvpState,
   TICKS_PER_HOUR,
@@ -54,17 +55,19 @@ export function initColonyNewcomerShield(
  * Synchronizes `colonyIndex`'s newcomer shield against its current stage (`>= shieldDropStage` drops shield)
  * and the current simulation clock (`tick >= raidProtectedUntil` expires shield).
  */
-export function syncColonyNewcomerShield(
+/**
+ * Applies the shield sync rules to `rec` in place (colony override, stage drop, expiry).
+ * Returns `true` when any field changed. Pure apart from mutating `rec`.
+ */
+function applyShieldSyncRules(
   state: PlanetState,
   colonyIndex: number,
-  tick = state.meta.tick,
-  data?: CompiledDataLike,
-): ColonyPvpRecord {
-  const rec = ensureColonyPvpRecord(state, colonyIndex, tick, data);
+  rec: ColonyPvpRecord,
+  tick: number,
+  shieldDropStage: number,
+): boolean {
   const col = state.colonies[colonyIndex];
-  const cfg = resolvePvpConfig(data);
   let changed = false;
-
   if (
     col &&
     typeof col.raidProtectedUntil === 'number' &&
@@ -82,7 +85,7 @@ export function syncColonyNewcomerShield(
   }
 
   const stage = getEffectiveColonyStageForShield(state, colonyIndex);
-  if (!rec.manualShieldOverride && stage >= cfg.shieldDropStage) {
+  if (!rec.manualShieldOverride && stage >= shieldDropStage) {
     if (rec.raidProtectedUntil > 0 || !rec.shieldDropped) {
       rec.raidProtectedUntil = 0;
       rec.shieldDropped = true;
@@ -93,6 +96,30 @@ export function syncColonyNewcomerShield(
     rec.manualShieldOverride = false;
     changed = true;
   }
+  return changed;
+}
+
+/** True when the stored shield record of `colonyIndex` is missing or a sync would change it. */
+function shieldRecordNeedsSync(
+  state: PlanetState,
+  colonyIndex: number,
+  stored: Readonly<ColonyPvpRecord> | undefined,
+  tick: number,
+  shieldDropStage: number,
+): boolean {
+  if (!stored) return true;
+  return applyShieldSyncRules(state, colonyIndex, { ...stored }, tick, shieldDropStage);
+}
+
+export function syncColonyNewcomerShield(
+  state: PlanetState,
+  colonyIndex: number,
+  tick = state.meta.tick,
+  data?: CompiledDataLike,
+): ColonyPvpRecord {
+  const rec = ensureColonyPvpRecord(state, colonyIndex, tick, data);
+  const cfg = resolvePvpConfig(data);
+  const changed = applyShieldSyncRules(state, colonyIndex, rec, tick, cfg.shieldDropStage);
 
   if (changed) {
     const pvpState = getPvpState(state);
@@ -132,9 +159,14 @@ export function isColonyRaidProtected(
   const col = state.colonies[colonyIndex];
   if (!col || col.status === 'eliminated') return false;
 
-  const rec = syncColonyNewcomerShield(state, colonyIndex, tick, data);
-  if (rec.shieldDropped) return false;
+  // Read path: only write the blob when the stored record is missing or actually changes.
   const cfg = resolvePvpConfig(data);
+  const stored = peekPvpState(state).byColony[String(colonyIndex)];
+  const rec: Readonly<ColonyPvpRecord> =
+    stored && !shieldRecordNeedsSync(state, colonyIndex, stored, tick, cfg.shieldDropStage)
+      ? stored
+      : syncColonyNewcomerShield(state, colonyIndex, tick, data);
+  if (rec.shieldDropped) return false;
   if (!rec.manualShieldOverride && getEffectiveColonyStageForShield(state, colonyIndex) >= cfg.shieldDropStage) {
     return false;
   }
@@ -151,8 +183,7 @@ export function getColonyRaidProtectedUntil(
   data?: CompiledDataLike,
 ): number {
   if (!isColonyRaidProtected(state, colonyIndex, tick, data)) return 0;
-  const pvpState = getPvpState(state);
-  return pvpState.byColony[String(colonyIndex)]?.raidProtectedUntil ?? 0;
+  return peekPvpState(state).byColony[String(colonyIndex)]?.raidProtectedUntil ?? 0;
 }
 
 /**

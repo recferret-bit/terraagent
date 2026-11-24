@@ -3,6 +3,8 @@ import type { ProgressEventV1 } from '@terra/contracts';
 import type { PlanetEventOf } from '../../bus/channels.js';
 import { EventBus, type Unsubscribe } from '../../bus/event-bus.js';
 import { FlagsService } from '../../flags/flags.service.js';
+import { JobsService } from '../../jobs/jobs.service.js';
+import type { JobRegistration } from '../../jobs/recurring.js';
 import { ProgressionEventForwarder } from '../../game/progression-events.service.js';
 import { FactsUpdaterService } from '../../progression/facts-updater.service.js';
 import { PRISMA } from '../../db/db.module.js';
@@ -26,7 +28,7 @@ export class MarketProgressionProducer implements OnModuleInit, OnModuleDestroy 
   private readonly unsubs: Unsubscribe[] = [];
   private readonly inflight = new Set<Promise<void>>();
   private replay: MarketFactReplay | undefined;
-  private replayTimer: NodeJS.Timeout | undefined;
+  private replayJob: JobRegistration | undefined;
 
   constructor(
     private readonly bus: EventBus,
@@ -34,6 +36,7 @@ export class MarketProgressionProducer implements OnModuleInit, OnModuleDestroy 
     private readonly forwarder: ProgressionEventForwarder,
     @Optional() private readonly flags?: FlagsService,
     @Optional() @Inject(PRISMA) private readonly prisma?: ReplayDb,
+    @Optional() @Inject(JobsService) private readonly jobs?: JobsService,
   ) {}
 
   onModuleInit(): void {
@@ -58,14 +61,13 @@ export class MarketProgressionProducer implements OnModuleInit, OnModuleDestroy 
   private startReplay(db: ReplayDb): void {
     this.replay = new MarketFactReplay(db, (ev) => this.facts.applyProgressEvent(ev));
     const run = (): void => { const p = this.replayMissingFacts().then(() => undefined).finally(() => this.inflight.delete(p)); this.inflight.add(p); };
-    run();
-    this.replayTimer = setInterval(run, REPLAY_EVERY_MS);
-    this.replayTimer.unref();
+    run(); // boot pass in every process (idempotent per event id); then one pass per period across the cluster
+    this.replayJob = this.jobs?.recurring({ name: 'market.progression-replay', schedule: { everyMs: REPLAY_EVERY_MS }, run: () => this.replayMissingFacts() });
   }
 
-  onModuleDestroy(): void {
-    clearInterval(this.replayTimer);
+  async onModuleDestroy(): Promise<void> {
     for (const u of this.unsubs.splice(0)) u();
+    await this.replayJob?.stop();
   }
 
   /** Resolves when every fact handed to the engine so far is applied (tests, shutdown). */

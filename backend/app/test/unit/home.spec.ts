@@ -336,7 +336,7 @@ describe('Dev planet WebSocket colonyIndex resolution (W01-05)', () => {
     expect(h2.body.colony.colonyIndex).toBe(1);
 
     const c2 = await WsSeatClient.open(wsUrl);
-    c2.send({ t: 'hello', d: { accessToken: g2.accessToken, proto: [1], client: { app: 'game', version: '0.1.0' } } });
+    c2.send({ t: 'hello', d: { accessToken: g2.accessToken, proto: [2], client: { app: 'game', version: '0.1.0' } } });
     await c2.nextAny(['ready']);
     c2.send({ t: 'join', d: { planetId: 'pl_dev' } });
     const welcome = Welcome.parse(await c2.nextAny(['welcome']));
@@ -368,7 +368,7 @@ describe('Dev planet WebSocket colonyIndex resolution (W01-05)', () => {
     const cOutsider = await WsSeatClient.open(wsUrl);
     cOutsider.send({
       t: 'hello',
-      d: { accessToken: gUnseated.accessToken, proto: [1], client: { app: 'game', version: '0.1.0' } },
+      d: { accessToken: gUnseated.accessToken, proto: [2], client: { app: 'game', version: '0.1.0' } },
     });
     await cOutsider.nextAny(['ready']);
     cOutsider.send({ t: 'join', d: { planetId: 'pl_dev' } });
@@ -376,7 +376,7 @@ describe('Dev planet WebSocket colonyIndex resolution (W01-05)', () => {
 
     // a dev session may join it, but without a colony row (pl_dev is no scenario planet) it commands nothing
     const cDev = await WsSeatClient.open(wsUrl);
-    cDev.send({ t: 'hello', d: { accessToken: 'dev:outsider', proto: [1], client: { app: 'game', version: '0.1.0' } } });
+    cDev.send({ t: 'hello', d: { accessToken: 'dev:outsider', proto: [2], client: { app: 'game', version: '0.1.0' } } });
     await cDev.nextAny(['ready']);
     cDev.send({ t: 'join', d: { planetId: 'pl_dev' } });
     expect(Welcome.parse(await cDev.nextAny(['welcome'])).d.colonyId).toBeNull();

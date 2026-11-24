@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ClientMessage, ServerMessage, newId, Welcome, encodeWire, decodeWire, CLOSE_CODES, RejectCode } from '../src';
 
-const hello = { v: 1, t: 'hello', d: { accessToken: 'dev:alice', proto: [1], client: { app: 'game', version: '0.1.0' } } };
+const hello = { v: 1, t: 'hello', d: { accessToken: 'dev:alice', proto: [2], client: { app: 'game', version: '0.1.0' } } };
 const cmd = { v: 1, t: 'cmd', id: newId('cm'), d: { kind: 'dev.ping', args: {} } };
 
 describe('client messages parse strictly (PR-01)', () => {

@@ -47,7 +47,7 @@ class Client {
     return new Client(ws);
   }
   send(msg: object) { this.ws.send(JSON.stringify({ v: 1, ...msg })); }
-  hello(name = 'spec') { this.send({ t: 'hello', d: { accessToken: `dev:${name}`, proto: [1], client: { app: 'game', version: 't' } } }); }
+  hello(name = 'spec') { this.send({ t: 'hello', d: { accessToken: `dev:${name}`, proto: [2], client: { app: 'game', version: 't' } } }); }
   async next(t: string, timeoutMs = 5000): Promise<{ t: string; d: Record<string, unknown> }> {
     const deadline = Date.now() + timeoutMs;
     for (;;) {

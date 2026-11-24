@@ -8,7 +8,7 @@ import type { TunedData } from '../replica/tuneEvent';
 export type ToWorker =
   | { t: 'init'; flags: string[]; /** false: no prediction (`?predict=0`), views are the confirmed state. Default true. */ predict?: boolean }
   | { t: 'welcome'; state: Uint8Array; tick: number; flags: string[]; dataHash: string; simVersion: number; serverTimeMs?: number; colonyId?: string | null; overrides?: BalanceOverrides }
-  | { t: 'delta'; fromTick: number; toTick: number; diff: Uint8Array }
+  | { t: 'delta'; fromTick: number; toTick: number; diff: Uint8Array; own?: Uint8Array[] }
   /** The player sent a command (`cm_` id): it is predicted until its ack is covered by a delta. */
   | { t: 'cmdSent'; id: string; kind: string; args: unknown; sentAtMs: number }
   | { t: 'ack'; id: string; appliedAtTick: number }

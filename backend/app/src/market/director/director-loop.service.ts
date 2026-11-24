@@ -14,6 +14,8 @@ import { EventBus } from '../../bus/event-bus.js';
 import { databaseEnabled } from '../../core/persistence.js';
 import { APP_ENV, type AppEnv } from '../../core/tokens.js';
 import { FlagsService } from '../../flags/flags.service.js';
+import { JobsService } from '../../jobs/jobs.service.js';
+import type { JobRegistration } from '../../jobs/recurring.js';
 import { AwayDigestService } from '../../game/digest/service.js';
 import { AgentWalletPort, type KeyStatus as WalletKey } from '../../near/application/ports/agent-wallet.port.js';
 import { mirrorAmounts } from '../../near/director-key/director-key.allowance.js';
@@ -95,7 +97,7 @@ export class DirectorLoopService implements OnModuleInit, OnModuleDestroy {
   private readonly readings = new Map<string, number>();
   /** One exhaustion event per resource and public key. A replaced key can emit again (BE-75). */
   private readonly stopped = new Set<string>();
-  private timer: ReturnType<typeof setInterval> | null = null;
+  private job: JobRegistration | null = null;
   private terms: DirectorMarketTerms | null | undefined;
 
   constructor(
@@ -107,6 +109,7 @@ export class DirectorLoopService implements OnModuleInit, OnModuleDestroy {
     @Inject(DirectorMarketPort) private readonly market: DirectorMarketPort,
     @Optional() @Inject(APP_ENV) private readonly env?: AppEnv,
     @Optional() @Inject(AwayDigestService) private readonly digests?: AwayDigestService,
+    @Optional() @Inject(JobsService) private readonly jobs?: JobsService,
   ) {}
 
   onModuleInit(): void {
@@ -114,23 +117,23 @@ export class DirectorLoopService implements OnModuleInit, OnModuleDestroy {
     this.start();
   }
 
-  onModuleDestroy(): void {
-    this.stop();
+  onModuleDestroy(): Promise<void> {
+    return this.stop();
   }
 
+  /**
+   * An `instance` job (3.8): every sim-hosting replica sweeps the away colonies of the planets it holds, once per
+   * interval, never two sweeps at once. Without a job service (manual construction) nothing is scheduled.
+   */
   start(intervalMs = DIRECTOR_LOOP_MS): void {
-    if (this.timer) return;
-    this.timer = setInterval(() => {
-      void this.sweep().catch((err: unknown) =>
-        this.log.warn(`director sweep failed: ${err instanceof Error ? err.message : String(err)}`),
-      );
-    }, intervalMs);
-    this.timer.unref?.();
+    if (this.job) return;
+    this.job = this.jobs?.recurring({ name: 'market.director', scope: 'instance', schedule: { everyMs: intervalMs }, run: () => this.sweep() }) ?? null;
   }
 
-  stop(): void {
-    if (this.timer) clearInterval(this.timer);
-    this.timer = null;
+  stop(): Promise<void> {
+    const job = this.job;
+    this.job = null;
+    return job ? job.stop() : Promise.resolve();
   }
 
   async sweep(): Promise<void> {

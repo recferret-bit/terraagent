@@ -1,5 +1,5 @@
-import { Inject, Injectable, Optional } from '@nestjs/common';
-import { MANAGED_AI_MODEL, newId, SCRIPT_AI_MODEL, type AgentDecisionFeedItemV1, type MarketTokenKey, type TradeAllowance } from '@terra/contracts';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
+import { newId, SCRIPT_AI_MODEL, type AgentDecisionFeedItemV1, type MarketTokenKey, type TradeAllowance } from '@terra/contracts';
 import type { PrismaClient } from '@terra/db';
 import { restore, shouldAiGovernColony } from '@terra/sim';
 import { databaseEnabled } from '../../core/persistence.js';
@@ -15,28 +15,25 @@ import { PlayerAiSettingsStore } from '../../profile/player-ai-settings.store.js
 import { isW28Enabled } from '../../near/staking/perks/legacy-ladder.js';
 import { resolvePlanetStakedColonies } from '../../near/staking/staker-perks.js';
 import { isTeeAttestationRejected } from '../adapters/nearai-signature.js';
-import { DEFAULT_NEAR_AI_MODEL, normalizeNearAiModel } from '../nearai-models.js';
 import { evaluateTradeGovernance, shouldAutoFundTradeAccount } from './colony-agent-governance.js';
 import {
   buildSimCommandFromDirective,
   DEFAULT_AGENT_ALLOWANCE,
   deterministicDirective,
-  observationDigest,
   observeColony,
   type AgentDirective,
   type ColonyAgentEvalResult,
   type ColonyObservation,
 } from './colony-agent-types.js';
-import { evaluateBatchWithLlm, type ResolvedDecision } from './batch-llm.js';
-import { ManagedAiGate, type ManagedAiAccess } from './managed-ai-gate.js';
+import type { ResolvedDecision } from './batch-llm.js';
+import { decisionFeedItem } from './colony-decision-feed.js';
+import { ColonyDecisionResolver, type PlayerColonyAiOverride } from './colony-decision-resolver.js';
+import { humanConnectedNow, PlanetHumanActivity, withPlanetClock, type PlanetActivity, type PlanetSeenClock } from './planet-activity.js';
 import { TeeAttestationStore } from './tee-attestation.store.js';
-import { stakingNowMs } from '../../near/staking/perks/perks-deps.js';
+import { PlanetJobsService } from '../../game/lifecycle/planet-jobs.service.js';
+import type { JobRegistration } from '../../jobs/recurring.js';
 
-export interface PlayerColonyAiOverride {
-  readonly playerId?: string;
-  readonly apiKey?: string | null;
-  readonly model?: string;
-}
+export { COLONY_DECISION_COOLDOWN_MS, type PlayerColonyAiOverride } from './colony-decision-resolver.js';
 
 export interface TickPlanetAgentsOptions {
   readonly allowanceByColony?: Record<number, TradeAllowance>;
@@ -45,39 +42,20 @@ export interface TickPlanetAgentsOptions {
   readonly stakedByColony?: Record<number, boolean>;
   readonly useCache?: boolean;
   readonly nowMs?: number;
-}
-
-interface DecisionCtx {
-  readonly playerConfigs: Record<number, PlayerColonyAiOverride>;
-  readonly stakedColonies: Record<number, boolean>;
-  /** Test/dev override (`opts.stakedByColony`): forces the managed path past the wallet gate. */
-  readonly stakedOverride: Record<number, boolean>;
-  readonly enforcePlayerKeyGate: boolean;
-  readonly useCache: boolean;
-  readonly nowMs: number;
-  /** The caller's explicit clock (tests); `undefined` = the gate reads the staking clock. */
-  readonly pinnedNowMs?: number;
-  readonly w28: boolean;
-  readonly playerIdByIndex: Record<number, string | undefined>;
-}
-
-interface CachedColonyDecision {
-  readonly digest: string;
-  readonly atMs: number;
-  readonly cooldownMs?: number;
-  readonly decision: ResolvedDecision;
+  /** Sweep of a planet with no human for 24 h: rules only unless this tick sees a human on it. */
+  readonly idleUnlessHumanPresent?: boolean;
 }
 
 /** Background sweep interval: 3 minutes so NEAR.AI is called infrequently and in batches. */
 export const COLONY_AGENT_LOOP_MS = 180_000;
-/** Minimum cooldown before re-querying NEAR.AI for an unchanged colony state during background sweeps. */
-export const COLONY_DECISION_COOLDOWN_MS = 120_000;
 
 @Injectable()
 export class ColonyAgentLoopService {
   private timer: ReturnType<typeof setInterval> | null = null;
-  private readonly decisionCache = new Map<string, CachedColonyDecision>();
-  private managedGate: ManagedAiGate | null = null;
+  private job: JobRegistration | null = null;
+  private readonly log = new Logger(ColonyAgentLoopService.name);
+  private readonly resolver: ColonyDecisionResolver;
+  private activity: PlanetActivity;
   private decisionRecorder?: (item: Omit<AgentDecisionFeedItemV1, 'id'>) => void;
 
   constructor(
@@ -88,11 +66,20 @@ export class ColonyAgentLoopService {
     @Optional() @Inject(APP_ENV) private readonly env?: AppEnv,
     @Optional() private readonly playerAiStore?: PlayerAiSettingsStore,
     @Optional() private readonly teeStore?: TeeAttestationStore,
-  ) {}
+    @Optional() @Inject(PlanetJobsService) private readonly planetJobs?: PlanetJobsService,
+  ) {
+    this.resolver = new ColonyDecisionResolver(llm, prisma, env);
+    this.activity = new PlanetHumanActivity(prisma, env);
+  }
 
   start(intervalMs?: number): void {
-    if (this.timer) return;
+    if (this.timer || this.job) return;
     const ms = intervalMs ?? (isW28Enabled(this.envBag()) ? 30_000 : COLONY_AGENT_LOOP_MS);
+    // One sweep per planet at a time, on its lease holder, with retries (3.7); the timer is the no-queue fallback.
+    if (intervalMs === undefined && this.planetJobs?.enabled) {
+      this.job = this.planetJobs.register({ name: 'ai.colony-sweep', everyMs: ms, concurrency: 2, run: (id) => this.sweepPlanet(id) });
+      return;
+    }
     this.timer = setInterval(() => {
       void this.sweepLoadedPlanets();
     }, ms);
@@ -102,31 +89,49 @@ export class ColonyAgentLoopService {
   stop(): void {
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
+    void this.job?.stop();
+    this.job = null;
   }
 
   clearCache(): void {
-    this.decisionCache.clear();
+    this.resolver.clear();
   }
 
   clearPlanetCache(planetId: string): void {
-    const prefix = `${planetId}:`;
-    for (const k of [...this.decisionCache.keys()]) {
-      if (k.startsWith(prefix)) this.decisionCache.delete(k);
-    }
+    this.resolver.clearPlanet(planetId);
   }
 
   setDecisionRecorder(fn: (item: Omit<AgentDecisionFeedItemV1, 'id'>) => void): void {
     this.decisionRecorder = fn;
   }
 
+  /** Replaces the "human on this planet in the last 24 h" source of the background sweep. */
+  setPlanetActivity(activity: PlanetActivity): void {
+    this.activity = activity;
+  }
+
+  /** Adds the persisted planet clock (the idle unload's) to the idle rule, so both features agree on "a human was here". */
+  usePlanetClock(clock: PlanetSeenClock): void {
+    this.activity = withPlanetClock(this.activity, clock);
+  }
+
   async sweepLoadedPlanets(): Promise<void> {
     for (const planetId of this.planets.loadedIds()) {
       try {
-        await this.tickPlanetAgents(planetId, { useCache: true });
+        await this.sweepPlanet(planetId);
       } catch {
         // Non-fatal background agent sweep error
       }
     }
+  }
+
+  /**
+   * One background sweep of `planetId` (the `setInterval` today; a job queue may drive it later). A planet with no
+   * human for 24 h runs every colony on the rule-based policy: no LLM call and no managed charge.
+   */
+  async sweepPlanet(planetId: string): Promise<ColonyAgentEvalResult[]> {
+    const recent = await this.activity.recentlyActive(planetId, Date.now());
+    return this.tickPlanetAgents(planetId, { useCache: true, idleUnlessHumanPresent: !recent });
   }
 
   /** Seeds 2 Stage-4 unshielded Rival AI Colonies (`Iron Guild Outpost` + `Crimson Vanguard`) on `planetId`. */
@@ -183,7 +188,10 @@ export class ColonyAgentLoopService {
 
     const playerIdByIndex: Record<number, string | undefined> = {};
     for (const c of state.colonies) if (c) playerIdByIndex[c.index] = c.playerId as string | undefined;
-    const decisions = await this.resolveAllDecisions(planetId, governedObs, {
+    const humanHere = humanConnectedNow(state);
+    if (humanHere) this.activity.noteHumanPresent?.(planetId, nowMs);
+    const decisions = await this.resolver.resolveAll(planetId, governedObs, {
+      rulesOnly: Boolean(opts.idleUnlessHumanPresent) && !humanHere,
       playerConfigs,
       stakedColonies,
       stakedOverride: opts.stakedByColony ?? {},
@@ -201,8 +209,15 @@ export class ColonyAgentLoopService {
         directive: deterministicDirective(obs),
         model: SCRIPT_AI_MODEL,
       };
-      const evalRes = await this.applyColonyDecision(planetId, col, obs, decision, opts, state.meta.tick);
-      resultsByIndex.set(obs.colonyIndex, evalRes);
+      try {
+        resultsByIndex.set(obs.colonyIndex, await this.applyColonyDecision(planetId, col, obs, decision, opts, state.meta.tick));
+      } catch (err) {
+        // The decision was cached before it was applied: forget it, or the next sweeps would skip this colony as
+        // "cached" without ever submitting its command. The other colonies still get theirs.
+        this.resolver.clearColony(planetId, obs.colonyIndex);
+        this.log.warn(`colony decision not applied (${planetId} #${obs.colonyIndex}): ${err instanceof Error ? err.message : String(err)}`);
+        resultsByIndex.set(obs.colonyIndex, { colonyIndex: obs.colonyIndex, colonyId: col.id, governed: true, isBot: obs.isBot, directive: decision.directive, model: decision.model });
+      }
     }
 
     return state.colonies
@@ -216,154 +231,18 @@ export class ColonyAgentLoopService {
     stateColonies: ReadonlyArray<{ readonly index: number; readonly playerId?: unknown } | undefined>,
     overrides?: Record<number, PlayerColonyAiOverride>,
   ): Promise<Record<number, PlayerColonyAiOverride>> {
-    const fromStore = this.playerAiStore
-      ? await this.playerAiStore.resolvePlanetPlayerAiConfigs(planetId, stateColonies)
-      : {};
+    let fromStore: Record<number, PlayerColonyAiOverride> = {};
+    try {
+      if (this.playerAiStore) fromStore = await this.playerAiStore.resolvePlanetPlayerAiConfigs(planetId, stateColonies);
+    } catch (err) {
+      // One unreadable saved key (a rotated KEK, a damaged envelope) must not stop the whole planet's sweeps.
+      this.log.warn(`player AI settings unreadable for ${planetId}: ${err instanceof Error ? err.message : String(err)}`);
+    }
     return { ...fromStore, ...(overrides ?? {}) };
   }
 
   private envBag(): Record<string, string | undefined> {
     return (this.env ?? process.env) as unknown as Record<string, string | undefined>;
-  }
-
-  private botModel(): string {
-    const raw =
-      (this.env?.NEAR_AI_MODEL as string | undefined) ||
-      (this.env?.NEARAI_MODEL as string | undefined) ||
-      (this.env?.AI_MODEL as string | undefined) ||
-      DEFAULT_NEAR_AI_MODEL;
-    return normalizeNearAiModel(raw);
-  }
-
-  private cacheDigestFor(
-    obs: ColonyObservation,
-    playerCfg: PlayerColonyAiOverride | undefined,
-    hasStakerAutopilot: boolean,
-    enforcePlayerKeyGate: boolean,
-  ): string {
-    if (obs.isBot) return `${observationDigest(obs)}|bot:${this.botModel()}`;
-    const apiKey = playerCfg?.apiKey?.trim();
-    if (apiKey) {
-      const model = normalizeNearAiModel(playerCfg?.model || DEFAULT_NEAR_AI_MODEL);
-      return `${observationDigest(obs)}|player:${apiKey.slice(-4)}:${model}`;
-    }
-    if (hasStakerAutopilot || !enforcePlayerKeyGate) {
-      return `${observationDigest(obs)}|staker:${MANAGED_AI_MODEL}`;
-    }
-    return `${observationDigest(obs)}|det`;
-  }
-
-  /** Stakers' managed turn (`W28`: through the wallet gate; `W20` or a test override: unconditional `z-ai/glm-5.3-flash`). */
-  private async resolveManagedSingle(
-    planetId: string,
-    obs: ColonyObservation,
-    ctx: DecisionCtx,
-    override: boolean,
-  ): Promise<ResolvedDecision> {
-    if (!ctx.w28 || override) {
-      return (await evaluateBatchWithLlm(this.llm, [obs], { model: MANAGED_AI_MODEL, usedPlayerKey: false })).get(obs.colonyIndex)!;
-    }
-    // the gate runs on the staking clock (fee warmup, AI day, slot ledger), like its `view()`; `ctx.nowMs` stays the
-    // wall clock of the decision-cache cooldown, unless a caller pinned it (tests)
-    const access = await this.gate().admit(
-      { id: obs.colonyId, planetId, colonyIndex: obs.colonyIndex, playerId: ctx.playerIdByIndex[obs.colonyIndex] },
-      ctx.pinnedNowMs ?? stakingNowMs(),
-    );
-    if (access.mode === 'script') {
-      return { directive: deterministicDirective(obs), model: SCRIPT_AI_MODEL, usedPlayerKey: false, aiAccess: access };
-    }
-    const res = (await evaluateBatchWithLlm(this.llm, [obs], { model: access.model, usedPlayerKey: false })).get(obs.colonyIndex)!;
-    return { ...res, aiAccess: access };
-  }
-
-  private gate(): ManagedAiGate {
-    this.managedGate ??= new ManagedAiGate(this.prisma, this.env);
-    return this.managedGate;
-  }
-
-  private async resolveAllDecisions(
-    planetId: string,
-    observations: readonly ColonyObservation[],
-    ctx: DecisionCtx,
-  ): Promise<Map<number, ResolvedDecision>> {
-    const { playerConfigs, enforcePlayerKeyGate, useCache, nowMs } = ctx;
-    const out = new Map<number, ResolvedDecision>();
-    const botBatch: ColonyObservation[] = [];
-    const stakerSingles: ColonyObservation[] = [];
-    const playerBatches = new Map<string, { apiKey: string; model: string; list: ColonyObservation[] }>();
-
-    for (const obs of observations) {
-      const cacheKey = `${planetId}:${obs.colonyIndex}`;
-      const playerCfg = playerConfigs[obs.colonyIndex];
-      const hasStakerAutopilot = this.isManagedCandidate(obs, ctx);
-      const digest = this.cacheDigestFor(obs, playerCfg, hasStakerAutopilot, enforcePlayerKeyGate);
-      const cached = this.decisionCache.get(cacheKey);
-      const cooldownMs = cached?.cooldownMs ?? COLONY_DECISION_COOLDOWN_MS;
-      if (useCache && cached && nowMs - cached.atMs < cooldownMs && cached.digest === digest && !obs.pendingOfferId) {
-        out.set(obs.colonyIndex, { ...cached.decision, cached: true });
-        continue;
-      }
-      if (obs.isBot) {
-        botBatch.push(obs);
-        continue;
-      }
-      const apiKey = playerCfg?.apiKey?.trim();
-      if (apiKey) {
-        const model = normalizeNearAiModel(playerCfg?.model || DEFAULT_NEAR_AI_MODEL);
-        const groupKey = `${apiKey}::${model}`;
-        const existing = playerBatches.get(groupKey);
-        if (existing) existing.list.push(obs);
-        else playerBatches.set(groupKey, { apiKey, model, list: [obs] });
-      } else if (hasStakerAutopilot || !enforcePlayerKeyGate) {
-        stakerSingles.push(obs);
-      } else {
-        const fallback: ResolvedDecision = { directive: deterministicDirective(obs), model: SCRIPT_AI_MODEL, usedPlayerKey: false };
-        out.set(obs.colonyIndex, fallback);
-        this.decisionCache.set(cacheKey, { digest, atMs: nowMs, decision: fallback });
-      }
-    }
-
-    const saveBatch = (list: readonly ColonyObservation[], resMap: Map<number, ResolvedDecision>) => {
-      for (const obs of list) {
-        const dec = resMap.get(obs.colonyIndex)!;
-        const w28Managed = ctx.w28 && !obs.isBot && !ctx.stakedOverride[obs.colonyIndex];
-        out.set(obs.colonyIndex, dec);
-        this.decisionCache.set(`${planetId}:${obs.colonyIndex}`, {
-          digest: this.cacheDigestFor(obs, playerConfigs[obs.colonyIndex], this.isManagedCandidate(obs, ctx), enforcePlayerKeyGate),
-          atMs: nowMs,
-          cooldownMs: (w28Managed ? this.managedGate?.cooldownMsOf(obs.colonyId) : undefined) ?? COLONY_DECISION_COOLDOWN_MS,
-          decision: dec,
-        });
-      }
-    };
-
-    if (botBatch.length > 0) saveBatch(botBatch, await evaluateBatchWithLlm(this.llm, botBatch, { model: this.botModel(), usedPlayerKey: false }));
-    for (const obs of stakerSingles) {
-      const dec = await this.resolveManagedSingle(
-        planetId,
-        obs,
-        ctx,
-        Boolean(ctx.stakedOverride[obs.colonyIndex] || !enforcePlayerKeyGate),
-      );
-      saveBatch([obs], new Map([[obs.colonyIndex, dec]]));
-    }
-    for (const group of playerBatches.values()) {
-      const res = await evaluateBatchWithLlm(this.llm, group.list, { apiKey: group.apiKey, model: group.model, usedPlayerKey: true });
-      const byok: ManagedAiAccess = { mode: 'byok', model: group.model };
-      saveBatch(group.list, new Map([...res].map(([idx, d]) => [idx, { ...d, aiAccess: byok }])));
-    }
-
-    return out;
-  }
-
-  /**
-   * A human colony without a BYOK key may use managed AI. `W20`: only wallets staking `>= 10 NEAR` (`stakedColonies`).
-   * `W28`: every such colony asks the wallet gate (stake budget, slots, or the verified-pilot free trial); a test
-   * override in `stakedByColony` still forces the managed path.
-   */
-  private isManagedCandidate(obs: ColonyObservation, ctx: DecisionCtx): boolean {
-    if (ctx.stakedColonies[obs.colonyIndex]) return true;
-    return ctx.w28 && ctx.enforcePlayerKeyGate && !obs.isBot && !ctx.playerConfigs[obs.colonyIndex]?.apiKey?.trim();
   }
 
   private async applyColonyDecision(
@@ -391,10 +270,12 @@ export class ColonyAgentLoopService {
         });
 
     if (!cached && attestation && this.teeStore) {
-      await this.teeStore.record({ colonyId: col.id, planetId, model: model ?? this.botModel(), directive, attestation });
+      await this.teeStore.record({ colonyId: col.id, planetId, model: model ?? this.resolver.botModel(), directive, attestation });
     }
 
     if (guardrailRejected) {
+      // a managed turn whose answer was blocked by the attestation check is given back
+      if (guardrailRejected === 'TEE_ATTESTATION_FAILED' && !cached) await this.resolver.refundTurn(aiAccess);
       this.emitRecordedDecision(planetId, col, obs, decision, null, 'rejected', `${directive.action} (blocked: ${guardrailRejected})`, stateTick, opts.nowMs, { guardrailRejected });
       return {
         colonyIndex: col.index,
@@ -453,24 +334,7 @@ export class ColonyAgentLoopService {
     nowMs?: number,
     extra?: Record<string, unknown>,
   ): void {
-    this.decisionRecorder?.({
-      planetId,
-      sectorId: obs.sectorId ?? 'sec_0_0',
-      colonyId: col.id,
-      colonyIndex: col.index,
-      actorId: obs.isBot ? `bot:${col.id}` : col.playerId ?? null,
-      isBot: obs.isBot,
-      actorSource: 'colony_agent',
-      decisionKind: decision.directive.action,
-      summary,
-      rationale: decision.directive.rationale,
-      commandId: cmd?.commandId ?? null,
-      commandKind: cmd?.kind ?? null,
-      payload: { model: decision.model, directive: decision.directive, usedPlayerKey: decision.usedPlayerKey, ...(extra ?? {}) },
-      outcome,
-      atTick,
-      createdAtMs: nowMs ?? Date.now(),
-    });
+    this.decisionRecorder?.(decisionFeedItem({ planetId, col, obs, decision, cmd, outcome, summary, atTick, nowMs, extra }));
   }
 
   private async ensureTradeAccountFunded(

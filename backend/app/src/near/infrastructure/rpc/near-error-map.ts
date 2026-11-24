@@ -34,12 +34,18 @@ const PANIC_CODE_MAP: readonly [string, NearErrorCode][] = [
 
 /** True when an error represents deterministic chain/contract state rather than an RPC node outage. */
 export function isDeterministicChainError(err: unknown): boolean {
+  // near-api-js 7 types what a contract or the node's state answered: `ContractMethodNotFoundError` ("Contract method
+  // is not found at block height N"), `ContractCodeDoesNotExistError`, ... Every node gives the same answer.
+  if (err instanceof Error && /^Contract[A-Za-z]*Error$/.test(err.name)) return true;
   const text = formatErrorText(err);
   if (PANIC_CODE_MAP.some(([needle]) => text.includes(needle))) return true;
   return (
     text.includes('UNKNOWN_TRANSACTION') ||
     text.includes('UNKNOWN_ACCOUNT') ||
     text.includes('Contract panicked') ||
+    // A view that ran and failed inside the contract (`GuestPanic` on a bad argument, `MethodNotFound` on an older
+    // deployment) answers the same on every node: retrying it across endpoints only hides the real error.
+    text.includes('wasm execution failed') ||
     text.includes('FunctionCallError') ||
     text.includes('ActionError') ||
     text.includes('InvalidTxError') ||

@@ -1,6 +1,6 @@
 import { COARSE_DT, TICK_MS } from '../../src/kernel/constants';
 import { describe, expect, it } from 'vitest';
-import { COARSE_STEP_MS, MAX_CATCHUP, PlanetScheduler } from '../../src/host/scheduler';
+import { COARSE_STEP_MS, HEAVY_MAX_HOLD_MS, MAX_CATCHUP, MAX_DEBT_SLOTS, PlanetScheduler, SINGLE_PLANET_SCHEDULE } from '../../src/host/scheduler';
 
 /** Fake clock + timer: `advance(ms)` jumps time, firing due timers in order; `jump(ms)` models a blocked thread. */
 function rig() {
@@ -28,6 +28,35 @@ function rig() {
   return { s, steps, advance, jump, get now() { return now; } };
 }
 
+/**
+ * Fake clock where every engine step of a planet costs `cost[id]` ms of thread time (a step blocks the thread), and the
+ * timer fires as soon as it is due (a yield is free). `log` keeps, per step, when it started and which slot it served.
+ */
+function costRig(cost: Record<string, number>, opts: { demoteAfterSlowSteps?: number } = {}) {
+  let now = 0;
+  let timer: { at: number; fn: () => void } | undefined;
+  const log: { id: string; dt: number; startMs: number; dueMs: number }[] = [];
+  const s: PlanetScheduler = new PlanetScheduler({
+    now: () => now,
+    schedule: (fn, delay) => { const t = { at: now + delay, fn }; timer = t; return () => { if (timer === t) timer = undefined; }; },
+    step: (id, dt) => { log.push({ id, dt, startMs: now, dueMs: s.info(id)!.nextDueMs }); now += cost[id] ?? 0; },
+    ...opts,
+  });
+  const runUntil = (end: number) => {
+    while (timer && timer.at <= end) {
+      const t = timer;
+      timer = undefined;
+      now = Math.max(now, t.at);
+      t.fn();
+    }
+    now = Math.max(now, end);
+  };
+  return { s, log, runUntil, get now() { return now; } };
+}
+
+/** Runs turns until nothing is due (what the timer loop does between two due times). */
+const drain = (s: PlanetScheduler) => { for (let i = 0; i < 200 && s.runPass().steps > 0;) i++; };
+
 describe('PlanetScheduler', () => {
   it('5 TPS gives 5 steps per simulated second', () => {
     const r = rig();
@@ -42,7 +71,7 @@ describe('PlanetScheduler', () => {
     const r = rig();
     r.s.add('a');
     r.s.start();
-    // late-firing timer: advance in 7 ms chunks so passes run up to 6 ms late
+    // late-firing timer: advance in 7 ms chunks so turns run up to 6 ms late
     const end = 10_000_000 - 1; // first step is due at t=0, so [0, 10 000 s) holds exactly 50 000 slots
     let t = 0;
     for (; t + 7 <= end; t += 7) r.advance(7);
@@ -50,7 +79,7 @@ describe('PlanetScheduler', () => {
     expect(r.steps.length).toBe(10_000 * 5);
   });
 
-  it('after a 2 s block steps at most 5 per pass, lag rises then falls to 0', () => {
+  it('after a 2 s block steps one slot per planet per turn, lag rises then falls to 0', () => {
     const r = rig();
     r.s.add('a');
     r.s.add('b');
@@ -59,18 +88,17 @@ describe('PlanetScheduler', () => {
     r.jump(2000);
     const lag: number[] = [];
     const per: number[] = [];
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < 14; i++) {
       const before = r.steps.length;
       const rep = r.s.runPass();
       per.push(r.steps.length - before);
       lag.push(rep.maxLag);
       expect(rep.maxPlanetSteps).toBeLessThanOrEqual(MAX_CATCHUP);
     }
-    console.log('lag series', lag.join(','), 'steps per pass', per.join(','));
     expect(lag[0]).toBeGreaterThanOrEqual(5);
     expect(lag[0]).toBeGreaterThan(lag[1]!);
     expect(lag.at(-1)).toBe(0);
-    expect(Math.max(...per)).toBeLessThanOrEqual(MAX_CATCHUP * 2);
+    expect(Math.max(...per)).toBeLessThanOrEqual(2); // one slot each for two planets
   });
 
   it('coarse mode steps dt=COARSE_DT once per second', () => {
@@ -112,6 +140,158 @@ describe('PlanetScheduler', () => {
     expect(r.steps.length).toBe(5);
     expect(seen).toEqual([10, 1]);
   });
+
+  it('reports every slot through onStep before the next planet steps', () => {
+    const r = rig();
+    const order: string[] = [];
+    r.s.onStep = (id, rep) => { order.push(`${id}:${rep.steps}`); expect(r.steps.at(-1)?.id).toBe(id); };
+    r.s.add('a');
+    r.s.add('b');
+    r.s.runPass();
+    expect(order.sort()).toEqual(['a:1', 'b:1']);
+  });
+});
+
+describe('fairness: a slow planet never stalls a fast one', () => {
+  const SLOW = 300;
+  const FAST = 2;
+
+  it('a 300 ms planet delays a 2 ms planet by less than one tick, and the fast one keeps 5 TPS', () => {
+    const r = costRig({ slow: SLOW, fast: FAST }, { demoteAfterSlowSteps: 0 }); // no demotion: the worst case
+    r.s.add('slow');
+    r.s.add('fast');
+    r.s.setPlayers('fast', true);
+    r.s.start();
+    r.runUntil(20_000);
+    const fast = r.log.filter((x) => x.id === 'fast' && x.startMs >= 2000);
+    const lateness = fast.map((x) => x.startMs - x.dueMs);
+    expect(Math.max(...lateness)).toBeLessThan(TICK_MS); // the slow slot starts right after the fast one stepped
+    // no slot lost: 5 per second over [2 s, 20 s)
+    expect(fast.length).toBeGreaterThanOrEqual(18 * 5 - 1);
+    expect(r.s.info('fast')).toMatchObject({ droppedSlots: 0 });
+    expect(r.s.info('slow')!.droppedSlots).toBeGreaterThan(0); // the slow one cannot keep up: its debt is capped
+  });
+
+  it('a command for the fast planet waits at most one tick longer than on an idle thread', () => {
+    const r = costRig({ slow: SLOW, fast: FAST }, { demoteAfterSlowSteps: 0 });
+    r.s.add('slow');
+    r.s.add('fast');
+    r.s.start();
+    r.runUntil(20_000);
+    const fastStarts = r.log.filter((x) => x.id === 'fast').map((x) => x.startMs);
+    // a command arriving at time t is applied (and acked) by the first fast step starting after t
+    let worst = 0;
+    for (let t = 1000; t < 19_000; t += 37) {
+      const applied = fastStarts.find((s) => s >= t)!;
+      worst = Math.max(worst, applied + FAST - t);
+    }
+    // idle thread: the next slot, at most one tick away; here at most one more tick
+    expect(worst).toBeLessThanOrEqual(TICK_MS + TICK_MS + FAST);
+  });
+
+  it('two slow planets with players share the thread; a player-less fast planet still gets every slot', () => {
+    const r = costRig({ p1: SLOW, p2: SLOW, bg: FAST }, { demoteAfterSlowSteps: 0 });
+    for (const id of ['p1', 'p2', 'bg']) r.s.add(id);
+    r.s.setPlayers('p1', true);
+    r.s.setPlayers('p2', true);
+    r.s.start();
+    r.runUntil(30_000);
+    const count = (id: string) => r.log.filter((x) => x.id === id && x.startMs >= 5000).length;
+    expect(Math.abs(count('p1') - count('p2'))).toBeLessThanOrEqual(2);
+    expect(count('bg')).toBeGreaterThanOrEqual(25 * 5 - 2);
+    expect(Math.max(...r.log.filter((x) => x.id === 'bg' && x.startMs >= 5000).map((x) => x.startMs - x.dueMs))).toBeLessThanOrEqual(TICK_MS + FAST * 2);
+  });
+
+  it('a heavy planet is not starved when light planets leave no gap (staggered phases)', () => {
+    const cost: Record<string, number> = { heavy: SLOW, watched: SLOW };
+    for (let i = 0; i < 12; i++) cost[`l${i}`] = FAST;
+    const r = costRig(cost, { demoteAfterSlowSteps: 0 });
+    r.s.add('heavy');
+    r.s.add('watched');
+    r.s.setPlayers('watched', true);
+    for (let i = 0; i < 12; i++) { r.runUntil(r.now + 17); r.s.add(`l${i}`); } // due every 200 ms, 17 ms apart
+    r.s.start();
+    r.runUntil(30_000);
+    const starts = (id: string) => r.log.filter((x) => x.id === id && x.startMs >= 5000).map((x) => x.startMs);
+    const maxGap = (xs: number[]) => Math.max(...xs.slice(1).map((t, i) => t - xs[i]!));
+    // no gap ever: each waits out its hold, the watched one (one tick) far more often than the other (1 s)
+    expect(maxGap(starts('heavy'))).toBeLessThanOrEqual(2 * HEAVY_MAX_HOLD_MS);
+    expect(maxGap(starts('watched'))).toBeLessThanOrEqual(HEAVY_MAX_HOLD_MS);
+    expect(starts('watched').length).toBeGreaterThan(starts('heavy').length);
+    expect(starts('l0').length).toBeGreaterThanOrEqual(25 * 5 - 2);
+  });
+});
+
+describe('debt cap and demotion', () => {
+  it('a planet that owes more than the cap skips the oldest slots, keeps its phase, and counts them', () => {
+    const r = rig();
+    r.s.add('a');
+    r.s.start();
+    r.advance(1000 - 1);
+    const phase = r.s.info('a')!.nextDueMs % TICK_MS;
+    r.jump(60_000); // 300 slots owed
+    r.s.runPass();
+    const info = r.s.info('a')!;
+    expect(info.lagSteps).toBeLessThanOrEqual(MAX_DEBT_SLOTS);
+    expect(info.droppedSlots).toBeGreaterThanOrEqual(300 - MAX_DEBT_SLOTS - 1);
+    expect(r.s.droppedSlots).toBe(info.droppedSlots);
+    expect(info.nextDueMs % TICK_MS).toBe(phase);
+    drain(r.s);
+    expect(r.s.info('a')!.lagSteps).toBe(0);
+  });
+
+  it('demotes a slow planet nobody watches to coarse and reports it; never one with players', () => {
+    const r = costRig({ slow: 300, watched: 300 });
+    const demoted: string[] = [];
+    r.s.onDemote = (id) => demoted.push(id);
+    r.s.add('slow');
+    r.s.add('watched');
+    r.s.setPlayers('watched', true);
+    r.s.start();
+    r.runUntil(10_000);
+    expect(demoted).toEqual(['slow']);
+    expect(r.s.info('slow')).toMatchObject({ mode: 'coarse', demoted: true });
+    expect(r.s.info('watched')).toMatchObject({ mode: 'active', demoted: false });
+    expect(r.log.filter((x) => x.id === 'slow').at(-1)!.dt).toBe(COARSE_DT);
+  });
+
+  it('a player joining (or presence switching to active) lifts a demotion', () => {
+    const r = costRig({ slow: 300 });
+    r.s.add('slow');
+    r.s.start();
+    r.runUntil(5000);
+    expect(r.s.info('slow')!.demoted).toBe(true);
+    r.s.setPlayers('slow', true);
+    expect(r.s.info('slow')).toMatchObject({ mode: 'active', demoted: false });
+    r.s.setPlayers('slow', false);
+    r.s.setMode('slow', 'coarse');
+    expect(r.s.info('slow')!.demoted).toBe(false); // a presence switch is not a demotion
+  });
+
+  it('a fast planet is never demoted', () => {
+    const r = costRig({ a: 20 });
+    r.s.add('a');
+    r.s.start();
+    r.runUntil(10_000);
+    expect(r.s.info('a')).toMatchObject({ mode: 'active', demoted: false, droppedSlots: 0 });
+    expect(r.s.info('a')!.avgStepMs).toBeCloseTo(20, 5);
+  });
+});
+
+describe('single-planet host preset (browser ?host=local)', () => {
+  it('a throttled timer (one turn per second) still keeps 5 TPS, and a long freeze is caught up, not dropped', () => {
+    let now = 0;
+    let steps = 0;
+    const s = new PlanetScheduler({ now: () => now, schedule: () => () => undefined, step: () => { steps++; }, ...SINGLE_PLANET_SCHEDULE });
+    s.add('local');
+    for (let i = 0; i < 10; i++) { s.runPass(); now += 1000; }
+    expect(steps).toBe(1 + 9 * 5); // slots 0..9000, all on time
+    expect(s.info('local')!.lagSteps).toBeLessThanOrEqual(1);
+    now += 60_000;
+    const rep = s.runPass();
+    expect(rep.maxPlanetSteps).toBe(5);
+    expect(s.info('local')!.droppedSlots).toBe(0);
+  });
 });
 
 describe('time warp thread budget cap', () => {
@@ -119,7 +299,7 @@ describe('time warp thread budget cap', () => {
   function slow(costMs: number) {
     let now = 0;
     const s = new PlanetScheduler({ now: () => now, schedule: () => () => undefined, step: () => { now += costMs; } });
-    return { s, tick: (ms: number) => { now += ms; s.runPass(); } };
+    return { s, tick: (ms: number) => { now += ms; s.runPass(); }, catchUp: (ms: number) => { now += ms; drain(s); } };
   }
 
   it('halves the effective warp while the planet stays behind, and reports it; the request stays', () => {
@@ -137,7 +317,63 @@ describe('time warp thread budget cap', () => {
     const r = slow(1);
     r.s.add('a');
     r.s.setWarp('a', 10);
-    for (let i = 0; i < 50; i++) r.tick(200);
+    for (let i = 0; i < 50; i++) r.catchUp(200);
     expect(r.s.info('a')).toMatchObject({ warp: 10, warpRequested: 10 });
+  });
+});
+
+/** Deterministic thread model: a step advances the clock by its cost; timers fire in order; scripted calls are timers too. */
+function threadModel(costs: Record<string, number>, script: Array<[number, (s: PlanetScheduler) => void]>, runMs: number) {
+  let now = 0;
+  let seq = 0;
+  const timers: { at: number; seq: number; fn: () => void; dead: boolean }[] = [];
+  const stepsAt: Record<string, number[]> = {};
+  const s = new PlanetScheduler({
+    now: () => now,
+    schedule: (fn, delay) => { const t = { at: now + Math.max(0, delay), seq: seq++, fn, dead: false }; timers.push(t); return () => { t.dead = true; }; },
+    step: (id) => { (stepsAt[id] ??= []).push(now); now += costs[id]!; },
+  });
+  s.start();
+  for (const [at, fn] of script) timers.push({ at, seq: seq++, fn: () => fn(s), dead: false });
+  while (now < runMs) {
+    const t = timers.filter((x) => !x.dead).sort((a, b) => a.at - b.at || a.seq - b.seq)[0];
+    if (!t) break;
+    timers.splice(timers.indexOf(t), 1);
+    now = t.at > now ? t.at : now + 0.01;
+    t.fn();
+  }
+  const rate = (id: string, from: number, to: number) => (stepsAt[id] ?? []).filter((x) => x >= from && x < to).length / ((to - from) / 1000);
+  return { s, rate };
+}
+
+describe('PlanetScheduler: a heavy planet always keeps stepping (hold time-box is per planet)', () => {
+  const watched = (id: string) => (s: PlanetScheduler) => { s.add(id); s.setPlayers(id, true); };
+
+  it('an unwatched coarse 150 ms planet next to a 60 ms heavy planet that keeps finding gaps is not starved', () => {
+    // W0/W1: light watched planets half a tick apart. M fits the ~90 ms gaps between them every tick; C needs 135 ms.
+    const r = threadModel({ W0: 10, W1: 10, M: 60, C: 150 }, [
+      [0, watched('W0')], [100, watched('W1')],
+      [1000, (s) => { s.add('C'); s.setMode('C', 'coarse'); }], [1003, watched('M')],
+    ], 300_000);
+    expect(r.rate('C', 20_000, 300_000)).toBeGreaterThan(0.5); // one coarse slot a second is its full rate
+    expect(r.rate('M', 20_000, 300_000)).toBeGreaterThan(4);
+    expect(r.rate('W0', 20_000, 300_000)).toBeGreaterThan(4.9);
+  });
+
+  it('a watched 100 ms planet next to two watched 60 ms planets and three light ones is not starved', () => {
+    const r = threadModel({ L0: 5, L1: 5, L2: 5, M0: 60, M1: 60, H: 100 }, [
+      [0, (s) => s.add('L0')], [70, (s) => s.add('L1')], [140, (s) => s.add('L2')],
+      [1000, watched('M0')], [1001, watched('M1')], [1002, watched('H')],
+    ], 300_000);
+    expect(r.rate('H', 20_000, 300_000)).toBeGreaterThan(1); // the thread is over capacity: H is slow, never stopped
+    expect(r.s.info('H')!.lagSteps).toBeLessThanOrEqual(25);
+  });
+
+  it('planets under a quarter tick are never held back for each other', () => {
+    const r = threadModel({ A: 30, B: 35, C: 15, D: 15 }, [
+      [0, watched('A')], [50, watched('B')], [100, watched('C')], [150, watched('D')],
+    ], 60_000);
+    for (const id of ['A', 'B', 'C', 'D']) expect(r.rate(id, 5_000, 60_000)).toBeGreaterThan(4.95);
+    expect(r.s.info('A')!.droppedSlots + r.s.info('B')!.droppedSlots).toBe(0);
   });
 });

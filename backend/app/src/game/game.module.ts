@@ -5,7 +5,7 @@ import type { PrismaClient } from '@terra/db';
 import { defineEnv } from '@terra/config';
 import { DEV_PLANET_CAPACITY, DEV_PLANET_RADIUS, DEV_PLANET_TYPE, devPlanetSeedFor, mergeOverrides, type BalanceOverrides } from '@terra/sim';
 import type { Logger } from 'pino';
-import { Counter, Gauge } from 'prom-client';
+import { Gauge } from 'prom-client';
 import { z } from 'zod';
 import { EventBus } from '../bus/event-bus';
 import { AiModule } from '../ai/ai.module';
@@ -24,7 +24,7 @@ import { layerLogger } from '../core/logging/logger';
 import { APP_ENV, LOGGER, type AppEnv } from '../core/tokens';
 import { EconomyActivationService } from '../economy/activation/activation.service';
 import { installAwayPolicyMetric } from './away-rejections';
-import { installPlanetModeGauge } from './planet-mode-metric';
+import { installThreadMetrics } from './metrics/thread-metrics';
 import { EconomyActivationBridge, STATIC_OVERRIDES, SWAPPER } from './economy-activation-bridge';
 import { ProfileSwapper } from './profile-swap';
 import { EconomyModule } from '../economy/economy.module';
@@ -41,6 +41,9 @@ import { SimClusterService } from './cluster/sim-cluster.service';
 import { PlanetLiveStateController } from './planet-live-state.controller';
 import { devPlanetIds, devPlanetsToGenerate } from './dev-planets';
 import { GamePlanets } from './game-planets.service';
+import { planetCapacityGate } from './lifecycle/planet-cap';
+import { PlanetJobsService } from './lifecycle/planet-jobs.service';
+import { PlanetLifecycleService } from './lifecycle/planet-lifecycle.service';
 import { DevPresence } from './presence/dev-presence';
 import { HardModeClock } from './presence/hard-mode-clock';
 import { gameLandingHost } from './home-landing-host';
@@ -105,6 +108,12 @@ export const env = defineEnv('game', {
   TA_INTERNAL_URL: z.string().optional(),
   /** Shared internal secret authenticating cluster RPC calls (`/v1/internal/sim/*`). */
   TA_INTERNAL_SECRET: z.string().optional(),
+  /** Most planets loaded at once, cluster-wide (3.4); unset = 4 per sim thread. At the cap new players queue. */
+  TA_PLANET_CAP: z.coerce.number().int().positive().optional(),
+  /** Hours without a human socket before a planet is snapshotted and unloaded (3.5); 0 = never. */
+  TA_PLANET_IDLE_UNLOAD_H: z.coerce.number().min(0).default(24),
+  /** Seconds between idle checks of each loaded planet (a planet job on its lease holder). */
+  TA_PLANET_IDLE_CHECK_S: z.coerce.number().min(1).default(300),
 });
 
 const POOL = Symbol('SIM_THREAD_POOL');
@@ -160,6 +169,8 @@ const POOL = Symbol('SIM_THREAD_POOL');
     SimClusterService,
     DevSpectatorService,
     ProgressionEventForwarder,
+    PlanetJobsService,
+    PlanetLifecycleService,
     HardModeClock,
     DevPresence,
     TeeAttestationStore,
@@ -185,6 +196,8 @@ const POOL = Symbol('SIM_THREAD_POOL');
     SnapshotService,
     SimClusterService,
     DevSpectatorService,
+    PlanetJobsService,
+    PlanetLifecycleService,
     AwayDigestService,
     HardModeClock,
     DevPresence,
@@ -198,6 +211,7 @@ export class GameModule implements OnApplicationBootstrap, BeforeApplicationShut
   private unsubHomeSeat: (() => void) | undefined;
   private unsubRecovery: (() => void) | undefined;
   private unsubAntiCheat: (() => void) | undefined;
+  private unsubThreadMetrics: (() => void) | undefined;
   private readonly log: Logger;
 
   constructor(
@@ -220,6 +234,7 @@ export class GameModule implements OnApplicationBootstrap, BeforeApplicationShut
     private readonly simHistory: SimHistoryService,
     private readonly simLease: SimLeaseService,
     private readonly simCluster: SimClusterService,
+    private readonly lifecycle: PlanetLifecycleService,
     @Optional() private readonly httpAdapterHost?: HttpAdapterHost,
     @Optional() private readonly homeService?: HomeService,
     @Optional() private readonly antiCheat?: SectorAntiCheatService,
@@ -257,6 +272,7 @@ export class GameModule implements OnApplicationBootstrap, BeforeApplicationShut
     installRestartFastRunMetric(this.planets, this.metrics.registry);
     this.wireFastRunAlerts();
     this.colonyAgentLoop.setDecisionRecorder((d) => this.simHistory.recordExternalDecision(d));
+    this.colonyAgentLoop.usePlanetClock(this.lifecycle.store);
     this.simCluster.attachHttpServer(this.httpAdapterHost?.httpAdapter?.getHttpServer());
     if (this.simLease.canHostSim()) {
       await this.simLease.clearBootStaleEndpoints();
@@ -270,6 +286,7 @@ export class GameModule implements OnApplicationBootstrap, BeforeApplicationShut
       await Promise.all(ids.map((id) => this.snapshots.loadNew(id, devOptsFor(id)).catch((e: unknown) => { if (!(e instanceof PlanetHeldError)) throw e; })));
       this.simLease.startLoop({
         onReclaim: async (planetId) => {
+          if (await this.lifecycle.keepDormant(planetId)) return this.simLease.releasePlanet(planetId);
           const outcome = await this.snapshots.restore(planetId);
           if (outcome !== 'restored') await this.simLease.releasePlanet(planetId);
         },
@@ -312,28 +329,14 @@ export class GameModule implements OnApplicationBootstrap, BeforeApplicationShut
             },
       ),
     );
+    home.setCapacityGate(planetCapacityGate(this.lifecycle.config.cap, this.planets, this.simLease));
     home.setAwayHeadline(this.digests);
     home.setHardModeClock(this.hardMode);
   }
 
   private registerPoolMetrics(pool: SimThreadPool): void {
     const reg = this.metrics.registry;
-    new Gauge({ name: 'ta_game_threads', help: 'Live sim threads', registers: [reg], collect() { this.set(pool.live); } });
-    new Gauge({
-      name: 'ta_game_planets', help: 'Planets loaded per sim thread', labelNames: ['thread'], registers: [reg],
-      async collect() {
-        this.reset();
-        for (const s of await pool.stats()) this.set({ thread: String(s.thread) }, s.planets.length);
-      },
-    });
-    installPlanetModeGauge(reg, () => pool.stats());
-    new Gauge({
-      name: 'ta_game_tick_lag_steps', help: 'Max steps a planet is behind its due time, per sim thread', labelNames: ['thread'], registers: [reg],
-      async collect() {
-        this.reset();
-        for (const s of await pool.stats()) this.set({ thread: String(s.thread) }, s.maxLag);
-      },
-    });
+    this.unsubThreadMetrics = installThreadMetrics(pool, reg, this.log); // cached thread stats: a scrape never waits (0.6)
     const planets = this.planets;
     new Gauge({
       name: 'ta_game_warp', help: 'Effective dev time warp per planet (only planets above 1)', labelNames: ['planet'], registers: [reg],
@@ -345,13 +348,6 @@ export class GameModule implements OnApplicationBootstrap, BeforeApplicationShut
     installAwayPolicyMetric(reg);
     installNotifyMetrics(reg);
     installDigestRowsGauge(reg, () => this.digests.rowCount());
-    new Counter({
-      name: 'ta_game_steps_total', help: 'Engine steps executed per sim thread', labelNames: ['thread'], registers: [reg],
-      async collect() {
-        this.reset();
-        for (const s of await pool.stats()) this.inc({ thread: String(s.thread) }, s.steps);
-      },
-    });
     this.readiness.register('simThreads', () => {
       if (pool.live < pool.size) throw new Error(`${pool.size - pool.live} of ${pool.size} sim threads down`); // BE-11
       return pool.live;
@@ -428,6 +424,7 @@ export class GameModule implements OnApplicationBootstrap, BeforeApplicationShut
     this.unsubHomeSeat?.();
     this.unsubHomeSeat = undefined;
     this.unsubRecovery?.();
+    this.unsubThreadMetrics?.();
     this.homeService?.setLandingHost(undefined);
     this.readiness.unregister('simThreads');
     await this.planets.shutdown();

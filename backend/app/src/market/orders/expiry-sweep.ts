@@ -1,9 +1,11 @@
-import { Inject, Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 import type { PrismaClient } from '@terra/db';
 import { databaseEnabled } from '../../core/persistence.js';
 import { APP_ENV, type AppEnv } from '../../core/tokens.js';
 import { PRISMA } from '../../db/db.module.js';
 import { GamePlanets } from '../../game/game-planets.service.js';
+import { JobsService } from '../../jobs/jobs.service.js';
+import type { JobRegistration } from '../../jobs/recurring.js';
 import { OrderRelease } from './cancel-order.service.js';
 import { PlanetGameClock } from './expiry-clock.js';
 
@@ -18,7 +20,7 @@ export const EXPIRY_SWEEP_MS = 30_000;
 @Injectable()
 export class OrderExpirySweep implements OnModuleInit, OnModuleDestroy {
   private readonly log = new Logger(OrderExpirySweep.name);
-  private timer: ReturnType<typeof setInterval> | null = null;
+  private job: JobRegistration | null = null;
   private unwatchWarp: (() => void) | null = null;
 
   constructor(
@@ -27,6 +29,7 @@ export class OrderExpirySweep implements OnModuleInit, OnModuleDestroy {
     @Inject(PRISMA) private readonly prisma: PrismaClient,
     @Inject(APP_ENV) private readonly env: AppEnv,
     @Inject(GamePlanets) private readonly planets: GamePlanets,
+    @Optional() @Inject(JobsService) private readonly jobs?: JobsService,
   ) {}
 
   onModuleInit(): void {
@@ -34,23 +37,25 @@ export class OrderExpirySweep implements OnModuleInit, OnModuleDestroy {
     if (this.env.NODE_ENV !== 'test') this.start();
   }
 
-  onModuleDestroy(): void {
-    this.stop();
+  async onModuleDestroy(): Promise<void> {
     this.unwatchWarp?.();
     this.unwatchWarp = null;
+    await this.stop();
   }
 
+  /**
+   * One sweep per interval across the cluster (3.8), on a sim-hosting replica (the dev warp clock is recorded where
+   * planets step). Without a job service (manual construction) nothing is scheduled.
+   */
   start(intervalMs: number = EXPIRY_SWEEP_MS): void {
-    if (this.timer || !databaseEnabled(this.env)) return;
-    this.timer = setInterval(() => {
-      void this.sweep().catch((err: unknown) => this.log.warn(`expiry sweep failed: ${err instanceof Error ? err.message : String(err)}`));
-    }, intervalMs);
-    this.timer.unref?.();
+    if (this.job || !databaseEnabled(this.env)) return;
+    this.job = this.jobs?.recurring({ name: 'market.order-expiry', scope: 'sim-host', schedule: { everyMs: intervalMs }, run: () => this.sweep() }) ?? null;
   }
 
-  stop(): void {
-    if (this.timer) clearInterval(this.timer);
-    this.timer = null;
+  stop(): Promise<void> {
+    const job = this.job;
+    this.job = null;
+    return job ? job.stop() : Promise.resolve();
   }
 
   /** Expires every due order; returns the ids it expired. */

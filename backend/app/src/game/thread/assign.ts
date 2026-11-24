@@ -1,6 +1,9 @@
 import { hashString } from '@terra/sim';
 
-/** Planet → sim thread (SIM-H-01): stable FNV-1a of the planet id modulo the thread count. Deterministic across restarts. */
-export function threadOf(planetId: string, threads: number): number {
+/**
+ * Stable FNV-1a of the planet id modulo `threads`. NOT the routing (the pool's placement table places planets by
+ * measured load); kept to generate deterministic dev planet ids (`devPlanetIds`) that existing databases already hold.
+ */
+export function hashThread(planetId: string, threads: number): number {
   return hashString(planetId) % threads;
 }

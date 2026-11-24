@@ -9,8 +9,8 @@ import { hasActiveTruce } from '../diplomacy/store';
 import { resolveBuildingRow } from '../economy/buildingRows';
 import {
   getEffectiveColonyStageForShield,
-  getPvpState,
   isW18PvpActive,
+  peekPvpState,
   resolvePvpConfig,
 } from '../pvp/store';
 import { getRivalColonyMeta } from './store';
@@ -71,7 +71,7 @@ function isColonyAttackableForBot(
   const tick = state.meta.tick;
   if (hasActiveTruce(state, attackerColonyIndex, targetColonyIndex, tick)) return false;
   if (!isW18PvpActive(data)) return true;
-  const rec = getPvpState(state).byColony[String(targetColonyIndex)];
+  const rec = peekPvpState(state).byColony[String(targetColonyIndex)];
   if (!rec || rec.shieldDropped || rec.raidProtectedUntil <= tick) return true;
   const cfg = resolvePvpConfig(data);
   if (!rec.manualShieldOverride && getEffectiveColonyStageForShield(state, targetColonyIndex) >= cfg.shieldDropStage) {

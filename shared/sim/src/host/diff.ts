@@ -11,13 +11,16 @@ import { faunaMotionSeed, installFaunaMotionSeed, type FaunaMotionSeed } from '.
 import { packProjectileQueue, unpackProjectileQueue, type PackedProjectileQueue } from '../codec/projectileQueue';
 import { applyStancePatch, packStancePatch, type PackedStancePatch } from '../codec/stancePatch';
 import { ENTITY_KIND } from '../ecs/columns';
+import { applyColonyPatch, applyOwnFrames, encodeOwnFrame, ownFrameColony, unpackDeltaBundle, type OwnColonyBytes } from './deltaBundle';
+import type { ClientDeltaShadow, ColonyPatchEntry } from './deltaShadow';
+import { applyPatch, deepClone, type ObjPatch } from './structPatch';
 import {
   FAUNA_CORRECTION_INTERVAL_TICKS,
   shouldOmitFaunaTransformFromRoutineDiff,
 } from '../systems/fauna/directives';
 
-/** Engine diff wire format version (inside the MessagePack map). */
-export const DIFF_FORMAT = 2;
+/** Engine diff wire format version (inside the MessagePack map). 3: field-level colony / blob patches + own frames. */
+export const DIFF_FORMAT = 3;
 
 /** Maximum tile count allowed in a single diff delta frame before chunking (W05-19). */
 export const MAX_TILE_DIFF_PER_DELTA = 100;
@@ -46,8 +49,13 @@ export interface EngineDiff {
   rng: PlanetState['rng'];
   tiles: { idx: Uint32Array; cols: Record<string, TypedArray> };
   entities: { capacity: number; count: number; cols: Record<string, TypedArray>; removed: Removal[] };
+  /** Colonies sent whole (every changed colony without a shadow; new / re-founded ones with one). */
   colonies: ColonyState[];
+  /** Field-level patches of colonies the receiver holds (summary fields only; owner fields ride in own frames). */
+  colonyPatches?: ColonyPatchEntry[];
   blobs: Record<string, Blob>;
+  /** Field-level patches of `{ changedAt, value }` of blobs the receiver holds. */
+  blobPatches?: Record<string, ObjPatch>;
   chunk?: { index: number; total: number };
   /** Authoritative route lifecycle patches; absent on ordinary waypoint-progress frames. */
   faunaMotion?: Blob;
@@ -59,10 +67,17 @@ export interface EngineDiff {
 export type SimDiff = EngineDiff & {
   diff?: Uint8Array;
   byteLength?: number;
+  /** First frame of a shadowed window: the owner-field frames of its changed colonies (not part of `diff`). */
+  ownByColony?: OwnColonyBytes[];
 };
 
 export interface DiffChunkOptions {
   forClient?: boolean;
+  /**
+   * The send path's record of what its receivers hold: colonies and blobs go as field-level patches against it and
+   * the owner fields of colonies as separate own frames. Without it every changed colony / blob goes whole.
+   */
+  shadow?: ClientDeltaShadow;
   omitFaunaMotion?: boolean;
   maxTilesPerDelta?: number;
   maxPayloadBytes?: number;
@@ -112,12 +127,19 @@ function changedEntityIndices(e: EntityStore, fromTick: number, toTick: number, 
 
 /** Everything of the window except its tiles: meta, rng, changed entity rows, removals, colonies and blobs. */
 type WindowBase = Omit<EngineDiff, 'tiles' | 'chunk'>;
+type WindowOpts = Pick<DiffChunkOptions, 'forClient' | 'omitFaunaMotion' | 'shadow'>;
 
-function windowBase(
-  state: PlanetState,
-  fromTick: number,
-  opts: { forClient?: boolean; omitFaunaMotion?: boolean } = {},
-): WindowBase {
+/** Replaces the whole changed colonies / blobs of `base` by the shadow's field-level window; returns the own frames. */
+function shadowSections(state: PlanetState, fromTick: number, base: WindowBase, shadow: ClientDeltaShadow): OwnColonyBytes[] {
+  const w = shadow.window(state, fromTick, base.blobs);
+  base.colonies = w.colonies;
+  base.blobs = w.blobs;
+  if (w.colonyPatches.length) base.colonyPatches = w.colonyPatches;
+  if (Object.keys(w.blobPatches).length) base.blobPatches = w.blobPatches;
+  return w.own.map((e) => encodeOwnFrame(state.meta.tick, e));
+}
+
+function windowBase(state: PlanetState, fromTick: number, opts: WindowOpts = {}): { base: WindowBase; own: OwnColonyBytes[] } {
   const forClient = opts.forClient === true;
   const e = state.entities;
   const motion = forClient ? faunaMotionSeed(state, fromTick) : undefined;
@@ -157,7 +179,8 @@ function windowBase(
     base.stancePatch = packStancePatch(state, fromTick, base.blobs.combatStances);
     delete base.blobs.combatStances;
   }
-  return base;
+  const own = opts.shadow ? shadowSections(state, fromTick, base, opts.shadow) : [];
+  return { base, own };
 }
 
 const layersFor = (forClient: boolean | undefined): readonly FieldDef[] => (forClient ? clientTileLayers() : tileLayers());
@@ -174,7 +197,7 @@ export function diffSince(
 ): Uint8Array {
   const tileIdx = changedTileIndices(state, fromTick);
   const diff: EngineDiff = {
-    ...windowBase(state, fromTick, opts),
+    ...windowBase(state, fromTick, opts).base,
     tiles: { idx: tileIdx, cols: gather(layersFor(opts.forClient), state.grid.layers, tileIdx) },
   };
   return encodeValue(diff);
@@ -224,7 +247,7 @@ export function diffSinceChunked(state: PlanetState, fromTick: number, opts: Dif
   const maxTiles = opts.maxTilesPerDelta ?? MAX_TILE_DIFF_PER_DELTA;
   const maxBytes = opts.maxPayloadBytes ?? MAX_DIFF_PAYLOAD_BYTES;
   const layers = layersFor(opts.forClient);
-  const base = windowBase(state, fromTick, opts);
+  const { base, own } = windowBase(state, fromTick, opts);
   const e = state.entities;
   const tilesOnly: WindowBase = {
     v: base.v,
@@ -247,6 +270,7 @@ export function diffSinceChunked(state: PlanetState, fromTick: number, opts: Dif
     };
     frame.diff = encodeValue(frame);
     frame.byteLength = frame.diff.byteLength;
+    if (index === 0 && own.length) frame.ownByColony = own;
     return frame;
   });
 }
@@ -259,6 +283,8 @@ export interface DeltaFrame {
   fromTick: number;
   toTick: number;
   diff: Uint8Array;
+  /** Owner-field frames of the window's changed colonies (first frame of a shadowed window only); see `deltaBundle`. */
+  ownByColony?: OwnColonyBytes[];
 }
 
 /**
@@ -273,6 +299,7 @@ export function clientDeltaFrames(state: PlanetState, fromTick: number, opts: Om
     fromTick: i === 0 ? fromTick : toTick,
     toTick,
     diff: c.diff!,
+    ...(c.ownByColony ? { ownByColony: c.ownByColony } : {}),
   }));
 }
 
@@ -315,7 +342,7 @@ export function reconstructTerrainAtTick(state: PlanetState, diff: EngineDiff, t
 
 /** Decodes an engine diff produced by `diffSince`. */
 export function decodeDiff(bytes: Uint8Array): EngineDiff {
-  const d = decodeValue(bytes) as EngineDiff;
+  const d = decodeValue(unpackDeltaBundle(bytes).diff) as EngineDiff;
   if (d.v !== DIFF_FORMAT) throw new Error(`unsupported diff format ${String(d.v)}`);
   if (d.projectileQueue) {
     d.blobs.projectileImpacts = unpackProjectileQueue(d.projectileQueue);
@@ -324,11 +351,51 @@ export function decodeDiff(bytes: Uint8Array): EngineDiff {
   return d;
 }
 
-/** Applies a diff to a replica at exactly `fromTick`; afterwards the replica deep-equals the authority at `toTick`. */
-export function applyDiff(state: PlanetState, diff: Uint8Array | EngineDiff | { diff: Uint8Array }): void {
+/** Whole colonies, then field patches (summary fields), then whole blobs and blob patches. */
+function applyColoniesAndBlobs(state: PlanetState, d: EngineDiff): void {
+  for (const c of d.colonies) state.colonies[c.index] = c;
+  for (const e of d.colonyPatches ?? []) applyColonyPatch(state, e);
+  for (const [name, b] of Object.entries(d.blobs)) state.blobs[name] = b;
+  for (const [name, p] of Object.entries(d.blobPatches ?? {})) {
+    if (!state.blobs[name]) throw new Error(`blob patch for unknown blob ${name}`);
+    applyPatch(state.blobs[name], p);
+  }
+}
+
+/**
+ * For a replica that also steps locally (the fauna motion shadow): patches assume the sender's copy, which local steps
+ * do not keep, so every colony and blob the window touched is copied from `authority`, the replica that already
+ * applied the same window (what a whole-record diff did before field patches).
+ */
+function mirrorColoniesAndBlobs(state: PlanetState, d: EngineDiff, frames: readonly Uint8Array[], authority: PlanetState): void {
+  const cols = new Set([...d.colonies.map((c) => c.index), ...(d.colonyPatches ?? []).map((e) => e.i), ...frames.map(ownFrameColony)]);
+  for (const i of cols) if (authority.colonies[i]) state.colonies[i] = deepClone(authority.colonies[i]);
+  for (const name of [...Object.keys(d.blobs), ...Object.keys(d.blobPatches ?? {})]) {
+    if (authority.blobs[name]) state.blobs[name] = deepClone(authority.blobs[name]);
+  }
+}
+
+/**
+ * Applies a diff to a replica at exactly `fromTick`, then the window's own frames (`own`, or those packed with it in a
+ * host bundle, which is applied whole). Afterwards the replica deep-equals the authority at `toTick` for everything
+ * it was sent: a socket that gets only its own colony's frames holds the other colonies' owner fields as of its
+ * welcome (or of their last whole record). `mirror`: see `mirrorColoniesAndBlobs`.
+ */
+export function applyDiff(
+  state: PlanetState,
+  diff: Uint8Array | EngineDiff | { diff: Uint8Array },
+  own: readonly Uint8Array[] = [],
+  mirror?: PlanetState,
+): void {
   let raw: Uint8Array | EngineDiff = diff as Uint8Array | EngineDiff;
   if (typeof diff === 'object' && diff !== null && 'diff' in diff && (diff as { diff: Uint8Array }).diff instanceof Uint8Array) {
     raw = (diff as { diff: Uint8Array }).diff;
+  }
+  let frames = own;
+  if (raw instanceof Uint8Array) {
+    const bundle = unpackDeltaBundle(raw);
+    raw = bundle.diff;
+    if (bundle.own.length) frames = [...own, ...bundle.own.map((o) => o.bytes)];
   }
   const d = raw instanceof Uint8Array ? decodeDiff(raw) : raw;
   const isContinuation = Boolean(d.chunk && d.chunk.index > 0 && state.meta.tick === d.toTick);
@@ -339,12 +406,13 @@ export function applyDiff(state: PlanetState, diff: Uint8Array | EngineDiff | { 
   }
   applyEntities(state, d);
   applyTiles(state, d);
-  for (const c of d.colonies) state.colonies[c.index] = c;
-  for (const [name, b] of Object.entries(d.blobs)) state.blobs[name] = b;
+  if (mirror) mirrorColoniesAndBlobs(state, d, frames, mirror);
+  else applyColoniesAndBlobs(state, d);
   if (d.stancePatch) applyStancePatch(state, d.stancePatch);
   Object.assign(state.meta, d.meta);
   for (const k of Object.keys(d.rng) as Array<keyof PlanetState['rng']>) state.rng[k] = d.rng[k];
   if (d.faunaMotion) installFaunaMotionSeed(state, d.faunaMotion.value as FaunaMotionSeed);
+  if (frames.length && !mirror) applyOwnFrames(state, frames);
   linkGridMeta(state.grid, state.meta, state.blobs);
 }
 

@@ -11,6 +11,7 @@ import {
   offerExpiryTicks,
   validateTruceProposal,
 } from './rules';
+import { recordTruceDecline } from './parts/retention';
 import {
   getActiveTrucesForColony,
   getLastHostilityTick,
@@ -215,6 +216,7 @@ export function respondTruce(
 
   if (!accept) {
     offer.status = 'declined';
+    recordTruceDecline(blob, offer.fromColonyIndex, offer.toColonyIndex, tick);
     writeDiplomacyBlob(state, blob, tick);
     return { ok: true, offer };
   }
@@ -313,6 +315,12 @@ export function cancelTruce(
   return { ok: true, truce, noticeEndsAtTick, oathbreakerUntilTick };
 }
 
+export {
+  CLOSED_DIPLOMACY_RECORDS_KEPT,
+  enforceDiplomacyRetention,
+  isTruceReofferCoolingDown,
+  TRUCE_REOFFER_COOLDOWN_TICKS,
+} from './parts/retention';
 export {
   cancelColonyTrucesOnElimination,
   devOfferTruce,

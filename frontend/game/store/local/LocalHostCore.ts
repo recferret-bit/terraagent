@@ -1,7 +1,7 @@
 import { commandGate, flagsFromList, newId, parseWaves, PlanetType, precheckClientCommand, REJECT_CODES, REJECT_DETAIL_MAX, type RejectCode, type ServerMessage } from '@terra/contracts';
 import {
   applyTunedEntityHealth, buildPipeline, buildingCatalog, createPipeline, effectiveOverrides, GEN_VERSION,
-  planBackendBotActions, PlanetJournal, PlanetScheduler, SIM_VERSION, SimHost, TICK_MS,
+  planBackendBotActions, PlanetJournal, PlanetScheduler, shadowedClientDeltaFrames, SIM_VERSION, SimHost, SINGLE_PLANET_SCHEDULE, TICK_MS,
   type BalanceOverrides, type JournalProblem, type CommandOutcome, type PlanetTuning, type SimCommand, type SimEvent,
 } from '@terra/sim';
 import { ownBytes } from '../bytes';
@@ -72,7 +72,7 @@ export class LocalHostCore {
 
   /** `waves`: the flags a dev `scenario` switch runs with (intersected with the scenario's waves). */
   private constructor(private readonly waves: readonly string[], private readonly deps: LocalHostDeps, private readonly post: LocalPost) {
-    this.sched = new PlanetScheduler({ now: deps.now, schedule: deps.schedule, step: (_id, dt) => this.stepOnce(dt) });
+    this.sched = new PlanetScheduler({ now: deps.now, schedule: deps.schedule, step: (_id, dt) => this.stepOnce(dt), ...SINGLE_PLANET_SCHEDULE });
     this.sched.onPass = () => this.flushDelta();
     this.sched.onWarp = (_id, effective) => this.server({ v: 1, t: 'event', tick: 0, d: { kind: 'dev.warp', severity: 'info', atTick: 0, colonyIds: [], data: { k: effective } } });
   }
@@ -318,9 +318,11 @@ export class LocalHostCore {
   private flushDelta(): void {
     const toTick = this.host.tick;
     if (!this.joined || toTick <= this.lastDeltaTick) return;
-    this.host.clientDeltaFrames(this.lastDeltaTick).forEach((f, i) => {
+    // Field-level patches like the server; the one local player is a full viewer (every colony's owner frames).
+    shadowedClientDeltaFrames(this.host.state, this.lastDeltaTick).forEach((f, i) => {
       const events = i === 0 ? this.window.splice(0) : [];
-      this.server({ v: 1, t: 'delta', tick: f.toTick, d: { fromTick: f.fromTick, toTick: f.toTick, diff: ownBytes(f.diff), events } });
+      const own = f.ownByColony?.map((o) => ownBytes(o.bytes));
+      this.server({ v: 1, t: 'delta', tick: f.toTick, d: { fromTick: f.fromTick, toTick: f.toTick, diff: ownBytes(f.diff), ...(own ? { own } : {}), events } });
     });
     this.lastDeltaTick = toTick;
   }
@@ -329,8 +331,8 @@ export class LocalHostCore {
 
   /** Posts a server message, moving its byte buffers. */
   private server(msg: ServerMessage): void {
-    const d = msg.d as { state?: Uint8Array; diff?: Uint8Array };
-    const transfer = [d.state, d.diff].flatMap((b) => (b ? [b.buffer as ArrayBuffer] : []));
+    const d = msg.d as { state?: Uint8Array; diff?: Uint8Array; own?: Uint8Array[] };
+    const transfer = [d.state, d.diff, ...(d.own ?? [])].flatMap((b) => (b ? [b.buffer as ArrayBuffer] : []));
     this.post({ t: 'server', msg } as FromLocalHost, transfer);
   }
 

@@ -78,7 +78,7 @@ class WsTestClient {
   hello(accessToken: string): void {
     this.send({
       t: 'hello',
-      d: { accessToken, proto: [1], client: { app: 'game', version: '0.1.0' } },
+      d: { accessToken, proto: [2], client: { app: 'game', version: '0.1.0' } },
     });
   }
 

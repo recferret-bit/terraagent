@@ -15,6 +15,7 @@ import { hasActiveTruce, recordHostilityBetween } from '../diplomacy/store';
 import { isWorker } from '../harvest/unit';
 import { updateColonyVisionCache } from '../combat/vision';
 import { recordLaunchedRaid, stepRaidTargetGoal } from './parts/raidGoalExecutor';
+import { findOpenRaidWithUnits } from './parts/raidLedger';
 import { orderRaidGroupFlowMarch } from './raidFlowMarch';
 import { selectSpottedRaidTarget } from './raidPathing';
 import { canRaidTargetSector } from './sectorGuard';
@@ -257,6 +258,25 @@ export function resolveRaidTargetDestination(
     r: sel.r,
     targetEntityId: sel.targetEntityId,
   };
+}
+
+const AUTOMATED_RAID_SOURCES: ReadonlySet<string> = new Set(['ai', 'bot']);
+
+/**
+ * Raid-command guard for automated sources (backend colony agent / bot planner): no new raid while the units it
+ * would send already have an open raid toward a live colony (re-sending them only re-routes the same raiders).
+ * Players are exempt; their re-launch supersedes the open raid (one open raid per unit).
+ */
+export function automatedRaidRelaunchReject(
+  state: PlanetState,
+  attackerColony: number,
+  source: string,
+  opts?: { unitIds?: readonly number[]; data?: CompiledDataLike },
+): { code: 'already_queued'; detail: string } | undefined {
+  if (!AUTOMATED_RAID_SOURCES.has(source)) return undefined;
+  const units = selectColonyRaidUnits(state, attackerColony, { unitIds: opts?.unitIds, data: opts?.data });
+  const busy = findOpenRaidWithUnits(state, units);
+  return busy ? { code: 'already_queued', detail: `raiders already raiding colony #${busy.targetColony}` } : undefined;
 }
 
 /**

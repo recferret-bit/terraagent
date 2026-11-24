@@ -7,10 +7,32 @@ export const AI_ACCESS_MODES = ['trial', 'tee', 'script', 'byok'] as const;
 export const AiAccessMode = z.enum(AI_ACCESS_MODES);
 export type AiAccessMode = z.infer<typeof AiAccessMode>;
 
+/**
+ * Why a colony's Director runs on the rule-based policy (`deterministic-policy`) right now. `provider_*`: the NEAR AI
+ * provider refused the key (`unfunded` = no balance, `unauthorized` = key rejected) or is down / rate-limited
+ * (`unavailable`); with mode `byok` they describe the player's own key. `planet_idle`: no human on the planet for 24 h.
+ */
+export const AI_DOWNSHIFT_REASONS = [
+  'guest',
+  'no_stake',
+  'budget_exhausted',
+  'slot_cap',
+  'trial_exhausted',
+  'no_database',
+  'provider_unfunded',
+  'provider_unauthorized',
+  'provider_unavailable',
+  'planet_idle',
+] as const;
+export const AiDownshiftReason = z.enum(AI_DOWNSHIFT_REASONS);
+export type AiDownshiftReason = z.infer<typeof AiDownshiftReason>;
+
 /** Wallet-wide managed AI allowance (shared across every colony of the wallet; never multiplied per colony). */
 export const AiBudgetView = z.strictObject({
   model: z.string().min(1).max(80),
   mode: AiAccessMode,
+  /** Set when the Director runs on rules (or a BYOK key is refused); absent while AI decisions run normally. */
+  downshiftReason: AiDownshiftReason.optional(),
   dailyBudgetUsd: z.number().nonnegative(),
   dailyBudgetUsedUsd: z.number().nonnegative(),
   dailyCallLimit: z.number().int().nonnegative(),

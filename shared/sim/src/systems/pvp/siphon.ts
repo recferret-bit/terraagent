@@ -27,6 +27,7 @@ import {
   ensureColonyPvpRecord,
   getPvpState,
   isW18PvpActive,
+  peekPvpState,
   resolvePvpConfig,
   savePvpState,
 } from './store';
@@ -117,8 +118,7 @@ export function getUnitSiphonedAmount(
   unitId: number,
   key?: ResourceKey,
 ): number {
-  const pvp = getPvpState(state);
-  const rec = pvp.byColony[String(colonyIndex)];
+  const rec = peekPvpState(state).byColony[String(colonyIndex)];
   const map = rec?.siphonCarryingByUnit?.[unitId];
   if (!map) return 0;
   if (key) return Number(map[key] ?? 0);

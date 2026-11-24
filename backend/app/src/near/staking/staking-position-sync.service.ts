@@ -1,7 +1,6 @@
 import {
   Inject,
   Injectable,
-  Logger,
   Optional,
   type OnModuleDestroy,
   type OnModuleInit,
@@ -12,6 +11,8 @@ import { databaseEnabled } from '../../core/persistence.js';
 import { APP_ENV, type AppEnv } from '../../core/tokens.js';
 import { PRISMA } from '../../db/db.module.js';
 import { FlagsService } from '../../flags/flags.service.js';
+import { JobsService } from '../../jobs/jobs.service.js';
+import type { JobRegistration } from '../../jobs/recurring.js';
 import { StakingPort, type StakingPoolView } from '../application/ports/staking.port.js';
 import { refreshNominatedPatronSeats, syncW28ExtraPositions } from './staking-position-sync-extras.js';
 import { yoctoToNear } from './yocto.js';
@@ -60,33 +61,28 @@ export class StakingPositionSyncService implements OnModuleInit, OnModuleDestroy
   readonly readModelOnly = STAKING_POSITION_READ_MODEL_ONLY;
   readonly positions = new Map<string, StakingPositionDto>();
 
-  private readonly log = new Logger(StakingPositionSyncService.name);
   private readonly knownAccountColonies = new Map<string, string>();
-  private timer: ReturnType<typeof setInterval> | null = null;
+  private job: JobRegistration | null = null;
 
   constructor(
     @Inject(StakingPort) private readonly staking: StakingPort,
     @Optional() @Inject(APP_ENV) private readonly env?: AppEnv,
     @Optional() @Inject(PRISMA) private readonly prisma?: PrismaClient,
     @Optional() @Inject(FlagsService) private readonly flags?: FlagsService,
+    @Optional() @Inject(JobsService) private readonly jobs?: JobsService,
   ) {}
 
+  /** One read-model sync per interval across the cluster (3.8); a failed pass is retried with backoff. */
   onModuleInit(): void {
-    if (this.timer) return;
+    if (this.job) return;
     if (!this.isWaveEnabled() || this.env?.NODE_ENV === 'test') return;
-    this.timer = setInterval(() => {
-      void this.syncAll().catch((err: unknown) => {
-        const msg = err instanceof Error ? err.message : String(err);
-        this.log.warn(`staking_position read-model sync failed: ${msg}`);
-      });
-    }, STAKING_SYNC_INTERVAL_MS);
-    this.timer.unref?.();
+    this.job = this.jobs?.recurring({ name: 'near.staking-position-sync', schedule: { everyMs: STAKING_SYNC_INTERVAL_MS }, run: () => this.syncAll() }) ?? null;
   }
 
-  onModuleDestroy(): void {
-    if (!this.timer) return;
-    clearInterval(this.timer);
-    this.timer = null;
+  async onModuleDestroy(): Promise<void> {
+    const job = this.job;
+    this.job = null;
+    await job?.stop();
   }
 
   /** Clears the in-memory read-model cache (used in unit tests to verify re-sync from `StakingPort`). */

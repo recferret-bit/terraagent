@@ -1,10 +1,12 @@
 import { randomBytes } from 'node:crypto';
-import { Inject, Injectable, Logger, Optional, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
+import { Inject, Injectable, Optional, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 import { CoreException } from '../../../core/errors/index.js';
 import { databaseEnabled } from '../../../core/persistence.js';
 import { APP_ENV, type AppEnv } from '../../../core/tokens.js';
 import { FlagsService } from '../../../flags/flags.service.js';
 import { GamePlanets } from '../../../game/game-planets.service.js';
+import { PlanetJobsService } from '../../../game/lifecycle/planet-jobs.service.js';
+import type { JobRegistration } from '../../../jobs/recurring.js';
 import { GuildProvisionError } from '../guild-error.js';
 import { loadPolicy, type GuildPolicy, type RosterNpc } from '../guild-plan.js';
 import { routeAfterStrategy } from '../strategy/apply.js';
@@ -33,20 +35,20 @@ export const GUILD_VISIT_TICK_MS = 5_000;
  */
 @Injectable()
 export class GuildVisitService implements OnModuleInit, OnModuleDestroy {
-  private readonly log = new Logger(GuildVisitService.name);
   private readonly clock = new GuildVisitClock();
   /** Last accepted route per NPC. Absent means the data-table route. */
   private readonly routes = new Map<string, readonly string[]>();
-  private timer: ReturnType<typeof setInterval> | null = null;
-  private sweeping = false;
+  private job: JobRegistration | null = null;
 
   constructor(
     private readonly flags: FlagsService,
     private readonly repo: GuildVisitRepository,
     private readonly publisher: GuildVisitPublisher,
     @Optional() @Inject(APP_ENV) private readonly env?: AppEnv,
-    @Optional() @Inject(GamePlanets) private readonly planets?: GamePlanets,
+    /** Unused since the visits tick as planet jobs (kept: callers pass the arguments by position). */
+    @Optional() @Inject(GamePlanets) _planets?: GamePlanets,
     @Optional() @Inject(GuildStrategyPort) private readonly strategy?: GuildStrategyPort,
+    @Optional() @Inject(PlanetJobsService) private readonly planetJobs?: PlanetJobsService,
   ) {}
 
   onModuleInit(): void {
@@ -54,21 +56,20 @@ export class GuildVisitService implements OnModuleInit, OnModuleDestroy {
     this.start();
   }
 
-  onModuleDestroy(): void {
-    this.stop();
+  onModuleDestroy(): Promise<void> {
+    return this.stop();
   }
 
+  /** A planet job (3.8): each planet's visits tick on its lease holder, one tick per planet at a time. */
   start(intervalMs = GUILD_VISIT_TICK_MS): void {
-    if (this.timer || !this.enabled()) return;
-    this.timer = setInterval(() => {
-      void this.sweep().catch((err: unknown) => this.warn(err));
-    }, intervalMs);
-    this.timer.unref?.();
+    if (this.job || !this.enabled()) return;
+    this.job = this.planetJobs?.register({ name: 'market.guild-visit', everyMs: intervalMs, concurrency: 4, run: (planetId) => this.tick(planetId) }) ?? null;
   }
 
-  stop(): void {
-    if (this.timer) clearInterval(this.timer);
-    this.timer = null;
+  stop(): Promise<void> {
+    const job = this.job;
+    this.job = null;
+    return job ? job.stop() : Promise.resolve();
   }
 
   /** Pin this planet's guild clock at `toMs` and open or close the visits that are due. */
@@ -148,17 +149,6 @@ export class GuildVisitService implements OnModuleInit, OnModuleDestroy {
     return push;
   }
 
-  private async sweep(): Promise<void> {
-    if (this.sweeping || !this.enabled()) return;
-    this.sweeping = true;
-    try {
-      for (const planetId of this.planets?.loadedIds() ?? []) {
-        await this.tick(planetId).catch((err: unknown) => this.warn(err));
-      }
-    } finally {
-      this.sweeping = false;
-    }
-  }
 
   private async at(planetId: string, now: number, npcId?: string): Promise<GuildPush[]> {
     if (!this.enabled()) return [];
@@ -245,10 +235,6 @@ export class GuildVisitService implements OnModuleInit, OnModuleDestroy {
 
   private enabled(): boolean {
     return this.flags.has('W15') && databaseEnabled(this.env);
-  }
-
-  private warn(err: unknown): void {
-    this.log.warn(`guild visit tick failed: ${err instanceof Error ? err.message : String(err)}`);
   }
 }
 

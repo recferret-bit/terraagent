@@ -3,8 +3,8 @@ import { systemActor, treasury, treasuryCtx } from '../../economy';
 import type { StepContext } from '../../kernel/context';
 import type { PlanetState } from '../../kernel/state';
 import { colonyIsAway, resolveColonyAwayRaids } from '../away/gate';
-import { proposeTruce, respondTruce } from '../diplomacy/operations';
-import { hasActiveTruce, readDiplomacyBlob } from '../diplomacy/store';
+import { isTruceReofferCoolingDown, proposeTruce, respondTruce } from '../diplomacy/operations';
+import { hasActiveTruce, peekDiplomacyBlob } from '../diplomacy/store';
 import { evaluateAggressionSkillProposal } from '../director/w18-pvp-adapter';
 import { stepColonyGoalsBreakdown } from '../goals/breakdown';
 import { getOpenColonyGoals, queueColonyGoal } from '../goals/index';
@@ -102,7 +102,7 @@ function tryDiplomacyAction(
   if (ctx && !ctx.flags.has('W18')) return null;
   const meta = getRivalColonyMeta(state, colonyIndex);
   const warAllowed = Boolean(meta?.allowWarDiplomacy || resolveColonyAwayRaids(state, colonyIndex));
-  const dip = readDiplomacyBlob(state);
+  const dip = peekDiplomacyBlob(state);
 
   // 1. Respond to incoming pending truce offers (NEVER calls cancelTruce — AW-13 hard block)
   const pendingOffer = Object.values(dip.offers).find(
@@ -126,6 +126,7 @@ function tryDiplomacyAction(
     for (const other of state.colonies) {
       if (!other || other.index === colonyIndex || other.status === 'eliminated') continue;
       if (hasActiveTruce(state, colonyIndex, other.index, tick)) continue;
+      if (isTruceReofferCoolingDown(state, colonyIndex, other.index, tick)) continue; // declined < 10 min ago
       const alreadyOffered = Object.values(dip.offers).some(
         (o) => o.status === 'pending' && o.fromColonyIndex === colonyIndex && o.toColonyIndex === other.index,
       );

@@ -2,6 +2,7 @@ import { Inject, Injectable, Optional } from '@nestjs/common';
 import { APP_ENV, type AppEnv } from '../../core/tokens.js';
 import { LlmProviderPort } from '../../ports/llm-provider.port.js';
 import { isTeeAttestationRejected } from '../adapters/nearai-signature.js';
+import { toProviderError } from '../provider/guarded-llm.js';
 import { runDeterministic7DaySim, type EconomySimReport } from './economy-sim-runner.js';
 
 export interface RunEconomySimInput {
@@ -43,6 +44,7 @@ export class EconomySimService {
     let providerModel = 'deterministic-policy';
     let summary = buildFallbackSummary(base);
     let attestation: EconomySimReport['ai']['attestation'];
+    let providerFailure: EconomySimReport['ai']['providerFailure'];
 
     if (input.useLiveLlm !== false) {
       try {
@@ -77,8 +79,9 @@ export class EconomySimService {
           const extracted = extractSummaryText(res.text);
           if (extracted) summary = extracted;
         }
-      } catch {
-        // Preserve deterministic summary on provider failure
+      } catch (err) {
+        // Preserve deterministic summary on provider failure (an open circuit makes no HTTP call)
+        providerFailure = toProviderError(err).kind;
       }
     }
 
@@ -89,6 +92,7 @@ export class EconomySimService {
         providerModel,
         summary,
         ...(attestation ? { attestation } : {}),
+        ...(providerFailure ? { providerFailure } : {}),
       },
     };
     this.latest = report;

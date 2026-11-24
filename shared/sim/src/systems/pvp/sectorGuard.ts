@@ -7,14 +7,14 @@ import { ENTITY_STATE } from '../../ecs/columns';
 import { hexDistance, hexIndex } from '../../grid/hex';
 import type { PlanetState } from '../../kernel/state';
 import { isRivalAiColony, readRivalAiBlob } from '../rival-ai/store';
-import { getPvpState, savePvpState } from './store';
+import { getPvpState, peekPvpState, savePvpState } from './store';
 
 /**
  * Returns `true` when cross-sector PvP raids/orders are explicitly enabled on `state.blobs.pvp` or `state.blobs.atlas`.
  * By default (`false`), W11 founding sectors (`R = 48`) are isolated and cross-sector raid orders reject with `'cross_sector_disabled'`.
  */
 export function isCrossSectorRaidEnabled(state: PlanetState): boolean {
-  const pvpCross = getPvpState(state).crossSectorEnabled;
+  const pvpCross = peekPvpState(state).crossSectorEnabled;
   if (typeof pvpCross === 'boolean') return pvpCross;
   const atlasCross = (
     state.blobs.atlas?.value as { crossSectorEnabled?: boolean } | undefined

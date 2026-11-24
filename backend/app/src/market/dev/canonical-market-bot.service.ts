@@ -8,6 +8,9 @@ import { APP_ENV, type AppEnv } from '../../core/tokens.js';
 import { PRISMA } from '../../db/db.module.js';
 import { FlagsService } from '../../flags/flags.service.js';
 import { GamePlanets } from '../../game/game-planets.service.js';
+import { PlanetLifecycleService } from '../../game/lifecycle/planet-lifecycle.service.js';
+import { JobsService } from '../../jobs/jobs.service.js';
+import type { JobRegistration } from '../../jobs/recurring.js';
 import { kekEnv } from '../../near/identity/colony-accounts.js';
 import { nearAdapterFor } from '../../near/infrastructure/adapter-selection.js';
 import { loadKekRing } from '../../near/keystore/kek.js';
@@ -48,7 +51,7 @@ const ARCHIVED_PLANET_STATUSES = ['ENDED', 'PLANET_ENDED', 'ARCHIVED'];
 @Injectable()
 export class CanonicalMarketBotService implements OnApplicationBootstrap, OnModuleDestroy {
   private readonly log = new Logger(CanonicalMarketBotService.name);
-  private timer: ReturnType<typeof setInterval> | null = null;
+  private job: JobRegistration | null = null;
   private seq = 0;
   private tickSeq = 0;
   private seeding = false;
@@ -64,6 +67,8 @@ export class CanonicalMarketBotService implements OnApplicationBootstrap, OnModu
     private readonly flags: FlagsService,
     @Optional() private readonly keyStore?: KeyStore,
     @Optional() private readonly gamePlanets?: GamePlanets,
+    @Optional() private readonly lifecycle?: PlanetLifecycleService,
+    @Optional() private readonly jobs?: JobsService,
   ) {}
 
   onApplicationBootstrap(): void {
@@ -78,18 +83,15 @@ export class CanonicalMarketBotService implements OnApplicationBootstrap, OnModu
     void this.seedAllAndStartLoop().catch((err: unknown) => {
       this.log.warn(`canonical bot market seed failed: ${err instanceof Error ? err.message : String(err)}`);
     });
-    this.timer = setInterval(() => {
-      void this.tickLiveActivity().catch((err: unknown) => {
-        this.log.warn(`canonical bot tick failed: ${err instanceof Error ? err.message : String(err)}`);
-      });
-    }, CANONICAL_BOT_TICK_MS);
-    this.timer.unref?.();
+    // One tick per interval across the cluster (3.8), on a sim host (discovery reads its loaded planets).
+    this.job = this.jobs?.recurring({ name: 'market.canonical-bots', scope: 'sim-host', schedule: { everyMs: CANONICAL_BOT_TICK_MS }, run: () => this.tickLiveActivity() }) ?? null;
   }
 
-  onModuleDestroy(): void {
+  async onModuleDestroy(): Promise<void> {
     this.destroyed = true;
-    if (this.timer) clearInterval(this.timer);
-    this.timer = null;
+    const job = this.job;
+    this.job = null;
+    await job?.stop();
   }
 
   private enabled(): boolean {
@@ -132,6 +134,8 @@ export class CanonicalMarketBotService implements OnApplicationBootstrap, OnModu
     for (const id of this.gamePlanets?.loadedIds() ?? []) {
       if (!byId.has(id)) byId.set(id, { id, type: resolveBotPlanetType(id) });
     }
+    // Idle-unloaded planets (3.5) get no bot trades until a player wakes them.
+    for (const id of (await this.lifecycle?.dormantIds().catch(() => [])) ?? []) byId.delete(id);
     return [...byId.values()];
   }
 
