@@ -18,6 +18,7 @@ import { getRivalColonyMeta } from './store';
 export interface ColonyScan {
   anchorQ: number;
   anchorR: number;
+  hubCount: number;
   workerCount: number;
   harvestingWorkerCount: number;
   reconCount: number;
@@ -126,6 +127,7 @@ export function scanColonyState(
   let anchorQ = fallbackQ;
   let anchorR = fallbackR;
   let anchorRank = 0;
+  let hubCount = 0;
   let workerCount = 0;
   let harvestingWorkerCount = 0;
   let reconCount = 0;
@@ -178,7 +180,8 @@ export function scanColonyState(
       if (ratio < 0.8 && (!damagedBuilding || ratio < damagedBuilding.hpRatio)) {
         damagedBuilding = { id: cols.id[row]!, q, r, hpRatio: ratio };
       }
-      if (kind === ENTITY_KIND.metalsExtractor || kind === ENTITY_KIND.mineralsQuarry) extractorCount++;
+      if (kind === ENTITY_KIND.commandHub) hubCount++;
+      else if (kind === ENTITY_KIND.metalsExtractor || kind === ENTITY_KIND.mineralsQuarry) extractorCount++;
       else if (kind === ENTITY_KIND.turret || kind === ENTITY_KIND.laserTower) turretCount++;
       else if (kind === ENTITY_KIND.roboticsFactory) factoryCount++;
       else if (kind === ENTITY_KIND.wind || kind === ENTITY_KIND.solar || kind === ENTITY_KIND.thermal) powerPlantCount++;
@@ -196,6 +199,7 @@ export function scanColonyState(
   return {
     anchorQ,
     anchorR,
+    hubCount,
     workerCount,
     harvestingWorkerCount,
     reconCount,

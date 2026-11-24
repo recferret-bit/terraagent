@@ -9,6 +9,7 @@ import WebSocket from 'ws';
 import { createApp } from '../../src/app';
 import { devPlanetIds } from '../../src/game/dev-planets';
 import { GamePlanets } from '../../src/game/game-planets.service';
+import { PlanetLedgerService } from '../../src/game/ledger/planet-ledger.service';
 import { SimHistoryService } from '../../src/game/persistence/sim-history.service';
 import { HomeRepository } from '../../src/core/home/home.repository';
 import { isLocalRequestHeaders, isSpectatorEnvAllowed } from '../../src/core/local-host-guard';
@@ -202,8 +203,15 @@ describe('Server spectator provisioning, reset & local-only guards', () => {
       body: JSON.stringify({ planetId: PLANET, reset: true }),
     });
     expect(badHuman.status).toBe(403);
+  });
+});
 
-    // Deterministic server scenario spectator (?spectator=1&host=server&scenario=w18) creates, resumes, and resets cleanly
+describe('Server scenario spectator & ?join=<planetId> non-mutating ensure', () => {
+  it('drives live bots on scenario spectator worlds (w18, w01) and keeps ?join=<planetId> non-mutating', async () => {
+    const { url } = await boot();
+    const httpBase = url.replace(/^ws:/, 'http:').replace(/\/ws$/, '');
+
+    // Deterministic server scenario spectator (?spectator=1&host=server&scenario=w18 & w01) creates active bots, emits live sim.input, resumes, and resets cleanly
     const scCreate = await fetch(`${httpBase}/v1/dev/spectator`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -212,7 +220,32 @@ describe('Server spectator provisioning, reset & local-only guards', () => {
     expect(scCreate.status).toBe(200);
     const sc1 = (await scCreate.json()) as { planetId: string; tick: number; botCount: number; created: boolean; reset: boolean };
     expect(sc1).toMatchObject({ planetId: 'pl_spec_sc_w18', created: true, reset: false });
-    expect(sc1.botCount).toBeGreaterThanOrEqual(4);
+    expect(sc1.botCount).toBe(5);
+
+    const scSpecWs = await Client.open(url);
+    scSpecWs.hello('sc_w18_viewer');
+    await scSpecWs.next('ready');
+    scSpecWs.send({ t: 'join', d: { planetId: 'pl_spec_sc_w18', mode: 'spectator' } });
+    await scSpecWs.next('welcome');
+    const scBotInput = await scSpecWs.next('sim.input', 10_000);
+    expect((scBotInput.d.items as Array<{ isBot: boolean }>)[0]?.isBot).toBe(true);
+    scSpecWs.ws.close();
+
+    const w01Create = await fetch(`${httpBase}/v1/dev/spectator`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ scenario: 'w01' }),
+    });
+    expect(w01Create.status).toBe(200);
+    expect(await w01Create.json()).toMatchObject({ planetId: 'pl_spec_sc_w01', botCount: 1, created: true });
+    const w01Ws = await Client.open(url);
+    w01Ws.hello('sc_w01_viewer');
+    await w01Ws.next('ready');
+    w01Ws.send({ t: 'join', d: { planetId: 'pl_spec_sc_w01', mode: 'spectator' } });
+    await w01Ws.next('welcome');
+    const w01BotInput = await w01Ws.next('sim.input', 10_000);
+    expect((w01BotInput.d.items as Array<{ isBot: boolean }>)[0]?.isBot).toBe(true);
+    w01Ws.ws.close();
 
     const scResume = await fetch(`${httpBase}/v1/dev/spectator`, {
       method: 'POST',
@@ -229,7 +262,82 @@ describe('Server spectator provisioning, reset & local-only guards', () => {
     });
     expect(scReset.status).toBe(200);
     expect(await scReset.json()).toMatchObject({ planetId: 'pl_spec_sc_w18', tick: sc1.tick, created: true, reset: true });
-  });
+
+    // Non-mutating ensure for ?spectator=1&join=<planetId> on existing scenario planet (activeHumans > 0) & non-fabrication on missing planetId
+    const humanW18Res = await fetch(`${httpBase}/v1/dev/scenarios/w18`, { method: 'POST' });
+    expect(humanW18Res.status).toBe(200);
+    const { planetId: humanW18Id } = (await humanW18Res.json()) as { planetId: string };
+    const joinEnsureRes = await fetch(`${httpBase}/v1/dev/spectator`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ planetId: humanW18Id }),
+    });
+    expect(joinEnsureRes.status).toBe(200);
+    expect(await joinEnsureRes.json()).toMatchObject({ planetId: humanW18Id, botCount: 5, created: false, reset: false });
+
+    const missingEnsureRes = await fetch(`${httpBase}/v1/dev/spectator`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ planetId: 'pl_nonexistent_target' }),
+    });
+    expect(missingEnsureRes.status).toBe(200);
+    expect(await missingEnsureRes.json()).toMatchObject({ planetId: 'pl_nonexistent_target', botCount: 0, created: false, reset: false });
+    expect(app!.get(GamePlanets).isLoaded('pl_nonexistent_target')).toBe(false);
+  }, 30_000);
+});
+
+describe('Server spectator ?join=<planetId>&reset=1 preservation & ledger reconciliation', () => {
+  it('preserves scenario, biome, botCount, and seed when resetting via explicit ?join=<planetId>&reset=1 and reconciles w18 ledger', async () => {
+    const { url } = await boot();
+    const httpBase = url.replace(/^ws:/, 'http:').replace(/\/ws$/, '');
+
+    // 1. Seed a 4-bot custom desert spectator world, then reset by planetId alone (?spectator=1&join=<planetId>&reset=1)
+    const customInit = await fetch(`${httpBase}/v1/dev/spectator`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ planetType: 'dune', botCount: 4, seed: 'join-keep-seed' }),
+    });
+    expect(customInit.status).toBe(200);
+    const customBody = (await customInit.json()) as { planetId: string; botCount: number };
+    expect(customBody.botCount).toBe(4);
+
+    const customResetByJoin = await fetch(`${httpBase}/v1/dev/spectator`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ planetId: customBody.planetId, reset: true }),
+    });
+    expect(customResetByJoin.status).toBe(200);
+    expect(await customResetByJoin.json()).toMatchObject({
+      planetId: customBody.planetId,
+      tick: 0,
+      botCount: 4,
+      created: true,
+      reset: true,
+    });
+    const fullAfterReset = await app!.get(GamePlanets).fullState(customBody.planetId);
+    expect(fullAfterReset.planetType).toBe('desert');
+
+    // 2. Seed w18 scenario spectator world, verify clean PlanetLedgerService opening balances, and reset by planetId alone
+    await fetch(`${httpBase}/v1/dev/spectator`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ scenario: 'w18' }),
+    });
+    const scJoinReset = await fetch(`${httpBase}/v1/dev/spectator`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ planetId: 'pl_spec_sc_w18', reset: true }),
+    });
+    expect(scJoinReset.status).toBe(200);
+    expect(await scJoinReset.json()).toMatchObject({
+      planetId: 'pl_spec_sc_w18',
+      botCount: 5,
+      created: true,
+      reset: true,
+    });
+    await vi.waitFor(() => expect(app!.get(PlanetLedgerService).journalOf('pl_spec_sc_w18')).not.toBeNull());
+    expect(app!.get(PlanetLedgerService).unwrittenRows('pl_spec_sc_w18')).toBe(0);
+  }, 30_000);
 });
 
 describe('Server spectator non-local host rejection', () => {

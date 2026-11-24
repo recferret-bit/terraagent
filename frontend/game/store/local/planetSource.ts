@@ -2,6 +2,7 @@ import { flagsFromList, newId, parseWaves, PlanetType } from '@terra/contracts';
 import { createScenarioPlanet } from '@terra/scenarios';
 import {
   createPlanet,
+  prepareSpectatorScenarioHost,
   seedRivalAiColonies,
   SimHost,
   type LedgerPosting,
@@ -28,6 +29,24 @@ export const scenarioSource = (id: string, flags: readonly string[]): PlanetSour
   name: id,
   seed: () => createScenarioPlanet(id, { planetId: newId('pl'), flags }),
 });
+
+/** Zero-player scenario spectator planet (`?spectator=1&scenario=<id>`): adopts scenario colonies (or seeds bots on empty scenarios) under an isolated snapshot key. */
+export function spectatorScenarioSource(
+  id: string,
+  opts: { waves?: readonly string[]; botCount?: number } = {},
+): PlanetSource {
+  const cleanId = id.trim().toLowerCase();
+  const flagsList = opts.waves && opts.waves.length > 0 ? opts.waves : parseWaves(null).list;
+  const botCount = Math.max(1, Math.min(6, opts.botCount ?? 2));
+  return {
+    name: botCount === 2 ? `spectator:scenario:${cleanId}` : `spectator:scenario:${cleanId}:${botCount}`,
+    seed: () => {
+      const built = createScenarioPlanet(cleanId, { planetId: newId('pl'), flags: flagsList });
+      const prepared = prepareSpectatorScenarioHost(built, { botCount, fallbackFlags: flagsList });
+      return { host: prepared.host, setupPostings: prepared.setupPostings };
+    },
+  };
+}
 
 /** Zero-player spectator planet (`?spectator=1&host=local`): seeds only Rival AI bots and zero human colonies. */
 export function spectatorSource(opts: {

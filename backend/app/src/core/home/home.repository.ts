@@ -168,6 +168,14 @@ export class HomeRepository {
     return this.remember(await this.store.findLatestColony(playerId));
   }
 
+  async listColoniesByPlayerId(playerId: string): Promise<ColonyRecord[]> {
+    return (await this.store.listPlayerColonies(playerId)).map((c) => this.remember(c));
+  }
+
+  async listColoniesByPlayerAndPlanet(playerId: string, planetId: string): Promise<ColonyRecord[]> {
+    return (await this.store.listPlayerColonies(playerId, planetId)).map((c) => this.remember(c));
+  }
+
   /** The player's colony on the planet: O(1) hash lookup in `latestByPlayerPlanet`, else from the store. */
   async findColonyByPlayerAndPlanet(playerId: string, planetId: string): Promise<ColonyRecord | null> {
     const cached = this.latestByPlayerPlanet.get(`${playerId}\0${planetId}`);
@@ -244,6 +252,23 @@ export class HomeRepository {
 
   async setColonyStatus(colonyId: string, status: string): Promise<ColonyRecord | null> {
     return this.remember(await this.store.setColonyStatus(colonyId, status));
+  }
+
+  async reassignColonyPlayer(colonyId: string, playerId: string): Promise<ColonyRecord | null> {
+    const prev = this.cache.get(colonyId);
+    if (prev && prev.playerId !== playerId) {
+      const ppKey = `${prev.playerId}\0${prev.planetId}`;
+      if (this.latestByPlayerPlanet.get(ppKey)?.id === colonyId) {
+        this.latestByPlayerPlanet.delete(ppKey);
+        for (const c of this.cache.values()) {
+          if (c.id !== colonyId && c.playerId === prev.playerId && c.planetId === prev.planetId) {
+            const cur = this.latestByPlayerPlanet.get(ppKey);
+            if (!cur || c.createdAt.getTime() >= cur.createdAt.getTime()) this.latestByPlayerPlanet.set(ppKey, c);
+          }
+        }
+      }
+    }
+    return this.remember(await this.store.setColonyPlayer(colonyId, playerId));
   }
 
   setPlanetStatus(planetId: string, status: string): Promise<PlanetRecord | null> {

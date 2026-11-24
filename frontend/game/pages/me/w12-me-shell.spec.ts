@@ -38,6 +38,9 @@ describe('W12-13 /me page shell, sticky tabs, wave_disabled plate, and PA-03 saf
     expect(root.querySelector('[data-testid="me-ai-settings"]')).not.toBeNull();
     const modelSelect = root.querySelector('[data-testid="me-ai-model-select"]') as HTMLSelectElement | null;
     expect(modelSelect?.value).toBe('z-ai/glm-5.3-flash');
+    expect(root.querySelector('[data-testid="me-colony-dive-in"]')?.getAttribute('href')).toBe(
+      '/play.html?skip=1&colonyId=co_w12_live_1',
+    );
   });
 
   it('renders Player page is off plate when /v1/me/profile returns wave_disabled (403)', async () => {
@@ -284,5 +287,47 @@ describe('/me NEAR.AI settings — cookie refresh auth token & waves query forwa
     expect(putAuthHeader).toBe('Bearer refreshed-jwt-token-xyz');
     expect(root.querySelector('[data-testid="me-ai-badge"]')?.textContent).toBe('NEAR.AI CONNECTED');
     expect(root.querySelector('[data-testid="pilot-sign-out"]')?.textContent).toBe('Sign out');
+  });
+
+  it('ignores stale dev:* tokens in localStorage without ?as= and caches guest refresh JWTs for account upgrade', async () => {
+    window.localStorage.setItem(
+      'ta_active_pilot',
+      JSON.stringify({ playerId: 'pr_dev_w12', accessToken: 'dev:w12', updatedAt: 1, isGuest: false }),
+    );
+    const guestJwt = 'header.' + btoa(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + 900 })) + '.sig';
+    const root = document.createElement('div');
+    let profileCalled = false;
+    const page = new MePage(root, {
+      search: '',
+      fetch: async (url) => {
+        if (url.includes('/v1/auth/refresh')) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              accessToken: guestJwt,
+              player: { id: 'pr_guest_upgrade_1', handle: 'Guest', isGuest: true },
+            }),
+          };
+        }
+        profileCalled = true;
+        return { ok: false, status: 401, json: async () => ({}) };
+      },
+    });
+    await page.load();
+
+    expect(profileCalled).toBe(false);
+    expect(root.querySelector('[data-testid="me-auth-prompt"]')).not.toBeNull();
+    const stored = JSON.parse(window.localStorage.getItem('ta_active_pilot') ?? '{}') as {
+      playerId?: string;
+      accessToken?: string;
+      isGuest?: boolean;
+    };
+    expect(stored).toMatchObject({
+      playerId: 'pr_guest_upgrade_1',
+      accessToken: guestJwt,
+      isGuest: true,
+    });
+    window.localStorage.clear();
   });
 });

@@ -22,11 +22,8 @@ export type CommandOutcomeMsg =
   | { readonly ok: true; readonly commandId: string; readonly appliedAtTick: number }
   | { readonly ok: false; readonly commandId: string; readonly code: string; readonly appliedAtTick?: number; readonly detail?: string; readonly unlocksAt?: string };
 
-/**
- * Reject codes of `submit` that come from the host, not the sim: the planet's thread is down (`thread_down`) or the
- * planet is not loaded on it (`planet_not_loaded`). Not `REJECT_CODES`: WS ingress sends them as `internal` + detail,
- * the seat path as `host_unavailable`.
- */
+/** Host (not sim) reject codes of `submit`: thread down or planet not loaded on it. Not `REJECT_CODES`: WS ingress
+ * sends them as `internal` + detail, the seat path as `host_unavailable`. */
 export const HOST_DOWN_CODES: readonly string[] = ['thread_down', 'planet_not_loaded'];
 
 export interface PlanetSubscriber {
@@ -117,7 +114,7 @@ export class GamePlanets {
   private readonly fastRunListeners: ((planetId: string, seconds: number, ticks: number) => void)[] = [];
   private readonly fastRunAbortListeners: ((planetId: string) => void)[] = [];
   /** Set by `shutdown`: threads stopping on purpose are not "down". */
-  private stopping = false;
+  private stopping = false; private shutdownPromise?: Promise<void>;
   private readonly unlisten: () => void;
 
   constructor(readonly pool: SimThreadPool, readonly deltaHz = 5) {
@@ -358,15 +355,17 @@ export class GamePlanets {
     this.shutdownHooks.push(fn);
   }
 
-  async shutdown(): Promise<void> {
-    this.stopping = true;
-    for (const h of this.shutdownHooks) await h();
-    await this.pool.shutdown();
-    this.unlisten();
-    const err = new Error('game threads stopped');
-    this.requests.failAll(err);
-    for (const id of [...this.loading.keys()]) this.failLoad(id, err);
-    for (const key of [...this.cmdWaiters.keys()]) this.settleCmd(key, { ok: false, commandId: key.split('\0')[1] ?? '', code: 'thread_down' });
+  shutdown(): Promise<void> {
+    return (this.shutdownPromise ??= (async () => {
+      this.stopping = true;
+      for (const h of this.shutdownHooks.splice(0)) await h();
+      await this.pool.shutdown();
+      this.unlisten();
+      const err = new Error('game threads stopped');
+      this.requests.failAll(err);
+      for (const id of [...this.loading.keys()]) this.failLoad(id, err);
+      for (const key of [...this.cmdWaiters.keys()]) this.settleCmd(key, { ok: false, commandId: key.split('\0')[1] ?? '', code: 'thread_down' });
+    })());
   }
 
   /**

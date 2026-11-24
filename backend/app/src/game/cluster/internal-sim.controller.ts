@@ -145,6 +145,9 @@ export class InternalSimController {
   ): Promise<LandingSiteAnswer> {
     assertInternalAuth(req.headers, this.env);
     await this.snapshots.loadNew(planetId, body.loadOptions ?? {});
+    if (this.planets.isLoaded(planetId)) {
+      await this.simLease?.tryAcquire(planetId).catch(() => undefined);
+    }
     return this.planets.landingSite(planetId, body.colonyIndex, body.timeoutMs ?? 15_000);
   }
 }

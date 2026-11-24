@@ -98,8 +98,11 @@ export class ActivePilotTracker {
     const apply = () => {
       if (this.lockedPilot) return;
       const v = pilot.view();
+      if (v.playerId) this.playerId = v.playerId;
       if (v.accessToken) {
         this.accessToken = v.accessToken;
+        this.persist();
+      } else if (v.playerId) {
         this.persist();
       }
     };

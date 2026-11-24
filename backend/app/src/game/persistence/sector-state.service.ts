@@ -1,4 +1,4 @@
-import { Inject, Injectable, Optional, type OnApplicationShutdown } from '@nestjs/common';
+import { Inject, Injectable, Optional, type BeforeApplicationShutdown, type OnApplicationShutdown } from '@nestjs/common';
 import type { PlanetSectorsLiveStateV1 } from '@terra/contracts';
 import type { PrismaClient } from '@terra/db';
 import type { Logger } from 'pino';
@@ -21,7 +21,7 @@ const DEFAULT_FLUSH_DEBOUNCE_MS = 1200;
  * inside each sector (`world.sector_participant_state`) so Postgres always mirrors live multi-actor state.
  */
 @Injectable()
-export class SectorStateService implements OnApplicationShutdown {
+export class SectorStateService implements BeforeApplicationShutdown, OnApplicationShutdown {
   private readonly log: Logger;
   readonly enabled: boolean;
   private readonly liveCache = new Map<string, { payload: SectorSyncPayload; updatedAt: Date }>();
@@ -130,12 +130,23 @@ export class SectorStateService implements OnApplicationShutdown {
     }
   }
 
-  async onApplicationShutdown(): Promise<void> {
+  closeSubscriptions(): void {
     this.unsubSync?.();
     this.unsubSync = undefined;
     this.unsubUnloaded?.();
     this.unsubUnloaded = undefined;
+  }
+
+  async beforeApplicationShutdown(): Promise<void> {
     for (const id of [...this.flushTimers.keys()]) this.clearTimer(id);
     await this.flushAll();
+  }
+
+  async onApplicationShutdown(): Promise<void> {
+    this.closeSubscriptions();
+    for (const id of [...this.flushTimers.keys()]) this.clearTimer(id);
+    if (this.pendingPayloads.size > 0 || this.inFlight.size > 0) {
+      await this.flushAll();
+    }
   }
 }

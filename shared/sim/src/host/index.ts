@@ -15,3 +15,4 @@ export {
 } from './deltaBundle';
 export { COLONY_OWNER_FIELDS, isColonyOwnerField } from './colonySummary';
 export { bundledClientDeltaFrames, shadowedClientDeltaFrames } from './clientDelta';
+export * from './spectatorScenario';

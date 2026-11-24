@@ -5320,7 +5320,7 @@
                 "type": "string"
               },
               {
-                "pattern": "^col_[A-Za-z0-9_-]{1,64}$",
+                "pattern": "^col?_[A-Za-z0-9_-]{1,64}$",
                 "type": "string"
               }
             ]
@@ -5377,7 +5377,7 @@
                 "type": "string"
               },
               {
-                "pattern": "^col_[A-Za-z0-9_-]{1,64}$",
+                "pattern": "^col?_[A-Za-z0-9_-]{1,64}$",
                 "type": "string"
               }
             ]
@@ -5711,7 +5711,7 @@
                 "type": "string"
               },
               {
-                "pattern": "^col_[A-Za-z0-9_-]{1,64}$",
+                "pattern": "^col?_[A-Za-z0-9_-]{1,64}$",
                 "type": "string"
               }
             ]
@@ -6531,7 +6531,7 @@
                 "type": "string"
               },
               {
-                "pattern": "^col_[A-Za-z0-9_-]{1,64}$",
+                "pattern": "^col?_[A-Za-z0-9_-]{1,64}$",
                 "type": "string"
               }
             ]
@@ -6575,7 +6575,7 @@
                 "type": "string"
               },
               {
-                "pattern": "^col_[A-Za-z0-9_-]{1,64}$",
+                "pattern": "^col?_[A-Za-z0-9_-]{1,64}$",
                 "type": "string"
               }
             ]
@@ -14418,7 +14418,7 @@
                       "type": "string"
                     },
                     {
-                      "pattern": "^col_[A-Za-z0-9_-]{1,64}$",
+                      "pattern": "^col?_[A-Za-z0-9_-]{1,64}$",
                       "type": "string"
                     }
                   ]
@@ -14933,7 +14933,7 @@
                       "type": "string"
                     },
                     {
-                      "pattern": "^col_[A-Za-z0-9_-]{1,64}$",
+                      "pattern": "^col?_[A-Za-z0-9_-]{1,64}$",
                       "type": "string"
                     }
                   ]

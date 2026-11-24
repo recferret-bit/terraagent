@@ -67,6 +67,14 @@ export class PrismaHomeStore implements HomeStore {
     return orNull(row, this.toColony) as ColonyRecord | null;
   }
 
+  async listPlayerColonies(playerId: string, planetId?: string): Promise<ColonyRecord[]> {
+    const rows = await this.prisma.colony.findMany({
+      where: { playerId, ...(planetId === undefined ? {} : { planetId }) },
+      orderBy: [{ createdAt: 'desc' }, { colonyIndex: 'desc' }],
+    });
+    return rows.map(this.toColony);
+  }
+
   async listColonies(planetId?: string): Promise<ColonyRecord[]> {
     const rows = await this.prisma.colony.findMany({ ...(planetId === undefined ? {} : { where: { planetId } }), orderBy: { colonyIndex: 'asc' } });
     return rows.map(this.toColony);
@@ -97,6 +105,11 @@ export class PrismaHomeStore implements HomeStore {
   async setColonyStatus(id: string, status: string): Promise<ColonyRecord | null> {
     if (status === 'ELIMINATED') this.recapSeenIds.delete(id);
     const r = await this.prisma.colony.updateMany({ where: { id }, data: { status } });
+    return r.count ? this.findColony(id) : null;
+  }
+
+  async setColonyPlayer(id: string, playerId: string): Promise<ColonyRecord | null> {
+    const r = await this.prisma.colony.updateMany({ where: { id }, data: { playerId } });
     return r.count ? this.findColony(id) : null;
   }
 

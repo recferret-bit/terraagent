@@ -78,7 +78,7 @@ test('4. Planets section current & past colony cards', async () => {
   serverOnly();
   await expect(mePage.locator('[data-testid="me-current-colony"]')).toHaveCount(1);
   await expect(mePage.locator('[data-testid="me-past-colony"]')).toHaveCount(1);
-  await expect(mePage.locator('[data-testid="me-colony-dive-in"]')).toHaveAttribute('href', '/play.html?scenario=w12&as=w12');
+  await expect(mePage.locator('[data-testid="me-colony-dive-in"]')).toHaveAttribute('href', '/play.html?skip=1&colonyId=co_w12_live_1');
 });
 
 test('5. History timeline filter and infinite scroll', () => {

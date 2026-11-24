@@ -9,7 +9,7 @@ import { describeJournalProblem, resumeJournal } from './hostJournal';
 import { LocalCargoRelay } from './localCargoRelay';
 import { LocalFeedCollector } from './parts/localBotFeed';
 import { LocalDevError, runLocalDevCommand } from './parts/localDevCommands';
-import { scenarioSource, spectatorSource, type PlanetSource, type SeededPlanet } from './planetSource';
+import { scenarioSource, spectatorScenarioSource, spectatorSource, type PlanetSource, type SeededPlanet } from './planetSource';
 import type { FromLocalHost, LocalHostOptions, LocalPost, ToLocalHost } from './protocol';
 import { LocalHardModeClock } from './devPresence';
 import { compatible, snapshotKey, type LocalSnapshot, type SnapshotStore } from './snapshotStore';
@@ -29,6 +29,7 @@ export interface LocalHostDeps {
 }
 
 const SAVE_EVERY_MS = 10_000;
+const SPECTATOR_SAVE_EVERY_MS = 2_000;
 /** Restores after a throwing step before the planet stays down (BE-12: the server allows 3 per 10 min). */
 export const MAX_STEP_RESTORES = 3;
 const isRejectCode = (c: string): c is RejectCode => (REJECT_CODES as readonly string[]).includes(c);
@@ -81,8 +82,10 @@ export class LocalHostCore {
     const waves = parseWaves(opts.waves).list;
     const core = new LocalHostCore(waves, deps, post);
     core.spectatorMode = Boolean(opts.spectator || opts.scenario === 'spectator');
-    const source = core.spectatorMode && (!opts.scenario || opts.scenario === 'spectator')
-      ? spectatorSource({ planetType: opts.planetType, seed: opts.seed, waves, botCount: opts.botCount })
+    const source = core.spectatorMode
+      ? !opts.scenario || opts.scenario === 'spectator'
+        ? spectatorSource({ planetType: opts.planetType, seed: opts.seed, waves, botCount: opts.botCount })
+        : spectatorScenarioSource(opts.scenario, { waves, botCount: opts.botCount })
       : scenarioSource(opts.scenario, waves);
     await core.build(source, Boolean(opts.reset));
     core.run();
@@ -423,7 +426,8 @@ export class LocalHostCore {
   }
 
   private armSave(): void {
-    this.cancelSave = this.deps.schedule(() => { void this.save(); this.armSave(); }, this.deps.saveEveryMs ?? SAVE_EVERY_MS);
+    const intervalMs = this.deps.saveEveryMs ?? (this.spectatorMode ? SPECTATOR_SAVE_EVERY_MS : SAVE_EVERY_MS);
+    this.cancelSave = this.deps.schedule(() => { void this.save(); this.armSave(); }, intervalMs);
   }
 
   /** Stops stepping and writes the final snapshot; resolves once that save settled. */

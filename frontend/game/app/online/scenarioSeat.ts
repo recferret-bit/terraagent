@@ -24,10 +24,10 @@ export interface ResumeChoice {
 const randomName = () => `pilot-${Math.random().toString(36).slice(2, 8)}`;
 const SCENARIO_ID = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 
-/** `?scenario=<id>` (lower-cased, validated) or null. */
+/** `?scenario=<id>` (lower-cased, validated; excludes `'spectator'` mode alias) or null. */
 export function scenarioId(search: string): string | null {
   const v = new URLSearchParams(search).get('scenario')?.trim().toLowerCase();
-  return v && SCENARIO_ID.test(v) ? v : null;
+  return v && v !== 'spectator' && SCENARIO_ID.test(v) ? v : null;
 }
 
 export function browserSeatStorage(): SeatStorage | null {
