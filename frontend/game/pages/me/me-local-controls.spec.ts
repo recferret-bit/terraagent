@@ -41,13 +41,15 @@ describe('/me local mode (?host=local) sign-out, sign-in, rename & navigation li
     expect(q(root, 'me-colony-dive-in')!.getAttribute('href')).toBe('/play.html?host=local&skip=1');
     expect(q(root, 'me-play-cta')!.getAttribute('href')).toBe('/play.html?host=local');
 
-    // Sign out transitions cleanly to me-auth-prompt instead of bouncing back to Local Commander
+    // Sign out transitions cleanly to me-auth-prompt with all internals disabled until signed in
     q(root, 'pilot-sign-out')!.click();
     await flush();
     await flush();
     expect(resolveMeBearerToken('?host=local')).toBe('');
     expect(q(root, 'me-auth-prompt')).not.toBeNull();
-    expect(q(root, 'me-pilot-handle')).toBeNull();
+    expect(q(root, 'me-main')?.dataset.guestDisabled).toBe('true');
+    expect(q(root, 'me-main')?.hasAttribute('inert')).toBe(true);
+    expect(q(root, 'me-pilot-handle')?.textContent).toBe('Guest Pilot');
 
     // Sign back in via prompt's Sign in / Sign up -> local mock player form
     const promptAuth = q(root, 'me-auth-prompt')!;
@@ -75,7 +77,7 @@ describe('/me local mode (?host=local) sign-out, sign-in, rename & navigation li
     expect(q(root, 'staking-dashboard')!.dataset.account).toBe('commander-nova.terraagent.mock');
   });
 
-  it('supports Connect NEAR Wallet CTA & social/email local sign-in when signed out on /me.html?host=local#staking', async () => {
+  it('keeps /me internals disabled while signed out on /me.html?host=local#staking and unlocks via Sign in / Sign up', async () => {
     const localFetch = createLocalModeFetch(() => 1_700_000_000_000);
     await localFetch('/v1/auth/logout', { method: 'POST' });
 
@@ -85,19 +87,25 @@ describe('/me local mode (?host=local) sign-out, sign-in, rename & navigation li
     await page.load();
     await flush();
 
-    expect(q(root, 'staking-connect-cta')!.textContent).toContain('Connect NEAR Wallet to Stake 50 NEAR');
-    q(root, 'staking-connect-cta')!.click();
+    expect(q(root, 'me-auth-prompt')).not.toBeNull();
+    expect(q(root, 'me-main')?.dataset.guestDisabled).toBe('true');
+    expect((q(root, 'staking-connect-cta') as HTMLButtonElement).disabled).toBe(true);
 
-    const headerDialog = root.querySelector<HTMLDialogElement>('[data-testid="pilot-provider-dialog"]')!;
-    expect(headerDialog.open || headerDialog.hasAttribute('open')).toBe(true);
-    expect(q(headerDialog, 'local-mock-pilot-form')).not.toBeNull();
+    const promptAuth = q(root, 'me-auth-prompt')!;
+    q(promptAuth, 'pilot-sign-in')!.click();
 
-    // Email sign-in works offline in ?host=local without external popups
-    (q(headerDialog, 'pilot-email-input') as HTMLInputElement).value = 'vega@terraagent.fun';
-    q(headerDialog, 'continue-email')!.click();
+    const promptDialog = promptAuth.querySelector<HTMLDialogElement>('[data-testid="pilot-provider-dialog"]')!;
+    expect(promptDialog.open || promptDialog.hasAttribute('open')).toBe(true);
+    expect(q(promptDialog, 'local-mock-pilot-form')).not.toBeNull();
+
+    // Email sign-in works offline in ?host=local without external popups and unlocks /me internals
+    (q(promptDialog, 'pilot-email-input') as HTMLInputElement).value = 'vega@terraagent.fun';
+    q(promptDialog, 'continue-email')!.click();
     await flush();
     await flush();
 
+    expect(q(root, 'me-auth-prompt')).toBeNull();
+    expect(q(root, 'me-main')?.dataset.guestDisabled).toBeUndefined();
     expect(q(root, 'me-pilot-handle')!.textContent).toBe('vega');
     expect(q(root, 'staking-dashboard')).not.toBeNull();
   });

@@ -2,7 +2,7 @@ import { Inject, Injectable, Optional } from '@nestjs/common';
 import type { ColonySummary, HomeResponse, PlanetSummary } from '@terra/contracts';
 import { DEV_PLANET_TYPE, type DevPlanetType } from '@terra/sim';
 import { WorldLifecycleService } from '../../lobby/lifecycle.service';
-import { devPlayerId } from '../../ws/session-verifier';
+import { isDevPlayerId } from '../../ws/session-verifier';
 import { APP_ENV, type AppEnv } from '../tokens';
 import { LobbyPersistenceService } from '../../lobby/lobby-persistence.service';
 import type { CanonicalWorldRecord } from '../../lobby/lobby-persistence.types';
@@ -191,7 +191,7 @@ export class HomeService {
       colony &&
       colony.playerId !== playerId &&
       this.isNonProduction() &&
-      (colony.id === 'co_w12_live_1' || colony.playerId.startsWith('pr_dev_') || colony.playerId === devPlayerId('w12'))
+      (colony.id === 'co_w12_live_1' || colony.playerId.startsWith('pr_dev_') || isDevPlayerId(colony.playerId))
     ) {
       this.antiCheat?.recordColonyRemoved(colony.id);
       colony = (await this.repo.reassignColonyPlayer(colony.id, playerId)) ?? colony;

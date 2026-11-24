@@ -59,7 +59,6 @@ export function resolveHomeBaseDiveAngles(markers: readonly OrbitalGlobeMarkerIn
 const FORWARDED_ONLINE_QUERY_KEYS = [
   'host',
   'seed',
-  'waves',
   'lag',
   'predict',
   'as',
@@ -68,7 +67,7 @@ const FORWARDED_ONLINE_QUERY_KEYS = [
   'colonyId',
 ] as const;
 
-const DEV_ONLY_FORWARDED_QUERY_KEYS = new Set<string>(['host', 'waves', 'lag', 'predict', 'as']);
+const DEV_ONLY_FORWARDED_QUERY_KEYS = new Set<string>(['host', 'lag', 'predict', 'as']);
 
 /**
  * Extracts session/runtime query parameters (`?host=local`, `?seed=<number|hash>`, `?waves=`, etc.)
@@ -254,6 +253,8 @@ export function syncOrbitSelectorUrl(kind: PlanetKind): void {
   q.delete('skip');
   q.delete('deploy');
   q.delete('t');
+  q.delete('waves');
+  q.delete('scenario');
   history.replaceState(null, '', `${location.pathname}?${q.toString()}`);
 }
 

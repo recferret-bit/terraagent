@@ -42,6 +42,43 @@ function readExistingDeviceSecret(
   }
 }
 
+function readStoredPilotBearer(storage: Pick<Storage, 'getItem'> | null | undefined): string | null {
+  if (!storage) return null;
+  try {
+    const raw = storage.getItem('ta_active_pilot');
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { accessToken?: unknown };
+    const tok = typeof parsed.accessToken === 'string' ? parsed.accessToken.trim() : '';
+    if (
+      !tok ||
+      tok === 'local-mode-token' ||
+      tok.startsWith('ta_mock_') ||
+      tok.startsWith('near:') ||
+      tok.startsWith('dev:') ||
+      tok.startsWith('player:')
+    ) {
+      return null;
+    }
+    return tok;
+  } catch {
+    return null;
+  }
+}
+
+function readDevOverrideToken(search: string, dev: boolean): string | null {
+  if (!dev || !search) return null;
+  try {
+    const params = new URLSearchParams(search);
+    const pid = params.get('playerId')?.trim();
+    if (pid) return `player:${pid}`;
+    const as = params.get('as')?.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
+    if (as) return `dev:${as}`;
+  } catch {
+    /* ignore malformed query */
+  }
+  return null;
+}
+
 export interface ProbeActiveColonyOptions {
   readonly fetch?: typeof fetch;
   readonly storage?: Pick<Storage, 'getItem'> | null;
@@ -61,11 +98,16 @@ export async function probeActiveHomeColony(opts: ProbeActiveColonyOptions = {})
   const storage = opts.storage === undefined ? (typeof localStorage !== 'undefined' ? localStorage : null) : opts.storage;
 
   try {
-    let token = '';
-    const refreshed = await refreshPilotSession(doFetch, !opts.fetch);
-    if (refreshed?.accessToken) {
-      token = refreshed.accessToken;
-    } else {
+    let token = readDevOverrideToken(search, dev) ?? '';
+    if (!token) {
+      const refreshed = await refreshPilotSession(doFetch, !opts.fetch);
+      if (refreshed?.accessToken) {
+        token = refreshed.accessToken;
+      } else {
+        token = readStoredPilotBearer(storage) ?? '';
+      }
+    }
+    if (!token) {
       const secret = readExistingDeviceSecret(storage, search, dev);
       if (secret) {
         const res = await doFetch('/v1/auth/guest', {

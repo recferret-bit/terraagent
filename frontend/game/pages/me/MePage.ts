@@ -1,5 +1,4 @@
-import type { MeAchievementsResponse, MeProfileResponse } from '@terra/contracts';
-import { resolveDefaultPatronagePlanetId } from '@terra/contracts';
+import { ACHIEVEMENTS, resolveDefaultPatronagePlanetId, type MeAchievementsResponse, type MeProfileResponse } from '@terra/contracts';
 import {
   consentedAuthHeaders, failAuthHttp, failAuthThrown, rememberAuthProvider, succeedAuth,
 } from '../../../design/analytics/auth';
@@ -46,16 +45,96 @@ export interface MountMePageOptions {
   readonly hash?: string;
 }
 
+function buildGuestPlaceholderData(): {
+  readonly profile: MeProfileResponse;
+  readonly achievements: MeAchievementsResponse;
+} {
+  const nowIso = new Date(0).toISOString();
+  return {
+    profile: {
+      identity: {
+        playerId: 'guest',
+        handle: 'Guest Pilot',
+        accountId: null,
+        isGuest: true,
+        pilotSince: nowIso,
+        avatarSeed: 'guest',
+        frame: 'default',
+      },
+      progression: {
+        level: 1,
+        xp: 0,
+        currentLevelXp: 0,
+        nextLevelXp: 500,
+        title: 'Cadet',
+        titles: ['Cadet'],
+        frames: ['default'],
+        unlockStage: 0,
+        nextStageCondition: 'Sign in to track your colony progression.',
+      },
+      stats: {
+        coloniesFounded: 0,
+        coloniesSettled: 0,
+        coloniesEliminated: 0,
+        highestStageReached: 0,
+        tilesGraded: 0,
+        obstaclesRemoved: 0,
+        waterTilesReclaimed: 0,
+        livingTilesCreated: 0,
+        buildingsCompleted: 0,
+        peakNetPower: 0,
+        nightsNoBrownout: 0,
+        resourcesProduced: 0,
+        faunaKilled: 0,
+        nestsDestroyed: 0,
+        raidsRepelled: 0,
+        marketTradesSettled: 0,
+      },
+      currentColonies: [],
+      pastColonies: [],
+      nextAchievements: [],
+      earnedAchievementsCount: 0,
+      totalAchievementsCount: ACHIEVEMENTS.length,
+    },
+    achievements: {
+      earnedCount: 0,
+      totalCount: ACHIEVEMENTS.length,
+      achievements: [],
+    },
+  };
+}
+
+function disableGuestInternals(main: HTMLElement): void {
+  main.classList.add('is-guest-disabled');
+  main.dataset.guestDisabled = 'true';
+  main.setAttribute('aria-disabled', 'true');
+  main.setAttribute('inert', '');
+  if ('inert' in main) (main as HTMLElement & { inert: boolean }).inert = true;
+
+  for (const ctrl of main.querySelectorAll<HTMLButtonElement | HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>(
+    'button, input, select, textarea',
+  )) {
+    if (!ctrl.disabled) ctrl.disabled = true;
+    if (ctrl.getAttribute('aria-disabled') !== 'true') ctrl.setAttribute('aria-disabled', 'true');
+    if (ctrl.tabIndex !== -1) ctrl.tabIndex = -1;
+  }
+  for (const node of main.querySelectorAll<HTMLElement>('a, [tabindex]')) {
+    if (node.getAttribute('aria-disabled') !== 'true') node.setAttribute('aria-disabled', 'true');
+    if (node.tabIndex !== -1) node.tabIndex = -1;
+  }
+}
+
 export class MePage {
   private headerAuth: PilotAccess | null = null;
   private promptAuth: PilotAccess | null = null;
   private tabNav: MeTabNavigationHandle | null = null;
+  private guestObserver: MutationObserver | null = null;
   private hashAlignPending = false;
   private loadSeq = 0;
   private readonly waveStakingOn: boolean;
   private readonly localHost: boolean;
   private readonly effectiveFetch?: MeFetchFn;
-  /** Set while the signed-out view is showing (the staking tab bypasses the auth wall). */
+  /** Set while the signed-out view is showing. */
   private unauthMessage: string | null = null;
   private hashListening = false;
 
@@ -97,11 +176,12 @@ export class MePage {
     accountId: string | null,
     defaultPlanetId?: string,
     onStakingChange?: (totalStakedNear: number) => void,
+    fetchOverride?: MeFetchFn,
   ): { readonly plate: HTMLElement; readonly ready: Promise<void> } {
     const handle = renderStakingSection({
       amount: parseStakingHash(this.currentHash()).amount,
       defaultPlanetId,
-      fetch: this.effectiveFetch,
+      fetch: fetchOverride ?? this.effectiveFetch,
       search: this.opts.search,
       connected: accountId !== null,
       accountId,
@@ -119,32 +199,47 @@ export class MePage {
 
   /** Server-side fencing: the overview endpoint 404s with W28 off, so the staking tab and plate disappear. */
   private hideStaking(plate: HTMLElement): void {
-    const main = plate.parentElement;
     plate.remove();
     this.root.querySelector<HTMLElement>('[data-testid="me-tab-staking"]')?.remove();
-    // signed out on `#staking`: the preview was the whole page, so fall back to the normal sign-in prompt
-    if (this.unauthMessage !== null && main && main.childElementCount === 0) main.replaceWith(this.renderAuthPrompt(this.unauthMessage));
     this.mountTabNavigation();
   }
 
-  /** Signed-out: the staking tab renders the public preview with no auth wall; every other hash keeps the prompt. */
+  private applyGuestLock(main: HTMLElement): void {
+    disableGuestInternals(main);
+    if (typeof MutationObserver !== 'undefined') {
+      this.guestObserver?.disconnect();
+      this.guestObserver = new MutationObserver(() => {
+        disableGuestInternals(main);
+      });
+      this.guestObserver.observe(main, { childList: true, subtree: true });
+    }
+  }
+
+  /** Signed-out: auth prompt is shown at top and all `/me` page internals & tabs are disabled until signed in. */
   private renderUnauthenticated(message: string): void {
     this.unauthMessage = message;
     this.disposeAuthControls();
     clearChildren(this.root);
-    this.root.appendChild(this.renderStickyNav({ skipRestore: true }));
-    if (this.waveStakingOn && parseStakingHash(this.currentHash()).active) {
-      const main = el('main', { className: 'ta-me-main', dataset: { testid: 'me-main' } });
-      main.appendChild(this.renderStakingPlate(null).plate);
-      this.root.appendChild(main);
-      this.mountTabNavigation();
-      return;
-    }
+    this.root.appendChild(this.renderStickyNav({ initialSession: null, skipRestore: true, guestDisabled: true }));
     this.root.appendChild(this.renderAuthPrompt(message));
+    const guest = buildGuestPlaceholderData();
+    const { main, stakingReady } = this.renderProfileSections(guest.profile, guest.achievements, {
+      accountId: null,
+      unauthenticated: true,
+    });
+    this.applyGuestLock(main);
+    this.root.appendChild(main);
     this.mountTabNavigation();
+    if (stakingReady) {
+      void stakingReady.then(() => {
+        if (main.isConnected && main.dataset.guestDisabled === 'true') disableGuestInternals(main);
+      });
+    }
   }
 
   private disposeAuthControls(): void {
+    this.guestObserver?.disconnect();
+    this.guestObserver = null;
     this.tabNav?.dispose();
     this.tabNav = null;
     this.headerAuth?.dispose();
@@ -204,6 +299,7 @@ export class MePage {
   }
 
   async load(): Promise<void> {
+    this.stripWaveParamsFromUrl();
     this.disposeAuthControls();
     clearChildren(this.root);
     this.root.appendChild(this.renderStickyNav({ mountAuth: false }));
@@ -287,23 +383,11 @@ export class MePage {
     );
   }
 
-  renderLoaded(profile: MeProfileResponse, achievements: MeAchievementsResponse): void {
-    this.disposeAuthControls();
-    clearChildren(this.root);
-    const isUnlinkedGuest = profile.identity.isGuest && !profile.identity.accountId;
-    const initialSession: PilotAccessSession | null = isUnlinkedGuest
-      ? null
-      : {
-          accessToken: resolveMeBearerToken(this.opts.search),
-          ...(profile.identity.accountId ? { accountId: profile.identity.accountId } : {}),
-          player: {
-            id: profile.identity.playerId,
-            handle: profile.identity.handle,
-            isGuest: false,
-          },
-        };
-    this.root.appendChild(this.renderStickyNav({ initialSession, skipRestore: true }));
-
+  private renderProfileSections(
+    profile: MeProfileResponse,
+    achievements: MeAchievementsResponse,
+    opts?: { readonly accountId?: string | null; readonly unauthenticated?: boolean },
+  ): { readonly main: HTMLElement; readonly stakingReady: Promise<void> | null } {
     const main = el('main', { className: 'ta-me-main', dataset: { testid: 'me-main' } });
     const defaultPlanetId = resolveDefaultPatronagePlanetId(profile.currentColonies[0]?.planetId);
     let aiCtrl: AiSettingsController | null = null;
@@ -329,14 +413,21 @@ export class MePage {
         'Your Pilot identity, progression XP, and NEAR.AI Bot Decision Manager settings.',
       ),
     );
-    const seq = ++this.loadSeq;
-    const initialTarget = parseStakingHash(this.currentHash()).active ? 'staking' : parseHashSectionId(this.currentHash());
-    this.hashAlignPending = Boolean(initialTarget && initialTarget !== 'pilot' && initialTarget !== 'staking');
     let stakingReady: Promise<void> | null = null;
     if (this.waveStakingOn) {
-      const stk = this.renderStakingPlate(profile.identity.accountId ?? null, defaultPlanetId, (total) => {
-        aiCtrl?.syncStakerState(total);
-      });
+      const accountId = opts && 'accountId' in opts ? (opts.accountId ?? null) : (profile.identity.accountId ?? null);
+      const stakingFetchOverride: MeFetchFn | undefined =
+        opts?.unauthenticated && !parseStakingHash(this.currentHash()).active
+          ? async () => ({ ok: false, status: 502, json: async () => ({}) })
+          : undefined;
+      const stk = this.renderStakingPlate(
+        accountId,
+        defaultPlanetId,
+        (total) => {
+          aiCtrl?.syncStakerState(total);
+        },
+        stakingFetchOverride,
+      );
       main.appendChild(stk.plate);
       stakingReady = stk.ready;
     }
@@ -363,19 +454,57 @@ export class MePage {
     main.appendChild(
       this.renderSectionPlate('play', 'PLAY', [renderPlaySection({ localHost: this.localHost })]),
     );
+    return { main, stakingReady };
+  }
+
+  renderLoaded(profile: MeProfileResponse, achievements: MeAchievementsResponse): void {
+    this.disposeAuthControls();
+    clearChildren(this.root);
+    const isUnlinkedGuest = profile.identity.isGuest && !profile.identity.accountId;
+    const initialSession: PilotAccessSession | null = isUnlinkedGuest
+      ? null
+      : {
+          accessToken: resolveMeBearerToken(this.opts.search),
+          ...(profile.identity.accountId ? { accountId: profile.identity.accountId } : {}),
+          player: {
+            id: profile.identity.playerId,
+            handle: profile.identity.handle,
+            isGuest: false,
+          },
+        };
+    this.root.appendChild(
+      this.renderStickyNav({ initialSession, skipRestore: true, guestDisabled: isUnlinkedGuest }),
+    );
+    if (isUnlinkedGuest) {
+      this.root.appendChild(
+        this.renderAuthPrompt('Sign in or create a pilot account to unlock your /me profile, colonies, and settings.'),
+      );
+    }
+
+    const seq = ++this.loadSeq;
+    const initialTarget = parseStakingHash(this.currentHash()).active ? 'staking' : parseHashSectionId(this.currentHash());
+    this.hashAlignPending = Boolean(initialTarget && initialTarget !== 'pilot' && initialTarget !== 'staking');
+    const { main, stakingReady } = this.renderProfileSections(profile, achievements);
+    if (isUnlinkedGuest) {
+      this.applyGuestLock(main);
+    }
 
     this.root.appendChild(main);
-    noteProfileViewed();
+    if (!isUnlinkedGuest) noteProfileViewed();
     this.mountTabNavigation();
-    this.scrollToHashSection('auto');
-    if (stakingReady && this.hashAlignPending && typeof window !== 'undefined') {
+    if (!isUnlinkedGuest) this.scrollToHashSection('auto');
+    if (stakingReady && typeof window !== 'undefined') {
       const cancelAlign = (): void => { this.hashAlignPending = false; };
-      window.addEventListener('wheel', cancelAlign, { once: true, passive: true });
-      window.addEventListener('touchstart', cancelAlign, { once: true, passive: true });
+      if (!isUnlinkedGuest && this.hashAlignPending) {
+        window.addEventListener('wheel', cancelAlign, { once: true, passive: true });
+        window.addEventListener('touchstart', cancelAlign, { once: true, passive: true });
+      }
       void stakingReady.then(() => {
         window.removeEventListener('wheel', cancelAlign);
         window.removeEventListener('touchstart', cancelAlign);
-        if (seq === this.loadSeq && this.hashAlignPending) {
+        if (isUnlinkedGuest && main.isConnected && main.dataset.guestDisabled === 'true') {
+          disableGuestInternals(main);
+        } else if (seq === this.loadSeq && this.hashAlignPending) {
           this.hashAlignPending = false;
           this.scrollToHashSection('auto');
         }
@@ -384,22 +513,37 @@ export class MePage {
   }
 
   private renderStickyNav(
-    navOpts: Pick<PilotAccessOptions, 'initialSession' | 'skipRestore'> & { readonly mountAuth?: boolean } = {},
+    navOpts: Pick<PilotAccessOptions, 'initialSession' | 'skipRestore'> & {
+      readonly mountAuth?: boolean;
+      readonly guestDisabled?: boolean;
+    } = {},
   ): HTMLElement {
     const tabs = this.waveStakingOn
       ? [ME_SECTION_TABS[0], STAKING_TAB, ...ME_SECTION_TABS.slice(1)]
       : ME_SECTION_TABS;
-    const links = tabs.map((t) =>
-      el(
+    const guestDisabled = Boolean(navOpts.guestDisabled);
+    const links = tabs.map((t) => {
+      const baseCls = t.id === STAKING_SECTION_ID ? 'ta-me-tab ta-me-tab--staking' : 'ta-me-tab';
+      const link = el(
         'a',
         {
-          className: t.id === STAKING_SECTION_ID ? 'ta-me-tab ta-me-tab--staking' : 'ta-me-tab',
+          className: guestDisabled ? `${baseCls} is-disabled` : baseCls,
           href: `#${t.id}`,
-          dataset: { testid: `me-tab-${t.id}`, section: t.id },
+          ...(guestDisabled ? { tabIndex: -1 } : {}),
+          dataset: {
+            testid: `me-tab-${t.id}`,
+            section: t.id,
+            ...(guestDisabled ? { guestDisabled: 'true' } : {}),
+          },
         },
         t.label,
-      ),
-    );
+      );
+      if (guestDisabled) {
+        link.setAttribute('aria-disabled', 'true');
+        link.addEventListener('click', (e) => e.preventDefault());
+      }
+      return link;
+    });
 
     const authHost = el('div', { dataset: { testid: 'me-header-auth' } });
     if (navOpts.mountAuth !== false) {
@@ -432,6 +576,17 @@ export class MePage {
         authHost,
       ),
     );
+  }
+
+  private stripWaveParamsFromUrl(): void {
+    if (this.opts.search !== undefined || typeof window === 'undefined' || !window.location) return;
+    const params = new URLSearchParams(window.location.search);
+    if (!params.has('waves') && !params.has('scenario')) return;
+    params.delete('waves');
+    params.delete('scenario');
+    const qs = params.toString();
+    const nextUrl = `${window.location.pathname}${qs ? `?${qs}` : ''}${window.location.hash}`;
+    window.history?.replaceState?.(null, '', nextUrl);
   }
 
   private clearDevQueryParamsOnAuthChange(): void {

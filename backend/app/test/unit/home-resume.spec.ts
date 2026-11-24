@@ -2,6 +2,7 @@ import 'reflect-metadata';
 import { describe, expect, it, vi } from 'vitest';
 import { HomeService } from '../../src/core/home/home.service';
 import { HomeRepository } from '../../src/core/home/home.repository';
+import { devPlayerId } from '../../src/ws/session-verifier';
 import { freeLandingHost } from './fixtures/landing-host';
 
 async function setup() {
@@ -71,7 +72,9 @@ describe('owned colony resume', () => {
       errorCode: 'COLONY_SECTOR_LOCKED',
     });
   });
+});
 
+describe('owned colony resume — dev alias & W12 materialization', () => {
   it('materializes and resumes co_w12_live_1 on Sylva Reach (pl_w12_forest) and reassigns dev-seeded ownership in non-production', async () => {
     const repo = new HomeRepository();
     const home = new HomeService(repo);
@@ -93,6 +96,31 @@ describe('owned colony resume', () => {
     expect(reassigned).toMatchObject({
       state: 'ACTIVE',
       colony: { id: 'co_w12_live_1', playerId: 'pr_browser_2', planetId: 'pl_w12_forest' },
+    });
+  });
+
+  it('reassigns and resumes colonies seeded under any non-production devPlayerId alias', async () => {
+    const repo = new HomeRepository();
+    const home = new HomeService(repo);
+    home.setLandingHost(freeLandingHost);
+    const devOwner = devPlayerId('custom_dev_pilot');
+    const planet = await repo.upsertDevPlanet('pl_dev_alias_test');
+    const created = await repo.createColony({
+      playerId: devOwner,
+      planetId: planet.id,
+      colonyIndex: 0,
+      name: 'Alias Basin',
+      status: 'ACTIVE',
+      foundingSectorId: 'sec_0_0',
+      color: 0,
+      spawnQ: 0,
+      spawnR: 0,
+    });
+
+    const resumed = await home.resumeColony('pr_real_browser_pilot', created.colony.id);
+    expect(resumed).toMatchObject({
+      state: 'ACTIVE',
+      colony: { id: created.colony.id, name: 'Alias Basin', playerId: 'pr_real_browser_pilot', planetId: planet.id },
     });
   });
 });

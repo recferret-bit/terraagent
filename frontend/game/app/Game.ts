@@ -113,7 +113,7 @@ export class Game {
     this.mountStage(this.makeSpec(kind, this.menu.seed));
     this.applySettings();
     this.loop();
-    if ((q.has('planet') || this.isLocalHost) && (q.get('skip') === '1' || (devBuild && q.has('t')) || q.get('deploy') === '1')) {
+    if ((q.has('planet') || q.has('colonyId') || this.isLocalHost) && (q.get('skip') === '1' || (devBuild && q.has('t')) || q.get('deploy') === '1')) {
       this.settings.skipCinematic = q.get('skip') === '1';
       this.fastForward = devBuild ? Math.max(0, parseFloat(q.get('t') ?? '0') || 0) : 0;
       void this.autoDeploy(kind);
@@ -183,26 +183,32 @@ export class Game {
 
   // ------------------------------------------------------------------ deploy
   private async autoDeploy(requestedKind: PlanetKind): Promise<void> {
+    const q = new URLSearchParams(location.search);
+    const explicitColonyId = new URLSearchParams(this.sessionSearch).get('colonyId') ?? q.get('colonyId');
+    const explicitSector = q.get('sector');
+    if (explicitSector) this.sectorIntent = normalizeSectorIntent(explicitSector);
     const targetKind = await resolveAutoDeployPlanetKind({
       requestedKind, probeOnline: this.useOnlineGameplay && !this.isLocalHost,
       probeActiveColony: () => this.menu.probeActiveColony(),
       getActiveColonyKind: () => this.menu.getActiveColony()?.kind ?? null,
     });
     const active = this.menu.getActiveColony();
-    this.deploy(targetKind, !active && targetKind === this.menu.kind ? this.menu.seed : PLANET_SPECS[targetKind].seed, true);
+    const hasColony = active !== null || Boolean(explicitColonyId);
+    this.deploy(targetKind, !hasColony && targetKind === this.menu.kind ? this.menu.seed : PLANET_SPECS[targetKind].seed, true);
   }
 
   private deploy(kind: PlanetKind, seed: number, instant = false) {
     if (this.phase !== 'menu' || !this.menu.canDeploy()) return;
     const activeColony = this.menu.getActiveColony();
+    const explicitColonyId = new URLSearchParams(this.sessionSearch).get('colonyId');
     if (activeColony) {
       kind = activeColony.kind;
       seed = PLANET_SPECS[kind].seed;
     }
     clearTimeout(this.prepTimer);
     this.prepSeq++;
-    this.loadMode = resolveColonyLoadMode({ isReturning: this.useOnlineGameplay && activeColony !== null, instant, skipCinematic: this.settings.skipCinematic });
-    if (this.useOnlineGameplay && activeColony !== null) { this.enterExistingColony(kind, seed, instant); return; }
+    this.loadMode = resolveColonyLoadMode({ isReturning: this.useOnlineGameplay && (activeColony !== null || Boolean(explicitColonyId)), instant, skipCinematic: this.settings.skipCinematic });
+    if (this.useOnlineGameplay && (activeColony !== null || Boolean(explicitColonyId))) { this.enterExistingColony(kind, seed, instant); return; }
     writeStoredPlanetKind(kind);
     notePlanetSelected(kind, 'play');
     notePlayBooted(kind, this.useOnlineGameplay && !this.isLocalHost ? 'online' : 'local');
