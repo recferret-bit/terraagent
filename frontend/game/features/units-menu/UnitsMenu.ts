@@ -2,7 +2,7 @@ import type { Disposable, FeatureContext, GameView } from '../../core/registry/t
 import { noteUiAction } from '../../../design/analytics/ui';
 import { isGameInputBlocked } from '../../core/input/gameInputBlock';
 import { releaseArchetypeThumbs, retainArchetypeThumbs } from '../shared/archetypeThumb';
-import { type MenuTier, presentTiers, rememberTier, renderTierBar, setTierVisible } from '../shared/menuCards';
+import { hideActiveCardTip, type MenuTier, presentTiers, rememberTier, renderTierBar, setTierVisible } from '../shared/menuCards';
 import { layoutMenuGroups, UNIT_GROUPS } from '../shared/menuSections';
 import { isReadOnlySpectator, ownColonyIndex } from '../shared/colony';
 import { supplyBlockReason, supplyLevel } from '../shared/supply';
@@ -89,6 +89,7 @@ export class UnitsMenu implements Disposable {
     this.isOpen = open;
     this.root.dataset.open = String(open);
     this.headBtn.setAttribute('aria-expanded', String(open));
+    if (!open) hideActiveCardTip();
   }
 
   toggle(): void {
@@ -233,6 +234,7 @@ export class UnitsMenu implements Disposable {
     const tier = rememberTier(this.pickedTier, cards);
     this.pickedTier = tier;
     renderTierBar(this.tierBar, 'prod', presentTiers(cards), tier, (next) => {
+      hideActiveCardTip();
       this.pickedTier = next;
       this.render();
     });
@@ -253,6 +255,7 @@ export class UnitsMenu implements Disposable {
     layoutMenuGroups(this.cardsContainer, UNIT_GROUPS, placed, this.sectionHeads, this.army?.sectionEl);
     for (const [id, handle] of this.cardElements) {
       if (seen.has(id)) continue;
+      if (handle.tip.getAttribute?.('data-open') === 'true') hideActiveCardTip();
       handle.root.remove();
       handle.tip.remove(); // an open tip is parked on document.body (`bindCardTip`)
       this.cardElements.delete(id);
@@ -321,6 +324,7 @@ export class UnitsMenu implements Disposable {
   }
 
   dispose(): void {
+    hideActiveCardTip();
     if (typeof window !== 'undefined') window.removeEventListener('keydown', this.onKeyDown);
     for (const handle of this.cardElements.values()) handle.tip.remove();
     this.army?.dispose();

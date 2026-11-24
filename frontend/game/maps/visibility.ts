@@ -40,7 +40,7 @@ export function createMapVisibility(
   const sources: Array<{ q: number; r: number; radius: number }> = [];
   if (view.clientView?.entities) {
     forEachEntity(view.clientView.entities, view.clientView.count, row => {
-      if ((allColonies ? row.owner < 0 : row.owner !== colony) || row.hp <= 0 || !isEntityContributingVision(row.state)) return;
+      if ((allColonies ? row.owner < 0 : row.owner !== colony) || row.hp <= 0 || !isEntityContributingVision(row.state, row.kind)) return;
       const radius = getEntitySpottingRadius(row.kind, view.simData);
       if (radius > 0) sources.push({ q: row.q, r: row.r, radius });
     });
@@ -108,7 +108,7 @@ function buildFogCacheKey(ctx: CanvasRenderingContext2D, view: MapLayerDrawView,
     } else if (view.clientView?.entities) {
       let eh = 0;
       forEachEntity(view.clientView.entities, view.clientView.count, row => {
-        if ((allColonies ? row.owner < 0 : row.owner !== colony) || row.hp <= 0 || !isEntityContributingVision(row.state)) return;
+        if ((allColonies ? row.owner < 0 : row.owner !== colony) || row.hp <= 0 || !isEntityContributingVision(row.state, row.kind)) return;
         eh = (Math.imul(eh ^ row.q, 31) ^ row.r) | 0;
       });
       visionSig = `e:${eh}`;

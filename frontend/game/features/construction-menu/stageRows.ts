@@ -4,7 +4,7 @@ export const STAGE_BUILDING_ROWS: readonly Record<string, unknown>[] = [
     building: 'pylon',
     label: 'Pylon',
     tier: 1,
-    unlockStage: 2,
+    unlockStage: 1,
     footprintW: 1,
     footprintD: 1,
     designBuildS: 6,

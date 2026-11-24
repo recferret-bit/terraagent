@@ -159,13 +159,15 @@ export function getEntitySpottingRadius(kind: number, data?: CompiledDataLike): 
   return footprint + buildingBonus;
 }
 
-export function isEntityContributingVision(stateCode: number): boolean {
-  return (
-    stateCode !== ENTITY_STATE.waiting &&
-    stateCode !== ENTITY_STATE.constructing &&
-    stateCode !== ENTITY_STATE.inert &&
-    stateCode !== ENTITY_STATE.descending
-  );
+/**
+ * Whether an entity in `stateCode` contributes live FoV sight.
+ * Unfinished buildings (`constructing` / `waiting`) stay dark until completed; already-deployed units
+ * (HQ bot, workers, combat units) keep their sight while building or waiting on tasks.
+ */
+export function isEntityContributingVision(stateCode: number, kind?: number): boolean {
+  if (stateCode === ENTITY_STATE.inert || stateCode === ENTITY_STATE.descending) return false;
+  if (kind !== undefined && isUnitKind(kind)) return true;
+  return stateCode !== ENTITY_STATE.waiting && stateCode !== ENTITY_STATE.constructing;
 }
 
 /**
@@ -187,7 +189,7 @@ export function computeColonySpottedTileIndices(
   for (let row = 0; row < e.count; row++) {
     if (cols.owner[row] !== colonyIndex) continue;
     if (cols.hp[row] <= 0) continue;
-    if (!isColonyVisionSourceKind(cols.kind[row]) || !isEntityContributingVision(cols.state[row])) continue;
+    if (!isColonyVisionSourceKind(cols.kind[row]) || !isEntityContributingVision(cols.state[row], cols.kind[row])) continue;
 
     const radius = Math.floor(getEntitySpottingRadius(cols.kind[row], data));
     if (radius <= 0) continue;
@@ -212,7 +214,7 @@ function buildEntityVisionSnapshot(state: PlanetState): string {
   const cols = e.cols;
   const parts: string[] = [];
   for (let r = 0; r < e.count; r++) {
-    if (cols.owner[r] < 0 || cols.hp[r] <= 0 || !isColonyVisionSourceKind(cols.kind[r]) || !isEntityContributingVision(cols.state[r])) continue;
+    if (cols.owner[r] < 0 || cols.hp[r] <= 0 || !isColonyVisionSourceKind(cols.kind[r]) || !isEntityContributingVision(cols.state[r], cols.kind[r])) continue;
     parts.push(`${cols.id[r]}:${cols.owner[r]}:${cols.kind[r]}:${cols.q[r]},${cols.r[r]}`);
   }
   return parts.join(';');

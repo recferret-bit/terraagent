@@ -211,10 +211,19 @@ describe('stationary units explore and departed units lose current sight', () =>
     expect(isTileExplored(state.grid, tile, 0)).toBe(true);
   });
 
-  it('does not reveal from dead units or unbuilt sites', () => {
+  it('does not reveal from dead units or unbuilt sites, while constructing/waiting units keep their sight', () => {
     const state = createState({ planetId: 'fog', planetType: 'temperate', seed: 'fog', radius: 20 });
     spawnTestEntity(state, { kind: ENTITY_KIND.recon, owner: 0, q: 0, r: 0, hp: 0 });
     spawnTestEntity(state, { kind: ENTITY_KIND.hub, owner: 0, q: 0, r: 0, entityState: ENTITY_STATE.waiting });
+    spawnTestEntity(state, { kind: ENTITY_KIND.solar, owner: 0, q: 2, r: 0, entityState: ENTITY_STATE.constructing });
     expect(computeColonySpottedTileIndices(state, 0, data).size).toBe(0);
+
+    const hqRow = spawnTestEntity(state, { kind: ENTITY_KIND.hq, owner: 0, q: 0, r: 0, entityState: ENTITY_STATE.constructing });
+    updateColonyVisionCache(state, 0, data, true);
+    expect(isTileSpottedByColony(state, 0, 0, 0, data)).toBe(true);
+    expect(isTileSpottedByColony(state, 0, 9, 0, data)).toBe(true);
+
+    state.entities.cols.state[hqRow] = ENTITY_STATE.waiting;
+    expect(computeColonySpottedTileIndices(state, 0, data).size).toBeGreaterThan(0);
   });
 });

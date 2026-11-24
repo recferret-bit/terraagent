@@ -118,35 +118,156 @@ export function createMenuCardFace(titleClass: string, archetypeId: string, midd
   return { face, overlay, title, tierEl, price, shortTime };
 }
 
+let activeCard: HTMLElement | null = null;
+let activeTip: HTMLElement | null = null;
+let activeHide: (() => void) | null = null;
+let globalBound = false;
+let bookObserver: MutationObserver | null = null;
+
+const tipNow = (): number => (typeof performance !== 'undefined' ? performance.now() : Date.now());
+
+function isCardEligible(card: HTMLElement): boolean {
+  if (!card.isConnected) return false;
+  if (card.getAttribute('data-tier-on') === 'false') return false;
+  if (typeof card.closest === 'function') {
+    if (card.closest('[data-collapsed="true"], [data-tab-pane][data-active="false"], .ta-construction[data-open="false"], .ta-units[data-open="false"], [hidden]')) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function onWindowHideTip(): void {
+  hideActiveCardTip();
+}
+
+function onWindowPointerMove(e: PointerEvent): void {
+  if (!activeCard || !isCardEligible(activeCard)) {
+    hideActiveCardTip();
+    return;
+  }
+  if (typeof activeCard.getBoundingClientRect === 'function') {
+    const r = activeCard.getBoundingClientRect();
+    if (r.width > 0 && r.height > 0) {
+      if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) {
+        hideActiveCardTip();
+      }
+      return;
+    }
+  }
+  const target = e.target as Node | null;
+  if (target && typeof activeCard.contains === 'function' && !activeCard.contains(target)) {
+    hideActiveCardTip();
+  }
+}
+
+function disconnectGlobalTipWatchers(): void {
+  bookObserver?.disconnect();
+  bookObserver = null;
+  if (!globalBound || typeof window === 'undefined' || typeof window.removeEventListener !== 'function') return;
+  globalBound = false;
+  window.removeEventListener('pointermove', onWindowPointerMove, { capture: true });
+  window.removeEventListener('keydown', onWindowHideTip, { capture: true });
+  window.removeEventListener('blur', onWindowHideTip);
+  window.removeEventListener('scroll', onWindowHideTip, { capture: true });
+}
+
+function connectGlobalTipWatchers(card: HTMLElement): void {
+  if (!globalBound && typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+    globalBound = true;
+    window.addEventListener('pointermove', onWindowPointerMove, { capture: true });
+    window.addEventListener('keydown', onWindowHideTip, { capture: true });
+    window.addEventListener('blur', onWindowHideTip);
+    window.addEventListener('scroll', onWindowHideTip, { capture: true });
+  }
+  bookObserver?.disconnect();
+  bookObserver = null;
+  const bookEl = typeof card.closest === 'function' ? card.closest('.ta-book') : null;
+  if (bookEl && typeof MutationObserver !== 'undefined') {
+    bookObserver = new MutationObserver(() => {
+      if (!activeCard || !isCardEligible(activeCard)) hideActiveCardTip();
+    });
+    bookObserver.observe(bookEl, { attributes: true, attributeFilter: ['data-collapsed', 'data-active-tab'] });
+  }
+}
+
+/** Closes whichever card description tooltip is currently shown on `document.body`. */
+export function hideActiveCardTip(): void {
+  if (activeHide) {
+    const fn = activeHide;
+    activeHide = null;
+    fn();
+    return;
+  }
+  if (activeTip) {
+    activeTip.style.display = '';
+    if (typeof activeTip.removeAttribute === 'function') activeTip.removeAttribute('data-open');
+  }
+  activeCard = null;
+  activeTip = null;
+  disconnectGlobalTipWatchers();
+}
+
 /**
  * The card is chamfered with `clip-path`, which would clip a `position: fixed` tip.
- * Park the tip on `document.body` while it is open so the details clear the card and the dock scroller.
+ * Park the tip on `document.body` while it is open so the details appear in a single fixed spot to the left of the expanded menu.
  */
 export function bindCardTip(card: HTMLElement, tip: HTMLElement): void {
   if (typeof card.addEventListener !== 'function') return;
+  let lastPointerDownMs = -Infinity;
   const place = (): void => {
     const rect = card.getBoundingClientRect();
-    const dock = typeof card.closest === 'function' ? card.closest('[data-testid="command-dock"]') : null;
-    const anchor = dock instanceof HTMLElement ? dock.getBoundingClientRect() : rect;
-    const width = typeof window !== 'undefined' ? window.innerWidth : 800;
-    const beside = anchor.right + 8;
-    const left = beside + 220 <= width - 8 ? beside : Math.max(8, rect.left);
+    const menuEl = typeof card.closest === 'function'
+      ? (card.closest('.ta-book__page') ?? card.closest('.ta-construction, .ta-units') ?? card.closest('[data-testid="command-dock"]') ?? card)
+      : card;
+    const anchor = menuEl && typeof (menuEl as HTMLElement).getBoundingClientRect === 'function'
+      ? (menuEl as HTMLElement).getBoundingClientRect()
+      : rect;
+    const tipRect = typeof tip.getBoundingClientRect === 'function' ? tip.getBoundingClientRect() : null;
+    const tipWidth = (tipRect && tipRect.width > 0 ? tipRect.width : tip.offsetWidth) || 220;
+    const left = Math.max(8, Math.round(anchor.left - tipWidth - 8));
+    const top = Math.max(8, Math.round(anchor.top));
     tip.style.left = `${left}px`;
-    tip.style.top = `${Math.max(8, rect.top)}px`;
-  };
-  const show = (): void => {
-    const body = typeof document !== 'undefined' ? document.body : null;
-    if (body && tip.parentElement !== body) body.appendChild(tip);
-    tip.style.display = 'flex';
-    place();
+    tip.style.top = `${top}px`;
   };
   const hide = (): void => {
     tip.style.display = '';
+    if (typeof tip.removeAttribute === 'function') tip.removeAttribute('data-open');
     if (card.isConnected && tip.parentElement !== card) card.appendChild(tip);
+    if (activeTip === tip) {
+      activeCard = null;
+      activeTip = null;
+      activeHide = null;
+      disconnectGlobalTipWatchers();
+    }
   };
+  const show = (): void => {
+    if (!isCardEligible(card)) {
+      hideActiveCardTip();
+      return;
+    }
+    if (activeHide && activeTip !== tip) {
+      activeHide();
+    }
+    const body = typeof document !== 'undefined' ? document.body : null;
+    if (body && tip.parentElement !== body) body.appendChild(tip);
+    tip.style.display = 'flex';
+    tip.setAttribute('data-open', 'true');
+    activeCard = card;
+    activeTip = tip;
+    activeHide = hide;
+    place();
+    connectGlobalTipWatchers(card);
+  };
+  card.addEventListener('pointerdown', () => {
+    lastPointerDownMs = tipNow();
+  });
   card.addEventListener('pointerenter', show);
   card.addEventListener('pointerleave', hide);
-  card.addEventListener('focus', show);
+  card.addEventListener('focus', () => {
+    if (tipNow() - lastPointerDownMs < 300) return;
+    show();
+  });
   card.addEventListener('blur', hide);
 }
 

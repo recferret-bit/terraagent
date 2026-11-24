@@ -49,13 +49,17 @@ describe('building light state (one definition of "lit")', () => {
     expect(entityShouldEmitLight(hub(ENTITY_STATE.active), DAY)).toBe(false);
   });
 
-  it('construction and waiting give a dim glow that grows with the build stage', () => {
+  it('construction and waiting give a dim glow for buildings, while active units keep full light level', () => {
     expect(entityLightLevel(hub(ENTITY_STATE.waiting), NIGHT)).toBeCloseTo(0.18);
     const a = entityLightLevel({ ...hub(ENTITY_STATE.constructing), buildStage: 0 }, NIGHT);
     const b = entityLightLevel({ ...hub(ENTITY_STATE.constructing), buildStage: 0.66 }, NIGHT);
     expect(a).toBeGreaterThan(0);
     expect(b).toBeGreaterThan(a);
     expect(b).toBeLessThan(1);
+
+    expect(entityLightLevel({ kind: ENTITY_KIND.hq, state: ENTITY_STATE.constructing, buildStage: 0 }, NIGHT)).toBe(1);
+    expect(entityLightLevel({ kind: ENTITY_KIND.hq, state: ENTITY_STATE.waiting }, DAY)).toBe(1);
+    expect(entityLightLevel({ kind: ENTITY_KIND.worker, state: ENTITY_STATE.constructing }, DAY)).toBe(1);
   });
 
   it('per-kind policies: solar is dark at night, an unlit kind is always dark, subclasses register', () => {

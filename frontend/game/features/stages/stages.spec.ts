@@ -255,7 +255,7 @@ describe('W08-13 Acceptance Check: Reach S2 and Unlock Reveal Panel', () => {
     ctx = makeMockContext();
   });
 
-  it('advance stage from 1 to 2 -> toast "S2 The Grid" appears and unlock reveal lists Builder, Pylon, and Depot (plus Capacitor and Fill/Bridge/Dismantle)', () => {
+  it('advance stage from 1 to 2 -> toast "S2 The Grid" appears and unlock reveal lists Depot (plus Capacitor and Fill/Bridge/Dismantle)', () => {
     const mounted = mountStageTrackHud(container, ctx);
 
     // Initial baseline at stage 1
@@ -275,7 +275,7 @@ describe('W08-13 Acceptance Check: Reach S2 and Unlock Reveal Panel', () => {
     // Unlock Reveal Panel. S2 no longer lists a drone (the T2 worker is a production tier, not a stage unit id).
     expect(container.querySelector('[data-testid="stage-unlock-units"]')?.textContent ?? '').toBe('');
     expectToastUnlocks(container, {
-      buildings: ['Pylon', 'Depot', 'Capacitor', 'Wind Turbine', 'Water Extractor', 'Petroleum Well', 'Supply Depot'],
+      buildings: ['Depot', 'Capacitor', 'Wind Turbine', 'Water Extractor', 'Petroleum Well', 'Supply Depot'],
       orders: ['Fill', 'Bridge', 'Dismantle'],
     });
 
@@ -311,7 +311,7 @@ describe('W08-13 Stage Transitions & Safety Overrides', () => {
 
     expectToastUnlocks(container, {
       units: ['Worker Drone'],
-      buildings: ['Metals Extractor', 'Solar Collector'],
+      buildings: ['Metals Extractor', 'Solar Collector', 'Pylon'],
       orders: ['Harvest'],
     });
     expect(container.querySelector('[data-testid="stage-unlock-buildings"]')?.textContent ?? '').not.toContain('Wind');
@@ -432,7 +432,7 @@ describe('W08-13 Transport stageReached Event & Direct API', () => {
     expect(container.querySelector('[data-testid="stage-reached-toast"]')).not.toBeNull();
     expect(container.querySelector('[data-testid="stage-toast-title"]')?.textContent).toBe('S2 The Grid');
     expectToastUnlocks(container, {
-      buildings: ['Pylon'],
+      buildings: ['Depot'],
     });
     expect(container.querySelector('[data-testid="stage-unlock-units"]')?.textContent ?? '').toBe('');
 

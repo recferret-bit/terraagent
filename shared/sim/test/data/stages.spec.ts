@@ -97,7 +97,7 @@ describe('W08-02 unlock helpers and tooltips', () => {
     expect(getItemUnlockStage('robotics_factory')).toBe(3);
     expect(getItemUnlockStage('roboticsFactory')).toBe(3);
     expect(getItemUnlockStage('worker')).toBe(1);
-    expect(getItemUnlockStage('pylon')).toBe(2);
+    expect(getItemUnlockStage('pylon')).toBe(1);
     expect(getItemUnlockStage('depot')).toBe(2);
     expect(getItemUnlockStage('storageDepot')).toBe(2);
     expect(getItemUnlockStage('wind')).toBe(2);

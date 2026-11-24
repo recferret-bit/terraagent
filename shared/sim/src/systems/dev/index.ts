@@ -60,7 +60,7 @@ function reclaimAndReveal(s: PlanetState, ctx: StepContext): void {
     if (cols.kind[row] === ENTITY_KIND.hub && cols.state[row] === ENTITY_STATE.active) {
       claimTerritoryRadius(s, { colonyId: owner, q: cols.q[row], r: cols.r[row], tick: ctx.tick, data: ctx.data });
     }
-    if (!isColonyVisionSourceKind(cols.kind[row]) || !isEntityContributingVision(cols.state[row])) continue;
+    if (!isColonyVisionSourceKind(cols.kind[row]) || !isEntityContributingVision(cols.state[row], cols.kind[row])) continue;
     const radius = Math.floor(getEntitySpottingRadius(cols.kind[row], ctx.data));
     if (radius > 0) revealVision(s, owner, cols.q[row], cols.r[row], radius, ctx.tick);
   }

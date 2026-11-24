@@ -155,7 +155,7 @@ function collectOwnedEntityVisionAndProjectors(
 
   // Lighting cones are cosmetic. Sight is omnidirectional and uses the shared simulation radius.
   // A drop pod, a spawn marker, and any other prop do not open the fog. Buildings and units do.
-  if (rec.hp > 0 && isColonyVisionSourceKind(rec.kind) && isEntityContributingVision(rec.state)) {
+  if (rec.hp > 0 && isColonyVisionSourceKind(rec.kind) && isEntityContributingVision(rec.state, rec.kind)) {
     const outerRadius = getEntitySpottingRadius(rec.kind, data) * TILE_M;
     if (outerRadius > 0) visionSources.push({ x: ux, z: uz, innerRadius: outerRadius * 0.88, outerRadius });
   }

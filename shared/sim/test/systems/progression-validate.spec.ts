@@ -115,10 +115,12 @@ describe('W08-10 · placeBuilding unlock-stage validation', () => {
 });
 
 describe('grid buildings share the stage table with placement', () => {
-  it('locks Pylon, Wind, Water, Petroleum, Capacitor and Supply Depot at S1, and Thermal until S3', () => {
+  it('unlocks Pylon at S1, locks Wind, Water, Petroleum, Capacitor and Supply Depot until S2, and Thermal until S3', () => {
     const { state } = createStagePlanet(1, 1, '..08');
     const flags = parseWaves('..08');
-    for (const id of ['pylon', 'wind', 'waterExtractor', 'petroleumWell', 'capacitor', 'supplyDepot']) {
+    expect(resolveItemUnlockStage('pylon')).toBe(1);
+    expect(checkItemUnlockStage(state, 0, 'pylon', flags)).toEqual({ ok: true });
+    for (const id of ['wind', 'waterExtractor', 'petroleumWell', 'capacitor', 'supplyDepot']) {
       expect(resolveItemUnlockStage(id)).toBe(2);
       expect(checkItemUnlockStage(state, 0, id, flags)).toMatchObject({ ok: false, code: 'stage_locked', unlocksAt: 'S2' });
     }
@@ -130,11 +132,18 @@ describe('grid buildings share the stage table with placement', () => {
 });
 
 describe('W08-10 · enqueueTask S2 and S3/S4 unlock-stage validation', () => {
-  it('rejects S2 items (pylon, depot, fill, bridge) via enqueueTask at S1 with unlocksAt: "S2", and accepts them once unlockStage = 2', () => {
+  it('accepts S1 pylon at S1, rejects S2 items (depot, fill, bridge) via enqueueTask at S1 with unlocksAt: "S2", and accepts them once unlockStage = 2', () => {
     const { state, colony, pipeline } = createStagePlanet(1, 1);
+    const rPylonS1 = step(
+      state,
+      [{ commandId: 'eq-pylon-s1', colonyIndex: 0, source: 'player' as const, kind: 'enqueueTask' as const, args: { build: { building: 'pylon', q: 1, r: 0 } } }],
+      1,
+      pipeline,
+    );
+    expect(rPylonS1.outcomes[0]?.code).toBeUndefined();
+
     const s2Orders = [
-      { commandId: 'eq-pylon', colonyIndex: 0, source: 'player' as const, kind: 'enqueueTask' as const, args: { build: { building: 'pylon', q: 2, r: 0 } } },
-      { commandId: 'eq-depot', colonyIndex: 0, source: 'player' as const, kind: 'enqueueTask' as const, args: { build: { building: 'depot', q: 3, r: 0 } } },
+      { commandId: 'eq-depot', colonyIndex: 0, source: 'player' as const, kind: 'enqueueTask' as const, args: { build: { building: 'depot', q: 2, r: 0 } } },
       { commandId: 'eq-fill', colonyIndex: 0, source: 'player' as const, kind: 'enqueueTask' as const, args: { terraform: { op: 'fill', tiles: [{ q: 1, r: 0 }] } } },
       { commandId: 'eq-bridge', colonyIndex: 0, source: 'player' as const, kind: 'enqueueTask' as const, args: { task: { kind: 'terraform', op: 'bridge', q: 1, r: 1 } } },
     ];
@@ -143,7 +152,7 @@ describe('W08-10 · enqueueTask S2 and S3/S4 unlock-stage validation', () => {
     for (const outcome of rLocked.outcomes) {
       expect(outcome).toMatchObject({ code: 'stage_locked', detail: 'S2', unlocksAt: 'S2' });
     }
-    expect(getColonyQueue(state, 0)).toHaveLength(0);
+    expect(getColonyQueue(state, 0)).toHaveLength(1);
 
     colony.stage = 2;
     colony.unlockStage = 2;
@@ -154,7 +163,7 @@ describe('W08-10 · enqueueTask S2 and S3/S4 unlock-stage validation', () => {
       pipeline,
     );
     // Fill on plain flat ground would change nothing: the shared terraform rule refuses it (`already_at_target`).
-    expect(rUnlocked.outcomes.map((o) => o.code)).toEqual([undefined, undefined, 'already_at_target', undefined]);
+    expect(rUnlocked.outcomes.map((o) => o.code)).toEqual([undefined, 'already_at_target', undefined]);
     expect(getColonyQueue(state, 0).length).toBe(3);
   });
 
@@ -247,7 +256,8 @@ describe('W08-10 · S0 / S1 Command Hub and HQ precedence unlock rules', () => {
 
     expect(resolveEffectiveUnlockStage(state, 0)).toBe(1);
     expect(checkItemUnlockStage(state, 0, 'worker')).toEqual({ ok: true });
-    expect(checkItemUnlockStage(state, 0, 'pylon')).toEqual({
+    expect(checkItemUnlockStage(state, 0, 'pylon')).toEqual({ ok: true });
+    expect(checkItemUnlockStage(state, 0, 'depot')).toEqual({
       ok: false,
       code: 'stage_locked',
       detail: 'S2',

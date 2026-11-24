@@ -110,7 +110,7 @@ export function evaluateAutopilotDecision(
   if (spec.taskKind === 'build') {
     site = selectDeterministicBuildSite(state, colonyIndex, spec.target, { data: opts?.data });
     const isExtractor = spec.target.endsWith('Extractor');
-    if (!site && !isExtractor && spec.target !== 'pylon' && stage >= 2 && powerZoneActive(opts?.data)) {
+    if (!site && !isExtractor && spec.target !== 'pylon' && stage >= 1 && powerZoneActive(opts?.data)) {
       const expansion = shouldExpandPowerZoneWithPylon(state, colonyIndex, opts?.data);
       if (expansion.needed && expansion.site) {
         site = expansion.site;

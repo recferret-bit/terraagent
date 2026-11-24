@@ -2,7 +2,7 @@ import type { Disposable, FeatureContext, GameView } from '../../core/registry/t
 import { noteUiAction } from '../../../design/analytics/ui';
 import { isGameInputBlocked } from '../../core/input/gameInputBlock';
 import { releaseArchetypeThumbs, retainArchetypeThumbs } from '../shared/archetypeThumb';
-import { type MenuTier, presentTiers, rememberTier, renderTierBar, setTierVisible } from '../shared/menuCards';
+import { hideActiveCardTip, type MenuTier, presentTiers, rememberTier, renderTierBar, setTierVisible } from '../shared/menuCards';
 import { BUILD_GROUPS, layoutMenuGroups } from '../shared/menuSections';
 import { createBuildingCard, syncBuildingCard, type BuildingCardRefs } from './buildingCard';
 import { buildConstructionCatalog, type BuildingKind } from './catalog';
@@ -115,6 +115,7 @@ export class ConstructionMenu implements Disposable {
 
   startPlacement(building: BuildingKind | string): void {
     if (this.isReadOnly()) return;
+    hideActiveCardTip();
     if (this.ctx.services.hubPlacement?.isPlacementActive?.()) {
       this.ctx.services.hubPlacement.cancelPlacement();
     }
@@ -148,12 +149,14 @@ export class ConstructionMenu implements Disposable {
     this.isOpen = open;
     this.root.dataset.open = String(open);
     this.headBtn.setAttribute('aria-expanded', String(open));
-    if (open) {
-      const dock = this.root.closest?.('[data-testid="command-dock"]');
-      const buildTab = dock?.querySelector<HTMLButtonElement>('[data-testid="dock-tab-build"]');
-      if (buildTab && buildTab.getAttribute('data-active') !== 'true') {
-        buildTab.click();
-      }
+    if (!open) {
+      hideActiveCardTip();
+      return;
+    }
+    const dock = this.root.closest?.('[data-testid="command-dock"]');
+    const buildTab = dock?.querySelector<HTMLButtonElement>('[data-testid="dock-tab-build"]');
+    if (buildTab && buildTab.getAttribute('data-active') !== 'true') {
+      buildTab.click();
     }
   }
 
@@ -186,12 +189,14 @@ export class ConstructionMenu implements Disposable {
     const tier = rememberTier(this.pickedTier, cards);
     this.pickedTier = tier;
     renderTierBar(this.tierBar, 'build', presentTiers(cards), tier, (next) => {
+      hideActiveCardTip();
       this.pickedTier = next;
       this.renderCards();
     });
     const activeKinds = new Set(cards.map((c) => c.building));
     for (const [kind, ref] of [...this.cardRefs.entries()]) {
       if (!activeKinds.has(kind)) {
+        if (ref.tip.getAttribute?.('data-open') === 'true') hideActiveCardTip();
         ref.btn.remove();
         ref.tip.remove(); // an open tip is parked on document.body (`bindCardTip`)
         this.cardRefs.delete(kind);
@@ -217,6 +222,7 @@ export class ConstructionMenu implements Disposable {
   }
 
   dispose(): void {
+    hideActiveCardTip();
     this.offCloser?.();
     if (typeof window !== 'undefined') {
       window.removeEventListener('keydown', this.onKeyDown);

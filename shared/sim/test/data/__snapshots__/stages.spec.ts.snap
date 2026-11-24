@@ -33,6 +33,7 @@ exports[`W08-02 spec §6.2 stage row specifications > matches spec §6.2 fields 
     "buildings": [
       "metalsExtractor",
       "solar",
+      "pylon",
     ],
     "designDwellS": 60,
     "dwellS": 60,
@@ -57,7 +58,6 @@ exports[`W08-02 spec §6.2 stage row specifications > matches spec §6.2 fields 
   },
   {
     "buildings": [
-      "pylon",
       "depot",
       "storageDepot",
       "capacitor",

@@ -1,4 +1,5 @@
 import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
+import { isUnitKind } from '../../units/mobility';
 
 /**
  * The ONE definition of "does this entity show its lights" (owner rule: building lights go dark without energy).
@@ -56,9 +57,11 @@ export class BuildingLightState {
    */
   level(subject: LightSubject, _nightFactor: number): number {
     if (!this.emitsLight(subject) || !this.isPowered(subject)) return 0;
-    if (subject.state === ENTITY_STATE.waiting) return 0.18;
-    if (subject.state === ENTITY_STATE.constructing) {
-      return 0.35 + 0.65 * Math.max(0, Math.min(1, subject.buildStage ?? 0));
+    if (!isUnitKind(subject.kind)) {
+      if (subject.state === ENTITY_STATE.waiting) return 0.18;
+      if (subject.state === ENTITY_STATE.constructing) {
+        return 0.35 + 0.65 * Math.max(0, Math.min(1, subject.buildStage ?? 0));
+      }
     }
     return 1;
   }

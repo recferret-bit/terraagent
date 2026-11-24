@@ -171,7 +171,7 @@ describe('W08-03 · S2 acceptance check (extractor + generator + 2 min dwell)', 
       previousStage: 1,
       title: 'S2 The Grid',
       units: [],
-      buildings: ['pylon', 'depot', 'storageDepot', 'capacitor', 'wind', 'waterExtractor', 'petroleumWell', 'supplyDepot'],
+      buildings: ['depot', 'storageDepot', 'capacitor', 'wind', 'waterExtractor', 'petroleumWell', 'supplyDepot'],
     });
     expect(eventDef('stageReached').data.safeParse(s2Reached[0].data).success).toBe(true);
     expect(colony.stage).toBe(2);

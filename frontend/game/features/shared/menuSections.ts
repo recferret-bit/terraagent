@@ -1,3 +1,5 @@
+import { hideActiveCardTip } from './menuCards';
+
 /** A labelled block inside the Build or Production card grid. */
 export interface MenuGroup {
   readonly id: string;
@@ -76,26 +78,19 @@ function markSection(head: HTMLElement, on: boolean, lead: boolean): boolean {
   return lead && !on;
 }
 
-function placeGroup(
-  container: HTMLElement,
-  head: HTMLElement,
-  els: readonly HTMLElement[],
-  lead: boolean,
-): boolean {
-  const on = els.some((el) => el.getAttribute('data-tier-on') !== 'false');
-  const stillLead = markSection(head, on, lead);
-  head.remove();
-  container.appendChild(head);
-  for (const el of els) {
-    el.remove();
-    container.appendChild(el);
+function matchesChildren(container: HTMLElement, desired: readonly HTMLElement[]): boolean {
+  const cur = container.children;
+  if (cur.length !== desired.length) return false;
+  for (let i = 0; i < desired.length; i++) {
+    if (cur[i] !== desired[i]) return false;
   }
-  return stillLead;
+  return true;
 }
 
 /**
  * Orders `cards` under section headers. A section with no card for the open tier is hidden.
- * `tail` (the army block) stays last.
+ * `tail` (the army block) stays last. Only mutates DOM when child membership or order changes
+ * so hovered cards are not detached on periodic updates.
  */
 export function layoutMenuGroups(
   container: HTMLElement,
@@ -112,6 +107,7 @@ export function layoutMenuGroups(
     if (bucket) bucket.push(card.el);
     else other.push(card.el);
   }
+  const desired: HTMLElement[] = [];
   let lead = true;
   for (const group of groups) {
     const els = buckets.get(group.id) ?? [];
@@ -120,15 +116,22 @@ export function layoutMenuGroups(
       heads.delete(group.id);
       continue;
     }
-    lead = placeGroup(container, sectionHead(group, heads), els, lead);
+    const head = sectionHead(group, heads);
+    const on = els.some((el) => el.getAttribute('data-tier-on') !== 'false');
+    lead = markSection(head, on, lead);
+    desired.push(head, ...els);
   }
-  if (other.length > 0) placeGroup(container, sectionHead(OTHER_GROUP, heads), other, lead);
-  else {
+  if (other.length > 0) {
+    const head = sectionHead(OTHER_GROUP, heads);
+    const on = other.some((el) => el.getAttribute('data-tier-on') !== 'false');
+    markSection(head, on, lead);
+    desired.push(head, ...other);
+  } else {
     heads.get(OTHER_GROUP.id)?.remove();
     heads.delete(OTHER_GROUP.id);
   }
-  if (tail) {
-    tail.remove();
-    container.appendChild(tail);
-  }
+  if (tail) desired.push(tail);
+  if (matchesChildren(container, desired)) return;
+  hideActiveCardTip();
+  container.replaceChildren(...desired);
 }

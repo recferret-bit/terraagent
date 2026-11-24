@@ -221,11 +221,12 @@
 .ta-card-tip {
   display: none;
   position: fixed;
-  z-index: 40;
+  z-index: 45;
   left: 0;
   top: 0;
-  width: max-content;
+  width: 220px;
   max-width: 220px;
+  box-sizing: border-box;
   flex-direction: column;
   gap: 2px;
   padding: var(--ta-s2);
@@ -234,15 +235,6 @@
   color: var(--ta-text);
   pointer-events: none;
   clip-path: polygon(var(--ta-chamfer-s) 0, 100% 0, 100% calc(100% - var(--ta-chamfer-s)), calc(100% - var(--ta-chamfer-s)) 100%, 0 100%, 0 var(--ta-chamfer-s));
-}
-
-.ta-units__card:hover .ta-card-tip,
-.ta-units__card:focus .ta-card-tip,
-.ta-units__card:focus-within .ta-card-tip,
-.ta-construction__card:hover .ta-card-tip,
-.ta-construction__card:focus .ta-card-tip,
-.ta-construction__card:focus-within .ta-card-tip {
-  display: flex;
 }
 
 .ta-construction__cards,

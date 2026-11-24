@@ -388,7 +388,7 @@ describe('W08-11: ConstructionMenu stage filtering', () => {
     (globalThis as unknown as { window: unknown }).window = origWin;
   });
 
-  it('at S1 shows Pylon and Depot greyed out with unlock condition and unlocks them at S2', () => {
+  it('at S1 enables Pylon right after Command Hub, shows Depot greyed out with unlock condition, and unlocks Depot at S2', () => {
     const parentEl = new MockElement('div') as unknown as HTMLElement;
     const startPlacement = vi.fn();
     const track = vi.fn();
@@ -399,28 +399,33 @@ describe('W08-11: ConstructionMenu stage filtering', () => {
     const mockParent = parentEl as unknown as MockElement;
     instance.update?.({ colonies: [{ stage: 1, unlockStage: 1, hubBuilt: true }] });
 
-    for (const kind of ['pylon', 'depot']) {
-      const btn = mockParent.querySelector(`[data-building="${kind}"]`);
-      expect(btn).not.toBeNull();
-      expect(btn?.disabled).toBe(true);
-      expect(btn?.getAttribute('data-disabled')).toBe('true');
-      expect(btn?.getAttribute('data-stage-locked')).toBe('true');
-      expect(btn?.className).toContain('is-stage-locked');
-      expect(btn?.querySelector('.ta-construction__reason')?.textContent).toBe(
-        'Unlocks at S2: extractor + generator · 2 min',
-      );
-      expect(btn?.getAttribute('data-unlock-detail')).toBe(
-        'Unlocks at S2: extractor + generator complete · 2 min',
-      );
-      btn?.click();
-      expect(startPlacement).not.toHaveBeenCalled();
-    }
+    const pylonAtS1 = mockParent.querySelector('[data-building="pylon"]');
+    expect(pylonAtS1).not.toBeNull();
+    expect(pylonAtS1?.disabled).toBe(false);
+    expect(pylonAtS1?.getAttribute('data-disabled')).toBe('false');
+    expect(pylonAtS1?.getAttribute('data-stage-locked')).toBeNull();
+    expect(pylonAtS1?.querySelector('.ta-construction__reason')).toBeNull();
+
+    const depotAtS1 = mockParent.querySelector('[data-building="depot"]');
+    expect(depotAtS1).not.toBeNull();
+    expect(depotAtS1?.disabled).toBe(true);
+    expect(depotAtS1?.getAttribute('data-disabled')).toBe('true');
+    expect(depotAtS1?.getAttribute('data-stage-locked')).toBe('true');
+    expect(depotAtS1?.className).toContain('is-stage-locked');
+    expect(depotAtS1?.querySelector('.ta-construction__reason')?.textContent).toBe(
+      'Unlocks at S2: extractor + generator · 2 min',
+    );
+    expect(depotAtS1?.getAttribute('data-unlock-detail')).toBe(
+      'Unlocks at S2: extractor + generator complete · 2 min',
+    );
+    depotAtS1?.click();
+    expect(startPlacement).not.toHaveBeenCalled();
 
     // S3 items are more than 1 stage ahead at S1 and must be hidden
     expect(mockParent.querySelector('[data-building="roboticsFactory"]')).toBeNull();
     expect(mockParent.querySelector('[data-building="turret"]')).toBeNull();
 
-    // Advance to S2: Pylon and Depot unlock; S3 items appear greyed out
+    // Advance to S2: Depot unlocks; S3 items appear greyed out
     instance.update?.({ colonies: [{ stage: 2, unlockStage: 2, hubBuilt: true }] });
     for (const kind of ['pylon', 'depot']) {
       const btn = mockParent.querySelector(`[data-building="${kind}"]`);
@@ -451,9 +456,14 @@ describe('W03 grid rows use the same stage as placement', () => {
     return new Map(buildConstructionCatalog(flags, viewAt(stage)).map((card) => [card.building, card]));
   }
 
-  it('at S1 greys every S2 grid card, including Power Pylon, and hides Thermal (S3)', () => {
+  it('at S1 enables Power Pylon, greys S2 grid cards, and hides Thermal (S3)', () => {
     const cards = cardsAt(1);
-    for (const id of ['pylon', 'wind', 'waterExtractor', 'petroleumWell', 'capacitor', 'supplyDepot'] as const) {
+    const pylon = cards.get('pylon');
+    expect(pylon).toBeDefined();
+    expect(pylon?.unlockStage).toBe(1);
+    expect(pylon?.stageLocked).toBe(false);
+    expect(pylon?.disabled).toBe(false);
+    for (const id of ['wind', 'waterExtractor', 'petroleumWell', 'capacitor', 'supplyDepot'] as const) {
       const card = cards.get(id);
       expect(card, id).toBeDefined();
       expect(card?.unlockStage).toBe(2);

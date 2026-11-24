@@ -27,7 +27,7 @@ export default defineTable({
       label: 'Power Pylon',
       archetype: 'building.pylon',
       tier: 1,
-      unlockStage: 2,
+      unlockStage: 1,
       footprint: 1,
       footprintW: 1,
       footprintD: 1,

@@ -81,7 +81,7 @@ describe('W03-01 data rows: grid table (Builder + 8 W03 buildings + queueConfig)
   it('each placeable grid row unlockStage equals the stage table placement reads', () => {
     const compiled = compileData(parseWaves('..03'));
     const expected: Record<string, number> = {
-      pylon: 2,
+      pylon: 1,
       capacitor: 2,
       wind: 2,
       thermal: 3,

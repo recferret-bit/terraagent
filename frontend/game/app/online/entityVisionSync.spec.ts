@@ -107,6 +107,34 @@ describe('all owned active units reveal terrain', () => {
     expect(isWorldPointInColonyFov(40, 0)).toBe(true);
   });
 
+  it('keeps HQ bot vision and full light level while constructing or waiting, while unbuilt buildings stay dark', () => {
+    setDayNight(true);
+    setDayNightParams({ timeOfDay: 12 }, 'sync');
+    try {
+      const hubMesh = new THREE.Object3D();
+      const unbuiltHub = { kind: ENTITY_KIND.commandHub, owner: 0, hp: 500, state: ENTITY_STATE.constructing, mesh: hubMesh, buildStage: 0.2 } as EntityMeshRecord;
+      const hqMesh = new THREE.Object3D();
+      const hqBot = { kind: ENTITY_KIND.hq, owner: 0, hp: 300, state: ENTITY_STATE.constructing, mesh: hqMesh, buildStage: 1 } as EntityMeshRecord;
+
+      syncColonyVisionAndProjectors({ records: [unbuiltHub], ownerColonyIndex: 0, terrain, tiles: null });
+      expect(getColonyVisionUniforms().uVisionSourceCount.value).toBe(0);
+      expect(isWorldPointInColonyFov(0, 0)).toBe(false);
+
+      syncColonyVisionAndProjectors({ records: [unbuiltHub, hqBot], ownerColonyIndex: 0, terrain, tiles: null });
+      expect(getColonyVisionUniforms().uVisionSourceCount.value).toBe(1);
+      expect(isWorldPointInColonyFov(0, 0)).toBe(true);
+      expect(hqBot.lightLevel).toBe(1);
+
+      hqBot.state = ENTITY_STATE.waiting;
+      syncColonyVisionAndProjectors({ records: [unbuiltHub, hqBot], ownerColonyIndex: 0, terrain, tiles: null });
+      expect(getColonyVisionUniforms().uVisionSourceCount.value).toBe(1);
+      expect(isWorldPointInColonyFov(0, 0)).toBe(true);
+      expect(hqBot.lightLevel).toBe(1);
+    } finally {
+      resetDayNightParams('sync');
+    }
+  });
+
   it('points robot.recon optics light along turretYaw and keeps spider headlamps between front legs', () => {
     setDayNight(true);
     setDayNightParams({ timeOfDay: 22 }, 'sync');
