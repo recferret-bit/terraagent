@@ -10,11 +10,15 @@ import {
   type ArchetypeMesh,
   type DepositVisualStage,
 } from '@terra/render/kitbash';
-import { MAX_COLONY_PROJECTORS, updateColonyProjectorsAndVision, type ColonyProjectorDesc } from '@terra/render/lighting/ColonyVisionAndLights';
-import { attachEntityProjectorRig, EntityProjectorRig, type EntityProjectorRigState } from '@terra/render/lighting/EntityProjectorRig';
-import { getArchetypeLights, peekArchetypeLights } from '@terra/render/lighting/archetypeLights';
+import { updateColonyProjectorsAndVision } from '@terra/render/lighting/ColonyVisionAndLights';
+import {
+  attachEntityProjectorRig,
+  collectEntityProjectors,
+  EntityProjectorRig,
+  type EntityProjectorRigState,
+} from '@terra/render/lighting/EntityProjectorRig';
+import { getArchetypeLights } from '@terra/render/lighting/archetypeLights';
 import { applyBuildingLight } from '@terra/render/lighting/buildingLights';
-import { projectorCosOuter } from '@terra/render/lighting/projectorCone';
 import {
   WorkParticleSystem,
   computeMeshToolOrigins,
@@ -84,10 +88,6 @@ const biomeToPlanet = (b: string): PlanetKind =>
     ? b
     : b === 'arid' ? 'dune' : b === 'tropical' ? 'oceanForest' : 'forestRock';
 const footprint = (b: THREE.Box3) => Math.max(b.max.x - b.min.x, b.max.z - b.min.z, 1);
-const _pos = new THREE.Vector3();
-const _tgt = new THREE.Vector3();
-const _dir = new THREE.Vector3();
-const _col = new THREE.Color();
 
 /** The archetype meshes currently on the pedestal (one, or a whole category row), their layout and selection ring. */
 export class SpawnSet {
@@ -238,36 +238,17 @@ export class SpawnSet {
     const ordered = selectedId
       ? [...this.spawns.filter((s) => s.id === selectedId), ...this.spawns.filter((s) => s.id !== selectedId)]
       : this.spawns;
-    const projectors: ColonyProjectorDesc[] = [];
-    const boost = 1.35;
-    for (const s of ordered) {
-      if (s.floraDispose || isArchetypeRuin(s.mesh)) continue;
-      const lights = peekArchetypeLights(s.id); // per frame: no copy
-      for (const l of lights) {
-        if (projectors.length >= MAX_COLONY_PROJECTORS) break;
-        _pos.set(l.pos[0], l.pos[1], l.pos[2]).applyMatrix4(s.mesh.matrixWorld);
-        _tgt.set(l.target[0], l.target[1], l.target[2]).applyMatrix4(s.mesh.matrixWorld);
-        _dir.copy(_tgt).sub(_pos);
-        const dist = _dir.length();
-        if (dist > 1e-4) _dir.divideScalar(dist);
-        else _dir.set(0, -1, 0);
-        const cosAngle = projectorCosOuter(l); // the game's cone, which the beam mesh draws too
-        _col.setHex(l.color);
-        projectors.push({
-          x: _pos.x, y: _pos.y, z: _pos.z, range: l.range,
-          dirX: _dir.x, dirY: _dir.y, dirZ: _dir.z, cosAngle,
-          r: _col.r, g: _col.g, b: _col.b, intensity: l.intensity * boost,
-        });
-      }
-      if (projectors.length >= MAX_COLONY_PROJECTORS) break;
-    }
+    const active = ordered
+      .filter((s) => !s.floraDispose && !isArchetypeRuin(s.mesh))
+      .map((s) => ({ archetypeId: s.id, mesh: s.mesh }));
+    const projectors = collectEntityProjectors(active, 1.35);
     updateColonyProjectorsAndVision({ projectors, visionSources: [], fovEnabled: false, nightFactor: 1.35 });
   }
 
   /** `work` = biped work-pose weight (`uWorkWeight`, 0..1); `pose` overrides vertebrate behavioral animation state. */
-  tick(time: number, dt: number, turntable: boolean, row: boolean, work = 0, selectedId = '', nightMode = false, workTarget: InteractionTargetKind = 'tree', pose: VertebratePoseMode = 'auto') {
+  tick(time: number, dt: number, turntable: boolean, row: boolean, work = 0, selectedId = '', nightMode = false, workTarget: InteractionTargetKind = 'tree', pose: VertebratePoseMode = 'auto', syncLights = true) {
     if (turntable) this.content.rotation.y = row ? 0 : this.content.rotation.y + dt * 0.5; // rotate object(s), grid stays calibrated; rows stay readable
-    this.syncProjectors(selectedId, nightMode);
+    if (syncLights) this.syncProjectors(selectedId, nightMode);
     for (const s of this.spawns) {
       if (s.floraTimeU) { s.floraTimeU.value = time; continue; }
       if (s.floraDispose) continue;

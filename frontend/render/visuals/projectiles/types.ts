@@ -28,6 +28,18 @@ export interface ProjectileFiredVfxInput {
   impactTick?: number;
   firedTick?: number;
   direction?: () => VfxPoint3D;
+  /** Optional scale multiplier for projectile mesh geometry (e.g. heavy autocannon shells vs smaller artillery shells). */
+  projectileScale?: number;
+  /** Emit a spinning brass cartridge casing on fire (`reconGun`, `autocannon`). */
+  ejectCartridge?: boolean;
+  /** Optional world breech port for spent brass casing spawn (falls back to muzzle if omitted). */
+  ejectFrom?: VfxPoint3D;
+  /** Ground elevation (world Y) beneath shooter for ejected cartridge bounce. */
+  ejectGroundY?: number;
+  /** Suppress initial muzzle burst / light on sub-burst followups if desired. */
+  suppressLight?: boolean;
+  /** True if intended target is an insect (used by autoImpactOnArrival bursts). */
+  targetIsInsect?: boolean;
 }
 
 export interface ProjectileImpactVfxInput {
@@ -41,6 +53,8 @@ export interface ProjectileImpactVfxInput {
   impactTick?: number;
   normal?: VfxPoint3D;
   groundY?: number;
+  /** True when the impacted entity is an insect, emitting extra green acid hemolymph splatter. */
+  targetIsInsect?: boolean;
 }
 
 export interface ProjectileVfxActiveCounts {
@@ -49,6 +63,7 @@ export interface ProjectileVfxActiveCounts {
   smokePuffs: number;
   impacts: number;
   aoeDecals: number;
+  cartridges?: number;
 }
 
 export interface ProjectileVfxPoolConfig {
@@ -58,12 +73,17 @@ export interface ProjectileVfxPoolConfig {
   maxImpacts?: number;
   maxDebrisChunks?: number;
   maxAoeDecals?: number;
+  maxCartridges?: number;
   tileSizeM?: number;
+  /** Toggle publishing active lasers, shells, muzzle flashes and explosions to `ColonyVisionAndLights` (default `true`). */
+  emitDynamicLights?: boolean;
 }
 
 export interface ActiveProjectileSnapshot {
   active: boolean;
   weaponKind: Exclude<VfxWeaponKind, 'laser'>;
+  weaponId?: string;
+  scale: number;
   fromX: number;
   fromY: number;
   fromZ: number;
@@ -78,6 +98,7 @@ export interface ActiveProjectileSnapshot {
   arcHeight: number;
   aoe: number;
   autoImpactOnArrival: boolean;
+  targetIsInsect?: boolean;
 }
 
 export interface ActiveLaserSnapshot {
@@ -101,6 +122,7 @@ export interface ActiveAoeDecalSnapshot {
   radiusM: number;
   ageS: number;
   durationS: number;
+  hideRing?: boolean;
 }
 
 /**

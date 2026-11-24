@@ -1,9 +1,10 @@
 import * as THREE from 'three';
 
 interface Segment { from: THREE.Vector3; to: THREE.Vector3; age: number }
-const CAPACITY = 192;
+const CAPACITY = 256;
+const TRAIL_LIFE_S = 0.44;
 const Z = new THREE.Vector3(0, 0, 1);
-/** World-space afterimage: the tail follows the sampled arc and stays behind the moving round. */
+/** World-space superheated artillery wake: bright incandescent plasma core + wide amber thermal halo. */
 export class ArtilleryTrail {
   private readonly core: THREE.InstancedMesh;
   private readonly glow: THREE.InstancedMesh;
@@ -13,10 +14,14 @@ export class ArtilleryTrail {
   constructor(parent: THREE.Object3D) {
     const geometry = new THREE.CylinderGeometry(1, 1, 1, 6, 1, true);
     geometry.rotateX(Math.PI / 2);
-    this.core = new THREE.InstancedMesh(geometry, new THREE.MeshBasicMaterial({ color: 0xffdf94,
-      transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }), CAPACITY);
-    this.glow = new THREE.InstancedMesh(geometry, new THREE.MeshBasicMaterial({ color: 0xff7b26,
-      transparent: true, opacity: 0.25, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }), CAPACITY);
+    this.core = new THREE.InstancedMesh(geometry, new THREE.MeshBasicMaterial({
+      color: new THREE.Color(0xffe6a6).multiplyScalar(2.6),
+      transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false,
+    }), CAPACITY);
+    this.glow = new THREE.InstancedMesh(geometry, new THREE.MeshBasicMaterial({
+      color: new THREE.Color(0xff621a).multiplyScalar(1.75),
+      transparent: true, opacity: 0.45, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false,
+    }), CAPACITY);
     this.core.name = 'artillery-trace-core'; this.glow.name = 'artillery-trace-halo';
     for (const mesh of [this.core, this.glow]) { mesh.frustumCulled = false; parent.add(mesh); }
     this.clear();
@@ -32,7 +37,7 @@ export class ArtilleryTrail {
       const s = this.segments[i];
       if (!s) continue;
       s.age += dt;
-      if (s.age >= 0.24) { this.segments[i] = undefined; this.hide(i); }
+      if (s.age >= TRAIL_LIFE_S) { this.segments[i] = undefined; this.hide(i); }
       else this.write(i, s);
     }
   }
@@ -41,10 +46,11 @@ export class ArtilleryTrail {
     const length = delta.length();
     this.dummy.position.copy(s.from).lerp(s.to, 0.5);
     this.dummy.quaternion.setFromUnitVectors(Z, delta.divideScalar(length));
-    const fade = 1 - s.age / 0.24;
-    this.dummy.scale.set(0.018 * fade, 0.018 * fade, length + 0.015);
+    const fade = 1 - s.age / TRAIL_LIFE_S;
+    const coreFade = Math.pow(fade, 1.25);
+    this.dummy.scale.set(0.032 * coreFade, 0.032 * coreFade, length + 0.025);
     this.dummy.updateMatrix(); this.core.setMatrixAt(i, this.dummy.matrix);
-    this.dummy.scale.set(0.045 * fade, 0.045 * fade, length + 0.015);
+    this.dummy.scale.set(0.088 * fade, 0.088 * fade, length + 0.04);
     this.dummy.updateMatrix(); this.glow.setMatrixAt(i, this.dummy.matrix);
     this.core.instanceMatrix.needsUpdate = true; this.glow.instanceMatrix.needsUpdate = true;
   }

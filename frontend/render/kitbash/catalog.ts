@@ -127,6 +127,8 @@ export const LANDING_PREWARM_ARCHETYPES: readonly string[] = [
   'robot.builder',
   'robot.recon',
   'robot.combat',
+  'robot.tank',
+  'robot.artillery',
   'building.commandHub',
   'building.mine',
   'building.solar',
@@ -146,8 +148,6 @@ export const LANDING_PREWARM_ARCHETYPES: readonly string[] = [
 const ARCHETYPE_ALIAS_MAP: Readonly<Record<string, string>> = {
   'unit.recon': 'robot.recon',
   'building.droneControlArray': 'building.droneArray',
-  'robot.tank': 'robot.combat',
-  'robot.artillery': 'robot.combat',
 };
 
 function resolveCanonicalArchetypeId(id: string): string {
@@ -440,6 +440,23 @@ function adjustHubBeamForStrip(m: THREE.Mesh, oldStrip: number, newStrip: number
   if (beamGroup) beamGroup.position.y -= delta;
 }
 
+function applyStrippedGeometry(
+  m: THREE.Mesh,
+  oldStrip: number,
+  nextGeo: THREE.BufferGeometry,
+): void {
+  const oldGeo = m.geometry;
+  const stripOffsetY = (nextGeo.userData.stripOffsetY as number | undefined) ?? 0;
+  m.geometry = nextGeo;
+  oldGeo.dispose();
+  adjustHubBeamForStrip(m, oldStrip, stripOffsetY);
+  const u = (m.userData as any)?.uniforms;
+  if (u?.uBuildHeight && nextGeo.boundingBox) {
+    u.uBuildHeight.value = Math.max(0.1, nextGeo.boundingBox.max.y);
+  }
+  if (u?.uWeaponOffsetY) u.uWeaponOffsetY.value = stripOffsetY;
+}
+
 /**
  * Removes the square `plinth` / `plinthDetail` foundation slab from a building mesh when placed on the hex terrain
  * so the building stands directly on the hex terrain's metal hexagonal foundation pads without covering them up.
@@ -453,16 +470,9 @@ export function stripBuildingPlinth(mesh: THREE.Object3D): void {
     const cached = strippedGeometryCache.get(archetypeId);
     if (cached === false) return;
     if (cached) {
-      const oldGeo = m.geometry;
       const cloned = cached.clone();
       cloned.userData = { ...cached.userData };
-      m.geometry = cloned;
-      oldGeo.dispose();
-      adjustHubBeamForStrip(m, oldStrip, (cloned.userData.stripOffsetY as number | undefined) ?? 0);
-      const u = (m.userData as any)?.uniforms;
-      if (u?.uBuildHeight && cloned.boundingBox) {
-        u.uBuildHeight.value = Math.max(0.1, cloned.boundingBox.max.y);
-      }
+      applyStrippedGeometry(m, oldStrip, cloned);
       return;
     }
   }
@@ -472,17 +482,10 @@ export function stripBuildingPlinth(mesh: THREE.Object3D): void {
     if (archetypeId) strippedGeometryCache.set(archetypeId, false);
     return;
   }
-  const oldGeo = m.geometry;
   if (archetypeId) {
     const template = newGeo.clone();
     template.userData = { ...newGeo.userData };
     strippedGeometryCache.set(archetypeId, template);
   }
-  m.geometry = newGeo;
-  oldGeo.dispose();
-  adjustHubBeamForStrip(m, oldStrip, (newGeo.userData.stripOffsetY as number | undefined) ?? 0);
-  const u = (m.userData as any)?.uniforms;
-  if (u?.uBuildHeight && newGeo.boundingBox) {
-    u.uBuildHeight.value = Math.max(0.1, newGeo.boundingBox.max.y);
-  }
+  applyStrippedGeometry(m, oldStrip, newGeo);
 }

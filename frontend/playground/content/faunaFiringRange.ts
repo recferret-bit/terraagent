@@ -1,8 +1,10 @@
 import { MotionTrack } from '@terra/render/motion/entityMotion';
 import { placeTickPose } from '@terra/render/motion/pose';
-import { isInsectMelee } from '@terra/render/combat/InsectPresentation';
 import { BattlePresentation } from '@terra/render/combat/BattlePresentation';
+import { CombatShotCoordinator } from '@terra/render/combat/CombatShotCoordinator';
+import { InsectCorpseLayer } from '@terra/render/combat/InsectCorpseLayer';
 import * as THREE from 'three';
+import { attachEntityProjectorRig, type EntityProjectorRigState } from '@terra/render/lighting/EntityProjectorRig';
 import { TILE_M } from '@terra/render/planets/hex';
 import {
   resolveFaunaBugArchetypeId,
@@ -38,6 +40,7 @@ import {
   buildSafeArchetypeMesh,
   deriveCosmeticGesture,
   faunaModeLabel,
+  syncPlaygroundNightProjectors,
   type FaunaBugSnapshot,
   type FaunaHiveStat,
   type FaunaSceneStats,
@@ -123,6 +126,10 @@ function num(value: unknown): number {
  */
 export class FiringRangeScene {
   readonly battle = new BattlePresentation(id => this.visuals.find(v => v.id === id)?.mesh);
+  private readonly shots: CombatShotCoordinator;
+  private readonly corpses: InsectCorpseLayer;
+  private readonly queuedShots: Array<{ attackerId: number; firedTick: number; age: number; input: Parameters<CombatShotCoordinator['dispatchShot']>[1]; speedMps?: number }> = [];
+  private readonly heldImpacts = new Map<string, Array<() => void>>();
   private sim: PlanetState | null = null;
   private pipeline: Pipeline | null = null;
   private visuals: SimVisual[] = [];
@@ -133,15 +140,22 @@ export class FiringRangeScene {
   constructor(
     private group: THREE.Group,
     private projectiles: ProjectileVfxSystem,
-  ) {}
+  ) {
+    this.shots = new CombatShotCoordinator(this.battle, this.projectiles, id => this.visuals.find(v => v.id === id)?.mesh);
+    this.corpses = new InsectCorpseLayer(this.group, this.biomeKey);
+  }
 
   get tick(): number {
     return this.sim?.meta.tick ?? 0;
   }
 
   dispose(): void {
-    for (const v of this.visuals) this.dropVisual(v);
+    for (const v of this.visuals) this.dropVisual(v, false);
     this.visuals = [];
+    this.queuedShots.length = 0;
+    this.heldImpacts.clear();
+    this.shots.clear();
+    this.corpses.clear();
     this.battle.clear();
     this.sim = null;
     this.pipeline = null;
@@ -151,6 +165,7 @@ export class FiringRangeScene {
     this.dispose();
     this.mode = mode === 'turrets' || mode === 'units' ? 'gallery' : mode;
     this.biomeKey = biomeKey;
+    this.corpses.setBiome(biomeKey);
     this.seed = seed;
     this.pipeline = createRegistryPipeline({ flags: PLANET_FLAGS });
     const state = createPlanet({ type: 'flat', seed: String(seed), radius: RANGE_RADIUS, planetId: 'pg-range' });
@@ -186,9 +201,36 @@ export class FiringRangeScene {
     }
   }
 
-  tickMeshes(time: number, culled: boolean, dt: number): void {
+  tickMeshes(time: number, culled: boolean, dt: number, nightMode = false): void {
     if (!culled) for (const v of this.visuals) tickArchetypeMesh(v.mesh, time, v.walk, v.work);
     this.battle.update(dt);
+    this.shots.update(dt);
+    syncPlaygroundNightProjectors(
+      this.visuals
+        .map((v) => ({ archetypeId: archetypeFor(v.kind, this.biomeKey), mesh: v.mesh }))
+        .filter((e) => !e.archetypeId.startsWith('fauna.')),
+      nightMode,
+    );
+    for (let i = this.queuedShots.length - 1; i >= 0; i--) {
+      const q = this.queuedShots[i]!;
+      q.age += dt;
+      const alignKey = `${q.attackerId}:${q.firedTick}`;
+      const targetGone = q.input.targetId !== undefined && !this.visuals.some(v => v.id === q.input.targetId);
+      if (!this.visuals.some(v => v.id === q.attackerId) || targetGone || q.age >= 3.5) {
+        this.queuedShots.splice(i, 1);
+        this.heldImpacts.delete(alignKey);
+        continue;
+      }
+      if (this.shots.isReadyToFire(q.attackerId, q.input)) {
+        this.queuedShots.splice(i, 1);
+        this.shots.dispatchShot(q.attackerId, q.input, { burstSeed: q.attackerId * 31 + q.firedTick });
+        const deferred = this.heldImpacts.get(alignKey);
+        if (deferred) {
+          this.heldImpacts.delete(alignKey);
+          for (const run of deferred) run();
+        }
+      }
+    }
   }
 
   applyWire(wire: boolean): void {
@@ -307,7 +349,7 @@ export class FiringRangeScene {
     }
     this.visuals = this.visuals.filter((v) => {
       if (seen.has(v.id)) return true;
-      if (!this.battle.insects.retire(v.id, () => this.dropVisual(v), true)) this.dropVisual(v);
+      if (!this.battle.insects.retire(v.id, () => this.dropVisual(v, true), true)) this.dropVisual(v, false);
       return false;
     });
   }
@@ -318,7 +360,9 @@ export class FiringRangeScene {
     const world = firingRangeWorld(cols.x[row]!, cols.y[row]!);
     let vis = this.visuals.find((v) => v.id === id);
     if (!vis) {
-      const mesh = buildSafeArchetypeMesh(archetypeFor(cols.kind[row]!, this.biomeKey), 'robot.builder', this.biomeKey);
+      const archId = archetypeFor(cols.kind[row]!, this.biomeKey);
+      const mesh = buildSafeArchetypeMesh(archId, 'robot.builder', this.biomeKey);
+      if (!archId.startsWith('fauna.')) attachEntityProjectorRig(mesh, archId);
       this.group.add(mesh);
       vis = { track: new MotionTrack(), id, kind: cols.kind[row]!, mesh, x: world.x, z: world.z, yaw: 0, walk: 0, work: 0 };
       this.visuals.push(vis);
@@ -340,7 +384,9 @@ export class FiringRangeScene {
     }
   }
 
-  private dropVisual(v: SimVisual): void {
+  private dropVisual(v: SimVisual, preserveCorpse = false): void {
+    if (preserveCorpse) this.corpses.preserve(v.mesh, 0);
+    (v.mesh.userData as { projectorRig?: EntityProjectorRigState } | undefined)?.projectorRig?.dispose();
     this.group.remove(v.mesh);
     v.mesh.geometry.dispose();
     (v.mesh.material as THREE.Material).dispose();
@@ -357,22 +403,36 @@ export class FiringRangeScene {
     const from = firingRangeWorld(num(data.fromX), num(data.fromY), 0.65);
     const to = firingRangeWorld(num(data.aimX ?? data.fromX), num(data.aimY ?? data.fromY), 0.55);
     const flight = num(data.flightTicks);
-    const shot = this.battle.shot(num(data.attackerId), {
+    const attackerId = num(data.attackerId);
+    const input = {
       weaponId: typeof data.weaponId === 'string' ? data.weaponId : undefined,
       weaponType: typeof data.weaponType === 'string' ? data.weaponType : undefined,
-      arc: data.arc === 'indirect' ? 'indirect' : 'direct',
+      arc: (data.arc === 'indirect' ? 'indirect' : 'direct') as 'direct' | 'indirect',
       from,
       to,
       aoe: num(data.aoe),
       durationS: flight > 0 ? flight / 5 : undefined,
       autoImpactOnArrival: false, targetId: num(data.targetId), impactTick: num(data.impactTick ?? tick), firedTick: tick,
-    });
-    if (!isInsectMelee(shot.weaponId)) this.projectiles.onProjectileFired(shot);
+    };
+    if (!this.shots.isReadyToFire(attackerId, input)) {
+      this.queuedShots.push({ attackerId, firedTick: tick, age: 0, input });
+      return;
+    }
+    this.shots.dispatchShot(attackerId, input, { burstSeed: attackerId * 31 + tick });
   }
 
   private ingestImpact(data: Record<string, unknown>, tick: number): void {
+    const attackerId = num(data.attackerId);
+    const firedTick = num(data.firedTick ?? tick);
+    const alignKey = `${attackerId}:${firedTick}`;
+    if (this.queuedShots.some(q => q.attackerId === attackerId && q.firedTick === firedTick)) {
+      const list = this.heldImpacts.get(alignKey) ?? [];
+      list.push(() => this.ingestImpact(data, tick));
+      this.heldImpacts.set(alignKey, list);
+      return;
+    }
     const at = firingRangeWorld(num(data.aimX ?? data.q), num(data.aimY ?? data.r), 0.45);
-    this.projectiles.onProjectileImpact(this.battle.impact(num(data.attackerId), {
+    this.projectiles.onProjectileImpact(this.battle.impact(attackerId, {
       weaponId: typeof data.weaponId === 'string' ? data.weaponId : undefined,
       weaponType: typeof data.weaponType === 'string' ? data.weaponType : undefined,
       at,

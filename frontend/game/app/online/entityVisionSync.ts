@@ -65,12 +65,13 @@ function appendArchetypeProjectors(opts: {
   uy: number;
   uz: number;
   yaw: number;
+  turretYaw: number;
   meshScale: number;
   rangeScale: number;
   lightScale: number;
   stateMul: number;
 }): void {
-  const { projectors, archetypeId, ux, uy, uz, yaw, meshScale, rangeScale, lightScale, stateMul } = opts;
+  const { projectors, archetypeId, ux, uy, uz, yaw, turretYaw, meshScale, rangeScale, lightScale, stateMul } = opts;
   const effScale = lightScale * stateMul;
   if (effScale <= 0.005) return;
 
@@ -80,8 +81,18 @@ function appendArchetypeProjectors(opts: {
 
   for (const src of sources) {
     if (projectors.length >= MAX_PROJECTOR_CANDIDATES) break; // the renderer uploads only the on-screen nearest
-    const [px, py, pz] = src.pos;
-    const [tx, ty, tz] = src.target;
+    let [px, py, pz] = src.pos;
+    let [tx, ty, tz] = src.target;
+    if (src.turretMounted && turretYaw !== 0) {
+      const [pivX, pivZ] = src.turretPivot ?? [0, 0];
+      const ct = Math.cos(turretYaw), st = Math.sin(turretYaw);
+      const rpx = px - pivX, rpz = pz - pivZ;
+      px = pivX + rpx * ct + rpz * st;
+      pz = pivZ - rpx * st + rpz * ct;
+      const rtx = tx - pivX, rtz = tz - pivZ;
+      tx = pivX + rtx * ct + rtz * st;
+      tz = pivZ - rtx * st + rtz * ct;
+    }
 
     const worldPosX = ux + (px * cosY + pz * sinY) * meshScale;
     const worldPosY = uy + py * meshScale;
@@ -135,6 +146,7 @@ function collectOwnedEntityVisionAndProjectors(
     uy,
     uz,
     yaw,
+    turretYaw: (rec.mesh.userData as { turretYaw?: number } | undefined)?.turretYaw ?? 0,
     meshScale: rec.mesh.scale.x || 1,
     rangeScale: scaleForKind(rec.kind, rec.tier),
     lightScale,

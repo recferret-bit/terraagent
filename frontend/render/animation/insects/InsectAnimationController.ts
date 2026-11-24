@@ -22,6 +22,7 @@ export class InsectAnimationController {
   private moving = false;
   private hurtRemaining = 0;
   private deathAge: number | null = null;
+  private deathSeed = 0;
   readonly species: number;
 
   constructor(readonly mesh: THREE.Object3D) {
@@ -50,8 +51,16 @@ export class InsectAnimationController {
     this.update(0);
   }
   setMoving(moving: boolean): void { this.moving = moving; }
+  setDeathSeed(seed: number): void { this.deathSeed = seed; }
   hit(): void { if (this.deathAge === null) this.hurtRemaining = 0.22; }
-  die(): void { if (this.deathAge === null) { this.deathAge = 0; this.moving = false; } }
+  die(seed?: number): boolean {
+    if (this.deathAge !== null) return false;
+    this.deathAge = 0;
+    this.moving = false;
+    if (seed !== undefined) this.deathSeed = seed;
+    else if (this.deathSeed <= 0.001) this.deathSeed = 0.13 + ((Math.imul(this.mesh.id + 1, 2654435761) >>> 0) % 860) / 1000;
+    return true;
+  }
   /** An authoritative correction restored this insect after a predicted death. */
   revive(): void {
     this.deathAge = null;
@@ -80,7 +89,7 @@ export class InsectAnimationController {
     return { species: this.species, time: this.mesh.userData.uniforms?.uTime?.value ?? 0,
       walk: this.deathAge === null && (state === 'idle' || state === 'moving') && this.moving ? 1 : 0,
       sacSide: (state === 'windup' ? this.nextSac : this.releasedSac) === 0 ? -1 : 1,
-      charge, strike, hurt: Math.sin(Math.min(1, this.hurtRemaining / 0.22) * Math.PI), death };
+      charge, strike, hurt: Math.sin(Math.min(1, this.hurtRemaining / 0.22) * Math.PI), death, deathSeed: this.deathSeed };
   }
   update(dt: number): void {
     this.age += Math.max(0, dt);
@@ -97,6 +106,7 @@ export class InsectAnimationController {
     u.uInsectSpecies.value = this.species;
     u.uInsectWalk.value = p.walk;
     u.uInsectSacSide.value = p.sacSide;
+    if (u.uInsectDeathSeed) u.uInsectDeathSeed.value = p.deathSeed ?? 0;
   }
   socket(kind: 'projectile' | 'melee', side = this.emissionSide): THREE.Vector3 {
     const isSac = kind === 'projectile' && this.species === 2;

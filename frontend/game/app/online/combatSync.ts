@@ -1,12 +1,12 @@
 import { CombatHealthTracker } from './CombatHealthTracker';
 import { FaunaClientSync } from './FaunaClientSync';
 export { FaunaClientSync } from './FaunaClientSync';
-import { isInsectMelee } from '@terra/render/combat/InsectPresentation';
 import { BoundedKeyWindow, canonicalProjectileFiredKey, canonicalProjectileImpactKey, unwrapPayload, resolveFiredTick, resolveImpactTick,
   type RecordedProjectileFired, type RecordedProjectileImpact } from './combatEventKeys';
 export { canonicalProjectileFiredKey, canonicalProjectileImpactKey, type RecordedProjectileFired, type RecordedProjectileImpact } from './combatEventKeys';
 import { PendingCombatShots } from './pendingCombatShots';
 import { BattlePresentation } from '@terra/render/combat/BattlePresentation';
+import { CombatShotCoordinator } from '@terra/render/combat/CombatShotCoordinator';
 import type * as THREE from 'three';
 import type { SimEventWire } from '@terra/contracts';
 import type { HexTerrain } from '@terra/render/planets/hex';
@@ -53,7 +53,9 @@ export class CombatSyncController {
   readonly projectiles: ProjectileVfxSystem;
   readonly fauna: FaunaClientSync;
   readonly battle = new BattlePresentation(id => this.meshForEntity?.(id));
+  readonly shots: CombatShotCoordinator;
   private readonly pendingShots = new PendingCombatShots();
+  private readonly heldImpacts = new Map<string, Array<() => void>>();
   meshForEntity?: (id: number) => THREE.Object3D | undefined;
   readonly firedHistory: RecordedProjectileFired[] = [];
   readonly impactHistory: RecordedProjectileImpact[] = [];
@@ -73,6 +75,7 @@ export class CombatSyncController {
     config: ProjectileVfxPoolConfig & { maxWindowSize?: number; maxCheckpoints?: number } = {},
   ) {
     this.projectiles = new ProjectileVfxSystem(parent, config);
+    this.shots = new CombatShotCoordinator(this.battle, this.projectiles, id => this.meshForEntity?.(id));
     this.fauna = new FaunaClientSync(config.maxCheckpoints ?? 32);
     this.seenFired = new BoundedKeyWindow(config.maxWindowSize);
     this.seenImpacts = new BoundedKeyWindow(config.maxWindowSize);
@@ -82,26 +85,7 @@ export class CombatSyncController {
   hasSeenFiredKey(key: string): boolean { return this.seenFired.has(key); }
   hasSeenImpactKey(key: string): boolean { return this.seenImpacts.has(key); }
 
-  ingestProjectileFired(
-    ev: SimProjectileFiredEventLike | { atTick?: number; kind?: string; data: SimProjectileFiredPayloadLike },
-    terrain: HexTerrain | null = null,
-    countDuplicate = true,
-  ): boolean {
-    const key = canonicalProjectileFiredKey(ev);
-    const shooter = Number(unwrapPayload<SimProjectileFiredPayloadLike>(ev).data.attackerId ?? 0);
-    if (this.meshForEntity && !this.meshForEntity(shooter)) {
-      this.pendingShots.hold(key, () => {
-        if (!this.meshForEntity?.(shooter)) return false;
-        this.ingestProjectileFired(ev, terrain, countDuplicate);
-        return true;
-      });
-      return false;
-    }
-    if (!this.seenFired.add(key)) {
-      if (countDuplicate) this.duplicateFiredIgnored++;
-      return false;
-    }
-
+  private buildShotInput(ev: SimProjectileFiredEventLike | { atTick?: number; kind?: string; data: SimProjectileFiredPayloadLike }, terrain: HexTerrain | null) {
     const { atTick, data } = unwrapPayload<SimProjectileFiredPayloadLike & { firedTick?: number }>(ev);
     const tick = resolveFiredTick(atTick, data);
     const weaponKind = resolveVfxWeaponKind({
@@ -111,31 +95,110 @@ export class CombatSyncController {
     const fromR = Number(data.fromY ?? data.from?.y ?? data.from?.r ?? data.r ?? 0);
     const toQ = Number(data.aimX ?? data.to?.x ?? data.to?.q ?? data.aimQ ?? fromQ);
     const toR = Number(data.aimY ?? data.to?.y ?? data.to?.r ?? data.aimR ?? fromR);
-
     const tileSizeM = this.projectiles.tileSizeM;
     const fromPt = axialToWorldVfxPoint(fromQ, fromR, 0, tileSizeM);
     fromPt.y = (terrain ? terrain.heightAt(fromPt.x, fromPt.z) : 0) + 0.6;
     const toPt = axialToWorldVfxPoint(toQ, toR, 0, tileSizeM);
     toPt.y = (terrain ? terrain.heightAt(toPt.x, toPt.z) : 0) + 0.6;
-
     const durationS = weaponKind === 'laser'
       ? LASER_BEAM_DURATION_S
       : data.flightTicks && data.flightTicks > 0 ? data.flightTicks / SIM_TICKS_PER_SECOND : undefined;
     const speedMps = data.speed && data.speed > 0 ? data.speed * tileSizeM : undefined;
-
-    const shot = this.battle.shot(Number(data.attackerId ?? 0), {
+    const input = {
       weaponKind, weaponType: data.weaponType, weaponId: data.weaponId,
-      arc: data.arc === 'indirect' ? 'indirect' : 'direct',
+      arc: (data.arc === 'indirect' ? 'indirect' : 'direct') as 'direct' | 'indirect',
       from: fromPt, to: toPt, speed: speedMps, durationS, aoe: data.aoe ?? 0,
       autoImpactOnArrival: false, firedTick: tick, targetId: data.targetId, impactTick: data.impactTick ?? tick,
-    });
-    if (!isInsectMelee(data.weaponId)) this.projectiles.onProjectileFired(shot);
+    };
+    return { data, tick, weaponKind, fromQ, fromR, toQ, toR, fromPt, toPt, input };
+  }
+
+  ingestProjectileFired(
+    ev: SimProjectileFiredEventLike | { atTick?: number; kind?: string; data: SimProjectileFiredPayloadLike },
+    terrain: HexTerrain | null = null,
+    countDuplicate = true,
+  ): boolean {
+    const key = canonicalProjectileFiredKey(ev);
+    const rawData = unwrapPayload<SimProjectileFiredPayloadLike & { firedTick?: number }>(ev);
+    const shooter = Number(rawData.data.attackerId ?? 0);
+    const shotTick = resolveFiredTick(rawData.atTick, rawData.data);
+    const alignKey = `${shooter}:${shotTick}`;
+
+    if (this.seenFired.has(key) || this.pendingShots.has(key)) {
+      if (countDuplicate) this.duplicateFiredIgnored++;
+      return false;
+    }
+
+    if (this.meshForEntity && !this.meshForEntity(shooter)) {
+      this.heldFiredKeys.add(key);
+      this.pendingShots.hold(key, (waitedS) => {
+        if (!this.meshForEntity?.(shooter)) {
+          if (waitedS > 1.8) {
+            this.heldFiredKeys.delete(key);
+            this.heldImpacts.delete(alignKey);
+            return true;
+          }
+          return false;
+        }
+        const parsed = this.buildShotInput(ev, terrain);
+        if (waitedS > 3.5 || (parsed.input.targetId !== undefined && this.confirmedDeaths.has(parsed.input.targetId))) {
+          this.heldFiredKeys.delete(key);
+          this.heldImpacts.delete(alignKey);
+          return true;
+        }
+        if (!this.shots.isReadyToFire(shooter, parsed.input)) return false;
+        this.emitPreparedFiredShot(key, alignKey, shooter, ev, parsed, terrain, countDuplicate);
+        return true;
+      });
+      return false;
+    }
+
+    const parsed = this.buildShotInput(ev, terrain);
+    if (!this.shots.isReadyToFire(shooter, parsed.input)) {
+      this.heldFiredKeys.add(key);
+      this.pendingShots.hold(key, (waitedS) => {
+        if (this.meshForEntity && !this.meshForEntity(shooter)) {
+          this.heldFiredKeys.delete(key);
+          this.heldImpacts.delete(alignKey);
+          return true;
+        }
+        if (waitedS > 3.5 || (parsed.input.targetId !== undefined && this.confirmedDeaths.has(parsed.input.targetId))) {
+          this.heldFiredKeys.delete(key);
+          this.heldImpacts.delete(alignKey);
+          return true;
+        }
+        if (!this.shots.isReadyToFire(shooter, parsed.input)) return false;
+        this.emitPreparedFiredShot(key, alignKey, shooter, ev, parsed, terrain, countDuplicate);
+        return true;
+      });
+      return false;
+    }
+
+    return this.emitPreparedFiredShot(key, alignKey, shooter, ev, parsed, terrain, countDuplicate);
+  }
+
+  private emitPreparedFiredShot(
+    key: string,
+    alignKey: string,
+    shooter: number,
+    _ev: SimProjectileFiredEventLike | { atTick?: number; kind?: string; data: SimProjectileFiredPayloadLike },
+    parsed: ReturnType<CombatSyncController['buildShotInput']>,
+    terrain: HexTerrain | null,
+    countDuplicate: boolean,
+  ): boolean {
+    this.heldFiredKeys.delete(key);
+    if (!this.seenFired.add(key)) {
+      if (countDuplicate) this.duplicateFiredIgnored++;
+      return false;
+    }
+    const { data, tick, weaponKind, fromQ, fromR, toQ, toR, fromPt, toPt, input } = parsed;
+    this.shots.dispatchShot(shooter, input, { burstSeed: shooter * 31 + tick });
     terrain?.biosphere.noteBattleAt(fromPt.x, fromPt.z);
     terrain?.biosphere.noteBattleAt(toPt.x, toPt.z);
     this.vfxFiredSpawnCount++;
 
     this.firedHistory.push({
-      key, atTick: tick, attackerId: Number(data.attackerId ?? 0),
+      key, atTick: tick, attackerId: shooter,
       ...(typeof data.targetId === 'number' ? { targetId: data.targetId } : {}),
       weaponKind, ...(typeof data.weaponId === 'string' ? { weaponId: data.weaponId } : {}),
       fromQ: Math.round(fromQ), fromR: Math.round(fromR),
@@ -144,6 +207,12 @@ export class CombatSyncController {
       aoe: Number(data.aoe ?? 0), damage: Number(data.damage ?? 0),
     });
     if (this.firedHistory.length > MAX_HISTORY_ENTRIES) this.firedHistory.shift();
+
+    const deferredImpacts = this.heldImpacts.get(alignKey);
+    if (deferredImpacts) {
+      this.heldImpacts.delete(alignKey);
+      for (const runImpact of deferredImpacts) runImpact();
+    }
     return true;
   }
 
@@ -152,20 +221,30 @@ export class CombatSyncController {
     terrain: HexTerrain | null = null,
     countDuplicate = true,
   ): boolean {
+    const { atTick, data } = unwrapPayload<SimProjectileImpactPayloadLike>(ev);
+    const tick = resolveImpactTick(atTick, data);
+    const shooter = Number(data.attackerId ?? 0);
+    const firedTick = Number(data.firedTick ?? tick);
+    const alignKey = `${shooter}:${firedTick}`;
+    if (this.hasPendingShotForAttacker(shooter, firedTick)) {
+      const queue = this.heldImpacts.get(alignKey) ?? [];
+      queue.push(() => this.ingestProjectileImpact(ev, terrain, countDuplicate));
+      this.heldImpacts.set(alignKey, queue);
+      return false;
+    }
+
     const key = canonicalProjectileImpactKey(ev);
     if (!this.seenImpacts.add(key)) {
       if (countDuplicate) this.duplicateImpactIgnored++;
       return false;
     }
 
-    const { atTick, data } = unwrapPayload<SimProjectileImpactPayloadLike>(ev);
-    const tick = resolveImpactTick(atTick, data);
     const weaponKind = resolveVfxWeaponKind({
       weaponKind: data.weaponKind, weaponType: data.weaponType, weaponId: data.weaponId,
     });
     const heightLookup = terrain ? (wx: number, wz: number) => terrain.heightAt(wx, wz) : undefined;
     this.projectiles.spawnFromSimImpactEvent(ev, heightLookup, this.projectiles.tileSizeM,
-      input => this.battle.impact(Number(data.attackerId ?? 0), { ...input, targetId: data.targetId, impactTick: tick }));
+      input => this.battle.impact(shooter, { ...input, targetId: data.targetId, impactTick: tick }));
     this.vfxImpactSpawnCount++;
 
     const hitIds = Array.isArray(data.hitEntityIds)
@@ -179,7 +258,7 @@ export class CombatSyncController {
     }
 
     this.impactHistory.push({
-      key, atTick: tick, attackerId: Number(data.attackerId ?? 0),
+      key, atTick: tick, attackerId: shooter,
       ...(typeof data.targetId === 'number' ? { targetId: data.targetId } : {}),
       weaponKind, ...(typeof data.weaponId === 'string' ? { weaponId: data.weaponId } : {}),
       q, r, hit: Boolean(data.hit), aoe: Number(data.aoe ?? 0), damage: Number(data.damage ?? 0), hitEntityIds: hitIds,
@@ -187,6 +266,16 @@ export class CombatSyncController {
     if (this.impactHistory.length > MAX_HISTORY_ENTRIES) this.impactHistory.shift();
     return true;
   }
+
+  private hasPendingShotForAttacker(attackerId: number, firedTick: number): boolean {
+    const prefix = `fired:${attackerId}:${firedTick}:`;
+    // Pending keys use canonical fired format
+    for (const k of this.heldFiredKeys) {
+      if (k.startsWith(prefix) && this.pendingShots.has(k)) return true;
+    }
+    return false;
+  }
+  private readonly heldFiredKeys = new Set<string>();
 
   ingestCombatEvents(
     events: readonly (SimEventWire | { kind?: string; atTick?: number; tick?: number; data?: Record<string, unknown> })[],
@@ -266,11 +355,19 @@ export class CombatSyncController {
     return this.fauna.applySparseCorrection(state, correction, data);
   }
 
-  update(dtSeconds: number): void { this.battle.update(dtSeconds); this.pendingShots.update(dtSeconds); this.projectiles.update(dtSeconds); }
+  update(dtSeconds: number): void {
+    this.battle.update(dtSeconds);
+    this.pendingShots.update(dtSeconds);
+    this.shots.update(dtSeconds);
+    this.projectiles.update(dtSeconds);
+  }
 
   reset(): void {
     this.battle.clear();
     this.pendingShots.clear();
+    this.heldImpacts.clear();
+    this.heldFiredKeys.clear();
+    this.shots.clear();
     this.seenFired.clear();
     this.seenImpacts.clear();
     this.firedHistory.length = 0;

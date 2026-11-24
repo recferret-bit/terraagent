@@ -23,6 +23,55 @@ export interface ArchetypeLightSource {
   coneBottomRadius: number;
   /** Ground pool disc radius (e.g. 2.4); also widens the spot (see `coneBottomRadius`). */
   poolRadius: number;
+  /** True when the light source sits on a rotating turret head (`mesh.userData.turretYaw`). */
+  turretMounted?: boolean;
+  /** Model-space XZ pivot for `turretMounted` lights (defaults to [0, 0]). */
+  turretPivot?: [number, number];
+}
+
+function makeSpiderBotHeadlamp(): ArchetypeLightSource[] {
+  return [
+    {
+      id: 'headlamp-left',
+      pos: [-0.068, 0.81, 0.58],
+      target: [-0.14, 0.02, 3.85],
+      color: 0xffdea6,
+      intensity: 1.1,
+      range: 9.8,
+      coneTopRadius: 0.042,
+      coneBottomRadius: 1.25,
+      poolRadius: 1.9,
+    },
+    {
+      id: 'headlamp-right',
+      pos: [0.068, 0.81, 0.58],
+      target: [0.14, 0.02, 3.85],
+      color: 0xffdea6,
+      intensity: 1.1,
+      range: 9.8,
+      coneTopRadius: 0.042,
+      coneBottomRadius: 1.25,
+      poolRadius: 1.9,
+    },
+  ];
+}
+
+function makeReconOpticsLight(): ArchetypeLightSource[] {
+  return [
+    {
+      id: 'turret-optics',
+      pos: [-0.135, 0.93, 0.315],
+      target: [-0.135, 0.02, 4.35],
+      color: 0xb0f2ff,
+      intensity: 1.4,
+      range: 11.0,
+      coneTopRadius: 0.08,
+      coneBottomRadius: 1.6,
+      poolRadius: 2.4,
+      turretMounted: true,
+      turretPivot: [0, 0.03],
+    },
+  ];
 }
 
 function makeStandardRobotHeadlamp(): ArchetypeLightSource[] {
@@ -59,7 +108,10 @@ export const DEFAULT_ARCHETYPE_LIGHTS: Readonly<Record<string, ReadonlyArray<Arc
   'robot.builder': makeStandardRobotHeadlamp(),
   'robot.scout': makeStandardRobotHeadlamp(),
   'robot.hauler': makeStandardRobotHeadlamp(),
-  'robot.combat': makeStandardRobotHeadlamp(),
+  'robot.recon': makeReconOpticsLight(),
+  'robot.combat': makeSpiderBotHeadlamp(),
+  'robot.tank': makeSpiderBotHeadlamp(),
+  'robot.artillery': makeSpiderBotHeadlamp(),
   'robot.tleilaxu': makeStandardRobotHeadlamp(),
   'robot.raid': makeStandardRobotHeadlamp(),
   ...BUILDING_LIGHT_RIGS,
@@ -80,6 +132,8 @@ function cloneLight(s: ArchetypeLightSource): ArchetypeLightSource {
     coneTopRadius: s.coneTopRadius,
     coneBottomRadius: s.coneBottomRadius,
     poolRadius: s.poolRadius,
+    ...(s.turretMounted ? { turretMounted: true } : {}),
+    ...(s.turretPivot ? { turretPivot: [s.turretPivot[0], s.turretPivot[1]] } : {}),
   };
 }
 

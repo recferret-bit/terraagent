@@ -11,6 +11,7 @@ import {
   type FaunaVisualSpecies,
 } from '@terra/render/kitbash';
 import { ProjectileVfxSystem } from '@terra/render/visuals/projectiles';
+import { attachEntityProjectorRig, type EntityProjectorRigState } from '@terra/render/lighting/EntityProjectorRig';
 import type { FaunaMode, FaunaSceneKind } from '../state';
 import { FiringRangeScene, isFiringRangeMode } from './faunaFiringRange';
 import {
@@ -26,6 +27,7 @@ import {
   SPECIES_TUNING,
   stepAggressiveBugState,
   stepPassiveBugState,
+  syncPlaygroundNightProjectors,
   WAVE_COOLDOWN_TICKS,
   type BugEntity,
   type CosmeticGesture,
@@ -85,19 +87,9 @@ export class FaunaSceneHost {
 
   private firing: FiringRangeScene;
 
-  isPaused(): boolean {
-    return this.paused;
-  }
-
-  setPaused(paused: boolean): void {
-    this.paused = paused;
-  }
-
-  togglePause(): boolean {
-    this.paused = !this.paused;
-    return this.paused;
-  }
-
+  isPaused(): boolean { return this.paused; }
+  setPaused(paused: boolean): void { this.paused = paused; }
+  togglePause(): boolean { this.paused = !this.paused; return this.paused; }
   setRenderOptions(opts: Partial<FaunaRenderOptions>): void {
     Object.assign(this.renderOpts, opts);
     this.applyWire(!!this.renderOpts.wire);
@@ -141,27 +133,20 @@ export class FaunaSceneHost {
     }
   }
 
-  setSeed(seed: number): void {
-    if (!Number.isFinite(seed)) return;
-    this.reset(Math.trunc(seed));
-  }
-
+  setSeed(seed: number): void { if (Number.isFinite(seed)) this.reset(Math.trunc(seed)); }
   setBiome(biomeKey: string): void {
     if (this.biomeKey === biomeKey && this.hives.length > 0) return;
     this.biomeKey = biomeKey;
     if (this.sceneKind !== null) this.rebuild();
   }
-
-  reset(seed = this.seed): void {
-    if (Number.isFinite(seed)) this.seed = Math.trunc(seed);
-    this.rebuild();
-  }
+  reset(seed = this.seed): void { if (Number.isFinite(seed)) this.seed = Math.trunc(seed); this.rebuild(); }
 
   private clearMeshes(): void {
     this.swarms.clear();
     this.projectiles.clear();
     const all = [...this.hives.map((h) => h.mesh), ...this.bugs.map((b) => b.mesh), ...this.dummyMeshes];
     for (const m of all) {
+      (m.userData as { projectorRig?: EntityProjectorRigState } | undefined)?.projectorRig?.dispose();
       this.group.remove(m);
       m.geometry.dispose();
       (m.material as THREE.Material).dispose();
@@ -220,8 +205,10 @@ export class FaunaSceneHost {
 
   private spawnDummyTargets(): void {
     const turret = buildSafeArchetypeMesh('building.turret', 'building.turret', this.biomeKey);
+    attachEntityProjectorRig(turret, 'building.turret');
     turret.position.copy(this.dummyPos);
     const recon = buildSafeArchetypeMesh('robot.recon', 'robot.hero', this.biomeKey);
+    attachEntityProjectorRig(recon, 'robot.recon');
     recon.position.set(this.dummyPos.x - 1.3, 0, this.dummyPos.z + 0.3);
     recon.rotation.y = Math.PI;
     this.group.add(turret, recon);
@@ -416,11 +403,16 @@ export class FaunaSceneHost {
     const renderTick = this.caughtUp ? tick : tick - 1 + this.accumMs / FAUNA_TICK_MS;
     if (isFiringRangeMode(this.mode)) {
       this.firing.follow(dt, renderTick, snap);
-      this.firing.tickMeshes(this.visualTime, !!this.renderOpts.culled, dt);
+      this.firing.tickMeshes(this.visualTime, !!this.renderOpts.culled, dt, !!this.renderOpts.night);
       this.projectiles.update(dt);
       this.swarms.sync(this.biomeKey);
       return;
     }
+    const dummyIds = ['building.turret', 'robot.recon'];
+    syncPlaygroundNightProjectors(
+      this.dummyMeshes.map((m, i) => ({ archetypeId: dummyIds[i] ?? 'robot.recon', mesh: m })),
+      !!this.renderOpts.night,
+    );
     followBugMeshes(this.bugs, dt, renderTick, snap);
     this.projectiles.update(dt);
     if (this.renderOpts.culled) return;

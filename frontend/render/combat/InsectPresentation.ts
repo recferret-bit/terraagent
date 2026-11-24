@@ -1,15 +1,31 @@
 import * as THREE from 'three';
 import { getInsectAnimator, type InsectActionView, type InsectAnimationController } from '../animation/insects/InsectAnimationController';
 
+export interface InsectDeathEvent {
+  id: number;
+  mesh: THREE.Object3D;
+  at: THREE.Vector3;
+  groundY: number;
+  species: number;
+  seed: number;
+}
+
 interface Entry {
   mesh: THREE.Object3D; animator: InsectAnimationController; hp: number;
   dispose?: () => void; pendingRemoval: number; releaseTick: number;
+  deathEmitted: boolean; deathSeed: number;
 }
+
+function deterministicDeathSeed(id: number): number {
+  return 0.11 + (((Math.imul(id | 0, 2654435761) >>> 0) % 880) / 1000);
+}
+
 /** Owns animation lifetimes, including the brief corpse after the sim removes an insect. */
 export class InsectPresentation {
   private readonly entries = new Map<number, Entry>();
   private actions: Record<number, InsectActionView> = {};
   private tick = 0;
+  onDeath?: (event: InsectDeathEvent) => void;
 
   track(id: number, mesh: THREE.Object3D, hp: number, moving: boolean): void {
     const animator = getInsectAnimator(mesh);
@@ -24,15 +40,34 @@ export class InsectPresentation {
     let entry = this.entries.get(id);
     if (entry?.mesh !== mesh) {
       entry?.dispose?.();
-      entry = { mesh, animator, hp, pendingRemoval: 0, releaseTick: -1 };
+      const seed = deterministicDeathSeed(id);
+      animator.setDeathSeed(seed);
+      entry = { mesh, animator, hp, pendingRemoval: 0, releaseTick: -1, deathEmitted: false, deathSeed: seed };
       this.entries.set(id, entry);
     }
     if (hp > 0 && (entry.hp <= 0 || entry.dispose)) this.revive(id);
     if (hp < entry.hp && hp > 0) animator.hit();
-    if (hp <= 0) animator.die();
+    if (hp <= 0) this.triggerDeath(id, entry);
     entry.hp = hp;
     animator.setMoving(moving);
     if (this.tick >= entry.releaseTick) animator.sync(this.actions[id], this.tick);
+  }
+
+  private triggerDeath(id: number, entry: Entry): void {
+    const first = entry.animator.die(entry.deathSeed);
+    if ((first || !entry.deathEmitted) && !entry.deathEmitted) {
+      entry.deathEmitted = true;
+      entry.mesh.updateWorldMatrix(true, false);
+      const pos = entry.mesh.getWorldPosition(new THREE.Vector3());
+      this.onDeath?.({
+        id,
+        mesh: entry.mesh,
+        at: pos.clone().add(new THREE.Vector3(0, 0.45, 0)),
+        groundY: pos.y,
+        species: entry.animator.species,
+        seed: entry.deathSeed,
+      });
+    }
   }
 
   sync(raw: unknown, tick: number): void {
@@ -54,7 +89,10 @@ export class InsectPresentation {
   }
 
   hit(id: number): void { this.entries.get(id)?.animator.hit(); }
-  die(id: number): void { this.entries.get(id)?.animator.die(); }
+  die(id: number): void {
+    const entry = this.entries.get(id);
+    if (entry) this.triggerDeath(id, entry);
+  }
   /** Cancel corpse disposal when corrected state restores the entity. */
   revive(id: number): void {
     const entry = this.entries.get(id);
@@ -62,6 +100,7 @@ export class InsectPresentation {
     entry.dispose = undefined;
     entry.pendingRemoval = 0;
     entry.releaseTick = -1;
+    entry.deathEmitted = false;
     entry.animator.revive();
   }
   /** Allow an event arriving just after a snapshot to confirm death; visibility loss is not a death. */
@@ -71,7 +110,7 @@ export class InsectPresentation {
     entry.dispose = dispose;
     entry.pendingRemoval = 0.3;
     entry.animator.setMoving(false);
-    if (confirmed) entry.animator.die();
+    if (confirmed) this.triggerDeath(id, entry);
     return true;
   }
 

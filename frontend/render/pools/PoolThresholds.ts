@@ -40,6 +40,8 @@ export const UNIT_POOL_THRESHOLDS: Readonly<Record<string, PoolThresholdSpec>> =
   'robot.builder': { initialSize: 8, threshold: 100 },
   'robot.recon': { initialSize: 4, threshold: 48 },
   'robot.combat': { initialSize: 6, threshold: 64 },
+  'robot.tank': { initialSize: 4, threshold: 48 },
+  'robot.artillery': { initialSize: 4, threshold: 48 },
   'ship.dropPod': { initialSize: 2, threshold: 10 },
   'ship.dropPodShell': { initialSize: 1, threshold: 6 },
   'ship.carrier': { initialSize: 1, threshold: 6 },

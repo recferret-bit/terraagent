@@ -313,8 +313,8 @@ describe('W07-17 · W07 entityKinds mappings, footprints, and tracked unit predi
     expect(archetypeForKind(ENTITY_KIND.autocannon)).toBe('building.turret');
     expect(archetypeForKind(ENTITY_KIND.laserTower)).toBe('building.laserTower');
     expect(archetypeForKind(ENTITY_KIND.recon)).toBe('robot.recon');
-    expect(archetypeForKind(ENTITY_KIND.demoTank)).toBe('robot.combat');
-    expect(archetypeForKind(ENTITY_KIND.demoArtillery)).toBe('robot.combat');
+    expect(archetypeForKind(ENTITY_KIND.demoTank)).toBe('robot.tank');
+    expect(archetypeForKind(ENTITY_KIND.demoArtillery)).toBe('robot.artillery');
     expect(archetypeForKind(ENTITY_KIND.blackAnt)).toBe('fauna.blackAnt');
     expect(archetypeForKind(ENTITY_KIND.blueBeetle)).toBe('fauna.blueBeetle');
     expect(archetypeForKind(ENTITY_KIND.greenSpitter)).toBe('fauna.greenSpitter');
@@ -351,5 +351,68 @@ describe('W07-17 · W07 entityKinds mappings, footprints, and tracked unit predi
     }
     expect(isTrackedWalkingUnitKind(ENTITY_KIND.autocannon)).toBe(false);
     expect(isTrackedWalkingUnitKind(ENTITY_KIND.hiveBlackAnt)).toBe(false);
+  });
+});
+
+describe('/boost smooth turret alignment gating in CombatSyncController', () => {
+  it('defers off-axis shots and paired laser impacts until turret aligns without teleporting', async () => {
+    const { createArchetypeMesh } = await import('@terra/render/kitbash');
+    const turret = createArchetypeMesh('building.turret');
+    const bugNorth = createArchetypeMesh('fauna.blackAnt');
+    bugNorth.position.set(0, 0, 10);
+    const bugEast = createArchetypeMesh('fauna.blueBeetle');
+    bugEast.position.set(10, 0, 0);
+
+    const sync = new CombatSyncController();
+    sync.meshForEntity = (id) => (id === 1 ? turret : id === 2 ? bugNorth : id === 3 ? bugEast : undefined);
+
+    // First shot initializes and marks turret rig slewed toward North (+Z)
+    sync.ingestProjectileFired({ kind: 'projectileFired', atTick: 1, data: {
+      attackerId: 1, targetId: 2, weaponId: 'autocannon', weaponType: 'bullet', fromX: 0, fromY: 0, aimX: 0, aimY: 5,
+    } });
+    sync.update(0.02);
+    expect(sync.vfxFiredSpawnCount).toBe(1);
+    expect(sync.battle.getRig(1)!.hasSlewed).toBe(true);
+    const yawAfterFirst = sync.battle.getRig(1)!.currentYaw;
+    expect(Math.abs(yawAfterFirst)).toBeLessThan(0.15);
+
+    // Off-axis laser/shot 90 degrees away: both fired & paired impact must hold until turret rotates cleanly
+    const offAxisFired = { kind: 'projectileFired', atTick: 5, data: {
+      attackerId: 1, targetId: 3, weaponId: 'autocannon', weaponType: 'bullet', fromX: 0, fromY: 0, aimX: 5, aimY: 0,
+    } };
+    const pairedImpact = { kind: 'projectileImpact', atTick: 5, data: {
+      attackerId: 1, targetId: 3, firedTick: 5, weaponId: 'autocannon', weaponType: 'bullet', aimX: 5, aimY: 0, hit: true,
+    } };
+    expect(sync.ingestProjectileFired(offAxisFired)).toBe(false);
+    expect(sync.ingestProjectileImpact(pairedImpact)).toBe(false);
+    expect(sync.vfxFiredSpawnCount).toBe(1);
+    expect(sync.vfxImpactSpawnCount).toBe(0);
+
+    // Partial slew still holds (no teleport)
+    sync.update(0.05);
+    expect(sync.battle.getRig(1)!.currentYaw).toBeGreaterThan(yawAfterFirst);
+    expect(sync.battle.getRig(1)!.currentYaw).toBeLessThan(Math.PI / 2 - 0.1);
+    expect(sync.vfxFiredSpawnCount).toBe(1);
+
+    // Finish slewing onto target line -> emits fired AND deferred impact cleanly
+    for (let i = 0; i < 20; i++) sync.update(0.03);
+    expect(sync.vfxFiredSpawnCount).toBe(2);
+    expect(sync.vfxImpactSpawnCount).toBe(1);
+    expect(sync.battle.getRig(1)!.isAligned(new THREE.Vector3(10, 0.5, 0))).toBe(true);
+
+    // Opposite-quadrant target whose death arrives before alignment completes must cancel without off-axis fire
+    const bugWest = createArchetypeMesh('fauna.greenSpitter');
+    bugWest.position.set(-10, 0, 0);
+    sync.meshForEntity = (id) => (id === 1 ? turret : id === 4 ? bugWest : undefined);
+    const blockedShot = { kind: 'projectileFired', atTick: 10, data: {
+      attackerId: 1, targetId: 4, weaponId: 'autocannon', weaponType: 'bullet', fromX: 0, fromY: 0, aimX: -5, aimY: 0,
+    } };
+    expect(sync.ingestProjectileFired(blockedShot)).toBe(false);
+    sync.update(0.05);
+    expect(sync.vfxFiredSpawnCount).toBe(2);
+    sync.confirmedDeaths.add(4);
+    sync.update(0.05);
+    expect(sync.vfxFiredSpawnCount).toBe(2);
+    sync.dispose();
   });
 });

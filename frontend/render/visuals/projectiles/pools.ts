@@ -58,6 +58,26 @@ export interface DebrisSlot {
   durationS: number;
 }
 
+export interface CartridgeSlot {
+  active: boolean;
+  x: number;
+  y: number;
+  z: number;
+  vx: number;
+  vy: number;
+  vz: number;
+  rx: number;
+  ry: number;
+  rz: number;
+  vrx: number;
+  vry: number;
+  vrz: number;
+  scale: number;
+  groundY: number;
+  ageS: number;
+  durationS: number;
+}
+
 export interface MeshPoolEntry {
   mesh: THREE.InstancedMesh;
   material: THREE.Material;
@@ -68,6 +88,7 @@ export interface ProjectileVfxPools {
   shellPool: MeshPoolEntry;
   rocketPool: MeshPoolEntry;
   acidPool: MeshPoolEntry;
+  cartridgePool: MeshPoolEntry;
   laserCorePool: MeshPoolEntry;
   laserSheathPool: MeshPoolEntry;
   smokePool: MeshPoolEntry;
@@ -80,6 +101,7 @@ export interface ProjectileVfxPools {
   smokePuffs: SmokePuffSlot[];
   impacts: ImpactSlot[];
   debris: DebrisSlot[];
+  cartridges: CartridgeSlot[];
   aoeDecals: ActiveAoeDecalSnapshot[];
 }
 
@@ -89,10 +111,11 @@ export function createProjectileVfxPools(
 ): ProjectileVfxPools {
   const maxProj = config.maxProjectiles ?? 64;
   const maxLasers = config.maxLasers ?? 32;
-  const maxSmoke = config.maxSmokePuffs ?? 96;
+  const maxSmoke = config.maxSmokePuffs ?? 160;
   const maxImpacts = config.maxImpacts ?? 48;
   const maxDebris = config.maxDebrisChunks ?? 96;
-  const maxAoe = config.maxAoeDecals ?? 32;
+  const maxCartridges = config.maxCartridges ?? 96;
+  const maxAoe = config.maxAoeDecals ?? 48;
 
   return {
     bulletPool: createPooledInstancedMesh(
@@ -111,6 +134,10 @@ export function createProjectileVfxPools(
       { key: 'acid', count: maxProj, color: 0x78c33d, emissive: 0x446e1d, emissiveIntensity: 0.3, roughness: 0.23, metalness: 0 },
       group,
     ),
+    cartridgePool: createPooledInstancedMesh(
+      { key: 'cartridge', count: maxCartridges, color: 0xffd25a, emissive: 0x6b450c, emissiveIntensity: 0.45, roughness: 0.25, metalness: 0.85 },
+      group,
+    ),
     laserCorePool: createPooledInstancedMesh(
       { key: 'laserCore', count: maxLasers, color: 0x84ffff, emissive: 0x00e5ff, emissiveIntensity: 4.2 },
       group,
@@ -120,7 +147,7 @@ export function createProjectileVfxPools(
       group,
     ),
     smokePool: createPooledInstancedMesh(
-      { key: 'smokePuff', count: maxSmoke, color: 0x9aa4b2, emissive: 0x222831, emissiveIntensity: 0.25, roughness: 0.85 },
+      { key: 'smokePuff', count: maxSmoke, color: 0xffffff, emissive: 0x222831, emissiveIntensity: 0.22, roughness: 0.88 },
       group,
     ),
     impactPool: createPooledInstancedMesh(
@@ -136,11 +163,11 @@ export function createProjectileVfxPools(
       group,
     ),
     aoeDecalPool: createPooledInstancedMesh(
-      { key: 'aoeDecal', count: maxAoe, color: 0x3b2d26, emissive: 0xff5722, emissiveIntensity: 1.4, roughness: 0.9 },
+      { key: 'aoeDecal', count: maxAoe, color: 0xffffff, emissive: 0x2a140c, emissiveIntensity: 0.9, roughness: 0.45 },
       group,
     ),
     projectiles: Array.from({ length: maxProj }, () => ({
-      active: false, weaponKind: 'bullet' as const,
+      active: false, weaponKind: 'bullet' as const, scale: 1,
       fromX: 0, fromY: 0, fromZ: 0, toX: 0, toY: 0, toZ: 0,
       x: 0, y: 0, z: 0, t: 0, durationS: 0.25, arcHeight: 0, aoe: 0,
       autoImpactOnArrival: true, smokeCooldownS: 0,
@@ -157,8 +184,12 @@ export function createProjectileVfxPools(
     debris: Array.from({ length: maxDebris }, () => ({
       active: false, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, groundY: 0, ageS: 0, durationS: 0.45,
     })),
+    cartridges: Array.from({ length: maxCartridges }, () => ({
+      active: false, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0,
+      rx: 0, ry: 0, rz: 0, vrx: 0, vry: 0, vrz: 0, scale: 1, groundY: 0, ageS: 0, durationS: 1.0,
+    })),
     aoeDecals: Array.from({ length: maxAoe }, () => ({
-      active: false, x: 0, y: 0, z: 0, radiusM: 2, ageS: 0, durationS: 0.65,
+      active: false, x: 0, y: 0, z: 0, radiusM: 2, ageS: 0, durationS: 0.65, hideRing: false,
     })),
   };
 }
@@ -197,10 +228,21 @@ export function writeProjectileMatrix(pools: ProjectileVfxPools, idx: number, p:
   TMP_QUAT.setFromUnitVectors(FORWARD_Z, TMP_DIR);
   DUMMY.position.set(p.x, p.y, p.z);
   DUMMY.quaternion.copy(TMP_QUAT);
-  DUMMY.scale.setScalar(1);
+  DUMMY.scale.setScalar(p.scale > 0 ? p.scale : 1);
   DUMMY.updateMatrix();
   mesh.setMatrixAt(idx, DUMMY.matrix);
   mesh.instanceMatrix.needsUpdate = true;
+}
+
+export function writeCartridgeMatrix(pools: ProjectileVfxPools, idx: number, c: CartridgeSlot): void {
+  const u = c.ageS / c.durationS;
+  const shrink = u > 0.78 ? Math.max(0.05, 1 - (u - 0.78) / 0.22) : 1;
+  DUMMY.position.set(c.x, c.y, c.z);
+  DUMMY.rotation.set(c.rx, c.ry, c.rz);
+  DUMMY.scale.setScalar(c.scale * shrink);
+  DUMMY.updateMatrix();
+  pools.cartridgePool.mesh.setMatrixAt(idx, DUMMY.matrix);
+  pools.cartridgePool.mesh.instanceMatrix.needsUpdate = true;
 }
 
 export function writeLaserMatrix(pools: ProjectileVfxPools, idx: number, l: ActiveLaserSnapshot): void {
@@ -265,15 +307,19 @@ export function writeAoeMatrices(
   dec: ActiveAoeDecalSnapshot,
 ): void {
   const u = dec.ageS / dec.durationS;
-  const ringRadius = dec.radiusM * (0.2 + 0.8 * Math.min(1, u * 1.4));
-  const ringScaleY = Math.max(0.05, 1 - u);
-  TMP_POS.set(dec.x, dec.y + 0.04, dec.z);
-  DUMMY.position.copy(TMP_POS);
-  DUMMY.rotation.set(0, 0, 0);
-  DUMMY.scale.set(ringRadius, ringScaleY, ringRadius);
-  DUMMY.updateMatrix();
-  pools.aoeRingPool.mesh.setMatrixAt(idx, DUMMY.matrix);
-  pools.aoeRingPool.mesh.instanceMatrix.needsUpdate = true;
+  if (dec.hideRing) {
+    hideInstance(pools.aoeRingPool.mesh, idx);
+  } else {
+    const ringRadius = dec.radiusM * (0.2 + 0.8 * Math.min(1, u * 1.4));
+    const ringScaleY = Math.max(0.05, 1 - u);
+    TMP_POS.set(dec.x, dec.y + 0.04, dec.z);
+    DUMMY.position.copy(TMP_POS);
+    DUMMY.rotation.set(0, 0, 0);
+    DUMMY.scale.set(ringRadius, ringScaleY, ringRadius);
+    DUMMY.updateMatrix();
+    pools.aoeRingPool.mesh.setMatrixAt(idx, DUMMY.matrix);
+    pools.aoeRingPool.mesh.instanceMatrix.needsUpdate = true;
+  }
 
   const decalScale = dec.radiusM * (1 - u * 0.25);
   DUMMY.position.set(dec.x, dec.y + 0.01, dec.z);
@@ -283,146 +329,18 @@ export function writeAoeMatrices(
   pools.aoeDecalPool.mesh.instanceMatrix.needsUpdate = true;
 }
 
-export function stepAuxiliaryPools(pools: ProjectileVfxPools, dt: number): void {
-  for (let i = 0; i < pools.lasers.length; i++) {
-    const l = pools.lasers[i]!;
-    if (!l.active) continue;
-    l.ageS += dt;
-    if (l.ageS >= l.durationS) {
-      l.active = false;
-      hideInstance(pools.laserCorePool.mesh, i);
-      hideInstance(pools.laserSheathPool.mesh, i);
-      continue;
-    }
-    writeLaserMatrix(pools, i, l);
-  }
-  for (let i = 0; i < pools.smokePuffs.length; i++) {
-    const s = pools.smokePuffs[i]!;
-    if (!s.active) continue;
-    s.ageS += dt;
-    if (s.ageS >= s.durationS) {
-      s.active = false;
-      hideInstance(pools.smokePool.mesh, i);
-      continue;
-    }
-    s.x += s.vx * dt;
-    s.y += s.vy * dt;
-    s.z += s.vz * dt;
-    writeSmokeMatrix(pools, i, s);
-  }
-  for (let i = 0; i < pools.impacts.length; i++) {
-    const imp = pools.impacts[i]!;
-    if (!imp.active) continue;
-    imp.ageS += dt;
-    if (imp.ageS >= imp.durationS) {
-      imp.active = false;
-      hideInstance(pools.impactPool.mesh, i);
-      continue;
-    }
-    writeImpactMatrix(pools, i, imp);
-  }
-  for (let i = 0; i < pools.debris.length; i++) {
-    const d = pools.debris[i]!;
-    if (!d.active) continue;
-    d.ageS += dt;
-    if (d.ageS >= d.durationS) {
-      d.active = false;
-      hideInstance(pools.debrisPool.mesh, i);
-      continue;
-    }
-    d.vy -= 14.0 * dt;
-    d.x += d.vx * dt;
-    d.y += d.vy * dt;
-    d.z += d.vz * dt;
-    if (d.y < d.groundY) {
-      d.y = d.groundY;
-      d.vy = Math.abs(d.vy) * 0.28;
-      d.vx *= 0.72;
-      d.vz *= 0.72;
-    }
-    writeDebrisMatrix(pools, i, d);
-  }
-  for (let i = 0; i < pools.aoeDecals.length; i++) {
-    const dec = pools.aoeDecals[i]!;
-    if (!dec.active) continue;
-    dec.ageS += dt;
-    if (dec.ageS >= dec.durationS) {
-      dec.active = false;
-      hideInstance(pools.aoeRingPool.mesh, i);
-      hideInstance(pools.aoeDecalPool.mesh, i);
-      continue;
-    }
-    writeAoeMatrices(pools, i, dec);
-  }
-}
-
 export function countActivePools(pools: ProjectileVfxPools): ProjectileVfxActiveCounts {
   let projectiles = 0;
   let lasers = 0;
   let smokePuffs = 0;
   let impacts = 0;
   let aoeDecals = 0;
+  let cartridges = 0;
   for (const p of pools.projectiles) if (p.active) projectiles++;
   for (const l of pools.lasers) if (l.active) lasers++;
   for (const s of pools.smokePuffs) if (s.active) smokePuffs++;
   for (const imp of pools.impacts) if (imp.active) impacts++;
   for (const dec of pools.aoeDecals) if (dec.active) aoeDecals++;
-  return { projectiles, lasers, smokePuffs, impacts, aoeDecals };
-}
-
-export function clearProjectileVfxPools(pools: ProjectileVfxPools): void {
-  for (let i = 0; i < pools.projectiles.length; i++) {
-    const p = pools.projectiles[i]!;
-    if (p.active) {
-      p.active = false;
-      hideInstance(meshForProjectileKind(pools, p.weaponKind), i);
-    }
-  }
-  for (let i = 0; i < pools.lasers.length; i++) {
-    if (pools.lasers[i]!.active) {
-      pools.lasers[i]!.active = false;
-      hideInstance(pools.laserCorePool.mesh, i);
-      hideInstance(pools.laserSheathPool.mesh, i);
-    }
-  }
-  for (let i = 0; i < pools.smokePuffs.length; i++) {
-    if (pools.smokePuffs[i]!.active) {
-      pools.smokePuffs[i]!.active = false;
-      hideInstance(pools.smokePool.mesh, i);
-    }
-  }
-  for (let i = 0; i < pools.impacts.length; i++) {
-    if (pools.impacts[i]!.active) {
-      pools.impacts[i]!.active = false;
-      hideInstance(pools.impactPool.mesh, i);
-    }
-  }
-  for (let i = 0; i < pools.debris.length; i++) {
-    if (pools.debris[i]!.active) {
-      pools.debris[i]!.active = false;
-      hideInstance(pools.debrisPool.mesh, i);
-    }
-  }
-  for (let i = 0; i < pools.aoeDecals.length; i++) {
-    if (pools.aoeDecals[i]!.active) {
-      pools.aoeDecals[i]!.active = false;
-      hideInstance(pools.aoeRingPool.mesh, i);
-      hideInstance(pools.aoeDecalPool.mesh, i);
-    }
-  }
-}
-
-export function disposeProjectileVfxPools(pools: ProjectileVfxPools): void {
-  clearProjectileVfxPools(pools);
-  pools.bulletPool.material.dispose();
-  pools.shellPool.material.dispose();
-  pools.rocketPool.material.dispose();
-  pools.acidPool.material.dispose();
-  pools.laserCorePool.material.dispose();
-  pools.laserSheathPool.material.dispose();
-  pools.smokePool.material.dispose();
-  pools.impactPool.material.dispose();
-  pools.debrisPool.material.dispose();
-  pools.aoeRingPool.material.dispose();
-  pools.aoeDecalPool.material.dispose();
+  for (const c of pools.cartridges) if (c.active) cartridges++;
+  return { projectiles, lasers, smokePuffs, impacts, aoeDecals, cartridges };
 }

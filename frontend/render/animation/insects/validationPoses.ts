@@ -17,6 +17,9 @@ export function insectValidationStates(species: number): Array<{ label: string; 
     out.push({ label: `insect strike ${i}`, pose: { ...base, time: u, strike: u } });
     out.push({ label: `insect hurt ${i}`, pose: { ...base, time: u, hurt: u } });
     out.push({ label: `insect death ${i}`, pose: { ...base, time: u, death: u } });
+    for (const deathSeed of [0.19, 0.53, 0.87]) {
+      out.push({ label: `insect death seed ${deathSeed} ${i}`, pose: { ...base, time: u, death: u, deathSeed } });
+    }
     out.push({ label: `insect windup hurt ${i}`, pose: { ...base, time: u, charge: u, hurt: 1 } });
     out.push({ label: `insect strike hurt ${i}`, pose: { ...base, time: u, strike: u, hurt: 1 } });
     out.push({ label: `insect windup death ${i}`, pose: { ...base, time: u, charge: 1, death: u } });

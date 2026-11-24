@@ -1,4 +1,5 @@
 import { InsectSwarmRenderer } from '@terra/render/animation/insects/InsectSwarmRenderer';
+import { InsectCorpseLayer } from '@terra/render/combat/InsectCorpseLayer';
 import type { EntityMeshRecord } from './EntityMeshRecord';
 export type { EntityMeshRecord } from './EntityMeshRecord';
 import * as THREE from 'three';
@@ -94,6 +95,7 @@ export class EntityMeshes {
   readonly healthBars: UnitHealthBars;
   readonly workParticles: WorkParticleSystem;
   readonly combatSync: CombatSyncController;
+  readonly corpses: InsectCorpseLayer;
   /** Grid cables + lightning between the Hub, pylons and attached buildings (`powerCableSpans.ts`). */
   readonly gridCables: GridCableRenderer;
   isW10Enabled: () => boolean = () => true;
@@ -139,6 +141,7 @@ export class EntityMeshes {
     this.workParticles = new WorkParticleSystem(this.scene);
     this.combatSync = new CombatSyncController(this.scene);
     this.combatSync.meshForEntity = id => this.entries.get(id)?.mesh;
+    this.corpses = new InsectCorpseLayer(this.scene, this.biomeKey);
     this.gridCables = new GridCableRenderer(this.scene);
     this.selectionRing = makeGroundRing(0.75, 0.95, 0xff6a13, 'selection-ring');
     this.scene.add(this.selectionRing);
@@ -222,6 +225,7 @@ export class EntityMeshes {
     if (this.prewarmedBiomeKey === target && this.biomeKey === target) return;
     this.biomeKey = target;
     this.prewarmedBiomeKey = target;
+    this.corpses.setBiome(target);
     switchAndPrewarmEntityBiome(this, this.entries, this.combatSync, target);
   }
 
@@ -238,6 +242,7 @@ export class EntityMeshes {
     const nextPlanetId = view.planet?.id ?? null;
     if (this.currentPlanetId !== null && nextPlanetId !== null && nextPlanetId !== this.currentPlanetId) {
       resetEntitiesOnPlanetSwitch(this, this.entries, this.combatSync);
+      this.corpses.clear();
       this.clock = new RenderClock(TICK_MS / 1000);
     }
     if (nextPlanetId !== null) this.currentPlanetId = nextPlanetId;
@@ -282,13 +287,16 @@ export class EntityMeshes {
     }
 
     for (const [id, rec] of [...this.entries]) {
-      if (!seen.has(id)) {
-        const retiredMesh = rec.mesh;
-        const retiredArchetype = rec.archetypeId;
-        const release = () => this.releaseEntityMesh(id, retiredArchetype, retiredMesh);
-        if (!this.combatSync.battle.insects.retire(id, release, rec.hp <= 0 || this.combatSync.confirmedDeaths.has(id))) release();
-        this.entries.delete(id);
-      }
+      if (seen.has(id)) continue;
+      const retiredMesh = rec.mesh;
+      const retiredArchetype = rec.archetypeId;
+      const deadConfirmed = rec.hp <= 0 || this.combatSync.confirmedDeaths.has(id);
+      const release = () => {
+        if (deadConfirmed || this.combatSync.confirmedDeaths.has(id)) this.corpses.preserve(retiredMesh, terrain ? terrain.heightAt(retiredMesh.position.x, retiredMesh.position.z) : retiredMesh.position.y);
+        this.releaseEntityMesh(id, retiredArchetype, retiredMesh);
+      };
+      if (!this.combatSync.battle.insects.retire(id, release, deadConfirmed)) release();
+      this.entries.delete(id);
     }
     if (this.dropPredictedFuture) {
       this.dropPredictedFuture = false;
@@ -443,25 +451,21 @@ export class EntityMeshes {
     }), this.entries, this.latestView);
     const workingIds = new Set(workSites.map((s) => Number(s.workerId)));
     for (const rec of this.entries.values()) {
-      if (rec.kind === ENTITY_KIND.hq && rec.owner === this.ownerColonyIndex && tdState.state === 'egress') continue;
-      if (workingIds.has(rec.id)) continue;
-      const diff = ((rec.targetYaw - rec.mesh.rotation.y + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
-      rec.mesh.rotation.y += diff * rotLerp;
+      if ((rec.kind === ENTITY_KIND.hq && rec.owner === this.ownerColonyIndex && tdState.state === 'egress') || workingIds.has(rec.id)) continue;
+      rec.mesh.rotation.y += (((rec.targetYaw - rec.mesh.rotation.y + Math.PI * 3) % (Math.PI * 2)) - Math.PI) * rotLerp;
     }
     this.workParticles.syncSites(workSites);
     syncBiosphereAggressors(terrain, this.entries.values(), workingIds);
     this.workParticles.update(dt);
     this.combatSync.update(dt);
     this.gridCables.update(realDt);
-
     this.syncVisionAndForeignVisibility(terrain, tdState);
     this.swarms.sync(this.biomeKey);
     this.healthBars.sync(this.entries.values());
     this.updateSelectionRing();
     const sel = this.selectedEntityId !== null ? this.entries.get(this.selectedEntityId) : undefined;
     const markerNext = stepTargetMarker(this.targetMarker, sel, this.markerT, this.markerTile, dt, terrain);
-    this.markerT = markerNext.markerT;
-    this.markerTile = markerNext.markerTile;
+    this.markerT = markerNext.markerT; this.markerTile = markerNext.markerTile;
   }
 
   private acquireEntityMesh(id: number, archetypeId: string, biomeKey: string): THREE.Object3D { return acquirePooledEntityMesh(this, id, archetypeId, biomeKey); }
@@ -471,10 +475,8 @@ export class EntityMeshes {
     if (this.deferredSpaceRows.size === 0 || !this.latestView) return true;
     const view = this.latestView; const tdState = this.podTouchdown.computeState(true, 0); let built = 0;
     for (const [id, row] of this.deferredSpaceRows) {
-      this.deferredSpaceRows.delete(id);
-      this.upsertEntity(row, terrain, tdState, view.tick, view);
-      syncExtractorAppearance(this.entries.get(id)?.mesh, row, view);
-      const mesh = this.entries.get(id)?.mesh;
+      this.deferredSpaceRows.delete(id); this.upsertEntity(row, terrain, tdState, view.tick, view);
+      const mesh = this.entries.get(id)?.mesh; syncExtractorAppearance(mesh, row, view);
       if (mesh) this.combatSync.battle.insects.track(id, mesh, row.hp, row.state === ENTITY_STATE.moving);
       if (++built >= maxCount) break;
     }
@@ -485,10 +487,9 @@ export class EntityMeshes {
   stepLandingFxPrewarm(): boolean { return this.podTouchdown.stepPrewarm(planetKindForBiome(this.biomeKey), findOwnedPodMesh(this.entries.values(), this.ownerColonyIndex)); }
   prewarmLandingFx(): THREE.Object3D[] { return this.podTouchdown.prewarm(planetKindForBiome(this.biomeKey), findOwnedPodMesh(this.entries.values(), this.ownerColonyIndex)); }
   flushSpacePrewarm(terrain: HexTerrain | null): void { if (this.deferredSpaceRows.size > 0) this.stepSpacePrewarm(terrain, Number.MAX_SAFE_INTEGER); }
-
   dispose(): void {
     this.deferredSpaceRows.clear(); this.swarms.dispose(); resetColonyVisionAndLights(); this.podTouchdown.dispose();
-    this.healthBars.dispose(); this.workParticles.dispose(); this.combatSync.dispose(); this.gridCables.dispose();
+    this.healthBars.dispose(); this.workParticles.dispose(); this.combatSync.dispose(); this.corpses.dispose(); this.gridCables.dispose();
     this.entries.clear(); this.buildingsOrchestrator.dispose(); this.unitsOrchestrator.dispose(); this.bugsOrchestrator.dispose();
     this.scene.remove(this.group); this.scene.remove(this.selectionRing); this.scene.remove(this.targetMarker);
     this.selectionRing.geometry.dispose(); (this.selectionRing.material as THREE.Material).dispose();

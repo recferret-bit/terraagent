@@ -1,7 +1,10 @@
 import * as THREE from 'three';
 import { ABDOMEN_PIVOTS, HEAD_PIVOTS, INSECT_SCALE, type InsectPart } from './rig';
 
-export interface InsectPose { species: number; time: number; walk: number; charge: number; strike: number; hurt: number; death: number; sacSide?: number }
+export interface InsectPose {
+  species: number; time: number; walk: number; charge: number; strike: number; hurt: number; death: number;
+  sacSide?: number; deathSeed?: number;
+}
 const X = new THREE.Vector3(1, 0, 0);
 const Y = new THREE.Vector3(0, 1, 0);
 const Z = new THREE.Vector3(0, 0, 1);
@@ -16,31 +19,71 @@ function rotation(pivot: THREE.Vector3Tuple, axis: THREE.Vector3, angle: number)
   return rigid(p, p, new THREE.Quaternion().setFromAxisAngle(axis, angle));
 }
 
+function deathRand(seed: number): { has: number; r1: number; r2: number; r3: number } {
+  if (seed <= 0.001) return { has: 0, r1: 0, r2: 0, r3: 0 };
+  return {
+    has: 1,
+    r1: Math.sin(seed * 43.17),
+    r2: Math.cos(seed * 71.33),
+    r3: Math.sin(seed * 119.71),
+  };
+}
+
+function bodyRotationQuaternion(p: InsectPose): { q: THREE.Quaternion; pitch: number; roll: number; yaw: number; deathRoll: number; deathPitch: number; deathYaw: number } {
+  const alive = 1 - p.death;
+  const g = p.time * 5;
+  const w = p.walk * alive * (1 - Math.max(p.charge, p.strike));
+  const c = p.charge * alive, a = p.strike * alive, h = p.hurt * alive;
+  const beetle = p.species === 1;
+  const dr = deathRand(p.deathSeed ?? 0);
+  const rollSign = dr.r1 >= 0 ? 1 : -1;
+  const deathRoll = dr.has * rollSign * (0.26 + 0.28 * Math.abs(dr.r1)) * p.death;
+  const deathPitch = dr.has * dr.r3 * 0.16 * p.death;
+  const deathYaw = dr.has * dr.r2 * 1.85 * p.death;
+
+  const pitch = Math.sin(g * 2 - 0.45) * 0.036 * w + (beetle ? 0.075 * c + 0.04 * a : -0.045 * c + 0.06 * a) + deathPitch;
+  const roll = Math.sin(g - 0.25) * 0.045 * w + Math.sin(g * 4) * 0.045 * h + deathRoll;
+  const q = new THREE.Quaternion().setFromAxisAngle(Y, deathYaw)
+    .multiply(new THREE.Quaternion().setFromAxisAngle(X, pitch))
+    .multiply(new THREE.Quaternion().setFromAxisAngle(Z, roll));
+  return { q, pitch, roll, yaw: deathYaw, deathRoll, deathPitch, deathYaw };
+}
+
 export function insectBodyMatrix(p: InsectPose): THREE.Matrix4 {
   const alive = 1 - p.death;
   const g = p.time * 5;
   const w = p.walk * alive * (1 - Math.max(p.charge, p.strike));
   const c = p.charge * alive, a = p.strike * alive, h = p.hurt * alive;
   const beetle = p.species === 1;
-  const pitch = Math.sin(g * 2 - 0.45) * 0.036 * w + (beetle ? 0.075 * c + 0.04 * a : -0.045 * c + 0.06 * a);
-  const roll = Math.sin(g - 0.25) * 0.045 * w + Math.sin(g * 4) * 0.045 * h;
-  const q = new THREE.Quaternion().setFromAxisAngle(X, pitch)
-    .multiply(new THREE.Quaternion().setFromAxisAngle(Z, roll));
+  const spitter = p.species === 2;
+  const dr = deathRand(p.deathSeed ?? 0);
+  const dSmooth = p.death * p.death;
+  const { q, deathPitch, deathRoll } = bodyRotationQuaternion(p);
   const drop = beetle ? 0.385 : 0.43;
-  const anchor = new THREE.Vector3(Math.cos(g) * 0.022 * w,
-    0.76 + (-Math.cos(g * 2) * 0.02 - Math.sin(g * 2) * 0.01) * w - 0.025 * c - drop * p.death * p.death,
-    Math.sin(g * 2) * 0.018 * w - 0.035 * c + (beetle ? 0.16 : 0.26) * a - 0.05 * h);
+  const sinR = Math.abs(Math.sin(deathRoll));
+  const flipR = 0.5 * (1 - Math.cos(deathRoll));
+  const sinP = Math.abs(Math.sin(deathPitch));
+  const flipLift = dr.has * ((spitter ? 0.32 : beetle ? 0.45 : 0.22) * sinR
+    + (spitter ? 0.28 : beetle ? 0.30 : 0.18) * flipR + 0.28 * sinP) * p.death;
+  const bounceJump = dr.has * Math.sin(Math.min(1, p.death) * Math.PI) * 0.18;
+  const knockBack = dr.has * 0.34 * p.death;
+  const anchor = new THREE.Vector3(
+    Math.cos(g) * 0.022 * w + dr.r1 * knockBack,
+    0.76 + (-Math.cos(g * 2) * 0.02 - Math.sin(g * 2) * 0.01) * w - 0.025 * c - drop * dSmooth + flipLift + bounceJump,
+    Math.sin(g * 2) * 0.018 * w - 0.035 * c + (beetle ? 0.16 : 0.26) * a - 0.05 * h + dr.r2 * knockBack);
   return rigid(new THREE.Vector3(0, 0.76, 0), anchor, q);
 }
 
 export function insectHeadMatrix(p: InsectPose): THREE.Matrix4 {
   const alive = 1 - p.death;
+  const dr = deathRand(p.deathSeed ?? 0);
   const angle = p.species === 1 ? 0.13 * p.charge + 0.30 * p.strike : -0.07 * p.charge + 0.10 * p.strike;
-  return rotation(HEAD_PIVOTS[p.species]!, X, angle * alive + 0.08 * p.death);
+  return rotation(HEAD_PIVOTS[p.species]!, X, angle * alive + (0.08 + dr.has * dr.r3 * 0.14) * p.death);
 }
 export function insectAbdomenMatrix(p: InsectPose): THREE.Matrix4 {
+  const dr = deathRand(p.deathSeed ?? 0);
   const angle = p.species === 2 ? 0.34 * p.charge - 0.14 * p.strike : Math.sin(p.time * 2.1) * 0.012;
-  return rotation(ABDOMEN_PIVOTS[p.species]!, X, angle * (1 - p.death));
+  return rotation(ABDOMEN_PIVOTS[p.species]!, X, angle * (1 - p.death) + dr.has * dr.r1 * 0.14 * p.death);
 }
 
 /** Closed-form two-link placement keeps each foot planted while the body braces/lunges. */
@@ -51,10 +94,18 @@ function legMatrix(part: InsectPart, p: InsectPose, body: THREE.Matrix4): THREE.
   const toe0 = new THREE.Vector3(hip0.x * 2 + side * 0.12, 0.027, hip0.z * 1.75);
   const hip = hip0.clone().applyMatrix4(body);
   if (p.death > 0) {
-    const upperQ = new THREE.Quaternion().setFromAxisAngle(Z, side * -0.1 * p.death);
+    const dr = deathRand(p.deathSeed ?? 0);
+    const { deathPitch, deathRoll, deathYaw } = bodyRotationQuaternion(p);
+    const legHash = Math.sin((p.deathSeed ?? 0) * 97.1 + hip0.x * 5.7 + hip0.z * 11.3);
+    const upperAngle = side * (-0.10 - dr.has * 0.08 * Math.abs(legHash)) * p.death - deathRoll * 0.18;
+    const lowerAngle = side * (1.15 + dr.has * 0.06 * Math.abs(legHash)) * p.death - deathRoll * 0.16;
+    const frameQ = new THREE.Quaternion().setFromAxisAngle(Y, deathYaw)
+      .multiply(new THREE.Quaternion().setFromAxisAngle(X, deathPitch));
+    const upperQ = frameQ.clone().multiply(new THREE.Quaternion().setFromAxisAngle(Z, upperAngle));
+    const lowerQ = frameQ.clone().multiply(new THREE.Quaternion().setFromAxisAngle(Z, lowerAngle));
     const knee = knee0.clone().sub(hip0).applyQuaternion(upperQ).add(hip);
     return part.group === 7 ? rigid(hip0, hip, upperQ)
-      : rigid(knee0, knee, new THREE.Quaternion().setFromAxisAngle(Z, side * 1.15 * p.death));
+      : rigid(knee0, knee, lowerQ);
   }
   const phase = p.time * 5 + (side > 0 ? 0 : Math.PI) + (Math.abs(hip0.z) > 0.1 ? Math.PI : 0);
   const walk = p.walk * (1 - p.death) * (1 - Math.max(p.charge, p.strike));

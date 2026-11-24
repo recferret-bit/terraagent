@@ -1,10 +1,10 @@
 import * as THREE from 'three';
 import type { KitbashBuilder } from '../../KitbashRegistry';
-import { rbox, cyl, strut, mirror, type V3 } from '../../greebles/unitParts';
+import { rbox, cyl, lathe, strut, mirror, type V3 } from '../../greebles/unitParts';
 import { register } from './common';
 import { activeReconPalette, stampMercenaryMarks } from './reconFaction';
 
-/** Three driven axles, with independently stamped wheel pivots and visible rims/hubs. */
+/** Three driven axles, with black wheels and visible dark gunmetal rims/hubs. */
 function runningGear(b: KitbashBuilder): void {
   b.addPart(rbox(0.58, 0.22, 1.22, 0.04), 'frameGunmetal', { name: 'under chassis', position: [0, 0.37, 0] });
   for (const z of [-0.48, 0, 0.48]) {
@@ -18,8 +18,8 @@ function runningGear(b: KitbashBuilder): void {
       const pivot: V3 = [s * 0.47, 0.23, z];
       const wheel = { animType: 7 as const, animPivot: pivot, rotation: [0, 0, Math.PI / 2] as V3 };
       b.addPart(cyl(0.23, 0.23, 0.18, 12), 'rubberDark', { name: 'wheel tyre', position: pivot, ...wheel });
-      b.addPart(cyl(0.15, 0.15, 0.04, 12), 'hullPrimary', { name: 'wheel rim', position: [s * 0.555, 0.23, z], ...wheel });
-      b.addPart(cyl(0.065, 0.065, 0.045, 8), 'hullSecondary', { name: 'wheel hub', position: [s * 0.58, 0.23, z], ...wheel });
+      b.addPart(cyl(0.15, 0.15, 0.04, 12), 'frameGunmetal', { name: 'wheel rim', position: [s * 0.555, 0.23, z], ...wheel });
+      b.addPart(cyl(0.065, 0.065, 0.045, 8), 'rubberDark', { name: 'wheel hub', position: [s * 0.58, 0.23, z], ...wheel });
     });
   }
 }
@@ -63,6 +63,16 @@ function turret(b: KitbashBuilder): void {
   b.addPart(cyl(0.05, 0.05, 0.10, 10), 'hullSecondary', {
     name: 'recon muzzle brake', position: [0.06, 0.87, 0.85], rotation: [Math.PI / 2, 0, 0],
   });
+  const rPivot: V3 = [0.14, 1.11, -0.14];
+  b.addPart(cyl(0.018, 0.022, 0.14, 6), 'frameGunmetal', {
+    name: 'recon radar mast', position: [0.14, 1.04, -0.14],
+  });
+  b.addPart(lathe([[0.004, 0], [0.055, 0.01], [0.115, 0.046], [0.004, 0.018]], 10), 'hullPrimary', {
+    name: 'recon radar dish', position: rPivot, rotation: [-0.45, 0, 0], animType: 1, animPivot: rPivot,
+  });
+  b.addPart(cyl(0.012, 0.012, 0.06, 6), 'hullSecondary', {
+    name: 'recon radar feed horn', position: [0.14, 1.135, -0.115], rotation: [0.55, 0, 0], animType: 1, animPivot: rPivot,
+  });
 }
 
 function buildRecon(b: KitbashBuilder): void {
@@ -74,7 +84,10 @@ function buildRecon(b: KitbashBuilder): void {
 
 register({
   id: 'robot.recon', label: 'Recon Armored Scout', category: 'robot', footprint: [1, 1],
-  notes: 'Six-wheel light armored recon vehicle: driven wheels, independent autocannon turret, driver optics and twin radio antennas. Holds position while firing. faction=mercenary repaints the hull grey-teal and adds a roof emblem plus an emissive marker.',
-  zones: () => activeReconPalette().zones,
+  notes: 'Six-wheel light armored recon vehicle: black wheels, rotating turret radar, independent autocannon turret, optics light and twin radio antennas. Holds position while firing. faction=mercenary repaints the hull grey-teal and adds a roof emblem plus an emissive marker.',
+  zones: () => ({
+    rubberDark: { color: 0x090b0e, roughness: 0.88, metalness: 0.04, emissiveIntensity: 0 },
+    ...activeReconPalette().zones,
+  }),
   build: buildRecon,
 });

@@ -177,14 +177,20 @@ export function evalArchetypeToolOrigins(params: ArchetypeToolOriginParams): [nu
     ];
   }
 
-  if (archetypeId === 'robot.combat') {
-    const recoilL = Math.pow(Math.max(Math.sin(g * (1 + workWeight) + 0.13 * 2.3), 0), 6) * 0.06;
-    const recoilR = Math.pow(Math.max(Math.sin(g * (1 + workWeight) - 0.13 * 2.3), 0), 6) * 0.06;
-    const leftCannon = evalSpiderBodyPoint(0.13, 1.14, 0.955 - recoilL, g, walkWeight, workWeight);
-    const rightCannon = evalSpiderBodyPoint(-0.13, 1.14, 0.955 - recoilR, g, walkWeight, workWeight);
+  if (archetypeId === 'robot.artillery') {
+    const recoil = Math.pow(Math.max(Math.sin(g * (1 + workWeight)), 0), 6) * 0.06;
+    const muzzle = evalSpiderBodyPoint(0, 1.17, 1.15 - recoil, g, walkWeight, workWeight);
+    return [localToWorld(muzzle, bx, by, bz, yaw)];
+  }
+
+  if (archetypeId === 'robot.combat' || archetypeId === 'robot.tank') {
+    const recoilL = Math.pow(Math.max(Math.sin(g * (1 + workWeight) + 0.345 * 2.3), 0), 6) * 0.06;
+    const recoilR = Math.pow(Math.max(Math.sin(g * (1 + workWeight) - 0.345 * 2.3), 0), 6) * 0.06;
+    const leftPod = evalSpiderBodyPoint(-0.345, 1.16, 0.37 - recoilL, g, walkWeight, workWeight);
+    const rightPod = evalSpiderBodyPoint(0.345, 1.16, 0.37 - recoilR, g, walkWeight, workWeight);
     return [
-      localToWorld(leftCannon, bx, by, bz, yaw),
-      localToWorld(rightCannon, bx, by, bz, yaw),
+      localToWorld(leftPod, bx, by, bz, yaw),
+      localToWorld(rightPod, bx, by, bz, yaw),
     ];
   }
 

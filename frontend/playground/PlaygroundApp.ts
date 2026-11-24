@@ -484,8 +484,9 @@ export class PlaygroundApp {
     const dt = this.pacer.next(now);
     if (dt === null) return;
     this.time += dt; this.cam.step(dt);
-    this.spawns.tick(this.time, dt, this.state.turntable, !!this.state.row || !!this.state.floraRow, this.state.work ? 1 : 0, this.state.id, this.state.night, this.state.workTarget, this.state.pose);
-    this.faunaHost.update(this.time, dt, { wire: this.state.wire, bloom: this.state.bloom, shadows: this.state.shadows, pixel: this.state.pixel });
+    const syncSpawnLights = this.state.faunaScene === null && !this.state.march && this.state.wildlife === null;
+    this.spawns.tick(this.time, dt, this.state.turntable, !!this.state.row || !!this.state.floraRow, this.state.work ? 1 : 0, this.state.id, this.state.night, this.state.workTarget, this.state.pose, syncSpawnLights);
+    this.faunaHost.update(this.time, dt, { wire: this.state.wire, bloom: this.state.bloom, shadows: this.state.shadows, pixel: this.state.pixel, night: this.state.night });
     this.wildlife.host.update(dt); this.marchHost.update(dt, this.time);
     if (this.state.faunaScene !== null) this.faunaPanel.renderStats();
     if (this.state.wildlife !== null) this.wildlife.panel.renderStats();

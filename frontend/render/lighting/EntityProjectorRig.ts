@@ -2,15 +2,89 @@ import * as THREE from 'three';
 import {
   getArchetypeLights,
   getArchetypeLightsVersion,
+  peekArchetypeLights,
   type ArchetypeLightSource,
 } from './archetypeLights';
+import { MAX_COLONY_PROJECTORS, type ColonyProjectorDesc } from './ColonyVisionAndLights';
 import { createProjectorBeamMaterial } from './projectorBeamMaterial';
-import { beamFalloff, buildBeamRays, projectorConeFromSource } from './projectorCone';
+import { beamFalloff, buildBeamRays, projectorConeFromSource, projectorCosOuter } from './projectorCone';
 
 export * from './archetypeLights';
 export * from './projectorCone';
 
 const _tmpColor = new THREE.Color();
+const _projPos = new THREE.Vector3();
+const _projTgt = new THREE.Vector3();
+const _projDir = new THREE.Vector3();
+let radialHaloTex: THREE.DataTexture | null = null;
+
+function getRadialHaloTexture(): THREE.DataTexture {
+  if (radialHaloTex) return radialHaloTex;
+  const size = 32;
+  const data = new Uint8Array(size * size * 4);
+  const half = (size - 1) * 0.5;
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const dx = (x - half) / half;
+      const dy = (y - half) / half;
+      const r2 = dx * dx + dy * dy;
+      const alpha = r2 >= 1 ? 0 : Math.exp(-r2 * 4.2) * (1 - r2);
+      const idx = (y * size + x) * 4;
+      data[idx] = 255;
+      data[idx + 1] = 255;
+      data[idx + 2] = 255;
+      data[idx + 3] = Math.round(Math.max(0, Math.min(1, alpha)) * 255);
+    }
+  }
+  const tex = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
+  tex.magFilter = THREE.LinearFilter;
+  tex.minFilter = THREE.LinearFilter;
+  tex.needsUpdate = true;
+  radialHaloTex = tex;
+  return tex;
+}
+
+/** Collects GPU terrain projector light descriptors from active unit/building meshes with optional turret yaw rotation. */
+export function collectEntityProjectors(
+  entries: Iterable<{ archetypeId: string; mesh: THREE.Object3D }>,
+  boost = 1.35,
+): ColonyProjectorDesc[] {
+  const projectors: ColonyProjectorDesc[] = [];
+  for (const entry of entries) {
+    entry.mesh.updateMatrixWorld(true);
+    const lights = peekArchetypeLights(entry.archetypeId);
+    const turretYaw = (entry.mesh.userData as { turretYaw?: number } | undefined)?.turretYaw ?? 0;
+    for (const l of lights) {
+      if (projectors.length >= MAX_COLONY_PROJECTORS) return projectors;
+      let [px, py, pz] = l.pos;
+      let [tx, ty, tz] = l.target;
+      if (l.turretMounted && turretYaw !== 0) {
+        const [pivX, pivZ] = l.turretPivot ?? [0, 0];
+        const ct = Math.cos(turretYaw), st = Math.sin(turretYaw);
+        const rpx = px - pivX, rpz = pz - pivZ;
+        px = pivX + rpx * ct + rpz * st;
+        pz = pivZ - rpx * st + rpz * ct;
+        const rtx = tx - pivX, rtz = tz - pivZ;
+        tx = pivX + rtx * ct + rtz * st;
+        tz = pivZ - rtx * st + rtz * ct;
+      }
+      _projPos.set(px, py, pz).applyMatrix4(entry.mesh.matrixWorld);
+      _projTgt.set(tx, ty, tz).applyMatrix4(entry.mesh.matrixWorld);
+      _projDir.copy(_projTgt).sub(_projPos);
+      const dist = _projDir.length();
+      if (dist > 1e-4) _projDir.divideScalar(dist);
+      else _projDir.set(0, -1, 0);
+      _tmpColor.setHex(l.color);
+      projectors.push({
+        x: _projPos.x, y: _projPos.y, z: _projPos.z, range: l.range,
+        dirX: _projDir.x, dirY: _projDir.y, dirZ: _projDir.z,
+        cosAngle: projectorCosOuter(l),
+        r: _tmpColor.r, g: _tmpColor.g, b: _tmpColor.b, intensity: l.intensity * boost,
+      });
+    }
+  }
+  return projectors;
+}
 
 export interface EntityProjectorRigState {
   readonly group: THREE.Group;
@@ -126,6 +200,7 @@ export class EntityProjectorRig implements EntityProjectorRigState {
   readonly kind: 'robot' | 'building' | 'pod';
   readonly archetypeId: string;
   private readonly colorOverride?: number;
+  private readonly turretGroups: THREE.Group[] = [];
   lightsVersion = -1;
 
   constructor(kindOrArchetype: string, colorHex?: number) {
@@ -159,6 +234,7 @@ export class EntityProjectorRig implements EntityProjectorRigState {
     });
 
     this.haloMat = new THREE.SpriteMaterial({
+      map: getRadialHaloTexture(),
       color: defaultLensColor,
       transparent: true,
       opacity: 0.45,
@@ -171,12 +247,15 @@ export class EntityProjectorRig implements EntityProjectorRigState {
   }
 
   private clearParts(): void {
+    this.turretGroups.length = 0;
     for (const child of [...this.group.children]) {
       this.group.remove(child);
-      const mesh = child as THREE.Mesh;
-      if (mesh.isMesh) {
-        mesh.geometry?.dispose?.();
-      }
+      child.traverse((obj) => {
+        const mesh = obj as THREE.Mesh;
+        if (mesh.isMesh) {
+          mesh.geometry?.dispose?.();
+        }
+      });
     }
   }
 
@@ -194,19 +273,22 @@ export class EntityProjectorRig implements EntityProjectorRigState {
       const color = this.colorOverride ?? source.color;
       const [px, py, pz] = source.pos;
       const [tx, ty, tz] = source.target;
+      const [pivX, pivZ] = source.turretMounted ? (source.turretPivot ?? [0, 0]) : [0, 0];
 
       const lensRadius = Math.max(0.055, source.coneTopRadius * 0.62);
       const lens = new THREE.Mesh(new THREE.SphereGeometry(lensRadius, 8, 6), this.lensMat);
       lens.name = 'projector-lamp-lens';
-      lens.position.set(px, py, pz);
+      lens.position.set(px - pivX, py, pz - pivZ);
       lens.castShadow = false;
 
       const halo = new THREE.Sprite(this.haloMat);
       halo.name = 'projector-lamp-halo';
-      halo.position.set(px, py, pz);
+      halo.position.set(px - pivX, py, pz - pivZ);
       halo.scale.setScalar(Math.max(0.24, source.coneTopRadius * 2.4));
 
-      const cone = new THREE.Mesh(buildVolumetricBeamGeo(source, color), this.beamMat);
+      const beamGeo = buildVolumetricBeamGeo(source, color);
+      if (pivX !== 0 || pivZ !== 0) beamGeo.translate(-pivX, 0, -pivZ);
+      const cone = new THREE.Mesh(beamGeo, this.beamMat);
       cone.name = 'projector-beam-cone';
       cone.castShadow = false;
       cone.renderOrder = 2;
@@ -214,12 +296,25 @@ export class EntityProjectorRig implements EntityProjectorRigState {
       const poolGeo = buildGroundPoolGeo(source.poolRadius, color, source.intensity);
       const pool = new THREE.Mesh(poolGeo, this.poolMat);
       pool.name = 'projector-ground-pool';
-      pool.position.set(tx, Math.max(0.02, ty), tz);
+      pool.position.set(tx - pivX, Math.max(0.02, ty), tz - pivZ);
       pool.castShadow = false;
       pool.renderOrder = 1;
 
-      this.group.add(lens, halo, cone, pool);
+      if (source.turretMounted) {
+        const pivotGroup = new THREE.Group();
+        pivotGroup.name = 'projector-turret-pivot';
+        pivotGroup.position.set(pivX, 0, pivZ);
+        pivotGroup.add(lens, halo, cone, pool);
+        this.group.add(pivotGroup);
+        this.turretGroups.push(pivotGroup);
+      } else {
+        this.group.add(lens, halo, cone, pool);
+      }
     }
+  }
+
+  setTurretYaw(yaw: number): void {
+    for (const g of this.turretGroups) g.rotation.y = yaw;
   }
 
   setPower(intensity: number, buildStage = 1): void {
@@ -285,5 +380,7 @@ export function updateEntityProjectorRig(mesh: THREE.Object3D, nightFactor: numb
   if (rig.lightsVersion !== getArchetypeLightsVersion(rig.archetypeId)) {
     rig.rebuild();
   }
+  const turretYaw = (mesh.userData as { turretYaw?: number } | undefined)?.turretYaw ?? 0;
+  rig.setTurretYaw(turretYaw);
   rig.setPower(nightFactor, buildStage);
 }

@@ -106,4 +106,33 @@ describe('all owned active units reveal terrain', () => {
     expect(isWorldPointInColonyFov(0, 0)).toBe(false);
     expect(isWorldPointInColonyFov(40, 0)).toBe(true);
   });
+
+  it('points robot.recon optics light along turretYaw and keeps spider headlamps between front legs', () => {
+    setDayNight(true);
+    setDayNightParams({ timeOfDay: 22 }, 'sync');
+    try {
+      const spyMesh = new THREE.Object3D();
+      spyMesh.position.set(4, 0, 2);
+      spyMesh.rotation.y = 0.3;
+      spyMesh.userData.turretYaw = Math.PI / 2;
+      const reconRec = { kind: ENTITY_KIND.recon, owner: 0, hp: 100, state: ENTITY_STATE.idle, mesh: spyMesh, buildStage: 1 } as EntityMeshRecord;
+      syncColonyVisionAndProjectors({ records: [reconRec], ownerColonyIndex: 0, terrain, tiles: null });
+      const u = getColonyVisionUniforms();
+      expect(u.uProjectorCount.value).toBe(1);
+      const dir = u.uProjectorDirAngle.value[0]!;
+      // Total yaw = chassis 0.3 + turretYaw pi/2 => forward horizontal points predominantly +X (cos ~0.3)
+      expect(dir.x).toBeGreaterThan(0.75);
+      expect(dir.y).toBeLessThan(-0.05);
+
+      const artRec = { kind: ENTITY_KIND.demoArtillery, owner: 0, hp: 100, state: ENTITY_STATE.idle, mesh: new THREE.Object3D(), buildStage: 1 } as EntityMeshRecord;
+      const tankRec = { kind: ENTITY_KIND.demoTank, owner: 0, hp: 100, state: ENTITY_STATE.idle, mesh: new THREE.Object3D(), buildStage: 1 } as EntityMeshRecord;
+      syncColonyVisionAndProjectors({ records: [artRec, tankRec], ownerColonyIndex: 0, terrain, tiles: null });
+      expect(u.uProjectorCount.value).toBe(4);
+      for (let i = 0; i < 4; i++) expect(u.uProjectorPosRange.value[i]!.y).toBeCloseTo(0.81, 2);
+      expect(u.uProjectorPosRange.value[0]!.x).toBeCloseTo(-0.068, 2);
+      expect(u.uProjectorPosRange.value[1]!.x).toBeCloseTo(0.068, 2);
+    } finally {
+      resetDayNightParams('sync');
+    }
+  });
 });

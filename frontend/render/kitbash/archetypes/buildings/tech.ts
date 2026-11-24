@@ -159,17 +159,16 @@ export function laserTower() {
   ring(b, 'energyCyan', 0.46, 0.04, [0, 1.36, 0], { seg: 10, name: 'column focus ring A light' });
   ring(b, 'warningAmber', 0.42, 0.04, [0, 1.68, 0], { seg: 10, name: 'column focus ring B light' });
   cyl(b, 'frameGunmetal', 0.44, 0.44, 0.18, [0, 1.92, 0], { seg: 10, name: 'emitter azimuth collar' });
-  // Rotating upper laser emitter head (animType 1 around tower axis)
-  const A = spin(0, 0);
-  box(b, 'hullSecondary', [0.76, 0.44, 0.84], [0, 2.08, 0], { r: 0.08, seg: 1, name: 'optical emitter head housing', ...A });
-  box(b, 'frameGunmetal', [0.56, 0.10, 0.56], [0, 2.50, 0], { r: 0.03, name: 'emitter roof heatsink cap', ...A });
-  lamp(b, 'dangerCrimson', 0.075, [0, 2.60, 0], { name: 'emitter targeting beacon light', ...A });
+  // Upper laser emitter head (steered by WeaponRig toward active target)
+  box(b, 'hullSecondary', [0.76, 0.44, 0.84], [0, 2.08, 0], { r: 0.08, seg: 1, name: 'optical emitter head housing' });
+  box(b, 'frameGunmetal', [0.56, 0.10, 0.56], [0, 2.50, 0], { r: 0.03, name: 'emitter roof heatsink cap' });
+  lamp(b, 'dangerCrimson', 0.075, [0, 2.60, 0], { name: 'emitter targeting beacon light' });
   b.addPart(new THREE.CylinderGeometry(0.16, 0.20, 0.56, 10), 'frameGunmetal', {
-    name: 'optical focus barrel', position: [0, 2.30, 0.62], rotation: [PI / 2, 0, 0], ...A,
+    name: 'optical focus barrel', position: [0, 2.30, 0.62], rotation: [PI / 2, 0, 0],
   });
-  ring(b, 'hullPrimary', 0.19, 0.035, [0, 2.30, 0.72], { rotation: [0, 0, 0], name: 'barrel focusing collar', ...A });
+  ring(b, 'hullPrimary', 0.19, 0.035, [0, 2.30, 0.72], { rotation: [0, 0, 0], name: 'barrel focusing collar' });
   b.addPart(new THREE.CylinderGeometry(0.11, 0.11, 0.06, 10), 'dangerCrimson', {
-    name: 'laser aperture lens light', position: [0, 2.30, 0.91], rotation: [PI / 2, 0, 0], emissiveIntensity: 4.5, ...A,
+    name: 'laser aperture lens light', position: [0, 2.30, 0.91], rotation: [PI / 2, 0, 0], emissiveIntensity: 4.5,
   });
   // External power cell unit + anchored conduit cable
   cyl(b, 'hullSecondary', 0.18, 0.20, 0.50, [0, 0.16, -0.76], { seg: 8, name: 'power cell transformer' });

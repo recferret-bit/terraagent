@@ -1,4 +1,4 @@
-import { ACID_IMPACT_PRESET, ACID_TRAIL_PRESET } from './presetsLiquid';
+import { ACID_IMPACT_PRESET, ACID_TRAIL_PRESET, INSECT_DEATH_PRESET } from './presetsLiquid';
 import type { BurstPresetSpec, ParticleLayerSpec } from './types';
 
 function layer(name: string, role: ParticleLayerSpec['role'], geometry: ParticleLayerSpec['geometry'],
@@ -27,6 +27,7 @@ export const COMBAT_PARTICLE_PRESETS: BurstPresetSpec[] = [
   }))),
   ACID_IMPACT_PRESET,
   ACID_TRAIL_PRESET,
+  INSECT_DEATH_PRESET,
   preset('rocket', 'Rocket fuel detonation', 'Rolling orange fire lobes, rising charcoal smoke and radial fragments.', [
     layer('Warm billows', 'primary', 'dustCloud', 12, 0xbba887, { ...smoke,
       sizeRange: [0.24, 0.48], lifetimeRange: [0.65, 1.2], upwardBias: [0.6, 1.8] }),
@@ -52,13 +53,15 @@ export const COMBAT_PARTICLE_PRESETS: BurstPresetSpec[] = [
     layer('White detonation', 'accent', 'energyOrb', 2, 0xffefce, { ...glow, stretchByVelocity: 1,
       sizeRange: [0.5, 0.75], speedRange: [1, 2], gravity: 0, lifetimeRange: [0.09, 0.16] }),
   ]),
-  preset('muzzle', 'Gun muzzle discharge', 'Axial gas plume, powder flecks and a short HDR flame at the socket.', [
-    layer('Propellant gas', 'primary', 'dustCloud', 6, 0xb9c1ca, { ...smoke, sizeRange: [0.05, 0.1],
-      upwardBias: [0, 0.1], spreadCone: 0.2, lifetimeRange: [0.1, 0.18], speedRange: [1, 2] }),
-    layer('Powder flecks', 'secondary', 'slateChunk', 3, 0x414955, { sizeRange: [0.02, 0.04],
-      upwardBias: [0, 0.1], spreadCone: 0.35, speedRange: [2, 4], lifetimeRange: [0.09, 0.16] }),
-    layer('Muzzle flame', 'accent', 'weldSpark', 1, 0xffd99b, { ...glow, emissiveIntensity: 6,
-      sizeRange: [0.12, 0.16], speedRange: [0.3, 0.4], upwardBias: [0, 0], spreadCone: 0.08,
-      gravity: 0, drag: 0, lifetimeRange: [0.065, 0.085], stretchByVelocity: 1.8 }),
+  preset('muzzle', 'Gun muzzle discharge', 'Axial gas plume, powder flecks and a bright HDR flame at the socket.', [
+    layer('Propellant gas', 'primary', 'dustCloud', 7, 0xb9c1ca, { ...smoke, sizeRange: [0.06, 0.13],
+      upwardBias: [0, 0.12], spreadCone: 0.24, lifetimeRange: [0.11, 0.2], speedRange: [1.1, 2.4] }),
+    layer('Hot muzzle blast', 'primary', 'sandGrain', 5, 0xd8c8af, { sizeRange: [0.035, 0.075],
+      upwardBias: [0, 0.1], spreadCone: 0.26, speedRange: [2.4, 4.6], lifetimeRange: [0.1, 0.17] }),
+    layer('Powder flecks', 'secondary', 'slateChunk', 6, 0x414955, { sizeRange: [0.025, 0.05],
+      upwardBias: [0, 0.12], spreadCone: 0.38, speedRange: [2.2, 4.4], lifetimeRange: [0.1, 0.18] }),
+    layer('Muzzle flame', 'accent', 'weldSpark', 2, 0xffd99b, { ...glow, emissiveIntensity: 6,
+      sizeRange: [0.15, 0.22], speedRange: [0.35, 0.5], upwardBias: [0, 0], spreadCone: 0.1,
+      gravity: 0, drag: 0, lifetimeRange: [0.075, 0.1], stretchByVelocity: 2 }),
   ]),
 ];

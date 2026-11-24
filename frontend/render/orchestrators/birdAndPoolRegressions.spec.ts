@@ -262,8 +262,12 @@ describe('PooledMeshEntry Immediate Release Reset & Zero-Light ProjectorRig Disp
     const turretEntry = new PooledMeshEntry('building:dune:building.turret', 0, 'building.turret', 'dune', turretMesh);
     turretEntry.acquire();
     getWeaponRig(turretMesh)!.fire(new THREE.Vector3(10, 0, 10), 0.5, true);
+    expect(turretMesh.userData.uniforms.uWeaponHeat.value).toBeGreaterThan(0);
     turretEntry.release();
-    expect(turretMesh.userData.uniforms.uWeaponEnabled.value).toBe(0);
+    expect(turretMesh.userData.uniforms.uWeaponYaw.value).toBe(0);
+    expect(turretMesh.userData.uniforms.uWeaponHeat.value).toBe(0);
+    expect((turretMesh.userData.uniforms.uWeaponSideHeat.value as THREE.Vector2).toArray()).toEqual([1, 1]);
+    expect((turretMesh.userData.uniforms.uWeaponRecoil.value as THREE.Vector2).toArray()).toEqual([0, 0]);
     turretEntry.dispose();
   });
 });

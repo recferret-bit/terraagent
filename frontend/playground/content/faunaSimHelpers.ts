@@ -1,5 +1,8 @@
 import { MotionTrack } from '@terra/render/motion/entityMotion';
 import { placeTickPose } from '@terra/render/motion/pose';
+import { updateColonyProjectorsAndVision } from '@terra/render/lighting/ColonyVisionAndLights';
+import { collectEntityProjectors, updateEntityProjectorRig } from '@terra/render/lighting/EntityProjectorRig';
+import { applyBuildingLight } from '@terra/render/lighting/buildingLights';
 import * as THREE from 'three';
 import {
   ArchetypeCatalog,
@@ -197,6 +200,7 @@ export interface FaunaRenderOptions {
   shadows?: boolean;
   pixel?: boolean;
   culled?: boolean;
+  night?: boolean;
 }
 
 export interface HiveEntity {
@@ -318,4 +322,20 @@ export function stepAggressiveBugState(
       bug.order = 'bite';
     }
   }
+}
+
+export function syncPlaygroundNightProjectors(
+  entries: ReadonlyArray<{ archetypeId: string; mesh: THREE.Object3D }>,
+  nightMode: boolean,
+): void {
+  for (const e of entries) {
+    applyBuildingLight(e.mesh, nightMode ? 1 : 0, nightMode ? 1.35 : 0);
+    updateEntityProjectorRig(e.mesh, nightMode ? 1.35 : 0);
+  }
+  updateColonyProjectorsAndVision({
+    projectors: nightMode ? collectEntityProjectors(entries, 1.35) : [],
+    visionSources: [],
+    fovEnabled: false,
+    nightFactor: nightMode ? 1.35 : 0,
+  });
 }

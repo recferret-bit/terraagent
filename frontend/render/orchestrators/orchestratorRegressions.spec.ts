@@ -56,15 +56,20 @@ describe('Orchestrator Prewarming & Pooled Mesh Reset Regressions', () => {
     const turret1 = buildings.acquire(10, 'building.turret', 'forestRock');
     turret1.position.set(0, 0, 0);
     getWeaponRig(turret1)!.fire(new THREE.Vector3(50, 0, -40), 0.65, true);
+    expect((turret1.userData as { uniforms: Record<string, { value: unknown }> }).uniforms.uWeaponHeat?.value).toBeGreaterThan(0);
     buildings.release(10);
 
     const turret2 = buildings.acquire(99, 'building.turret', 'forestRock');
     turret2.position.set(-20, 0, 15);
     getWeaponRig(turret2)!.update(0);
     const u = (turret2.userData as { uniforms: Record<string, { value: unknown }> }).uniforms;
-    expect(u.uWeaponEnabled?.value).toBe(0);
-    expect(u.uWeaponLift?.value).toBe(0);
+    expect(u.uWeaponYaw?.value).toBe(0);
+    expect((u.uWeaponLeftDir?.value as THREE.Vector3).toArray()).toEqual([0, 0, 1]);
+    expect((u.uWeaponRightDir?.value as THREE.Vector3).toArray()).toEqual([0, 0, 1]);
+    expect(u.uWeaponHeat?.value).toBe(0);
+    expect((u.uWeaponSideHeat?.value as THREE.Vector2).toArray()).toEqual([1, 1]);
     expect((u.uWeaponRecoil?.value as THREE.Vector2).toArray()).toEqual([0, 0]);
+    expect((u.uWeaponRecoilBody?.value as THREE.Vector4).toArray()).toEqual([0, 0, 1, 0]);
 
     const pod1 = units.acquire(5, 'ship.dropPod', 'forestRock');
     const flames = new THREE.Group();

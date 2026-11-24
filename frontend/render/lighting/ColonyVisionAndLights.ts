@@ -226,17 +226,28 @@ export function selectFocusedProjectors(projectors: ReadonlyArray<ColonyProjecto
   return out;
 }
 
-let hazardProjectors: ColonyProjectorDesc[] = [];
+const dynamicLightChannels = new Map<string, ColonyProjectorDesc[]>();
 let lastColonyProjectors: ReadonlyArray<ColonyProjectorDesc> = [];
 let lastColonyVisionSources: ReadonlyArray<ColonyVisionSourceDesc> = [];
 
+function mergeDynamicLights(): ColonyProjectorDesc[] {
+  if (dynamicLightChannels.size === 0) return [];
+  const merged: ColonyProjectorDesc[] = [];
+  for (const list of dynamicLightChannels.values()) {
+    for (const p of list) merged.push(p);
+  }
+  return merged;
+}
+
 function uploadCombinedProjectorsAndVision(): void {
+  const dynamicLights = mergeDynamicLights();
+  // Put transient combat/hazard lights first so flashes, lasers, shells, and craters stay lit within the 32-light budget.
   const allProjectors =
-    hazardProjectors.length === 0
+    dynamicLights.length === 0
       ? lastColonyProjectors
       : lastColonyProjectors.length === 0
-        ? hazardProjectors
-        : [...lastColonyProjectors, ...hazardProjectors];
+        ? dynamicLights
+        : [...dynamicLights, ...lastColonyProjectors];
   const sel = selectFocusedProjectors(allProjectors);
   const pCount = sel.length;
   sharedUniforms.uProjectorCount.value = pCount;
@@ -265,6 +276,21 @@ function uploadCombinedProjectorsAndVision(): void {
 }
 
 /**
+ * Registers transient dynamic lights on a named channel (e.g. `'hazard'` craters, `'combat'` projectiles/lasers/explosions)
+ * without stomping other subsystems.
+ */
+export function setDynamicLightChannel(channel: string, projectors: ReadonlyArray<ColonyProjectorDesc>): void {
+  const prev = dynamicLightChannels.get(channel);
+  if (projectors.length === 0) {
+    if (!prev || prev.length === 0) return;
+    dynamicLightChannels.delete(channel);
+  } else {
+    dynamicLightChannels.set(channel, [...projectors]);
+  }
+  uploadCombinedProjectorsAndVision();
+}
+
+/**
  * Registers dynamic environmental hazard lights (e.g. glowing molten meteor craters)
  * that illuminate the nearest terrain, rocks, trees, water, and units inside the player's FoV
  * and decay as the hazard cools. Never modifies user Fog of War (`uVisionSources`).
@@ -273,9 +299,7 @@ export function setDynamicHazardLights(
   projectors: ReadonlyArray<ColonyProjectorDesc>,
   _unusedVision?: ReadonlyArray<ColonyVisionSourceDesc>,
 ): void {
-  if (projectors.length === 0 && hazardProjectors.length === 0) return;
-  hazardProjectors = [...projectors];
-  uploadCombinedProjectorsAndVision();
+  setDynamicLightChannel('hazard', projectors);
 }
 
 /**
@@ -320,7 +344,7 @@ export function resetColonyVisionAndLights(): void {
   sharedUniforms.uProjectorCount.value = 0;
   sharedUniforms.uVisionSourceCount.value = 0;
   sharedUniforms.uNightFactor.value = 0.0;
-  hazardProjectors = [];
+  dynamicLightChannels.clear();
   lastColonyProjectors = [];
   lastColonyVisionSources = [];
   colonyLightingBlend = 1;

@@ -1,5 +1,6 @@
 import { rbox, cyl, sph, strut, sag, cable, mirror, lathe, solarPanel, type V3 } from '../../greebles/unitParts';
 import * as THREE from 'three';
+import type { KitbashBuilder } from '../../KitbashRegistry';
 import { register } from './common';
 
 // ---------------------------------------------------------------------------
@@ -179,69 +180,128 @@ register({
 });
 
 // ---------------------------------------------------------------------------
-// robot.combat — quad-legged spider walker with twin-barrel turret. ~1.4m
+// robot.artillery / robot.tank / robot.combat — spider walkers. ~1.4m
 // ---------------------------------------------------------------------------
+function buildSpiderChassisAndLegs(b: KitbashBuilder): void {
+  const spiderBody = { animType: 9 as const };
+  // Hull & under-chassis (animType 9: SpiderBody step-reaction carrier — heaves, rolls, pitches, and surges)
+  b.addPart(rbox(0.8, 0.28, 1.0, 0.09, 1), 'hullPrimary', { name: 'body carapace', position: [0, 0.82, 0], ...spiderBody });
+  b.addPart(rbox(0.6, 0.22, 0.7, 0.07, 1), 'frameGunmetal', { name: 'under chassis', position: [0, 0.62, 0], ...spiderBody });
+  b.addPart(rbox(0.68, 0.08, 0.5, 0.025, 1), 'hullSecondary', { name: 'hull deck', position: [0, 0.98, -0.15], ...spiderBody });
+  b.addPart(rbox(0.32, 0.14, 0.22, 0.035, 1), 'hullSecondary', { name: 'hull glacis', position: [0, 0.8, 0.46], rotation: [0.28, 0, 0], ...spiderBody });
+  // Twin small light bulbs recessed into a gunmetal bezel between front legs
+  b.addPart(rbox(0.24, 0.078, 0.08, 0.015, 1), 'frameGunmetal', { name: 'front headlamp housing', position: [0, 0.81, 0.545], ...spiderBody });
+  mirror((s) => {
+    b.addPart(sph(0.034, 8, 6), 'warningAmber', {
+      name: 'front headlamp bulb light', position: [0.068 * s, 0.81, 0.578], emissiveIntensity: 4.5, ...spiderBody,
+    });
+    b.addPart(new THREE.BoxGeometry(0.03, 0.1, 0.28), 'hullSecondary', { name: 'hull side plate', position: [0.405 * s, 0.84, 0.0], ...spiderBody });
+  });
+  // Articulated Spider Legs (4) — animType 6 / 16 rigid 2-link gait coupled to SpiderBody
+  mirror((s) => {
+    [0.4, -0.4].forEach((z, i) => {
+      const hip: V3 = [0.39 * s, 0.76, z * 0.8];
+      const femurStart: V3 = [0.475 * s, 0.81, z * 0.87];
+      const knee: V3 = [0.78 * s, 1.0, z * 1.2];
+      const femurEnd: V3 = [0.75 * s, 0.98, z * 1.17];
+      const tibiaStart: V3 = [0.785 * s, 0.96, z * 1.205];
+      const footTop: V3 = [0.92 * s, 0.08, z * 1.3];
+      const femurAnim = { animType: 6 as const, animPivot: hip };
+      const tibiaAnim = { animType: 16 as const, animPivot: hip };
+      b.addPart(sph(0.105, 8, 6), 'frameGunmetal', { name: 'leg hip', position: hip, ...femurAnim });
+      strut(b, femurStart, femurEnd, 0.044, 'rubberDark', { name: 'leg femur', ...femurAnim }, 0.052);
+      b.addPart(sph(0.075, 8, 6), 'frameGunmetal', { name: 'leg knee', position: knee, ...tibiaAnim });
+      strut(b, tibiaStart, footTop, 0.028, 'rubberDark', { name: 'leg tibia', ...tibiaAnim }, 0.05);
+      b.addPart(cyl(0.085, 0.115, 0.1, 8), 'rubberDark', { name: 'leg foot', position: [footTop[0], 0.05, footTop[2]], ...tibiaAnim });
+      b.addPart(cyl(0.095, 0.095, 0.03, 8), 'hullSecondary', { name: 'leg foot rim', position: [footTop[0], 0.09, footTop[2]], ...tibiaAnim });
+      if (i === 0) {
+        b.addPart(new THREE.BoxGeometry(0.06, 0.04, 0.1), 'warningAmber', {
+          name: 'leg knee light', position: [knee[0], knee[1] + 0.065, knee[2]], emissiveIntensity: 3.4, ...tibiaAnim,
+        });
+      }
+    });
+  });
+}
+
 register({
-  id: 'robot.combat',
-  label: 'Combat T1',
+  id: 'robot.artillery',
+  label: 'Artillery Spider',
   category: 'robot',
   footprint: [2, 2],
-  notes: 'Four-legged spider walker (animType 6 gait + animType 9 carapace step-reaction), twin-barrel recoil turret, crimson sensor, radar.',
+  notes: 'Four-legged siege artillery spider walker (animType 6 gait + animType 9 step-reaction) with heavy single-barrel recoiling howitzer, front headlamps, and radar.',
   build: (b) => {
+    buildSpiderChassisAndLegs(b);
     const spiderBody = { animType: 9 as const };
-    // Hull & under-chassis (animType 9: SpiderBody step-reaction carrier — heaves, rolls, pitches, and surges on every stomp)
-    b.addPart(rbox(0.8, 0.28, 1.0, 0.1, 1), 'hullPrimary', { name: 'body carapace', position: [0, 0.82, 0], ...spiderBody });
-    b.addPart(rbox(0.6, 0.22, 0.7, 0.08, 1), 'frameGunmetal', { name: 'under chassis', position: [0, 0.62, 0], ...spiderBody });
-    b.addPart(rbox(0.7, 0.08, 0.5, 0.03, 1), 'hullSecondary', { name: 'hull deck', position: [0, 0.98, -0.15], ...spiderBody });
-    b.addPart(rbox(0.3, 0.14, 0.2, 0.04, 1), 'hullSecondary', { name: 'hull glacis', position: [0, 0.8, 0.48], rotation: [0.3, 0, 0], ...spiderBody });
-    b.addPart(rbox(0.22, 0.06, 0.04, 0.015, 1), 'dangerCrimson', { name: 'visor sensor', position: [0, 0.82, 0.58], emissiveIntensity: 4.5, ...spiderBody });
-    // Side hull vents (surface detail on left/right carapace faces)
+    b.addPart(cyl(0.26, 0.3, 0.1, 10), 'frameGunmetal', { name: 'turret ring', position: [0, 1.0, 0.08], ...spiderBody });
+    b.addPart(rbox(0.46, 0.24, 0.48, 0.055, 1), 'hullSecondary', { name: 'turret housing', position: [0, 1.15, 0.06], ...spiderBody });
     mirror((s) => {
-      b.addPart(rbox(0.03, 0.1, 0.28, 0.01, 1), 'hullSecondary', { name: 'hull side plate', position: [0.405 * s, 0.84, 0.0], ...spiderBody });
+      b.addPart(rbox(0.08, 0.16, 0.32, 0.02, 1), 'hullPrimary', { name: 'artillery cradle cheek', position: [0.16 * s, 1.16, 0.15], ...spiderBody });
     });
-    // Articulated Spider Legs (4) — animType 6 (SpiderLeg) around hip socket pivot (couples to SpiderBody at hip, locks to ground at foot)
-    mirror((s) => {
-      [0.4, -0.4].forEach((z, i) => {
-        const hip: V3 = [0.39 * s, 0.76, z * 0.8];
-        const femurStart: V3 = [0.475 * s, 0.81, z * 0.87];
-        const knee: V3 = [0.78 * s, 1.0, z * 1.2];
-        const femurEnd: V3 = [0.75 * s, 0.98, z * 1.17];
-        const tibiaStart: V3 = [0.785 * s, 0.96, z * 1.205];
-        const footTop: V3 = [0.92 * s, 0.08, z * 1.3];
-        const femurAnim = { animType: 6 as const, animPivot: hip };
-        const tibiaAnim = { animType: 16 as const, animPivot: hip };
-        b.addPart(sph(0.105, 10, 8), 'frameGunmetal', { name: 'leg hip', position: hip, ...femurAnim });
-        strut(b, femurStart, femurEnd, 0.044, 'rubberDark', { name: 'leg femur', ...femurAnim }, 0.052);
-        b.addPart(sph(0.075, 10, 8), 'frameGunmetal', { name: 'leg knee', position: knee, ...tibiaAnim });
-        strut(b, tibiaStart, footTop, 0.028, 'rubberDark', { name: 'leg tibia', ...tibiaAnim }, 0.05);
-        b.addPart(cyl(0.085, 0.115, 0.1, 8), 'rubberDark', { name: 'leg foot', position: [footTop[0], 0.05, footTop[2]], ...tibiaAnim });
-        b.addPart(cyl(0.095, 0.095, 0.03, 8), 'hullSecondary', { name: 'leg foot rim', position: [footTop[0], 0.09, footTop[2]], ...tibiaAnim });
-        if (i === 0) {
-          b.addPart(rbox(0.06, 0.04, 0.1, 0.012, 1), 'warningAmber', {
-            name: 'leg knee light', position: [knee[0], knee[1] + 0.07, knee[2]], emissiveIntensity: 3.4, ...tibiaAnim,
-          });
-        }
-      });
-    });
-    // Turret (manipulator group riding on SpiderBody + animType 39 recoiling barrels)
-    b.addPart(cyl(0.26, 0.3, 0.1, 12), 'frameGunmetal', { name: 'turret ring', position: [0, 1.0, 0.1], ...spiderBody });
-    b.addPart(rbox(0.46, 0.22, 0.44, 0.07, 1), 'hullSecondary', { name: 'turret housing', position: [0, 1.14, 0.08], ...spiderBody });
-    mirror((s) => {
-      const bPivot: V3 = [0.13 * s, 1.14, 0.3];
-      b.addPart(cyl(0.052, 0.058, 0.14, 8), 'frameGunmetal', { name: 'cannon mantlet', position: [0.13 * s, 1.14, 0.34], rotation: [Math.PI / 2, 0, 0], ...spiderBody });
-      b.addPart(cyl(0.035, 0.038, 0.5, 8), 'frameGunmetal', { name: 'cannon barrel', position: [0.13 * s, 1.14, 0.63], rotation: [Math.PI / 2, 0, 0], animType: 39, animPivot: bPivot });
-      b.addPart(cyl(0.055, 0.055, 0.1, 8), 'hullPrimary', { name: 'cannon muzzle', position: [0.13 * s, 1.14, 0.9], rotation: [Math.PI / 2, 0, 0], animType: 39, animPivot: bPivot });
-      b.addPart(cyl(0.03, 0.03, 0.03, 8), 'dangerCrimson', { name: 'cannon laser', position: [0.13 * s, 1.14, 0.955], rotation: [Math.PI / 2, 0, 0], emissiveIntensity: 4.5, animType: 39, animPivot: bPivot });
-    });
-    // Sensor head + radar (animType 19 = SpinY on SpiderBody) + antenna
-    b.addPart(sph(0.065, 10, 8), 'dangerCrimson', { name: 'turret sensor light', position: [0, 1.28, 0.2], emissiveIntensity: 4.5, ...spiderBody });
-    b.addPart(cyl(0.02, 0.02, 0.16, 6), 'frameGunmetal', { name: 'radar mast', position: [-0.15, 1.31, -0.06], ...spiderBody });
-    b.addPart(lathe([[0.004, 0], [0.07, 0.01], [0.14, 0.06], [0.004, 0.02]], 12), 'hullPrimary', {
+    const bPivot: V3 = [0, 1.17, 0.31];
+    b.addPart(cyl(0.085, 0.095, 0.24, 10), 'frameGunmetal', { name: 'cannon mantlet', position: [0, 1.17, 0.31], rotation: [Math.PI / 2, 0, 0], ...spiderBody });
+    b.addPart(cyl(0.046, 0.056, 0.66, 10), 'frameGunmetal', { name: 'cannon barrel', position: [0, 1.17, 0.72], rotation: [Math.PI / 2, 0, 0], animType: 39, animPivot: bPivot });
+    b.addPart(cyl(0.068, 0.068, 0.16, 10), 'hullPrimary', { name: 'bore evacuator', position: [0, 1.17, 0.66], rotation: [Math.PI / 2, 0, 0], animType: 39, animPivot: bPivot });
+    b.addPart(cyl(0.072, 0.065, 0.12, 10), 'hullSecondary', { name: 'cannon muzzle', position: [0, 1.17, 1.09], rotation: [Math.PI / 2, 0, 0], animType: 39, animPivot: bPivot });
+    // Turret optics, rotating radar, whip antenna, ammo bustle & cable
+    b.addPart(rbox(0.11, 0.09, 0.11, 0.02, 1), 'frameGunmetal', { name: 'rangefinder housing', position: [0.15, 1.29, 0.17], ...spiderBody });
+    b.addPart(sph(0.036, 8, 6), 'energyCyan', { name: 'turret optics light', position: [0.15, 1.29, 0.22], emissiveIntensity: 4.0, ...spiderBody });
+    b.addPart(cyl(0.02, 0.024, 0.15, 6), 'frameGunmetal', { name: 'radar mast', position: [-0.15, 1.31, -0.06], ...spiderBody });
+    b.addPart(lathe([[0.004, 0], [0.065, 0.01], [0.13, 0.055], [0.004, 0.02]], 10), 'hullPrimary', {
       name: 'radar dish', position: [-0.15, 1.38, -0.06], rotation: [-0.5, 0, 0], animType: 19, animPivot: [-0.15, 1.38, -0.06],
     });
-    strut(b, [0.22, 1.0, -0.22], [0.38, 1.52, -0.32], 0.012, 'frameGunmetal', { name: 'antenna mast', ...spiderBody });
-    // Ammo box + external power cable (riding on SpiderBody)
-    b.addPart(rbox(0.3, 0.18, 0.24, 0.04, 1), 'hullPrimary', { name: 'ammo box', position: [0, 1.09, -0.32], ...spiderBody });
-    cable(b, [[0.14, 1.12, -0.32], [0.28, 1.08, -0.14], [0.22, 1.14, 0.04]] as V3[], 0.016, 'frameGunmetal', { name: 'power cable', ...spiderBody });
+    b.addPart(rbox(0.34, 0.19, 0.26, 0.035, 1), 'hullPrimary', { name: 'ammo bustle', position: [0, 1.13, -0.30], ...spiderBody });
+    strut(b, [0.10, 1.20, -0.34], [0.22, 1.62, -0.44], 0.011, 'frameGunmetal', { name: 'antenna mast', ...spiderBody });
+    cable(b, [[0.14, 1.13, -0.30], [0.26, 1.09, -0.14], [0.20, 1.15, 0.04]] as V3[], 0.015, 'frameGunmetal', { name: 'power cable', ...spiderBody });
   },
 });
+
+function registerRocketSpider(id: string, label: string): void {
+  register({
+    id,
+    label,
+    category: 'robot',
+    footprint: [2, 2],
+    notes: 'Four-legged rocket spider walker (animType 6 gait + animType 9 step-reaction), twin side-mounted 4-tube rocket pods, rotating top radar, and front headlamps.',
+    build: (b) => {
+      buildSpiderChassisAndLegs(b);
+      const spiderBody = { animType: 9 as const };
+      // Compact central sensor turret (no cannon barrels!)
+      b.addPart(cyl(0.26, 0.3, 0.1, 10), 'frameGunmetal', { name: 'turret ring', position: [0, 1.0, 0.06], ...spiderBody });
+      b.addPart(rbox(0.36, 0.24, 0.42, 0.05, 1), 'hullSecondary', { name: 'turret housing', position: [0, 1.15, 0.05], ...spiderBody });
+      b.addPart(rbox(0.22, 0.09, 0.08, 0.015, 1), 'frameGunmetal', { name: 'turret sensor bezel', position: [0, 1.16, 0.245], ...spiderBody });
+      b.addPart(new THREE.BoxGeometry(0.15, 0.045, 0.04), 'energyCyan', { name: 'turret visor light', position: [0, 1.16, 0.285], emissiveIntensity: 3.8, ...spiderBody });
+      // Twin side-mounted 4-tube rocket pods
+      mirror((s) => {
+        const pPivot: V3 = [0.345 * s, 1.16, 0.06];
+        const podAnim = { animType: 39 as const, animPivot: pPivot };
+        b.addPart(rbox(0.22, 0.10, 0.14, 0.02, 1), 'frameGunmetal', { name: 'turret trunnion', position: [0.215 * s, 1.16, 0.05], ...spiderBody });
+        b.addPart(rbox(0.23, 0.22, 0.46, 0.035, 1), 'hullPrimary', { name: 'rocket pod', position: pPivot, ...podAnim });
+        b.addPart(new THREE.BoxGeometry(0.035, 0.16, 0.34), 'hullSecondary', { name: 'rocket pod plate', position: [0.455 * s, 1.16, 0.06], ...podAnim });
+        b.addPart(new THREE.BoxGeometry(0.21, 0.20, 0.06), 'frameGunmetal', { name: 'rocket pod bezel', position: [0.345 * s, 1.16, 0.28], ...podAnim });
+        b.addPart(new THREE.BoxGeometry(0.18, 0.16, 0.05), 'frameGunmetal', { name: 'rocket exhaust baffle', position: [0.345 * s, 1.16, -0.17], ...podAnim });
+        for (const dx of [-0.048, 0.048]) {
+          for (const dy of [-0.046, 0.046]) {
+            const tx = 0.345 * s + dx;
+            const ty = 1.16 + dy;
+            b.addPart(cyl(0.032, 0.032, 0.055, 6), 'frameGunmetal', { name: 'rocket tube collar', position: [tx, ty, 0.305], rotation: [Math.PI / 2, 0, 0], ...podAnim });
+            b.addPart(cyl(0.008, 0.023, 0.05, 6), 'hullSecondary', { name: 'rocket warhead', position: [tx, ty, 0.345], rotation: [Math.PI / 2, 0, 0], ...podAnim });
+          }
+        }
+      });
+      // Small rotating radar on turret roof + antenna + bustle & cable
+      b.addPart(cyl(0.02, 0.025, 0.16, 6), 'frameGunmetal', { name: 'radar mast', position: [0, 1.32, -0.02], ...spiderBody });
+      b.addPart(lathe([[0.004, 0], [0.06, 0.012], [0.125, 0.052], [0.004, 0.02]], 10), 'hullPrimary', {
+        name: 'radar dish', position: [0, 1.40, -0.02], rotation: [-0.45, 0, 0], animType: 19, animPivot: [0, 1.40, -0.02],
+      });
+      b.addPart(cyl(0.014, 0.014, 0.07, 6), 'hullSecondary', {
+        name: 'radar feed horn', position: [0, 1.425, 0.01], rotation: [0.55, 0, 0], animType: 19, animPivot: [0, 1.40, -0.02],
+      });
+      b.addPart(rbox(0.28, 0.18, 0.22, 0.035, 1), 'hullPrimary', { name: 'ammo bustle', position: [0, 1.12, -0.26], ...spiderBody });
+      strut(b, [0.08, 1.19, -0.30], [0.20, 1.60, -0.40], 0.011, 'frameGunmetal', { name: 'antenna mast', ...spiderBody });
+      cable(b, [[0.10, 1.10, -0.26], [0.16, 1.05, -0.18], [0.14, 1.11, -0.09]] as V3[], 0.015, 'frameGunmetal', { name: 'power cable', ...spiderBody });
+    },
+  });
+}
+
+registerRocketSpider('robot.tank', 'Rocket Spider T1');
+registerRocketSpider('robot.combat', 'Combat T1');

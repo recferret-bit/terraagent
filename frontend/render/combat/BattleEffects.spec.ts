@@ -17,23 +17,43 @@ function fixture() {
 }
 
 describe('battle recoil, spread and surface contacts', () => {
-  it('holds artillery elevation for an entire cooldown; recoil is axial, bounded and returns to rest', () => {
+  it('holds artillery elevation and executes coupled barrel + spider suspension recoil cleanly back to rest', () => {
     const { battle } = fixture();
     battle.shot(1, { weaponKind: 'shell', from: { x: 0, y: 1 }, to: { x: 8, y: 0.7 }, targetId: 2, impactTick: 7 });
     const rig = battle.getRig(1)!;
     const direction = rig.direction();
     const rest = rig.muzzle();
     let maxRecoil = 0;
+    let minDrop = 0;
     for (let i = 0; i < 120; i++) {
       battle.update(1 / 120);
       const delta = rig.muzzle().sub(rest);
       expect(rig.direction().dot(direction)).toBeCloseTo(1, 9);
-      expect(delta.clone().cross(direction).length()).toBeLessThan(1e-8);
       expect(delta.dot(direction)).toBeLessThanOrEqual(1e-8);
       maxRecoil = Math.max(maxRecoil, delta.length());
+      minDrop = Math.min(minDrop, delta.y);
     }
-    expect(maxRecoil).toBeCloseTo(0.04, 5);
+    expect(maxRecoil).toBeGreaterThan(0.18);
+    expect(maxRecoil).toBeLessThan(0.35);
+    expect(minDrop).toBeLessThan(-0.002);
     expect(rig.muzzle().distanceTo(rest)).toBeLessThan(1e-8);
+
+    const turretMesh = createArchetypeMesh('building.turret');
+    const turretBattle = new BattlePresentation(id => id === 10 ? turretMesh : id === 2 ? createArchetypeMesh('fauna.blackAnt') : undefined);
+    turretBattle.sync({ byEntityId: { 10: { targetId: 2 } } });
+    turretBattle.shot(10, { weaponKind: 'shell', from: { x: 0, y: 1 }, to: { x: 8, y: 0.7 }, targetId: 2, impactTick: 7 });
+    const turretRig = turretBattle.getRig(10)!;
+    const turretDir = turretRig.direction(0);
+    const turretRest = turretRig.muzzle(0);
+    let turretMax = 0;
+    for (let i = 0; i < 120; i++) {
+      turretBattle.update(1 / 120);
+      const d = turretRig.muzzle(0).sub(turretRest);
+      expect(d.clone().cross(turretDir).length()).toBeLessThan(1e-8);
+      turretMax = Math.max(turretMax, d.length());
+    }
+    expect(turretMax).toBeCloseTo(turretRig.definition.barrelRecoilM ?? 0.14, 2);
+    expect(turretRig.muzzle(0).distanceTo(turretRest)).toBeLessThan(1e-8);
   });
 
   it('laser barrels have no mechanical recoil', () => {
@@ -79,7 +99,7 @@ describe('pooled combat effects', () => {
     const { battle } = fixture();
     const vfx = new ProjectileVfxSystem();
     vfx.onProjectileFired(battle.shot(1, { weaponKind: 'bullet', from: { x: 0, y: 1 }, to: { x: 8, y: 1 } }));
-    expect(vfx.getBurstCounts()['combat.muzzle']).toBe(10);
+    expect(vfx.getBurstCounts()['combat.muzzle']).toBe(20);
     vfx.clear();
     vfx.onProjectileFired(battle.shot(1, { weaponKind: 'laser', from: { x: 0, y: 1 }, to: { x: 8, y: 1 } }));
     expect(vfx.getBurstCounts()['combat.muzzle']).toBe(0);

@@ -89,7 +89,7 @@ export class InsectSwarmRenderer {
       motion.setXYZW(i, uniforms.uTime.value, uniforms.uWalkWeight.value, uniforms.uWorkWeight.value, uniforms.uInsectWalk.value);
       const action = uniforms.uInsectAction.value as THREE.Vector4;
       (mesh.geometry.getAttribute('aInsectAction') as THREE.InstancedBufferAttribute).setXYZW(i, action.x, action.y, action.z, action.w);
-      (mesh.geometry.getAttribute('aInsectFlags') as THREE.InstancedBufferAttribute).setXY(i, uniforms.uInsectSacSide.value, uniforms.uSelected?.value ?? 0);
+      (mesh.geometry.getAttribute('aInsectFlags') as THREE.InstancedBufferAttribute).setXYZ(i, uniforms.uInsectSacSide.value, uniforms.uSelected?.value ?? 0, uniforms.uInsectDeathSeed?.value ?? 0);
     });
     template.userData.uniforms.uInsectSpecies.value = list[0]!.userData.uniforms.uInsectSpecies.value;
     template.userData.uniforms.uSelectionTime.value = list[0]!.userData.uniforms.uSelectionTime.value;

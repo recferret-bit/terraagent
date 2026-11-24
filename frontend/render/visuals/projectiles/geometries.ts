@@ -6,6 +6,7 @@ export type ProjectileGeometryKey =
   | 'shell'
   | 'rocket'
   | 'acid'
+  | 'cartridge'
   | 'laserCore'
   | 'laserSheath'
   | 'smokePuff'
@@ -71,6 +72,18 @@ function buildAcidGlobGeo(): THREE.BufferGeometry {
   return merged; // Preserve smooth normals: a thrown liquid sphere, not a faceted energy bolt.
 }
 
+function buildCartridgeGeo(): THREE.BufferGeometry {
+  const body = new THREE.CylinderGeometry(0.032, 0.032, 0.125, 6);
+  body.rotateX(Math.PI / 2);
+  const neck = new THREE.CylinderGeometry(0.022, 0.030, 0.036, 6);
+  neck.rotateX(Math.PI / 2);
+  neck.translate(0, 0, 0.078);
+  const rim = new THREE.CylinderGeometry(0.036, 0.036, 0.018, 6);
+  rim.rotateX(Math.PI / 2);
+  rim.translate(0, 0, -0.068);
+  return finalizeGeo(mergeGeometries([nonIdx(body), nonIdx(neck), nonIdx(rim)], false));
+}
+
 function buildLaserCylinderGeo(radius: number): THREE.BufferGeometry {
   // Unit-length cylinder along +Z from z = 0 to z = 1
   const cyl = new THREE.CylinderGeometry(radius, radius, 1, 6, 1, false);
@@ -128,6 +141,9 @@ export function getProjectileVfxGeometry(key: ProjectileGeometryKey): THREE.Buff
       break;
     case 'acid':
       geo = buildAcidGlobGeo();
+      break;
+    case 'cartridge':
+      geo = buildCartridgeGeo();
       break;
     case 'laserCore':
       geo = buildLaserCylinderGeo(0.055);

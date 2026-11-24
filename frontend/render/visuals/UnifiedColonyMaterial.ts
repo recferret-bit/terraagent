@@ -147,9 +147,13 @@ export function createUnifiedColonyMaterial(
       ['#include <shadowmap_vertex>', THREE.ShaderChunk.shadowmap_vertex.replace(/(\w+LightShadows\[ i \]\.shadowNormalBias)/g, '($1 + uShadowNormalBias)')],
     ], 'unified colony vertex');
     shader.vertexShader = shader.vertexShader.replace('#include <beginnormal_vertex>', '#include <beginnormal_vertex>\n' + joinPlugins((p) => p.vertexNormalChunk));
+    const fragEmissive = joinPlugins((p) => p.fragmentEmissiveChunk);
     shader.fragmentShader = injectAll(shader.fragmentShader, [
       ['#include <common>', `${FRAG_COMMON}\n${joinPlugins((p) => p.fragmentDeclarations)}`],
       ['#include <color_fragment>', fragColor(joinPlugins((p) => p.fragmentColorChunk))],
+      ...(fragEmissive.trim()
+        ? [['#include <emissivemap_fragment>', `#include <emissivemap_fragment>\n${fragEmissive}`] as [string, string]]
+        : []),
       ['#include <roughnessmap_fragment>', FRAG_ROUGHNESS],
       ['#include <metalnessmap_fragment>', `${FRAG_METALNESS}\n${joinPlugins((p) => p.fragmentRoughnessChunk)}`],
       ['#include <normal_fragment_maps>', `#include <normal_fragment_maps>\n${ORGANIC_NORMAL}\n${joinPlugins((p) => p.fragmentNormalChunk)}`],

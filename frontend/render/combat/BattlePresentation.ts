@@ -10,7 +10,7 @@ import { meshAimPoint, point3, surfaceContact, type ShotContact } from './shotCo
 interface TargetState { targetId: number | null }
 interface ShotHold {
   target: THREE.Vector3; targetId?: number; root?: THREE.Vector3; lift: number;
-  kind: ReturnType<typeof resolveVfxWeaponKind>; arc?: 'direct' | 'indirect';
+  kind: ReturnType<typeof resolveVfxWeaponKind>; arc?: 'direct' | 'indirect'; pending?: boolean;
 }
 /** Presentation adapter shared by the game and gallery. Rules remain in the sim orchestrator. */
 export class BattlePresentation {
@@ -36,7 +36,7 @@ export class BattlePresentation {
       if (this.meshFor(id) !== rig.mesh) { this.rigs.delete(id); this.holds.delete(id); continue; }
       const hold = this.holds.get(id);
       const targetId = this.targets[id]?.targetId;
-      if (hold && (targetId === undefined || targetId === hold.targetId)) {
+      if (hold && (hold.pending || targetId === undefined || targetId === hold.targetId)) {
         this.trackHold(rig, hold);
         rig.aim(hold.target, hold.lift);
       } else {
@@ -63,12 +63,38 @@ export class BattlePresentation {
     }
   }
 
-  /** Align before emission, then sample the exact GPU muzzle including terrain placement. */
+  /** Rotate toward `target` smoothly without firing or snapping; returns true once barrel & target align. */
+  prepareShot(attackerId: number, input: ProjectileFiredVfxInput): boolean {
+    const rig = this.rig(attackerId);
+    if (!rig) return true;
+    const targetId = input.targetId ?? this.targets[attackerId]?.targetId ?? undefined;
+    const mesh = targetId === undefined ? undefined : this.meshFor(targetId);
+    const aim = mesh ? meshAimPoint(mesh) : point3(input.to);
+    const kind = resolveVfxWeaponKind(input);
+    const from = rig.muzzle();
+    const arcHeight = kind === 'laser' ? 0 : computeArcHeight(kind, from.y, aim.y,
+      Math.hypot(aim.x - from.x, aim.z - from.z), input.arc);
+    rig.aim(aim, 4 * arcHeight);
+    this.holds.set(attackerId, {
+      target: aim.clone(),
+      targetId,
+      kind,
+      arc: input.arc,
+      lift: 4 * arcHeight,
+      root: mesh?.getWorldPosition(new THREE.Vector3()),
+      pending: true,
+    });
+    return rig.isAligned(aim, 4 * arcHeight);
+  }
+
+  /** Align before emission (or trigger cleanly when slewed), then sample the exact GPU muzzle. */
   shot(attackerId: number, input: ProjectileFiredVfxInput): ProjectileFiredVfxInput {
     const rig = this.rig(attackerId);
     const targetId = input.targetId ?? this.targets[attackerId]?.targetId ?? undefined;
     if (input.firedTick !== undefined) this.insects.release(attackerId, input.firedTick, targetId);
     const mesh = targetId === undefined ? undefined : this.meshFor(targetId);
+    const targetArch = (mesh?.userData as { archetypeId?: string } | undefined)?.archetypeId ?? mesh?.name ?? '';
+    const isInsectTarget = Boolean(targetArch.startsWith('fauna.') && !targetArch.startsWith('fauna.hive.'));
     const kind = resolveVfxWeaponKind(input);
     const key = this.key(attackerId, { ...input, targetId });
     const aim = mesh ? meshAimPoint(mesh) : point3(input.to);
@@ -76,44 +102,49 @@ export class BattlePresentation {
     const origin = rig ? rig.muzzle() : (shooter ? faunaMuzzle(shooter, aim) : null) ?? point3(input.from);
     const initialArc = kind === 'laser' ? 0 : computeArcHeight(kind, origin.y, aim.y,
       Math.hypot(aim.x - origin.x, aim.z - origin.z), input.arc);
-    const contact = surfaceContact(mesh, origin, aim, 4 * initialArc, key);
+    const contact: ShotContact = { ...surfaceContact(mesh, origin, aim, 4 * initialArc, key), targetIsInsect: isInsectTarget };
     this.contacts.set(key, contact);
     if (this.contacts.size > 512) this.contacts.delete(this.contacts.keys().next().value!);
     const target = contact.at;
     if (!rig) {
-      const shooter = this.meshFor(attackerId);
       const from = shooter ? faunaMuzzle(shooter, target) : null;
-      return { ...input, to: target, ...(from ? { from } : {}) };
+      return { ...input, to: target, targetIsInsect: input.targetIsInsect ?? isInsectTarget, ...(from ? { from } : {}) };
     }
-    const fired = rig.fire(target, 0, kind !== 'laser');
+    const shouldSnap = !rig.hasSlewed;
+    const fired = shouldSnap ? rig.fire(target, 0, kind !== 'laser') : rig.triggerFire(kind !== 'laser');
+    const eject = rig.ejectOrigin(fired.barrel);
     let from = fired.from;
     let arcHeight = 0;
     for (let i = 0; i < 8 && kind !== 'laser'; i++) {
       arcHeight = computeArcHeight(kind, from.y, target.y, Math.hypot(target.x - from.x, target.z - from.z), input.arc);
-      rig.aim(target, 4 * arcHeight);
+      if (shouldSnap) rig.snapAim(target, 4 * arcHeight);
+      else rig.aim(target, 4 * arcHeight);
       from = rig.muzzle(fired.barrel);
       if (arcHeight === 0) break;
     }
     this.holds.set(attackerId, { target: target.clone(), targetId, kind, arc: input.arc, lift: 4 * arcHeight,
       root: mesh?.getWorldPosition(new THREE.Vector3()) });
-    return { ...input, from, to: target, arcHeight,
+    return { ...input, from, to: target, arcHeight, ejectFrom: eject.pos, ejectGroundY: eject.groundY,
+      targetIsInsect: input.targetIsInsect ?? isInsectTarget,
       source: () => rig.muzzle(fired.barrel), direction: () => rig.direction(fired.barrel) };
   }
 
   impact(attackerId: number, input: ProjectileImpactVfxInput): ProjectileImpactVfxInput {
     if (input.hit !== false && input.targetId !== undefined) this.insects.hit(input.targetId);
     if (isInsectMelee(input.weaponId)) input = { ...input, weaponKind: 'bullet' };
+    const mesh = input.targetId === undefined ? undefined : this.meshFor(input.targetId);
+    const targetArch = (mesh?.userData as { archetypeId?: string } | undefined)?.archetypeId ?? mesh?.name ?? '';
+    const isInsectTarget = Boolean(input.hit !== false && (targetArch.startsWith('fauna.') && !targetArch.startsWith('fauna.hive.')));
     const key = this.key(attackerId, input);
     const contact = this.contacts.get(key);
     this.contacts.delete(key);
     if (input.hit === false) return { ...input, at: { ...input.at, y: input.groundY ?? input.at.y }, normal: { x: 0, y: 1, z: 0 } };
-    if (contact) return { ...input, at: contact.at, normal: contact.normal };
-    const mesh = input.targetId === undefined ? undefined : this.meshFor(input.targetId);
+    if (contact) return { ...input, at: contact.at, normal: contact.normal, targetIsInsect: Boolean(contact.targetIsInsect || isInsectTarget) };
     if (!mesh) return input;
     const shooter = this.meshFor(attackerId);
     const from = shooter ? meshAimPoint(shooter) : point3(input.at).add(new THREE.Vector3(-1, 1, 0));
     const fallback = surfaceContact(mesh, from, meshAimPoint(mesh), 0, key);
-    return { ...input, at: fallback.at, normal: fallback.normal };
+    return { ...input, at: fallback.at, normal: fallback.normal, targetIsInsect: isInsectTarget };
   }
 
   getRig(id: number): WeaponRig | undefined { return this.rig(id); }

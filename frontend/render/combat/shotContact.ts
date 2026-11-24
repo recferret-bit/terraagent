@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { VfxPoint3D } from '../visuals/projectiles/types';
 
-export interface ShotContact { at: THREE.Vector3; normal: THREE.Vector3 }
+export interface ShotContact { at: THREE.Vector3; normal: THREE.Vector3; targetIsInsect?: boolean }
 export function point3(p: VfxPoint3D): THREE.Vector3 { return new THREE.Vector3(p.x, p.y, p.z ?? 0); }
 
 /** Stable across gallery/local/online event delivery, without consuming simulation randomness. */
