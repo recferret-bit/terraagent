@@ -1518,6 +1518,24 @@ model StakingPatronPayout {
   @@schema("chain")
 }
 
+/// W28 King-of-the-Hill history: planet nominations, seat claims, overtakes, and vacations.
+model StakingPatronHistory {
+  id                String   @id @db.VarChar(120)
+  planetId          String   @map("planet_id") @db.VarChar(80)
+  accountId         String   @map("account_id") @db.VarChar(64)
+  /// seat_claimed | seat_overtaken | seat_vacated | nominated
+  kind              String   @db.VarChar(24)
+  activeStaked      Decimal  @default(0) @map("active_staked") @db.Decimal(40, 0)
+  previousAccountId String?  @map("previous_account_id") @db.VarChar(64)
+  previousStaked    Decimal? @map("previous_staked") @db.Decimal(40, 0)
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([planetId, createdAt])
+  @@index([accountId, createdAt])
+  @@map("staking_patron_history")
+  @@schema("chain")
+}
+
 /// W28 one-time 5-turn managed TEE trial per verified (`!isGuest`) pilot identity.
 model AiFreeTrial {
   playerId   String   @id @map("player_id") @db.VarChar(64)

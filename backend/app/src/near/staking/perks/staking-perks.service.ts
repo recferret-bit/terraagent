@@ -15,6 +15,7 @@ import { FlagsService } from '../../../flags/flags.service.js';
 import { nearAdapterFor } from '../../infrastructure/adapter-selection.js';
 import { StakingPositionSyncService } from '../staking-position-sync.service.js';
 import { yoctoToNear } from '../yocto.js';
+import { carrierNameFor } from './patron-resolver.js';
 import { PatronSeatService, type PatronSeatRow } from './patron-seat.service.js';
 import { resolveWalletPerks } from './perks.resolver.js';
 import { playerLinkedWallet, resolveWallet } from './stake-clock.reader.js';
@@ -22,8 +23,7 @@ import { buildAiBudgetView } from './tier-engine.js';
 
 const MAX_PRESTIGE_COLONIES = 200;
 
-/** `ISS <handle>.near`: the first label of the wallet id, as the orbit-menu Flagship Carrier name. */
-export const carrierNameFor = (accountId: string): string => `ISS ${accountId.split('.')[0] ?? accountId}.near`;
+export { carrierNameFor };
 
 /** Read side of the W28 perks engine for HTTP: the wallet perks card and the cosmetic prestige view. */
 @Injectable()

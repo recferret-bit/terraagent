@@ -1,4 +1,5 @@
 import { generateKeyPairSync } from 'node:crypto';
+import { CANONICAL_PLANETS } from '@terra/contracts';
 import { describe, expect, it, vi } from 'vitest';
 import type { FlagsService } from '../../src/flags/flags.service.js';
 import type { StakingPort } from '../../src/near/application/ports/staking.port.js';
@@ -135,7 +136,7 @@ describe('W28 Round 3: StakingPositionSyncService V1 fallback, RPC-outage safety
       deed: { findFirst: async () => null },
       colony: { findMany: async () => [], findUnique: async () => null },
       stakingPatronNomination: {
-        findMany: async () => [{ accountId: 'whale.testnet', planetId: 'pl_dune' }],
+        findMany: async () => [{ accountId: 'whale.testnet', planetId: CANONICAL_PLANETS.desert.id }],
       },
       stakingPatronSeat: {
         findMany: async () => [],
@@ -155,7 +156,7 @@ describe('W28 Round 3: StakingPositionSyncService V1 fallback, RPC-outage safety
     const v1Active = await sync.syncAccountPositions('whale.testnet', undefined, true);
     expect(v1Active.map((p) => p.pool)).toEqual(['astro-stakers.pool.testnet', 'meta-v2.pool.testnet']);
     expect(upserts).toContain('meta-v2.pool.testnet');
-    expect(refreshedSeats).toContain('pl_dune');
+    expect(refreshedSeats).toContain(CANONICAL_PLANETS.desert.id);
 
     // 2. Transient RPC timeout on accountPositions MUST NOT run global deleteMany to wipe meta-v2.pool.testnet!
     deletes.length = 0;

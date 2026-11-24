@@ -9,7 +9,7 @@ import { el } from '../../../dom';
 import { isBrowserLocalHost } from '../../../localModeSim';
 import { buildBlockHeaderWithTip, getActiveHelpTipKeyIn, reopenHelpTipIn } from '../../../parts/helpTip';
 import {
-  runCompoundAction, runLocalFaucetAction, runNominatePlanetAction, runStakeAction, runStakeProfitsAction,
+  runCompoundAction, runLocalFaucetAction, runStakeAction, runStakeProfitsAction,
   runUnstakeAction, runWithdrawAction, type ActionContext, type ActionResult, type StakingNetwork,
 } from './dashboardActions';
 import { fetchPerformance, fetchWalletPool } from './dashboardApi';
@@ -18,6 +18,7 @@ import { renderAiBudget } from './parts/aiBudget';
 import { renderChart, type ChartPart } from './parts/chart';
 import { renderConsole, type ConsolePart } from './parts/console';
 import { renderKpiStrip, type KpiStrip } from './parts/kpiStrip';
+import { renderPatronZone, type PatronZoneHandle } from './parts/patronCard';
 import { renderTopUpCard, type TopUpCardHandle } from './parts/topUpCard';
 import { renderTxTable } from './parts/txTable';
 
@@ -72,13 +73,14 @@ class StakingDashboard {
   private inFlight = false;
   private kpi: KpiStrip | null = null;
   private topUp: TopUpCardHandle | null = null;
+  private patron: PatronZoneHandle | null = null;
   private chart: ChartPart | null = null;
   private readonly now: () => number;
   private readonly doFetch: MeFetchFn;
   private network: StakingNetwork;
   private pool: string | undefined;
   private readonly body = el('div', { className: 'ta-stk-dash-body' });
-  private readonly hosts = { topup: el('div'), kpi: el('div'), ai: el('div'), tx: el('div') };
+  private readonly hosts = { topup: el('div'), patron: el('div'), kpi: el('div'), ai: el('div'), tx: el('div') };
   private readonly status = el('p', { className: 'ta-stk-status', role: 'status', dataset: { testid: 'staking-dashboard-status' } });
   private readonly consolePart: ConsolePart;
 
@@ -182,7 +184,8 @@ class StakingDashboard {
   private render(p: StakingPerformanceResponse): void {
     const aiHost = this.opts.aiHost ?? this.hosts.ai;
     const openTipKey = getActiveHelpTipKeyIn(this.body) ?? (this.opts.aiHost ? getActiveHelpTipKeyIn(this.opts.aiHost) : null);
-    const prevPlanetInput = this.hosts.topup.querySelector<HTMLSelectElement | HTMLInputElement>('[data-testid="staking-nominate-planet"]')?.value;
+    const prevSelectedPlanet = this.hosts.patron.querySelector<HTMLElement>('.ta-stk-patron-tab.is-selected')?.dataset.planetId;
+    const prevHistoryScope = this.hosts.patron.querySelector<HTMLElement>('[data-testid="staking-patron-history-scope"]')?.dataset.scope === 'all' ? 'all' : 'planet';
     const nowMs = this.effectiveNowMs(p);
     this.opts.onStakingChange?.(totalStakedNear(p.balances));
     this.opts.onPerformanceChange?.(p);
@@ -193,15 +196,15 @@ class StakingDashboard {
         this.consolePart.setStatus(`Top-up amount (${amount} NEAR) pre-filled — click Stake to upgrade.`, 'info');
       },
       onTopUpStake: (amount) => void this.act((c) => runStakeAction(c, String(amount), this.consolePart.selectedAsset())),
-      patronOpts: {
-        accountId: this.opts.accountId,
-        network: this.network,
-        origin: this.opts.origin ?? location.origin,
-        defaultPlanetId: prevPlanetInput ?? this.opts.defaultPlanetId,
-        selectorFactory: this.opts.selectorFactory,
-        openWindow: this.opts.openWindow,
-        onNominate: (planetId) => void this.nominate(planetId),
-      },
+    });
+    this.patron = renderPatronZone(p, {
+      accountId: this.opts.accountId,
+      network: this.network,
+      origin: this.opts.origin ?? location.origin,
+      defaultPlanetId: prevSelectedPlanet ?? p.perks.leadPatronPlanetIds[0] ?? p.patronage?.nominatedPlanetId ?? this.opts.defaultPlanetId,
+      initialHistoryScope: prevHistoryScope,
+      selectorFactory: this.opts.selectorFactory,
+      openWindow: this.opts.openWindow,
     });
     this.kpi = renderKpiStrip(p, nowMs, {
       onCompound: () => void this.compound(),
@@ -220,14 +223,15 @@ class StakingDashboard {
     this.consolePart.setLocalMode(this.network === 'mock');
     this.consolePart.update(p, nowMs);
     this.hosts.topup.replaceChildren(this.topUp.el);
+    this.hosts.patron.replaceChildren(this.patron.zoneEl);
     this.hosts.kpi.replaceChildren(this.kpi.el);
     this.hosts.tx.replaceChildren(renderTxTable(p.txs));
     aiHost.replaceChildren(renderAiBudget(p.aiBudget, p.perks.tier));
     if (this.body.childElementCount === 0) {
       if (this.opts.aiHost) {
-        this.body.replaceChildren(this.hosts.topup, this.hosts.kpi, this.consolePart.el, this.chart.el, this.hosts.tx);
+        this.body.replaceChildren(this.hosts.topup, this.hosts.patron, this.hosts.kpi, this.consolePart.el, this.chart.el, this.hosts.tx);
       } else {
-        this.body.replaceChildren(this.hosts.topup, this.hosts.kpi, this.consolePart.el, this.chart.el, this.hosts.tx, this.hosts.ai);
+        this.body.replaceChildren(this.hosts.topup, this.hosts.patron, this.hosts.kpi, this.consolePart.el, this.chart.el, this.hosts.tx, this.hosts.ai);
       }
     }
     this.syncBusyUi();
@@ -239,15 +243,8 @@ class StakingDashboard {
   private syncBusyUi(): void {
     this.consolePart.setBusy(this.inFlight);
     this.topUp?.setBusy(this.inFlight);
+    this.patron?.setBusy(this.inFlight);
     this.kpi?.setBusy(this.inFlight);
-  }
-
-  private setPatronStatus(message: string, tone: 'ok' | 'error' | 'info'): void {
-    const node = this.hosts.topup.querySelector<HTMLElement>('[data-testid="staking-patron-status"]');
-    if (!node) return;
-    node.hidden = !message;
-    node.textContent = message;
-    node.dataset.tone = tone;
   }
 
   private async setWindow(w: PerformanceWindow): Promise<void> {
@@ -263,17 +260,6 @@ class StakingDashboard {
     if (snap <= 0 && live < 0.000001) return Promise.resolve();
     const amount = live > snap ? formatMicroNear(live) : this.perf.balances.accruedYieldNear;
     return this.act((c) => runCompoundAction(c, this.perf!, amount, this.consolePart.selectedAsset())).then(() => undefined);
-  }
-
-  private async nominate(planetId: string): Promise<void> {
-    if (!planetId.trim()) {
-      const msg = 'Select one of the three canonical planets to nominate.';
-      this.consolePart.setStatus(msg, 'error');
-      this.setPatronStatus(msg, 'error');
-      return;
-    }
-    const res = await this.act((c) => runNominatePlanetAction(c, planetId));
-    if (res) this.setPatronStatus(res.message, res.ok ? 'ok' : res.unavailable ? 'info' : 'error');
   }
 
   private async profits(usdc: string): Promise<void> {

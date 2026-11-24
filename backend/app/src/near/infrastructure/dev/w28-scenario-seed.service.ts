@@ -144,6 +144,7 @@ export class W28ScenarioSeedService implements OnModuleInit, OnModuleDestroy {
     await db.stakingTx.deleteMany({ where: { accountId } });
     await db.stakingPatronNomination.deleteMany({ where: { accountId } });
     await db.stakingPatronSeat.deleteMany({ where: { accountId } });
+    await db.stakingPatronHistory?.deleteMany?.({ where: { accountId } });
     await db.aiWalletUsage.deleteMany({ where: { walletKey: accountId } });
     await db.$executeRaw`DELETE FROM chain.mock_chain_intents_balance WHERE account_id = ${accountId}`;
     await db.$executeRaw`DELETE FROM chain.mock_chain_balance WHERE account_id = ${accountId}`;

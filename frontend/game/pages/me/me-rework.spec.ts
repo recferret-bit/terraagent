@@ -235,10 +235,25 @@ describe('/me rework: local mode (?host=local) actions & 1-minute timings', () =
     (q(dash.el, 'staking-console-amount') as HTMLInputElement).value = '500';
     q(dash.el, 'staking-console-stake')!.click();
     await flush();
-    q(dash.el, 'staking-nominate-btn')!.click();
+    // Staking >=500 NEAR automatically nominates Granite Hollow and claims its Lead Patron seat without a manual button
+    expect(q(dash.el, 'staking-nominate-btn')).toBeNull();
+    expect(q(dash.el, 'staking-nominate-planet')).toBeNull();
+    expect(q(dash.el, 'staking-patron-planets')!.textContent).toContain(`Granite Hollow (${CANONICAL_PLANETS.temperate.id})`);
+
+    // Competition table reflects player at #1 Lead Patron on Granite Hollow and history logs nomination + claim
+    const graniteRows = [...dash.el.querySelectorAll('[data-testid="staking-patron-contender-row"]')];
+    expect((graniteRows[0] as HTMLElement).dataset.self).toBe('1');
+    expect((graniteRows[0] as HTMLElement).dataset.status).toBe('lead');
+    const graniteKinds = [...dash.el.querySelectorAll('[data-testid="staking-patron-history-row"]')].map((r) => (r as HTMLElement).dataset.kind);
+    expect(graniteKinds).toContain('seat_claimed');
+    expect(graniteKinds).toContain('nominated');
+
+    // Switching to Kharon Dunes tab updates tabpanel immediately without firing a mutation or showing a status error
+    q(dash.el, 'staking-planet-chip-desert')!.click();
     await flush();
-    expect(q(dash.el, 'staking-console-status')!.textContent).toContain(`Lead Patron of Granite Hollow (${CANONICAL_PLANETS.temperate.id})`);
-    expect(q(dash.el, 'staking-patron-status')!.textContent).toContain(`Lead Patron of Granite Hollow (${CANONICAL_PLANETS.temperate.id})`);
+    expect(q(dash.el, 'staking-planet-chip-desert')!.getAttribute('aria-selected')).toBe('true');
+    expect(q(dash.el, 'staking-patron-competition-summary')!.textContent).toContain('ISS helios-archon.near');
+    expect(q(dash.el, 'staking-patron-status')!.hidden).toBe(true);
 
     // Local mode REST guard rejects paid sovereign NFT / non-canonical planets with 400
     const badRes = await createLocalModeFetch(() => now)('/v1/near/staking/patron/nominate', {
@@ -247,7 +262,6 @@ describe('/me rework: local mode (?host=local) actions & 1-minute timings', () =
     });
     expect(badRes.status).toBe(400);
     expect(q(dash.el, 'staking-share-social')!.classList.contains('btn-ghost')).toBe(true);
-    expect(q(dash.el, 'staking-nominate-btn')!.classList.contains('btn-ghost')).toBe(true);
     expect(q(dash.el, 'staking-chart-window-90d')!.classList.contains('btn-ghost')).toBe(true);
     dash.dispose();
   });
@@ -284,16 +298,17 @@ describe('/me rework: open tip & nomination draft survive 60s maturity refetch a
     expect(stakePosts).toBe(1);
     expect(q(dash.el, 'staking-kpi-total')!.textContent).toContain('10.00 NEAR');
 
-    // Open Top-Up ? tip and switch canonical planet selection before 60s maturity refetch fires
+    // Open Top-Up ? tip and switch canonical planet tab before 60s maturity refetch fires
     q(dash.el, 'help-tip-btn-staking-topup')!.click();
     expect(q(dash.el, 'help-tip-panel-staking-topup')!.hidden).toBe(false);
     q(dash.el, 'staking-planet-chip-desert')!.click();
+    await flush();
 
     now += 61_000;
     await new Promise((r) => setTimeout(r, 35));
     await flush();
     expect(q(dash.el, 'help-tip-panel-staking-topup')!.hidden).toBe(false);
-    expect((q(dash.el, 'staking-nominate-planet') as HTMLSelectElement).value).toBe(CANONICAL_PLANETS.desert.id);
+    expect(q(dash.el, 'staking-planet-chip-desert')!.getAttribute('aria-selected')).toBe('true');
     dash.dispose();
   });
 });

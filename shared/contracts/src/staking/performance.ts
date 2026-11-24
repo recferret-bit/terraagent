@@ -1,7 +1,10 @@
 import { z } from 'zod';
 import { StakingAsset } from './core';
+import { PlanetPatronView, PlanetaryPatronageView } from './patronage';
 import { EvaluatedStakerPerksV2, AiBudgetView } from './perks';
 import { StakingTierRow } from './tiers';
+
+export { PlanetPatronView, PlanetaryPatronageView };
 
 const Near = z.string().regex(/^\d+(\.\d+)?$/);
 const Ms = z.number().int().nonnegative();
@@ -128,21 +131,9 @@ export const StakingPerformanceResponse = z.strictObject({
   ecosystem: EcosystemTvlView,
   series: z.strictObject({ window: PerformanceWindow, points: z.array(PerformancePoint) }),
   txs: z.array(StakingTxRow),
+  patronage: PlanetaryPatronageView.optional(),
 });
 export type StakingPerformanceResponse = z.infer<typeof StakingPerformanceResponse>;
-
-/** One King-of-the-Hill seat: the highest active `≥500 NEAR` staker nominating the planet. */
-export const PlanetPatronView = z.strictObject({
-  planetId: z.string().min(1).max(80),
-  accountId: z.string().min(2).max(64),
-  /** `ISS <handle>.near` (shown on the orbit-menu Flagship Carrier). */
-  carrierName: z.string().min(1).max(96),
-  activeStakedNear: Near,
-  sinceMs: Ms,
-  /** Share of the Protocol's trade-fee cut paid to the patron (`1500` = `15 %`). */
-  protocolFeeShareBp: z.number().int().nonnegative(),
-});
-export type PlanetPatronView = z.infer<typeof PlanetPatronView>;
 
 /**
  * `GET /v1/near/staking/prestige?planetId=…`: cosmetic-only tier view for the 3D diorama (HQ uplink beam, dish,

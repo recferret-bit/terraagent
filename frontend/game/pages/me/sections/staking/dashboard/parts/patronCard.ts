@@ -15,16 +15,20 @@ import {
 import { el } from '../../../../dom';
 import { buildBlockHeaderWithTip } from '../../../../parts/helpTip';
 import { formatNear, formatPct } from '../../stakingMath';
+import { totalStakedNear } from '../dashboardMath';
 import type { StakingNetwork } from '../dashboardActions';
 import { patronFacts, patronNearSocialTx, patronShareText, patronTwitterIntentUrl } from '../patronShare';
+import { renderPatronTables, type PatronHistoryScope } from './patronTables';
 
 export interface PatronCardOptions {
   readonly accountId: string;
   readonly network: StakingNetwork;
   readonly origin: string;
   readonly defaultPlanetId?: string;
+  readonly initialHistoryScope?: PatronHistoryScope;
   readonly selectorFactory?: StakingSelectorFactory;
   readonly openWindow?: (url: string) => void;
+  readonly onSelectPlanet?: (planetId: string) => void;
   readonly onNominate?: (planetId: string) => void;
 }
 
@@ -113,43 +117,44 @@ function buildNominationRules(): HTMLElement {
   return el(
     'ul',
     { className: 'ta-stk-patron-rules plate-sm' },
-    el('li', {}, el('b', {}, 'Seat Rule: '), 'Highest active Tier 4 (≥500 NEAR) nominator holds a canonical planet’s 1 Lead Patron seat.'),
+    el('li', {}, el('b', {}, 'Automatic Seat Rule: '), 'Top active Tier 4 (≥500 NEAR) staker backing a canonical planet automatically holds its Lead Patron seat.'),
     el('li', {}, el('b', {}, 'Canonical Worlds Only: '), 'Applies strictly to Kharon Dunes, Thalassa Verde, and Granite Hollow — paid NFT sovereign planets are excluded.'),
-    el('li', {}, el('b', {}, 'Perks & Switching: '), 'Names the planet flagship (ISS <pilot>) & earns 15% of its trade fees; re-nominating switches backing at once.'),
+    el('li', {}, el('b', {}, 'Perks & Switching: '), 'Names the planet flagship (ISS <pilot>) & earns 15% of its trade fees; switch tabs below to inspect each world.'),
   );
 }
 
-function buildCanonicalPlanetField(
+function tabSeatSummary(
+  p: StakingPerformanceResponse,
+  planetId: string,
+  leadPlanets: readonly string[],
+): { readonly text: string; readonly tone: 'mine' | 'occupied' | 'vacant' } {
+  const lead = p.patronage?.planets.find((pl) => pl.planetId === planetId)?.leadPatron ?? null;
+  if (leadPlanets.includes(planetId)) {
+    const nearTxt = lead ? formatNear(Number(lead.activeStakedNear)) : formatNear(totalStakedNear(p.balances));
+    return { text: `★ YOUR SEAT (${nearTxt} NEAR)`, tone: 'mine' };
+  }
+  if (lead) return { text: `Lead: ${lead.carrierName} (${formatNear(Number(lead.activeStakedNear))} NEAR)`, tone: 'occupied' };
+  return { text: 'Seat vacant · ≥500 NEAR', tone: 'vacant' };
+}
+
+function buildCanonicalPlanetTabs(
+  p: StakingPerformanceResponse,
   selectedPlanetId: string,
   leadPlanets: readonly string[],
-  onNominate?: (planetId: string) => void,
+  onSelectPlanet?: (planetId: string) => void,
 ) {
-  const planetInputId = 'staking-nominate-planet-input';
-  const planetSelect = el(
-    'select',
-    {
-      id: planetInputId,
-      className: 'input ta-stk-patron-input',
-      aria: { label: 'Canonical planet to nominate for Lead Patron' },
-      dataset: { testid: 'staking-nominate-planet' },
-    },
-    ...PATRONAGE_PLANETS.map((def) => {
-      const opt = el('option', {}, `${def.name} · ${def.type.toUpperCase()}`);
-      opt.value = def.id;
-      return opt;
-    }),
-  );
-  planetSelect.value = selectedPlanetId;
-
-  const chips = PATRONAGE_PLANETS.map((def) => {
+  const tabs = PATRONAGE_PLANETS.map((def) => {
     const active = def.id === selectedPlanetId;
     const isLeadOnWorld = leadPlanets.includes(def.id);
+    const seat = tabSeatSummary(p, def.id, leadPlanets);
     return el(
       'button',
       {
         type: 'button',
-        className: `ta-stk-planet-chip plate-sm${active ? ' is-selected' : ''}`,
-        aria: { pressed: active ? 'true' : 'false' },
+        id: `staking-patron-tab-${def.type}`,
+        className: `ta-stk-patron-tab${active ? ' is-selected' : ''}`,
+        role: 'tab',
+        aria: { selected: active ? 'true' : 'false', controls: 'staking-patron-tabpanel' },
         dataset: {
           testid: `staking-planet-chip-${def.type}`,
           planetId: def.id,
@@ -158,52 +163,46 @@ function buildCanonicalPlanetField(
           taTarget: def.type,
         },
         onClick: () => {
-          planetSelect.value = def.id;
-          syncChips(def.id);
+          for (const tab of tabs) {
+            const on = tab.dataset.planetId === def.id;
+            tab.classList.toggle('is-selected', on);
+            tab.setAttribute('aria-selected', on ? 'true' : 'false');
+          }
+          onSelectPlanet?.(def.id);
         },
       },
-      el('span', { className: 'ta-stk-planet-chip-name' }, `${isLeadOnWorld ? '★ ' : ''}${def.name}`),
-      el('span', { className: 'ta-stk-planet-chip-meta' }, def.type.toUpperCase()),
+      el(
+        'div',
+        { className: 'ta-stk-patron-tab-top' },
+        el('span', { className: 'ta-stk-planet-chip-name' }, `${isLeadOnWorld ? '★ ' : ''}${def.name}`),
+        el('span', { className: 'ta-stk-planet-chip-meta' }, def.type.toUpperCase()),
+      ),
+      el('span', { className: 'ta-stk-patron-tab-seat', dataset: { tone: seat.tone } }, seat.text),
     );
   });
-  const syncChips = (targetId: string): void => {
-    for (const chip of chips) {
-      const on = chip.dataset.planetId === targetId;
-      chip.classList.toggle('is-selected', on);
-      chip.setAttribute('aria-pressed', on ? 'true' : 'false');
-    }
-  };
-  planetSelect.addEventListener('change', () => syncChips(planetSelect.value));
 
-  const nominateBtn = el(
-    'button',
-    {
-      className: 'btn btn-ghost btn-sm',
-      type: 'button',
-      dataset: { testid: 'staking-nominate-btn' },
-      onClick: () => onNominate?.(planetSelect.value.trim()),
-    },
-    '★ Nominate Planet',
-  );
-  const inputLabel = el('label', { className: 'label' }, 'TARGET CANONICAL PLANET · 3 PUBLIC WORLDS ONLY');
-  inputLabel.htmlFor = planetInputId;
-
-  const fieldWrap = el(
+  const tablistEl = el(
     'div',
-    { className: 'ta-stk-patron-field-wrap' },
-    inputLabel,
-    el('div', { className: 'ta-stk-planet-chips', dataset: { testid: 'staking-planet-chips' } }, ...chips),
-    el('div', { className: 'ta-stk-patron-nominate', dataset: { testid: 'staking-nominate-row' } }, planetSelect, nominateBtn),
+    {
+      className: 'ta-stk-patron-tablist',
+      role: 'tablist',
+      aria: { label: 'Canonical worlds patronage competition and history' },
+      dataset: { testid: 'staking-planet-chips' },
+    },
+    ...tabs,
   );
-  return { fieldWrap, planetSelect, chips, nominateBtn };
+  return { tablistEl, tabs };
 }
 
 /**
- * Combined Lead Patron nomination & Social Broadcast section embedded inside the unified Active Tier & Patron hero card.
+ * Standalone Planetary Patronage block with 3 connected content-switch world tabs, Current Competition & History tables,
+ * automatic backing on stake/tab switch, and Social Broadcast sharing.
  */
 export function renderPatronZone(p: StakingPerformanceResponse, o: PatronCardOptions): PatronZoneHandle {
   const facts = patronFacts(p);
-  const selectedPlanetId = resolveDefaultPatronagePlanetId(facts.leadPlanets[0] ?? o.defaultPlanetId);
+  const selectedPlanetId = resolveDefaultPatronagePlanetId(
+    o.defaultPlanetId ?? facts.leadPlanets[0] ?? p.patronage?.nominatedPlanetId,
+  );
   const planets = facts.leadPlanets.length > 0 ? facts.leadPlanets.map(formatPatronagePlanetLabel).join(' · ') : 'No lead-patron seat yet';
   const statusNode = el('p', {
     className: 'ta-stk-status',
@@ -232,7 +231,11 @@ export function renderPatronZone(p: StakingPerformanceResponse, o: PatronCardOpt
     },
     'Post to NEAR Social',
   );
-  const selector = buildCanonicalPlanetField(selectedPlanetId, facts.leadPlanets, o.onNominate);
+  const tables = renderPatronTables(p, selectedPlanetId, o.initialHistoryScope);
+  const planetTabs = buildCanonicalPlanetTabs(p, selectedPlanetId, facts.leadPlanets, (planetId) => {
+    tables.setPlanet(planetId);
+    o.onSelectPlanet?.(planetId);
+  });
 
   const nominateCol = el(
     'div',
@@ -240,37 +243,49 @@ export function renderPatronZone(p: StakingPerformanceResponse, o: PatronCardOpt
     el(
       'div',
       { className: 'ta-stk-patron-head' },
-      el('span', { className: 'label' }, 'PLANET NOMINATION · KING-OF-THE-HILL'),
+      el('span', { className: 'label' }, 'PLANETARY PATRONAGE · KING-OF-THE-HILL'),
       buildEligibilityBadge(p.perks.tier, facts.totalStakedNear, facts.leadPlanets.length),
     ),
     buildNominationRules(),
-    el('span', { className: 'ta-stk-patron-seat', dataset: { testid: 'staking-patron-planets' } }, `Lead patron: ${planets}`),
-    selector.fieldWrap,
-    statusNode,
+    el(
+      'div',
+      { className: 'ta-stk-patron-foot' },
+      el('span', { className: 'ta-stk-patron-seat', dataset: { testid: 'staking-patron-planets' } }, `Lead patron: ${planets}`),
+      statusNode,
+    ),
   );
   const shareCol = el(
     'div',
     { className: 'ta-stk-patron-col ta-stk-patron-col--share' },
-    el('span', { className: 'label' }, 'PATRON BROADCAST · SELF-FILLS EXCLUDED'),
+    el('div', { className: 'ta-stk-patron-head' }, el('span', { className: 'label' }, 'PATRON BROADCAST · SELF-FILLS EXCLUDED')),
     el('div', { className: 'ta-stk-patron-quote plate-sm' }, el('p', { className: 'ta-stk-share-text', dataset: { testid: 'staking-share-text' } }, patronShareText(facts))),
     el('div', { className: 'ta-stk-chips' }, x, social),
   );
 
+  const tabPanel = el(
+    'div',
+    {
+      id: 'staking-patron-tabpanel',
+      className: 'ta-stk-patron-tabpanel',
+      role: 'tabpanel',
+      dataset: { testid: 'staking-patron-tabpanel' },
+    },
+    tables.el,
+  );
+
   const zoneEl = el(
     'div',
-    { className: 'ta-stk-patron-zone', dataset: { testid: 'staking-patron-card', tier: p.perks.tier } },
+    { className: 'ta-stk-block plate-sm ta-stk-pad ta-stk-patron-block', dataset: { testid: 'staking-patron-card', tier: p.perks.tier } },
     el('div', { className: 'ta-stk-patron-grid' }, nominateCol, shareCol),
+    el('div', { className: 'ta-stk-patron-tabs-wrap' }, planetTabs.tablistEl, tabPanel),
   );
 
   return {
     zoneEl,
     stakedText: formatNear(facts.totalStakedNear),
     effectiveApyText: formatPct(facts.effectiveApyBp),
-    setBusy(busy: boolean) {
-      selector.nominateBtn.disabled = busy;
-      social.disabled = busy;
-      selector.planetSelect.disabled = busy;
-      for (const chip of selector.chips) chip.disabled = busy;
+    setBusy(_busy: boolean) {
+      /* Tab switching and social broadcast never lock during unrelated dashboard mutations. */
     },
   };
 }

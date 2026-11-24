@@ -176,11 +176,11 @@ test('6. scale to 550 NEAR on a canonical public planet: overtakes the 500 NEAR 
   const me = await context.newPage();
   await me.goto('/me.html?as=w28#staking');
   await expect(me.getByTestId('staking-dashboard')).toBeVisible({ timeout: 30_000 });
-  const options = await me.getByTestId('staking-nominate-planet').locator('option').evaluateAll((els) => els.map((o) => (o as HTMLOptionElement).value));
-  expect(options).toEqual([CANONICAL_PLANETS.desert.id, CANONICAL_PLANETS.ocean.id, CANONICAL_PLANETS.temperate.id]);
-  await me.getByTestId('staking-nominate-planet').selectOption(canonPlanetId);
-  await me.getByTestId('staking-nominate-btn').click();
-  await expect(me.getByTestId('staking-console-status')).toContainText(`Lead Patron of Granite Hollow (${canonPlanetId})`, { timeout: 15_000 });
+  await expect(me.getByTestId('staking-nominate-planet')).toHaveCount(0);
+  await expect(me.getByTestId('staking-nominate-btn')).toHaveCount(0);
+  const tabIds = await me.getByTestId('staking-planet-chips').locator('[role="tab"]').evaluateAll((els) => els.map((el) => el.getAttribute('data-planet-id')));
+  expect(tabIds).toEqual([CANONICAL_PLANETS.desert.id, CANONICAL_PLANETS.ocean.id, CANONICAL_PLANETS.temperate.id]);
+  await expect(me.getByTestId('staking-planet-chip-temperate')).toHaveAttribute('aria-selected', 'true');
   await expect(me.getByTestId('staking-patron-planets')).toContainText(canonPlanetId, { timeout: 15_000 });
   await me.close();
   const after = await getJson<{ leadPatron: { accountId: string; carrierName: string; protocolFeeShareBp: number } }>(api, `/v1/near/staking/prestige?planetId=${canonPlanetId}`);
@@ -288,9 +288,10 @@ test('/me.html?host=local rework: bold white+orange STAKING tab, standalone Top-
   await me.getByTestId('me-tab-staking').click();
   await expect(me.getByTestId('me-tab-staking')).toHaveAttribute('aria-current', 'true');
 
-  // Patron selector restricts nominations exclusively to the 3 canonical worlds
+  // Patron content-switch tabs restrict worlds exclusively to the 3 canonical worlds
   await me.getByTestId('staking-planet-chip-desert').click();
-  await expect(me.getByTestId('staking-nominate-planet')).toHaveValue(CANONICAL_PLANETS.desert.id);
+  await expect(me.getByTestId('staking-planet-chip-desert')).toHaveAttribute('aria-selected', 'true');
+  await expect(me.getByTestId('staking-patron-competition-title')).toContainText('KHARON DUNES');
 
   // Standalone clickable Top-Up block outside KPI strip + 1-click stake + live Ecosystem TVL sync
   await expect(me.getByTestId('staking-ecosystem-total')).toHaveText('125,000 NEAR');

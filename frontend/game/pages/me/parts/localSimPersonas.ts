@@ -1,6 +1,7 @@
 import {
   DEFAULT_PLAYER_NEAR_AI_MODEL,
   validateLocalMockPlayerName,
+  type PatronHistoryRow,
   type StakingTxRow,
 } from '@terra/contracts';
 
@@ -18,6 +19,10 @@ export interface LocalPersonaLedger {
   stakedSinceMs: number | null;
   lastStakedAtMs: number | null;
   nominatedPlanet: string | null;
+  nominatedAtMs?: number | null;
+  patronAnchorMs?: number;
+  patronSeats?: Record<string, string | null>;
+  patronHistory?: PatronHistoryRow[];
   txs: StakingTxRow[];
   aiModel: string;
   hasApiKey: boolean;
@@ -46,6 +51,9 @@ export function createInitialPersonaLedger(nowMs: number): LocalPersonaLedger {
     stakedSinceMs: null,
     lastStakedAtMs: null,
     nominatedPlanet: null,
+    nominatedAtMs: null,
+    patronAnchorMs: nowMs,
+    patronHistory: [],
     txs: [],
     aiModel: DEFAULT_PLAYER_NEAR_AI_MODEL,
     hasApiKey: false,
@@ -68,6 +76,10 @@ export function extractPersonaLedger(s: LocalSimState): LocalPersonaLedger {
     stakedSinceMs: s.stakedSinceMs,
     lastStakedAtMs: s.lastStakedAtMs,
     nominatedPlanet: s.nominatedPlanet,
+    nominatedAtMs: s.nominatedAtMs ?? null,
+    patronAnchorMs: s.patronAnchorMs,
+    patronSeats: s.patronSeats ? { ...s.patronSeats } : undefined,
+    patronHistory: s.patronHistory ? [...s.patronHistory] : [],
     txs: [...s.txs],
     aiModel: s.aiModel,
     hasApiKey: s.hasApiKey,

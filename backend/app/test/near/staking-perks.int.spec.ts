@@ -4,6 +4,8 @@ import { createTestDatabase, type TestDatabase } from '@terra/db/testing';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { resolveWalletPerks } from '../../src/near/staking/perks/perks.resolver';
 import { PatronSeatService } from '../../src/near/staking/perks/patron-seat.service';
+import { readPlanetaryPatronage } from '../../src/near/staking/perks/patron-competition.reader';
+import { resolveWallet } from '../../src/near/staking/perks/stake-clock.reader';
 import { resolveDbStakerPerks, resolvePlanetStakedColonies } from '../../src/near/staking/staker-perks';
 import { nearToYocto } from '../../src/near/staking/yocto';
 import type { AppEnv } from '../../src/core/tokens';
@@ -21,6 +23,8 @@ afterAll(async () => {
 });
 beforeEach(async () => {
   const p = db.prisma;
+  await p.stakingPatronHistory.deleteMany({});
+  await p.stakingPatronPayout.deleteMany({});
   await p.stakingPatronSeat.deleteMany({});
   await p.stakingPatronNomination.deleteMany({});
   await p.stakingPosition.deleteMany({});
@@ -261,6 +265,58 @@ describe('W28-03 PatronSeatService (King-of-the-Hill on Postgres)', () => {
     expect((await seats().refreshPlanet(planetY, NOW))?.accountId).toBe('c.near');
     const off = await resolveDbStakerPerks(db.prisma, { accountId: 'a.near', env: { TA_WAVES: '..27' }, nowMs: NOW, full: true });
     expect(off.leadPatronPlanetIds).toEqual([]);
+  });
+});
+
+describe('W28 Patron competition & history reader', () => {
+  const seats = () => new PatronSeatService(db.prisma);
+  const planetX = CANONICAL_PLANETS.desert.id;
+
+  it('records nominated, seat_claimed, seat_overtaken, seat_vacated, and ranks contenders with gapToLeadNear', async () => {
+    await link('col_a', 'a.near', 'a.near', null, 'player-a');
+    await position('col_a', 'a.near', 520, NOW - 4 * DAY);
+    await seats().nominate('a.near', planetX, NOW - 3 * DAY);
+    await seats().refreshPlanet(planetX, NOW - 3 * DAY);
+
+    await link('col_b', 'b.near', 'b.near', null, 'player-b');
+    await position('col_b', 'b.near', 640, NOW - 2 * DAY);
+    await seats().nominate('b.near', planetX, NOW - 2 * DAY);
+    await seats().refreshPlanet(planetX, NOW - 2 * DAY);
+
+    await link('col_c', 'c.near', 'c.near', null, 'player-c');
+    await position('col_c', 'c.near', 300, NOW - DAY);
+    await seats().nominate('c.near', planetX, NOW - DAY);
+
+    await db.prisma.stakingPatronPayout.create({
+      data: { id: 'pp-koth-1', planetId: planetX, accountId: 'b.near', amountUsdcAtomic: '4250000', createdAt: new Date(NOW - DAY) },
+    });
+
+    const viewerWallet = await resolveWallet(db.prisma, { accountId: 'a.near' });
+    const view = await readPlanetaryPatronage(db.prisma, viewerWallet);
+    expect(view.nominatedPlanetId).toBe(planetX);
+    const desert = view.planets.find((p) => p.planetId === planetX)!;
+    expect(desert.leadPatron?.accountId).toBe('b.near');
+    expect(desert.stakeToLeadNear).toBe('640');
+    expect(desert.contenders.map((c) => [c.rank, c.accountId, c.status, c.gapToLeadNear, c.isSelf])).toEqual([
+      [1, 'b.near', 'lead', '0', false],
+      [2, 'a.near', 'contender', '120', true],
+      [3, 'c.near', 'below_threshold', '340', false],
+    ]);
+    expect(desert.history.map((h) => h.kind)).toContain('seat_claimed');
+    expect(desert.history.map((h) => h.kind)).toContain('seat_overtaken');
+    expect(desert.history.map((h) => h.kind)).toContain('nominated');
+    const payout = desert.history.find((h) => h.kind === 'fee_payout');
+    expect(payout?.payoutUsd).toBeCloseTo(4.25, 6);
+
+    // Lowering b below 500 and a below 500 vacates the seat and records seat_vacated
+    await db.prisma.stakingPosition.update({ where: { colonyId_poolId: { colonyId: 'col_a', poolId: POOL } }, data: { stakedSnapshot: nearToYocto(400) } });
+    await db.prisma.stakingPosition.update({ where: { colonyId_poolId: { colonyId: 'col_b', poolId: POOL } }, data: { stakedSnapshot: nearToYocto(450) } });
+    expect(await seats().refreshPlanet(planetX, NOW)).toBeNull();
+    const afterVacate = (await readPlanetaryPatronage(db.prisma, viewerWallet)).planets.find((p) => p.planetId === planetX)!;
+    expect(afterVacate.leadPatron).toBeNull();
+    expect(afterVacate.stakeToLeadNear).toBe('500');
+    expect(afterVacate.contenders[0]!.gapToLeadNear).toBe('50');
+    expect(afterVacate.history[0]!.kind).toBe('seat_vacated');
   });
 });
 

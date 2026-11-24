@@ -3,6 +3,10 @@ import {
   CompoundYieldRequest,
   EvaluatedStakerPerksV2,
   IntentsQuoteRequest,
+  PatronContenderRow,
+  PatronHistoryRow,
+  PlanetPatronCompetitionView,
+  PlanetaryPatronageView,
   REST_ERROR_CODES,
   STAKING_RULES,
   STAKING_TIERS,
@@ -287,5 +291,61 @@ describe('W28-01 decimal scaling (W28-13 RampView)', () => {
 
   it('parseDisplayAmount still delegates with the market token precision', () => {
     expect(parseDisplayAmount('USDC', '10.5')).toBe(10_500_000n);
+  });
+});
+
+describe('Planetary Patronage competition & history schemas', () => {
+  it('validates contender, history, planet competition, and 3-planet patronage payloads (pos/neg/boundary)', () => {
+    const contender = PatronContenderRow.parse({
+      rank: 1,
+      accountId: 'alice.near',
+      carrierName: 'ISS alice.near',
+      activeStakedNear: '620',
+      tier: 4,
+      status: 'lead',
+      gapToLeadNear: '0',
+      stakedSinceMs: 0,
+      nominatedAtMs: 1000,
+      isSelf: true,
+    });
+    const history = PatronHistoryRow.parse({
+      id: 'ph_1',
+      planetId: 'pl_01JKHAR0NDVNEST00000000000',
+      accountId: 'alice.near',
+      carrierName: 'ISS alice.near',
+      kind: 'seat_overtaken',
+      activeStakedNear: '620',
+      previousAccountId: 'bob.near',
+      previousStakedNear: '510',
+      payoutUsd: null,
+      atMs: 1000,
+    });
+    const planet = PlanetPatronCompetitionView.parse({
+      planetId: 'pl_01JKHAR0NDVNEST00000000000',
+      leadPatron: {
+        planetId: 'pl_01JKHAR0NDVNEST00000000000',
+        accountId: 'alice.near',
+        carrierName: 'ISS alice.near',
+        activeStakedNear: '620',
+        sinceMs: 1000,
+        protocolFeeShareBp: 1500,
+      },
+      stakeToLeadNear: '620',
+      totalContenders: 1,
+      contenders: [contender],
+      history: [history],
+    });
+    const patronage = PlanetaryPatronageView.parse({
+      nominatedPlanetId: 'pl_01JKHAR0NDVNEST00000000000',
+      planets: [planet],
+    });
+    expect(patronage.planets[0]!.contenders[0]!.status).toBe('lead');
+
+    // Negative / boundary checks: rank 0, negative gap, tier 5, unknown kind, extra field
+    expect(PatronContenderRow.safeParse({ ...contender, rank: 0 }).success).toBe(false);
+    expect(PatronContenderRow.safeParse({ ...contender, tier: 5 }).success).toBe(false);
+    expect(PatronContenderRow.safeParse({ ...contender, gapToLeadNear: '-1' }).success).toBe(false);
+    expect(PatronHistoryRow.safeParse({ ...history, kind: 'rigged' }).success).toBe(false);
+    expect(PlanetaryPatronageView.safeParse({ ...patronage, extra: true }).success).toBe(false);
   });
 });

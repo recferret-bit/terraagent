@@ -1,22 +1,22 @@
 .ta-stk-console-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  gap: 16px;
   align-items: stretch;
 }
 
 .ta-stk-console-stack {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 16px;
   min-width: 0;
 }
 
 .ta-stk-console-pane {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 14px;
+  gap: 14px;
+  padding: 16px 18px;
   min-width: 0;
   background: var(--ta-deep);
   border: 1px solid var(--ta-seam-2);

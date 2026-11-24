@@ -1,7 +1,7 @@
 .ta-stk {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 28px;
   min-width: 0;
 }
 
@@ -228,7 +228,7 @@
 .ta-stk-block {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 16px;
   min-width: 0;
 }
 
@@ -315,12 +315,12 @@
 .ta-stk-dash-body {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 28px;
   min-width: 0;
 }
 
 .ta-stk-pad {
-  padding: 16px;
+  padding: 20px 22px;
   background: var(--ta-plate-3, var(--ta-plate-2));
   border: 1px solid var(--ta-seam-3);
 }

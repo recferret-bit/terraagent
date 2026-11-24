@@ -1,12 +1,13 @@
 import 'reflect-metadata';
 import type { INestApplication } from '@nestjs/common';
-import { StakerPerksResponse, StakingPrestigeResponse } from '@terra/contracts';
+import { CANONICAL_PLANETS, StakerPerksResponse, StakingPrestigeResponse } from '@terra/contracts';
 import { createTestDatabase, type TestDatabase } from '@terra/db/testing';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '../../src/app';
 import { nearToYocto } from '../../src/near/staking/yocto';
 
 const POOL = 'astro-stakers.pool.mock';
+const PLANET = CANONICAL_PLANETS.desert.id;
 const apps: INestApplication[] = [];
 let db: TestDatabase;
 let urlOn: string;
@@ -46,7 +47,7 @@ async function seedWhale(name: string, near: number, ageMs: number) {
   await db.prisma.stakingPosition.create({
     data: { colonyId: `col_${name}`, poolId: POOL, accountId: `${name}.near`, stakedSnapshot: nearToYocto(near), stakedSinceAt: new Date(now - ageMs), lastStakedAt: new Date(now - ageMs) },
   });
-  await db.prisma.stakingPatronNomination.create({ data: { accountId: `${name}.near`, planetId: 'planet-x' } });
+  await db.prisma.stakingPatronNomination.create({ data: { accountId: `${name}.near`, planetId: PLANET } });
 }
 
 describe('W28-03 GET /v1/near/staking/perks and /prestige', () => {
@@ -81,9 +82,9 @@ describe('W28-03 GET /v1/near/staking/perks and /prestige', () => {
   it('prestige: lead patron plus per-colony tier for a planet', async () => {
     const url = urlOn;
     await seedWhale('bob', 600, 2 * 86_400_000);
-    const body = StakingPrestigeResponse.parse(await (await fetch(`${url}/v1/near/staking/prestige?planetId=planet-x`)).json());
+    const body = StakingPrestigeResponse.parse(await (await fetch(`${url}/v1/near/staking/prestige?planetId=${PLANET}`)).json());
     expect(body.leadPatron).toMatchObject({
-      planetId: 'planet-x',
+      planetId: PLANET,
       accountId: 'bob.near',
       carrierName: 'ISS bob.near',
       protocolFeeShareBp: 1_500,
@@ -96,6 +97,6 @@ describe('W28-03 GET /v1/near/staking/perks and /prestige', () => {
   it('both endpoints are 404 when W28 is off (TA_WAVES=..27)', async () => {
     const url = urlOff;
     expect((await fetch(`${url}/v1/near/staking/perks?accountId=alice.near`)).status).toBe(404);
-    expect((await fetch(`${url}/v1/near/staking/prestige?planetId=planet-x`)).status).toBe(404);
+    expect((await fetch(`${url}/v1/near/staking/prestige?planetId=${PLANET}`)).status).toBe(404);
   });
 });

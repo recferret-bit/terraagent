@@ -28,17 +28,20 @@ describe('Wealth Dashboard render', () => {
     expect((q(root, 'staking-console-amount') as HTMLInputElement).value).toBe('50');
     expect(root.querySelectorAll('[data-testid="staking-tx-row"]').length).toBe(2);
 
-    // Combined hero card, uniform 4-zone KPI cards, and AI Compute Budget ordered after main staking blocks
-    expect(q(root, 'staking-topup-block')!.contains(q(root, 'staking-patron-card'))).toBe(true);
-    expect(q(root, 'staking-topup-block')!.contains(q(root, 'staking-share-x'))).toBe(true);
+    // Standalone Planetary Patronage block outside Top-Up card, uniform 4-zone KPI cards, and AI Compute Budget ordered properly
+    expect(q(root, 'staking-topup-block')!.contains(q(root, 'staking-patron-card'))).toBe(false);
+    expect(q(root, 'staking-patron-card')!.contains(q(root, 'staking-share-x'))).toBe(true);
+    expect(q(root, 'staking-nominate-planet')).toBeNull();
+    expect(q(root, 'staking-nominate-btn')).toBeNull();
     const bodyChildren = [...root.querySelector('.ta-stk-dash-body')!.children];
     const indexOf = (id: string) => bodyChildren.findIndex((c) => c === q(root, id) || c.contains(q(root, id)));
     expect(indexOf('staking-topup-block')).toBe(0);
-    expect(indexOf('staking-kpi-block')).toBe(1);
-    expect(indexOf('staking-console')).toBe(2);
-    expect(indexOf('staking-chart')).toBe(3);
-    expect(indexOf('staking-tx-block')).toBe(4);
-    expect(indexOf('staking-ai-budget')).toBe(5);
+    expect(indexOf('staking-patron-card')).toBe(1);
+    expect(indexOf('staking-kpi-block')).toBe(2);
+    expect(indexOf('staking-console')).toBe(3);
+    expect(indexOf('staking-chart')).toBe(4);
+    expect(indexOf('staking-tx-block')).toBe(5);
+    expect(indexOf('staking-ai-budget')).toBe(6);
     const kpis = root.querySelectorAll('.ta-stk-kpi');
     expect(kpis.length).toBe(4);
     for (const kpi of kpis) {
@@ -74,11 +77,10 @@ describe('Wealth Dashboard render', () => {
     tipBtn.click();
     expect(tipPanel.hidden).toBe(false);
 
-    // Selecting canonical planet controls inside Patron zone does not overwrite console amount via Top-Up card click
+    // Selecting canonical planet tabs inside Patron block switches tabpanel without overwriting console amount
     (q(root, 'staking-console-amount') as HTMLInputElement).value = '77';
     q(root, 'staking-planet-chip-ocean')!.click();
-    expect((q(root, 'staking-nominate-planet') as HTMLSelectElement).value).toBe(CANONICAL_PLANETS.ocean.id);
-    q(root, 'staking-nominate-planet')!.click();
+    expect(q(root, 'staking-planet-chip-ocean')!.getAttribute('aria-selected')).toBe('true');
     expect((q(root, 'staking-console-amount') as HTMLInputElement).value).toBe('77');
 
     // Quick-fill preset chips in Action Console populate amount
@@ -304,49 +306,64 @@ describe('graceful degradation', () => {
   });
 });
 
-describe('Patron Card canonical-only nomination', () => {
-  it('Patron Card lists only the 3 canonical worlds, rejects sovereign/archived planets, and nominates via POST', async () => {
+describe('Patron Card canonical-only content-switch tabs & auto-nomination', () => {
+  it('renders 3 canonical world tabs without dropdown or nominate button and switches tabs client-side without POST or button blink', async () => {
     const m = makeMock();
-    m.post = (path, body) => {
-      if (path === '/v1/near/staking/patron/nominate' && body.planetId === CANONICAL_PLANETS.ocean.id) {
-        return ok({
-          accountId: 'pilot.mock',
-          planetId: CANONICAL_PLANETS.ocean.id,
-          isLeadPatron: true,
-          leadPatron: { accountId: 'pilot.mock', carrierName: 'ISS pilot.mock' },
-        });
-      }
-      return fail(404, { error: { code: 'NOT_FOUND', message: 'Planet not found or not public.' } });
-    };
     const root = await mount(m);
-    const select = q(root, 'staking-nominate-planet') as HTMLSelectElement;
-    expect([...select.options].map((o) => o.value)).toEqual([
+    expect(q(root, 'staking-nominate-planet')).toBeNull();
+    expect(q(root, 'staking-nominate-btn')).toBeNull();
+    const tabs = [...root.querySelectorAll('[data-testid="staking-planet-chips"] [role="tab"]')];
+    expect(tabs.map((t) => (t as HTMLElement).dataset.planetId)).toEqual([
       CANONICAL_PLANETS.desert.id,
       CANONICAL_PLANETS.ocean.id,
       CANONICAL_PLANETS.temperate.id,
     ]);
-    // Selecting empty or sovereign NFT planet never posts
-    const callsBefore = m.calls.filter((c) => c.method === 'POST').length;
-    select.value = '';
-    click(root, 'staking-nominate-btn');
-    await flush();
-    expect(q(root, 'staking-console-status')!.textContent).toContain('three canonical planets');
-    expect(m.calls.filter((c) => c.method === 'POST').length).toBe(callsBefore);
 
-    // Valid canonical planet returning 404 surfaces server message
-    click(root, 'staking-planet-chip-desert');
-    click(root, 'staking-nominate-btn');
-    await flush();
-    expect(q(root, 'staking-console-status')!.textContent).toBe('Planet not found or not public.');
+    const beforePosts = m.calls.filter((c) => c.method === 'POST').length;
+    const beforePerfs = perfCalls(m).length;
+    const socialBtn = q(root, 'staking-share-social') as HTMLButtonElement;
+    expect(socialBtn.disabled).toBe(false);
 
-    // Selecting Thalassa Verde chip syncs select and nominates cleanly
     click(root, 'staking-planet-chip-ocean');
-    expect(select.value).toBe(CANONICAL_PLANETS.ocean.id);
-    const before = perfCalls(m).length;
-    click(root, 'staking-nominate-btn');
     await flush();
+    expect(q(root, 'staking-planet-chip-ocean')!.getAttribute('aria-selected')).toBe('true');
+    expect(q(root, 'staking-patron-competition-title')!.textContent).toContain('THALASSA VERDE');
+    expect(q(root, 'staking-patron-status')!.hidden).toBe(true);
+    expect(socialBtn.disabled).toBe(false);
+    expect(m.calls.filter((c) => c.method === 'POST').length).toBe(beforePosts);
+    expect(perfCalls(m).length).toBe(beforePerfs);
+
+    click(root, 'staking-planet-chip-temperate');
     await flush();
-    expect(q(root, 'staking-console-status')!.textContent).toContain('Lead Patron of Thalassa Verde');
-    expect(perfCalls(m).length).toBe(before + 1);
+    expect(q(root, 'staking-planet-chip-temperate')!.getAttribute('aria-selected')).toBe('true');
+    expect(q(root, 'staking-patron-competition-title')!.textContent).toContain('GRANITE HOLLOW');
+    expect(q(root, 'staking-patron-status')!.hidden).toBe(true);
+    expect(m.calls.filter((c) => c.method === 'POST').length).toBe(beforePosts);
+  });
+
+  it('renders Current Competition & Patronage History tables, switches planets on chip click, and toggles history scope', async () => {
+    const root = await mount(makeMock());
+    expect(q(root, 'staking-patron-tables')).not.toBeNull();
+    expect(q(root, 'staking-patron-competition-title')!.textContent).toContain('KHARON DUNES');
+    expect(q(root, 'staking-patron-competition-summary')!.textContent).toContain('ISS whale.near');
+
+    const desertContenders = [...root.querySelectorAll('[data-testid="staking-patron-contender-row"]')];
+    expect(desertContenders.map((r) => (r as HTMLElement).dataset.account)).toEqual(['whale.near', 'pilot.mock']);
+    expect((desertContenders[1] as HTMLElement).dataset.self).toBe('1');
+    expect(q(root, 'staking-patron-history-title')!.textContent).toContain('KHARON DUNES');
+    expect(root.querySelectorAll('[data-testid="staking-patron-history-row"]').length).toBe(2);
+
+    // Switching planet chip updates both competition & history tables immediately
+    click(root, 'staking-planet-chip-temperate');
+    expect(q(root, 'staking-patron-competition-title')!.textContent).toContain('GRANITE HOLLOW');
+    expect(q(root, 'staking-patron-competition-summary')!.textContent).toContain('Seat vacant');
+    expect(root.querySelectorAll('[data-testid="staking-patron-contender-row"]').length).toBe(1);
+    expect(q(root, 'staking-patron-history-title')!.textContent).toContain('GRANITE HOLLOW');
+    expect(root.querySelectorAll('[data-testid="staking-patron-history-row"]').length).toBe(1);
+
+    // Toggling history scope shows events across all 3 canonical worlds
+    click(root, 'staking-patron-history-scope');
+    expect(q(root, 'staking-patron-history-title')!.textContent).toContain('ALL 3 WORLDS');
+    expect(root.querySelectorAll('[data-testid="staking-patron-history-row"]').length).toBe(4);
   });
 });

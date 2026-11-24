@@ -5,13 +5,11 @@ import { buildBlockHeaderWithTip } from '../../../../parts/helpTip';
 import { createPatronageHoverTrigger } from '../../parts/tierMatrix';
 import { formatNear, formatPct } from '../../stakingMath';
 import { formatCountdown, tierProgress, topUpAmountNear, totalStakedNear } from '../dashboardMath';
-import { renderPatronZone, type PatronCardOptions } from './patronCard';
 import './topUpCard.css';
 
 export interface TopUpCardHandlers {
   readonly onTopUp: (amountNear: number) => void;
   readonly onTopUpStake?: (amountNear: number) => void;
-  readonly patronOpts: PatronCardOptions;
   readonly feeWarmupMs: number;
 }
 
@@ -94,8 +92,8 @@ function buildTelemetryPill(label: string, value: string, testid?: string): HTML
 }
 
 /**
- * Unified Hero Card combining Active Tier & Upgrade Top-Up, Orbital Patronage hover matrix,
- * Lead Patron seat nomination, and Social Broadcast sharing. Only explicit buttons act; card background is static.
+ * Unified Hero Card combining Active Tier & Upgrade Top-Up with the Orbital Patronage hover matrix.
+ * Only explicit buttons act; card background is static.
  */
 export function renderTopUpCard(
   p: StakingPerformanceResponse,
@@ -120,16 +118,15 @@ export function renderTopUpCard(
   const header = buildBlockHeaderWithTip(
     {
       id: 'staking-topup',
-      title: 'ACTIVE TIER & ORBITAL PATRON',
+      title: 'ACTIVE TIER & UPGRADE STATUS',
       description:
-        'Tracks your live Orbital Patronage Tier, staked principal, effective APY, fee warmup timer, and next-tier gap alongside Lead Patron planet nomination and social sharing. Hover ORBITAL PATRONAGE for the full tier table.',
+        'Tracks your live Orbital Patronage Tier, staked principal, effective APY, fee warmup timer, and next-tier gap. Hover ORBITAL PATRONAGE for the full tier table.',
       openOnHover: true,
       floating: true,
     },
-    el('span', { className: 'label c-orange-hi' }, topUp !== null ? 'ACTIVE TIER & ORBITAL PATRON · UPGRADE AVAILABLE' : 'ACTIVE TIER & ORBITAL PATRON · MAX PATRONAGE'),
+    el('span', { className: 'label c-orange-hi' }, topUp !== null ? 'ACTIVE TIER & UPGRADE · AVAILABLE' : 'ACTIVE TIER · MAX PATRONAGE'),
     el('div', { className: 'ta-stk-chips' }, patronageTrigger, warmNode),
   );
-  const patron = renderPatronZone(p, h.patronOpts);
 
   const card = el(
     'div',
@@ -149,8 +146,8 @@ export function renderTopUpCard(
         el(
           'div',
           { className: 'ta-stk-topup-telemetry' },
-          buildTelemetryPill('STAKED', patron.stakedText, 'staking-patron-staked'),
-          buildTelemetryPill('EFFECTIVE APY', patron.effectiveApyText, 'staking-patron-apy'),
+          buildTelemetryPill('STAKED', formatNear(total), 'staking-patron-staked'),
+          buildTelemetryPill('EFFECTIVE APY', formatPct(p.effectiveApyBp), 'staking-patron-apy'),
           buildTelemetryPill('NEAR.AI SLOTS', `${p.perks.activeAiColonySlots} / ${p.perks.maxAiColonySlots}`),
         ),
         topUp !== null
@@ -160,7 +157,6 @@ export function renderTopUpCard(
       buildTopUpActions(p.perks.tier, topUp, h),
     ),
     buildTopUpProgress(total, next, progress),
-    patron.zoneEl,
   );
 
   return {
@@ -174,7 +170,6 @@ export function renderTopUpCard(
         if (busy) b.setAttribute('aria-busy', 'true');
         else b.removeAttribute('aria-busy');
       }
-      patron.setBusy(busy);
     },
   };
 }

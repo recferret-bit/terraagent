@@ -38,7 +38,6 @@ export const TESTID_MATCHERS: Readonly<Record<string, UiRuleMatch>> = {
   'staking-console-withdraw': { area: 'staking', action: 'withdraw_submit' },
   'staking-stake-profits-btn': { area: 'staking', action: 'stake_profits_open' },
   'staking-local-faucet-btn': { area: 'staking', action: 'local_faucet' },
-  'staking-nominate-btn': { area: 'staking', action: 'nominate_planet' },
 
   // Auth & Pilot Dialog
   'pilot-sign-in': { area: 'profile', action: 'pilot_sign_in_open' },

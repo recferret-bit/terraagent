@@ -1,6 +1,6 @@
 import 'reflect-metadata';
 import type { INestApplication } from '@nestjs/common';
-import { StakingOverviewResponse, StakingPerformanceResponse } from '@terra/contracts';
+import { CANONICAL_PLANETS, StakingOverviewResponse, StakingPerformanceResponse } from '@terra/contracts';
 import { createTestDatabase, type TestDatabase } from '@terra/db/testing';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '../../src/app';
@@ -175,6 +175,48 @@ describe('W28-05 GET /v1/near/staking/performance', () => {
       expect(r.timers.unbondingReadyAtMs).toBeNull();
     } finally {
       await db.prisma.stakingPosition.deleteMany({ where: { accountId: 'mature.near' } });
+    }
+  });
+});
+
+describe('W28 Planetary Patronage in GET /v1/near/staking/performance', () => {
+  it('includes 3-planet King-of-the-Hill competition & patronage history in performance responses', async () => {
+    const desertId = CANONICAL_PLANETS.desert.id;
+    const now = Date.now();
+    await db.prisma.stakingPosition.create({
+      data: {
+        colonyId: 'col_king_perf',
+        poolId: POOL,
+        accountId: 'king-perf.near',
+        stakedSnapshot: nearToYocto(700),
+        stakedSinceAt: new Date(now - 2 * DAY),
+        lastStakedAt: new Date(now - 2 * DAY),
+      },
+    });
+    await db.prisma.stakingPatronNomination.create({ data: { accountId: 'king-perf.near', planetId: desertId, createdAt: new Date(now - DAY) } });
+    await db.prisma.stakingPatronNomination.create({ data: { accountId: 'alice.near', planetId: desertId, createdAt: new Date(now - 12 * 3_600_000) } });
+    await db.prisma.stakingPatronSeat.create({
+      data: { planetId: desertId, accountId: 'king-perf.near', activeStaked: nearToYocto(700), sinceAt: new Date(now - DAY) },
+    });
+    await db.prisma.stakingPatronPayout.create({
+      data: { id: 'pp-perf-desert', planetId: desertId, accountId: 'king-perf.near', amountUsdcAtomic: usdc(3.5), createdAt: new Date(now - 3_600_000) },
+    });
+    try {
+      const r = StakingPerformanceResponse.parse(await (await perf('accountId=alice.near')).json());
+      expect(r.patronage?.nominatedPlanetId).toBe(desertId);
+      expect(r.patronage?.planets).toHaveLength(3);
+      const desert = r.patronage!.planets.find((p) => p.planetId === desertId)!;
+      expect(desert.leadPatron?.accountId).toBe('king-perf.near');
+      expect(desert.contenders.map((c) => [c.rank, c.accountId, c.isSelf])).toEqual([
+        [1, 'king-perf.near', false],
+        [2, 'alice.near', true],
+      ]);
+      expect(desert.history.some((h) => h.kind === 'fee_payout' && h.payoutUsd === 3.5)).toBe(true);
+    } finally {
+      await db.prisma.stakingPatronPayout.deleteMany({ where: { id: 'pp-perf-desert' } });
+      await db.prisma.stakingPatronSeat.deleteMany({ where: { planetId: desertId } });
+      await db.prisma.stakingPatronNomination.deleteMany({ where: { accountId: { in: ['king-perf.near', 'alice.near'] } } });
+      await db.prisma.stakingPosition.deleteMany({ where: { accountId: 'king-perf.near' } });
     }
   });
 });

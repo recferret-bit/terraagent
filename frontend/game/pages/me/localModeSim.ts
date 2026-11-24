@@ -26,6 +26,12 @@ import {
 import type { MeFetchFn } from './api';
 import { isProductionBuild } from '../../core/buildEnv';
 import {
+  buildLocalPatronageView,
+  recordLocalNomination,
+  resolveLocalLeadPlanets,
+  syncLocalPatronSeats,
+} from './parts/localSimPatronage';
+import {
   activateLocalPersona,
   createInitialPersonaLedger,
   extractPersonaLedger,
@@ -102,7 +108,8 @@ function buildPerformance(s: LocalSimState, window: PerformanceWindow, nowMs: nu
   const callLimit = tier.aiColonySlots > 0 ? dailyAiCallLimit(budgetUsd) : 0;
   const aiMode = tier.aiColonySlots > 0 ? 'tee' : 'trial';
   const aiModel = tier.aiColonySlots > 0 || aiMode === 'trial' ? MANAGED_AI_MODEL : SCRIPT_AI_MODEL;
-  const leadPlanets = tier.id >= 4 && isPatronageEligiblePlanetId(s.nominatedPlanet) ? [s.nominatedPlanet] : [];
+  const patronage = buildLocalPatronageView(s, nowMs);
+  const leadPlanets = resolveLocalLeadPlanets(s, nowMs);
   const lst = [
     ...(s.stNear > 0 ? [{ asset: 'stNEAR' as const, amount: fmt6(s.stNear), nearValue: fmt6(s.stNear) }] : []),
     ...(s.liNear > 0 ? [{ asset: 'LiNEAR' as const, amount: fmt6(s.liNear), nearValue: fmt6(s.liNear) }] : []),
@@ -171,6 +178,7 @@ function buildPerformance(s: LocalSimState, window: PerformanceWindow, nowMs: nu
       ],
     },
     txs: s.txs.slice(0, 25),
+    patronage,
   };
 }
 
@@ -273,9 +281,8 @@ function handleLocalStakingPost(path: string, body: Record<string, unknown>, s: 
     const planetId = String(body.planetId ?? '').trim();
     if (!planetId) return { status: 400, payload: { message: 'Select one of the three canonical planets to nominate.' } };
     if (!isPatronageEligiblePlanetId(planetId)) return { status: 400, payload: { message: PATRONAGE_NON_ELIGIBLE_MESSAGE } };
-    s.nominatedPlanet = planetId;
-    const isLead = s.nativeStaked + s.stNear + s.liNear >= 500;
-    return { status: 200, payload: { accountId: s.accountId, planetId, isLeadPatron: isLead, leadPatron: isLead ? { planetId, accountId: s.accountId, carrierName: `ISS ${s.accountId}`, activeStakedNear: fmt6(s.nativeStaked + s.stNear + s.liNear), sinceMs: nowMs, protocolFeeShareBp: 1500 } : null } };
+    const result = recordLocalNomination(s, planetId, nowMs);
+    return { status: 200, payload: { accountId: s.accountId, planetId, ...result } };
   }
   return { status: 404, payload: { message: 'Not found' } };
 }
@@ -446,6 +453,7 @@ export function createLocalModeFetch(now: () => number = Date.now): MeFetchFn {
 
     if (method === 'POST') {
       const res = handleLocalStakingPost(u.pathname, body, s, nowMs);
+      if (res.status < 300) syncLocalPatronSeats(s, nowMs);
       save(s);
       return reply(res.status, res.payload);
     }

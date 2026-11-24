@@ -1,6 +1,7 @@
 import { isPatronageEligiblePlanetId, PATRONAGE_NON_ELIGIBLE_MESSAGE, PATRONAGE_PLANET_IDS } from '@terra/contracts';
 import { withTransaction, type DbClient, type PrismaClient } from '@terra/db';
 import { CoreException } from '../../../core/errors/index.js';
+import { recordPatronHistoryEvent } from './patron-competition.reader.js';
 import { resolveLeadPatron, type PatronCandidate } from './patron-resolver.js';
 import { readStakeClock, resolveWallet, type WalletRef } from './stake-clock.reader.js';
 import { stakingNowMs } from './perks-deps.js';
@@ -68,7 +69,7 @@ export class PatronSeatService {
   }
 
   /** One nomination per wallet: a wallet's stake backs one of the three canonical public planets. */
-  async nominate(accountId: string, planetId: string): Promise<void> {
+  async nominate(accountId: string, planetId: string, nowMs: number = stakingNowMs()): Promise<void> {
     const normalizedPlanetId = planetId.trim();
     if (!isPatronageEligiblePlanetId(normalizedPlanetId)) {
       throw new CoreException('INVALID_REQUEST', {
@@ -77,11 +78,29 @@ export class PatronSeatService {
         details: { planetId: normalizedPlanetId, eligiblePlanetIds: PATRONAGE_PLANET_IDS },
       });
     }
+    const prev =
+      typeof this.db.stakingPatronNomination?.findUnique === 'function'
+        ? ((await this.db.stakingPatronNomination.findUnique({ where: { accountId }, select: { planetId: true } })) as
+            | { planetId: string }
+            | null)
+        : null;
+    const changed = !prev || prev.planetId !== normalizedPlanetId;
     await this.db.stakingPatronNomination.upsert({
       where: { accountId },
-      create: { accountId, planetId: normalizedPlanetId },
-      update: { planetId: normalizedPlanetId },
+      create: { accountId, planetId: normalizedPlanetId, createdAt: new Date(nowMs) },
+      update: changed ? { planetId: normalizedPlanetId, createdAt: new Date(nowMs) } : { planetId: normalizedPlanetId },
     });
+    if (changed) {
+      const wallet = await resolveWallet(this.db, { accountId });
+      const clock = await readStakeClock(this.db, wallet);
+      await recordPatronHistoryEvent(this.db, {
+        planetId: normalizedPlanetId,
+        accountId,
+        kind: 'nominated',
+        activeStakedYocto: clock.activeStakedYocto,
+        atMs: nowMs,
+      });
+    }
   }
 
   /** Re-resolves the seat of `planetId` from the current nominations and stakes, then upserts, moves or clears it. */
@@ -111,7 +130,22 @@ export class PatronSeatService {
     const incumbent = await this.getSeat(planetId);
     const winner = resolveLeadPatron([...byWallet.values()], incumbent?.accountId ?? null);
     if (!winner) {
-      if (incumbent) await this.db.stakingPatronSeat.deleteMany({ where: { planetId } });
+      if (incumbent) {
+        await this.db.stakingPatronSeat.deleteMany({ where: { planetId } });
+        const incumbentCandidate = [...byWallet.values()].find((c) => c.accountId === incumbent.accountId);
+        const currentStake =
+          incumbentCandidate?.activeStakedYocto ??
+          (await readStakeClock(this.db, await resolveWallet(this.db, { accountId: incumbent.accountId }))).activeStakedYocto;
+        await recordPatronHistoryEvent(this.db, {
+          planetId,
+          accountId: incumbent.accountId,
+          kind: 'seat_vacated',
+          activeStakedYocto: currentStake,
+          previousAccountId: incumbent.accountId,
+          previousStakedYocto: incumbent.activeStakedYocto,
+          atMs: nowMs,
+        });
+      }
       return null;
     }
     const keep = incumbent?.accountId === winner.accountId;
@@ -121,6 +155,25 @@ export class PatronSeatService {
       create: { planetId, ...data, sinceAt: new Date(nowMs) },
       update: keep ? data : { ...data, sinceAt: new Date(nowMs) },
     });
+    if (!incumbent) {
+      await recordPatronHistoryEvent(this.db, {
+        planetId,
+        accountId: winner.accountId,
+        kind: 'seat_claimed',
+        activeStakedYocto: winner.activeStakedYocto,
+        atMs: nowMs,
+      });
+    } else if (incumbent.accountId !== winner.accountId) {
+      await recordPatronHistoryEvent(this.db, {
+        planetId,
+        accountId: winner.accountId,
+        kind: 'seat_overtaken',
+        activeStakedYocto: winner.activeStakedYocto,
+        previousAccountId: incumbent.accountId,
+        previousStakedYocto: incumbent.activeStakedYocto,
+        atMs: nowMs,
+      });
+    }
     return { planetId, accountId: winner.accountId, activeStakedYocto: winner.activeStakedYocto, sinceMs: keep ? incumbent.sinceMs : nowMs };
   }
 

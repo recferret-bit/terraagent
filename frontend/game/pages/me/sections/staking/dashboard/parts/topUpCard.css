@@ -13,8 +13,8 @@
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  padding: 18px 20px;
+  gap: 18px;
+  padding: 22px 24px;
   background: linear-gradient(
     135deg,
     color-mix(in srgb, var(--ta-orange) 15%, var(--ta-plate)),
@@ -123,10 +123,13 @@
   border: 1px solid color-mix(in srgb, var(--ta-orange) 35%, var(--ta-seam-3));
 }
 
-/* ---- Combined Lead Patron Seat & Social Broadcast Zone ---- */
-.ta-stk-patron-zone {
-  padding-top: 14px;
-  border-top: 1px solid var(--ta-seam);
+/* ---- Standalone Planetary Patronage Block & Connected World Tabs ---- */
+.ta-stk-patron-block {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  background: var(--ta-plate-3, var(--ta-plate-2));
+  border: 1px solid var(--ta-seam-3);
 }
 
 .ta-stk-patron-grid {
@@ -139,7 +142,7 @@
 .ta-stk-patron-col {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
   min-width: 0;
 }
 
@@ -154,6 +157,27 @@
   justify-content: space-between;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.ta-stk-patron-foot {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+@media (min-width: 821px) {
+  .ta-stk-patron-grid {
+    grid-template-rows: auto auto auto;
+    row-gap: 12px;
+  }
+
+  .ta-stk-patron-col {
+    grid-row: span 3;
+    display: grid;
+    grid-template-rows: subgrid;
+    align-self: stretch;
+    align-items: start;
+  }
 }
 
 .ta-stk-patron-badge {
@@ -204,48 +228,70 @@
   color: var(--ta-text-2);
 }
 
-.ta-stk-patron-field-wrap {
+.ta-stk-patron-tabs-wrap {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  min-width: 0;
 }
 
-.ta-stk-planet-chips {
+.ta-stk-patron-tablist {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 6px;
+  gap: 4px;
+  margin-bottom: -1px;
+  position: relative;
+  z-index: 1;
+  padding: 0;
 }
 
-.ta-stk-planet-chip {
+.ta-stk-patron-tab {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 2px;
-  padding: 7px 10px;
-  background: color-mix(in srgb, var(--ta-deep) 88%, var(--ta-plate));
-  border: 1px solid var(--ta-seam-3);
-  color: var(--ta-text);
+  gap: 4px;
+  padding: 10px 14px;
+  background: color-mix(in srgb, var(--ta-void) 55%, var(--ta-plate));
+  border: 1px solid var(--ta-seam-2);
+  border-bottom: 1px solid var(--ta-seam-3);
+  color: var(--ta-text-3);
   cursor: pointer;
   text-align: left;
-  transition: border-color 0.15s ease, background 0.15s ease;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
 }
 
-.ta-stk-planet-chip:hover:not(:disabled),
-.ta-stk-planet-chip:focus-visible:not(:disabled) {
-  border-color: var(--ta-orange);
-  background: color-mix(in srgb, var(--ta-orange) 10%, var(--ta-deep));
-}
-
-.ta-stk-planet-chip.is-selected {
-  border-color: var(--ta-orange-hi);
-  border-left: 3px solid var(--ta-orange-hi);
-  background: color-mix(in srgb, var(--ta-orange) 16%, var(--ta-plate));
+.ta-stk-patron-tab:not(.is-selected):not([aria-selected='true']):hover:not(:disabled),
+.ta-stk-patron-tab:not(.is-selected):not([aria-selected='true']):focus-visible:not(:disabled) {
   color: var(--ta-hull);
+  background: color-mix(in srgb, var(--ta-deep) 80%, var(--ta-plate));
+  border-color: var(--ta-seam-3);
+  outline: none;
+}
+
+.ta-stk-patron-tab.is-selected,
+.ta-stk-patron-tab[aria-selected='true'],
+.ta-stk-patron-tab.is-selected:hover:not(:disabled),
+.ta-stk-patron-tab[aria-selected='true']:hover:not(:disabled),
+.ta-stk-patron-tab.is-selected:focus-visible:not(:disabled),
+.ta-stk-patron-tab[aria-selected='true']:focus-visible:not(:disabled) {
+  background: var(--ta-deep);
+  color: var(--ta-hull);
+  border-color: var(--ta-seam-3);
+  border-top: 2px solid var(--ta-orange-hi);
+  border-bottom-color: var(--ta-deep);
+  outline: none;
+}
+
+.ta-stk-patron-tab-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
 }
 
 .ta-stk-planet-chip-name {
   font-family: var(--ta-font-display);
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
   letter-spacing: 0.04em;
   color: inherit;
@@ -258,24 +304,34 @@
   color: var(--ta-text-3);
 }
 
-.ta-stk-planet-chip.is-selected .ta-stk-planet-chip-meta {
+.ta-stk-patron-tab.is-selected .ta-stk-planet-chip-meta,
+.ta-stk-patron-tab[aria-selected='true'] .ta-stk-planet-chip-meta {
   color: var(--ta-orange-hi);
 }
 
-.ta-stk-patron-nominate {
-  display: flex;
-  align-items: stretch;
-  gap: 8px;
-  flex-wrap: wrap;
+.ta-stk-patron-tab-seat {
+  font-family: var(--ta-font-mono);
+  font-size: 11px;
+  color: var(--ta-text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
 }
 
-.ta-stk-patron-input {
-  flex: 1 1 200px;
+.ta-stk-patron-tab-seat[data-tone='mine'] {
+  color: var(--ta-terra);
+}
+
+.ta-stk-patron-tab-seat[data-tone='occupied'] {
+  color: var(--ta-text-2);
+}
+
+.ta-stk-patron-tabpanel {
+  background: var(--ta-deep);
+  border: 1px solid var(--ta-seam-3);
+  padding: 18px;
   min-width: 0;
-  min-height: 40px;
-  padding: 8px 12px;
-  font-family: var(--ta-font-mono);
-  font-size: 12px;
 }
 
 .ta-stk-patron-quote {
@@ -324,7 +380,14 @@
 }
 
 @media (max-width: 560px) {
-  .ta-stk-planet-chips {
+  .ta-stk-patron-tablist {
     grid-template-columns: 1fr;
+    gap: 2px;
+    margin-bottom: 0;
+  }
+
+  .ta-stk-patron-tab.is-selected,
+  .ta-stk-patron-tab[aria-selected='true'] {
+    border-bottom-color: var(--ta-seam-3);
   }
 }

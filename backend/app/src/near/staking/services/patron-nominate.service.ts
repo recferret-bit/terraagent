@@ -68,8 +68,8 @@ export class PatronNominateService {
         | { planetId: string }
         | null;
       await lockPatronPlanets(tx, [planet.id, ...(previous ? [previous.planetId] : [])]);
-      await txSeats.nominate(accountId, planet.id);
       const now = this.nowMs();
+      await txSeats.nominate(accountId, planet.id, now);
       if (previous && previous.planetId !== planet.id) await txSeats.refreshPlanetUnlocked(previous.planetId, now);
       return txSeats.refreshPlanetUnlocked(planet.id, now);
     };

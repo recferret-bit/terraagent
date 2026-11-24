@@ -49,6 +49,49 @@ export function makePerformance(over: Partial<StakingPerformanceResponse> = {}, 
       { txHash: 'AbCdEf0123456789XyZ', kind: 'stake', amountNear: '60', asset: 'near', atMs: NOW - 2 * DAY, explorerUrl: 'https://testnet.nearblocks.io/txns/AbCdEf0123456789XyZ' },
       { txHash: 'mock-tx-1', kind: 'compound', amountNear: '0.1', asset: 'near', atMs: NOW - DAY, explorerUrl: null },
     ],
+    patronage: {
+      nominatedPlanetId: CANONICAL_PLANETS.desert.id,
+      planets: [
+        {
+          planetId: CANONICAL_PLANETS.desert.id,
+          leadPatron: { planetId: CANONICAL_PLANETS.desert.id, accountId: 'whale.near', carrierName: 'ISS whale.near', activeStakedNear: '750', sinceMs: NOW - 5 * DAY, protocolFeeShareBp: 1500 },
+          stakeToLeadNear: '750',
+          totalContenders: 2,
+          contenders: [
+            { rank: 1, accountId: 'whale.near', carrierName: 'ISS whale.near', activeStakedNear: '750', tier: 4, status: 'lead', gapToLeadNear: '0', stakedSinceMs: NOW - 10 * DAY, nominatedAtMs: NOW - 5 * DAY, isSelf: false },
+            { rank: 2, accountId: 'pilot.mock', carrierName: 'ISS pilot.near', activeStakedNear: '70.5', tier: 2, status: 'below_threshold', gapToLeadNear: '679.5', stakedSinceMs: NOW - 2 * DAY, nominatedAtMs: NOW - DAY, isSelf: true },
+          ],
+          history: [
+            { id: 'h-d-1', planetId: CANONICAL_PLANETS.desert.id, accountId: 'whale.near', carrierName: 'ISS whale.near', kind: 'fee_payout', activeStakedNear: '750', previousAccountId: null, previousStakedNear: null, payoutUsd: 12.5, atMs: NOW - DAY },
+            { id: 'h-d-2', planetId: CANONICAL_PLANETS.desert.id, accountId: 'whale.near', carrierName: 'ISS whale.near', kind: 'seat_claimed', activeStakedNear: '750', previousAccountId: null, previousStakedNear: null, payoutUsd: null, atMs: NOW - 5 * DAY },
+          ],
+        },
+        {
+          planetId: CANONICAL_PLANETS.ocean.id,
+          leadPatron: { planetId: CANONICAL_PLANETS.ocean.id, accountId: 'ocean.near', carrierName: 'ISS ocean.near', activeStakedNear: '520', sinceMs: NOW - 4 * DAY, protocolFeeShareBp: 1500 },
+          stakeToLeadNear: '520',
+          totalContenders: 1,
+          contenders: [
+            { rank: 1, accountId: 'ocean.near', carrierName: 'ISS ocean.near', activeStakedNear: '520', tier: 4, status: 'lead', gapToLeadNear: '0', stakedSinceMs: NOW - 8 * DAY, nominatedAtMs: NOW - 4 * DAY, isSelf: false },
+          ],
+          history: [
+            { id: 'h-o-1', planetId: CANONICAL_PLANETS.ocean.id, accountId: 'ocean.near', carrierName: 'ISS ocean.near', kind: 'seat_claimed', activeStakedNear: '520', previousAccountId: null, previousStakedNear: null, payoutUsd: null, atMs: NOW - 4 * DAY },
+          ],
+        },
+        {
+          planetId: CANONICAL_PLANETS.temperate.id,
+          leadPatron: null,
+          stakeToLeadNear: '500',
+          totalContenders: 1,
+          contenders: [
+            { rank: 1, accountId: 'scout.near', carrierName: 'ISS scout.near', activeStakedNear: '320', tier: 3, status: 'below_threshold', gapToLeadNear: '180', stakedSinceMs: NOW - 3 * DAY, nominatedAtMs: NOW - 2 * DAY, isSelf: false },
+          ],
+          history: [
+            { id: 'h-t-1', planetId: CANONICAL_PLANETS.temperate.id, accountId: 'scout.near', carrierName: 'ISS scout.near', kind: 'nominated', activeStakedNear: '320', previousAccountId: null, previousStakedNear: null, payoutUsd: null, atMs: NOW - 2 * DAY },
+          ],
+        },
+      ],
+    },
   };
   return { ...base, ...over };
 }

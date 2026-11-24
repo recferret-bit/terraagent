@@ -4,6 +4,9 @@ import { ONE_NEAR_YOCTO } from '../yocto.js';
 /** Minimum active stake to hold the Lead Patron seat (the Tier 4 row, in yocto). */
 export const PATRON_MIN_YOCTO = BigInt(STAKING_TIERS[4]!.minStakeNear) * ONE_NEAR_YOCTO;
 
+/** `ISS <handle>.near`: the first label of the wallet id, as the orbit-menu Flagship Carrier name. */
+export const carrierNameFor = (accountId: string): string => `ISS ${accountId.split('.')[0] ?? accountId}.near`;
+
 export interface PatronCandidate {
   readonly accountId: string;
   /** Wallet-wide ACTIVE stake (unbonding excluded). */
@@ -40,4 +43,17 @@ function beats(a: PatronCandidate, b: PatronCandidate, incumbent: string | null)
   const sb = b.stakedSinceMs ?? Number.POSITIVE_INFINITY;
   if (sa !== sb) return sa < sb;
   return a.accountId < b.accountId;
+}
+
+/** Deterministic King-of-the-Hill ranking: eligible (`>= 500 NEAR`) first via `beats`, then `< 500 NEAR` by stake/clock. */
+export function comparePatronCandidates(
+  a: PatronCandidate,
+  b: PatronCandidate,
+  incumbentAccountId: string | null,
+): number {
+  if (a.accountId === b.accountId) return 0;
+  const aElig = a.activeStakedYocto >= PATRON_MIN_YOCTO;
+  const bElig = b.activeStakedYocto >= PATRON_MIN_YOCTO;
+  if (aElig !== bElig) return aElig ? -1 : 1;
+  return beats(a, b, aElig ? incumbentAccountId : null) ? -1 : 1;
 }

@@ -18,6 +18,7 @@ import { StakingPort } from '../../application/ports/staking.port.js';
 import { nearAdapterFor } from '../../infrastructure/adapter-selection.js';
 import { resolveNearNetworkConfig } from '../../infrastructure/network/near-network.config.js';
 import { resolveStakingTimings } from '../local-staking-timings.js';
+import { readPlanetaryPatronage } from '../perks/patron-competition.reader.js';
 import { resolveWalletPerks } from '../perks/perks.resolver.js';
 import { releasePerksPriceProvider, setPerksDeps, stakingNowMs } from '../perks/perks-deps.js';
 import { resolveWallet } from '../perks/stake-clock.reader.js';
@@ -110,7 +111,7 @@ export class StakingPerformanceService implements OnModuleDestroy {
     const [priceView, apy, ecosystem] = await Promise.all([this.price.view(), this.apy(network), readEcosystemTvl(db)]);
     const nearUsd = priceView.nearUsd;
     const r = await resolveWalletPerks(db, { accountId, env: this.envBag(), w28: true, full: true, nowMs, grossApyBp: apy.grossApyBp });
-    const [balances, txs, fills, patron] = await this.loadWalletLedger(db, r.wallet, accountId, network, nowMs, sinceMs, nearUsd, apy);
+    const [balances, txs, fills, patron, patronage] = await this.loadWalletLedger(db, r.wallet, accountId, network, nowMs, sinceMs, nearUsd, apy);
 
     const lst = balances.lst.map((l) => ({ asset: l.asset, amount: nearText(l.amountYocto), nearValue: nearText(lstNearValue(l.asset, l.amountYocto)) }));
     const stakedNear = yoctoToNearNumber(balances.activeYocto) + balances.lst.reduce((s, l) => s + yoctoToNearNumber(lstNearValue(l.asset, l.amountYocto)), 0);
@@ -163,6 +164,7 @@ export class StakingPerformanceService implements OnModuleDestroy {
       ecosystem,
       series: buildSeries({ window, nowMs, events, stakedNear, netApyBp: apy.netApyBp, extraNearPerYear: toNear(extrasUsd) * (YEAR_MS / windowMs) }),
       txs: txs.slice(0, TX_LIST_LIMIT).map((t) => this.txRow(t, network)),
+      ...(patronage ? { patronage } : {}),
     });
   }
 
@@ -188,7 +190,7 @@ export class StakingPerformanceService implements OnModuleDestroy {
     nearUsd: number,
     apy: ApyView,
   ) {
-    if (!db) return Promise.resolve([EMPTY_BALANCES, [] as TxRecord[], EMPTY_FILL_INCOME, { usd: 0, events: [] }] as const);
+    if (!db) return Promise.resolve([EMPTY_BALANCES, [] as TxRecord[], EMPTY_FILL_INCOME, { usd: 0, events: [] }, undefined] as const);
     const timings = resolveStakingTimings(this.envBag());
     return Promise.all([
       readWalletBalances(db, wallet, {
@@ -203,6 +205,7 @@ export class StakingPerformanceService implements OnModuleDestroy {
       readStakingTxs(db, wallet, sinceMs),
       readFillIncome(db, wallet, { sinceMs, nearUsd }),
       readPatronIncome(db, wallet, sinceMs),
+      readPlanetaryPatronage(db, wallet),
     ]);
   }
 

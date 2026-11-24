@@ -1,0 +1,145 @@
+/* ---- King-of-the-Hill Current Competition & Patronage History Tables ---- */
+.ta-stk-patron-tables {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.ta-stk-patron-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px;
+  background: color-mix(in srgb, var(--ta-deep) 88%, var(--ta-plate));
+  border: 1px solid var(--ta-seam-2);
+}
+
+.ta-stk-patron-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ta-stk-patron-summary {
+  font-family: var(--ta-font-mono);
+  font-size: 11px;
+  color: var(--ta-orange-hi);
+}
+
+.ta-stk-patron-count {
+  font-family: var(--ta-font-mono);
+  font-size: 11px;
+  color: var(--ta-text-3);
+}
+
+.ta-stk-patron-scope-btn {
+  min-height: 26px;
+  padding: 3px 9px;
+  font-size: 10px;
+}
+
+.ta-stk-patron-table {
+  min-width: 440px;
+  font-size: 12px;
+}
+
+.ta-stk-patron-table th,
+.ta-stk-patron-table td {
+  padding: 7px 8px;
+}
+
+.ta-stk-patron-table tbody tr.is-self {
+  background: color-mix(in srgb, var(--ta-orange) 10%, transparent);
+  box-shadow: inset 3px 0 0 var(--ta-orange);
+}
+
+.ta-stk-patron-mono {
+  font-family: var(--ta-font-mono);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.ta-stk-patron-pilot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  color: var(--ta-hull);
+}
+
+.ta-stk-patron-carrier {
+  font-family: var(--ta-font-mono);
+  font-size: 11px;
+  color: var(--ta-text-3);
+}
+
+.ta-stk-patron-you {
+  font-family: var(--ta-font-mono);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  padding: 1px 5px;
+  color: var(--ta-void);
+  background: var(--ta-orange);
+}
+
+.ta-stk-patron-status-pill,
+.ta-stk-patron-kind {
+  display: inline-block;
+  font-family: var(--ta-font-mono);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 2px 6px;
+  border: 1px solid var(--ta-seam-3);
+  white-space: nowrap;
+}
+
+.ta-stk-patron-status-pill.is-lead {
+  color: var(--ta-void);
+  background: var(--ta-terra);
+  border-color: var(--ta-terra);
+}
+
+.ta-stk-patron-status-pill.is-contender {
+  color: var(--ta-void);
+  background: var(--ta-orange);
+  border-color: var(--ta-orange);
+}
+
+.ta-stk-patron-status-pill.is-below {
+  color: var(--ta-text-3);
+  background: color-mix(in srgb, var(--ta-plate-2) 85%, transparent);
+}
+
+.ta-stk-patron-kind.is-seat_claimed,
+.ta-stk-patron-kind.is-seat_overtaken {
+  color: var(--ta-void);
+  background: var(--ta-orange);
+  border-color: var(--ta-orange);
+}
+
+.ta-stk-patron-kind.is-fee_payout {
+  color: var(--ta-void);
+  background: var(--ta-terra);
+  border-color: var(--ta-terra);
+}
+
+.ta-stk-patron-kind.is-seat_vacated {
+  color: var(--ta-fault-text);
+  border-color: color-mix(in srgb, var(--ta-fault) 55%, var(--ta-seam-3));
+}
+
+.ta-stk-patron-kind.is-nominated {
+  color: var(--ta-blue-hi);
+  border-color: var(--ta-blue);
+}
+
+@media (max-width: 1080px) {
+  .ta-stk-patron-tables {
+    grid-template-columns: 1fr;
+  }
+}

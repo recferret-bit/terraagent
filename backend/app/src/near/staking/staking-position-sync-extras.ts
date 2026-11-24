@@ -1,4 +1,4 @@
-import type { StakingPositionDto } from '@terra/contracts';
+import { CANONICAL_PLANETS, PATRONAGE_PLANET_IDS, type StakingPositionDto } from '@terra/contracts';
 import type { PrismaClient } from '@terra/db';
 import type { StakingPoolView, StakingPort, StakingPositionView } from '../application/ports/staking.port.js';
 import { NearException } from '../domain/errors.js';
@@ -6,7 +6,7 @@ import { nearAdapterFor } from '../infrastructure/adapter-selection.js';
 import { isMethodNotFoundRpcError, LST_CONTRACTS, resolveLstPoolView } from './lst-pools.js';
 import { PatronSeatService } from './perks/patron-seat.service.js';
 import { stakingNowMs } from './perks/perks-deps.js';
-import { resolveWallet } from './perks/stake-clock.reader.js';
+import { readStakeClock, resolveWallet } from './perks/stake-clock.reader.js';
 
 export interface SyncW28ExtrasContext {
   readonly accountId: string;
@@ -90,6 +90,35 @@ export async function refreshNominatedPatronSeats(db: PrismaClient, accountId: s
     where: { accountId: { in: [...wallet.accountIds] } },
     select: { planetId: true },
   })) as Array<{ planetId: string }>;
-  if (noms.length === 0) return;
+  let hasNom = noms.length > 0;
+  if (!hasNom) {
+    const clock = await readStakeClock(db, wallet);
+    if (clock.activeStakedYocto > 0n) {
+      const orCol: Array<Record<string, unknown>> = [];
+      if (wallet.colonyIds.length > 0) orCol.push({ id: { in: [...wallet.colonyIds] } });
+      if (wallet.playerId) orCol.push({ playerId: wallet.playerId });
+      const col =
+        orCol.length > 0 && typeof db.colony?.findFirst === 'function'
+          ? ((await db.colony.findFirst({
+              where: { OR: orCol, planetId: { in: [...PATRONAGE_PLANET_IDS] } },
+              orderBy: { createdAt: 'desc' },
+              select: { planetId: true },
+            })) as { planetId: string } | null)
+          : null;
+      const targetPlanetId = col?.planetId ?? CANONICAL_PLANETS.temperate.id;
+      const planet =
+        typeof db.planet?.findUnique === 'function'
+          ? ((await db.planet.findUnique({ where: { id: targetPlanetId }, select: { id: true, admission: true } })) as
+              | { id: string; admission: string }
+              | null)
+          : null;
+      if (!planet || planet.admission !== 'ARCHIVED') {
+        const primaryAcct = wallet.accountIds.includes(accountId) ? accountId : (wallet.accountIds[0] ?? accountId);
+        await seats.nominate(primaryAcct, targetPlanetId, stakingNowMs());
+        hasNom = true;
+      }
+    }
+  }
+  if (!hasNom) return;
   await seats.leadPlanetIdsFor(wallet, stakingNowMs());
 }
