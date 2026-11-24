@@ -28,7 +28,6 @@ import {
   adoptLateLandingHelper,
   assertNewColonyAllowed,
   attachHomeColonyRoster,
-  buildOccupiedSectorsMap,
   collectActiveColonyBundles,
   matchActiveBundle,
   type ActiveColonyBundle,
@@ -40,7 +39,6 @@ import {
   errText,
   SEAT_ATTEMPTS,
   SEAT_PLANETS,
-  seatNewColony,
   type SeatContext,
 } from './parts/home-seating';
 import {
@@ -52,6 +50,7 @@ import {
   resumeColonyHelper,
   type HomeServiceLookupDeps,
 } from './parts/home-service-ops';
+import { admitCapacityQueued, isCapacityTicket, seatFreshColony, type CapacitySeatDeps, type PlanetCapacityGate } from './parts/capacity-seat';
 
 export const HOME_SEAT_NOTIFIER = Symbol('HOME_SEAT_NOTIFIER');
 
@@ -80,6 +79,7 @@ export class HomeService {
   private landingHost: HomeLandingHost | undefined;
   private awayHeadline: AwayHeadline | undefined;
   private hardMode: HardModeHomeClock | undefined;
+  private capacity: PlanetCapacityGate | undefined;
   private seatChain: Promise<void> = Promise.resolve();
 
   constructor(
@@ -126,6 +126,9 @@ export class HomeService {
   setAwayHeadline(source: AwayHeadline | undefined): void {
     this.awayHeadline = source;
   }
+
+  /** Game module wires the planet cap (3.4). Unset: no cap. */
+  setCapacityGate(gate: PlanetCapacityGate | undefined): void { this.capacity = gate; }
 
   /** Game module wires the dev hard-mode clock after boot. Core does not import it. */
   setHardModeClock(clock: HardModeHomeClock | undefined): void {
@@ -236,6 +239,8 @@ export class HomeService {
     const activeBundles = await this.listActiveBundles(player.id, player.handle);
     for (const b of activeBundles) this.antiCheat?.recordColonyBase(b.colony, b.planet);
 
+    const admitted = await admitCapacityQueued(this.capacitySeat(), player, { sectorId: requestedSectorId, planetId: requestedPlanetId, newColony, hasColonies: activeBundles.length > 0 });
+    if (admitted) return admitted;
     const preShort = await checkPreSeatAssignShortCircuit(
       this.lookupDeps(),
       player,
@@ -268,25 +273,21 @@ export class HomeService {
       );
       if (lockedShort) return lockedShort;
 
-      await assertNewHomeJoinSpace({
-        antiCheat: this.antiCheat,
-        playerId: player.id,
-        preferredType: resolvedType,
-        requestedSectorId,
-        requestedPlanetId,
-        newColony,
-      });
-      const occupiedSectorsByPlanet = buildOccupiedSectorsMap(lockedBundles);
-      const seated = await seatNewColony(
-        this.seatContext(occupiedSectorsByPlanet),
-        { id: player.id, handle: player.handle?.trim() || `Colonist-${player.id.slice(-4)}` },
-        resolvedType,
-        requestedSectorId?.trim() || undefined,
-        requestedPlanetId?.trim() || undefined,
-      );
-      const afterBundles = await this.listActiveBundles(player.id, player.handle);
-      return this.withRoster(seated, player.id, afterBundles);
+      return seatFreshColony(this.capacitySeat(), player, resolvedType, { sectorId: requestedSectorId, planetId: requestedPlanetId, newColony, bundles: lockedBundles });
     });
+  }
+
+  /** Planet-cap seat path (3.4): queue at the cap, admit the first in line. */
+  private capacitySeat(): CapacitySeatDeps {
+    return {
+      queue: { lobby: this.lobbyPersistence, lifecycle: this.worldLifecycle },
+      antiCheat: this.antiCheat,
+      listActiveBundles: (playerId, handle) => this.listActiveBundles(playerId, handle),
+      seatContext: (occupied) => this.seatContext(occupied),
+      withRoster: (home, playerId, bundles) => this.withRoster(home, playerId, bundles),
+      withSeatLock: (fn) => this.withSeatLock(fn),
+      answerExisting: (col, pl, canonical) => this.answerExisting(col, pl, canonical),
+    };
   }
 
   adoptLateLanding(assignment: ColonySeatAssignment): Promise<boolean> {
@@ -323,7 +324,8 @@ export class HomeService {
       newColony: true,
     });
     const activeTicket = await this.lobbyPersistence?.findActiveTicketByPlayer(player.id);
-    if (activeTicket && this.lobbyPersistence) {
+    // a planet-cap ticket is admitted by `getOrAssignHome` (3.4), so an auto-seat poll goes on to it
+    if (activeTicket && this.lobbyPersistence && !(opts.autoSeatDev === true && isCapacityTicket(activeTicket))) {
       return this.withRoster(await buildQueuedHomeResponse(activeTicket, this.lobbyPersistence, this.worldLifecycle), player.id, activeBundles);
     }
     if (opts.autoSeatDev === true) {
@@ -369,6 +371,7 @@ export class HomeService {
       seatListeners: this.seatListeners,
       antiCheat: this.antiCheat,
       occupiedSectorsByPlanet,
+      capacity: this.capacity,
       buildHomeResponse: (col, pl, canonical) => this.buildHomeResponseAsync(col, pl, canonical),
     };
   }

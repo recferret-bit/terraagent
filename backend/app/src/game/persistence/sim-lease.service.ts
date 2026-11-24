@@ -8,6 +8,7 @@ import { persistenceEnabled } from '../../core/persistence';
 import { APP_ENV, LOGGER, type AppEnv } from '../../core/tokens';
 import { PRISMA } from '../../db/db.module';
 import { GamePlanets } from '../game-planets.service';
+import { nodeLoadScore } from '../placement/node-load';
 import { SectorStateService } from './sector-state.service';
 
 export const DEFAULT_SIM_LEASE_TTL_MS = 15_000;
@@ -32,6 +33,7 @@ export interface SimWorkerNodeRecord {
   readonly workerId: string;
   readonly role: string;
   readonly internalUrl: string;
+  /** Load score (`nodeLoadScore`): busy per-mille of its sim threads x 1000 + planet count. Lower is less loaded. */
   readonly loadCount: number;
   readonly expiresAt: string;
 }
@@ -381,7 +383,8 @@ export class SimLeaseService implements BeforeApplicationShutdown, OnApplication
     if (!this.enabled || !this.prisma || !this.canHostSim() || !this.internalUrlValue) return;
     const now = new Date(this.nowMs());
     const expiresAt = new Date(now.getTime() + this.ttlMs);
-    const loadCount = this.planets?.loadedIds().length ?? 0;
+    // measured load (3.3), in the existing column: an old worker's raw planet count orders as an idle worker
+    const loadCount = nodeLoadScore(this.planets?.pool?.cachedStats?.() ?? [], this.planets?.loadedIds().length ?? 0);
     await this.prisma.simWorkerNode.upsert({
       where: { workerId: this.workerId },
       update: { role: this.role, internalUrl: this.internalUrlValue, loadCount, expiresAt },
@@ -389,6 +392,7 @@ export class SimLeaseService implements BeforeApplicationShutdown, OnApplication
     });
   }
 
+  /** The live sim worker with the lowest load score (least busy threads, then fewest planets). */
   async pickHealthyWorker(): Promise<SimWorkerNodeRecord | null> {
     if (!this.enabled || !this.prisma) return null;
     const now = new Date(this.nowMs());

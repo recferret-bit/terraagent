@@ -21,3 +21,16 @@ export async function chargeWalletCall(db: DbClient, walletKey: string, callLimi
   });
   return count === 1;
 }
+
+/**
+ * Gives back one call charged by {@link chargeWalletCall} on the same UTC day (the provider call failed, so the
+ * player paid nothing). Conditional on `callsUsed > 0`, so a double refund never goes negative.
+ */
+export async function refundWalletCall(db: DbClient, walletKey: string, nowMs: number): Promise<boolean> {
+  if (typeof db.aiWalletUsage?.updateMany !== 'function') return false;
+  const { count } = await db.aiWalletUsage.updateMany({
+    where: { walletKey, day: utcDay(nowMs), callsUsed: { gt: 0 }, usdMicros: { gte: AI_CALL_COST_MICROS } },
+    data: { callsUsed: { decrement: 1 }, usdMicros: { decrement: AI_CALL_COST_MICROS }, updatedAt: new Date() },
+  });
+  return count === 1;
+}

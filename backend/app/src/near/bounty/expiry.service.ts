@@ -2,6 +2,8 @@ import { Inject, Injectable, Logger, Optional, type OnModuleDestroy, type OnModu
 import { databaseEnabled } from '../../core/persistence.js';
 import { APP_ENV, type AppEnv } from '../../core/tokens.js';
 import { FlagsService } from '../../flags/flags.service.js';
+import { JobsService } from '../../jobs/jobs.service.js';
+import type { JobRegistration } from '../../jobs/recurring.js';
 import { EscrowPort } from '../application/ports/escrow.port.js';
 import { ChainOutboxRepository } from '../application/outbox/chain-outbox.repository.js';
 import { BountyRepository } from './bounty.repository.js';
@@ -33,8 +35,7 @@ const NONE: ExpirySweep = { refunded: 0 };
 @Injectable()
 export class BountyExpiryService implements OnModuleInit, OnModuleDestroy {
   private readonly log = new Logger(BountyExpiryService.name);
-  private timer?: ReturnType<typeof setInterval>;
-  private running?: Promise<unknown>;
+  private job?: JobRegistration;
 
   constructor(
     @Inject(EscrowPort) private readonly escrow: EscrowPort,
@@ -42,25 +43,18 @@ export class BountyExpiryService implements OnModuleInit, OnModuleDestroy {
     @Inject(BountyRepository) private readonly repo: BountyRepository,
     @Inject(FlagsService) private readonly flags: WaveFlags,
     @Optional() @Inject(APP_ENV) private readonly env?: AppEnv,
+    @Optional() @Inject(JobsService) private readonly jobs?: JobsService,
   ) {}
 
+  /** A cluster-wide job (3.8): one refund pass per poll across every replica, retried on failure. */
   onModuleInit(): void {
     if (!this.flags.has('W22') || !databaseEnabled(this.env)) return;
-    this.timer = setInterval(() => {
-      if (this.running) return;
-      this.running = this.refundDue(Date.now())
-        .catch((err: unknown) => this.log.warn(`bounty expiry poll: ${message(err)}`))
-        .finally(() => {
-          this.running = undefined;
-        });
-    }, EXPIRY_POLL_MS);
-    this.timer.unref?.();
+    this.job = this.jobs?.recurring({ name: 'near.bounty-expiry', schedule: { everyMs: EXPIRY_POLL_MS }, run: () => this.refundDue(Date.now()) });
   }
 
   async onModuleDestroy(): Promise<void> {
-    if (this.timer) clearInterval(this.timer);
-    this.timer = undefined;
-    await this.running;
+    await this.job?.stop();
+    this.job = undefined;
   }
 
   /** Open or claimed rows with `expiresAt <= nowMs`, except a mercenary hold. Idempotent on the refund op. */

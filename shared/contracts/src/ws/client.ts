@@ -5,6 +5,13 @@ import { HomePlanetId } from '../rest/home';
 import { PairId } from '../market/tokens';
 import { PlanetType } from './sim';
 
+/**
+ * The ws protocol version a client offers in `hello.proto` and the app requires. 2: deltas carry field-level colony /
+ * blob patches (engine diff format 3) plus per-colony `own` frames; a v1 client could not apply them, so the app
+ * answers its hello with `bye bad_hello unsupported_proto` instead of corrupting its replica.
+ */
+export const WS_PROTO_VERSION = 2;
+
 /** Client → app messages (PROTOCOL §4.2). All strict: the server rejects unknown keys (PR-01). */
 export const Hello = ClientEnvelope('hello', z.strictObject({
   accessToken: z.string().min(1).max(4096), // W00: dev session token; JWT from W01

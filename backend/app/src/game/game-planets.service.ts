@@ -22,17 +22,15 @@ export type CommandOutcomeMsg =
   | { readonly ok: true; readonly commandId: string; readonly appliedAtTick: number }
   | { readonly ok: false; readonly commandId: string; readonly code: string; readonly appliedAtTick?: number; readonly detail?: string; readonly unlocksAt?: string };
 
-/**
- * Reject codes of `submit` that come from the host, not the sim: the planet's thread is down (`thread_down`) or the
- * planet is not loaded on it (`planet_not_loaded`). Not `REJECT_CODES`: WS ingress sends them as `internal` + detail,
- * the seat path as `host_unavailable`.
- */
+/** Host (not sim) reject codes of `submit`: thread down or planet not loaded on it. Not `REJECT_CODES`: WS ingress
+ * sends them as `internal` + detail, the seat path as `host_unavailable`. */
 export const HOST_DOWN_CODES: readonly string[] = ['thread_down', 'planet_not_loaded'];
 
 export interface PlanetSubscriber {
   onDelta?(d: { fromTick: number; toTick: number; diff: Uint8Array; events: SimEvent[] }): void;
   onEvent?(events: SimEvent[]): void;
   onSnapshot?(s: { tick: number; bytes: Uint8Array }): void;
+  onResync?(): void; // moved to another sim thread (rebalancing): gapless stream, clients resync to be safe
 }
 
 export interface FullState {
@@ -449,6 +447,7 @@ export class GamePlanets {
         return this.requests.answer(msg.reqId, msg.t === 'landingSite' ? msg.answer : msg);
       case 'planetFailed':
         return this.planetDown(msg.planetId, 'step_failed', msg.message);
+      case 'moved': return this.each(msg.planetId, (s) => s.onResync?.());
       case 'snapshot':
         for (const fn of this.snapshotListeners) fn(msg.planetId, msg);
         return this.each(msg.planetId, (s) => s.onSnapshot?.(msg));

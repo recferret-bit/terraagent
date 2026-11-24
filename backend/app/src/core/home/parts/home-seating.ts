@@ -23,6 +23,7 @@ import {
   type HomeSeatNotifier,
 } from '../home-resolve.helpers';
 import type { ColonyRecord, HomeRepository, PlanetRecord } from '../home.repository';
+import { explicitPlanetWake, pickSeatPlanet, wakePlanet, type PlanetCapacityGate } from './planet-capacity';
 
 /** Landing attempts per `getOrAssignHome` (each asks a planet's sim for a site, seats there or moves on). */
 export const SEAT_ATTEMPTS = 8;
@@ -224,6 +225,8 @@ export interface SeatContext {
   readonly notifier: HomeSeatNotifier | undefined;
   readonly seatListeners: ReadonlySet<ColonySeatListener>;
   readonly antiCheat?: SectorAntiCheatService;
+  /** Planet cap (3.4); absent = no cap (every open planet is seated as before). */
+  readonly capacity?: PlanetCapacityGate;
   readonly occupiedSectorsByPlanet?: ReadonlyMap<string, ReadonlySet<string>>;
   readonly buildHomeResponse: (
     colony: ColonyRecord,
@@ -373,6 +376,7 @@ async function seatOnExplicitPlanet(
   ctx: SeatContext,
   player: { id: string; handle: string },
   planetId: string,
+  type: DevPlanetType,
   requestedSectorId?: string,
 ): Promise<HomeResponse> {
   const existingPlanet = await ctx.repo.findPlanetById(planetId);
@@ -383,6 +387,7 @@ async function seatOnExplicitPlanet(
       details: { code: 'planet_not_found', planetId },
     });
   }
+  if (await explicitPlanetWake(ctx.capacity, existingPlanet, type)) await wakeOrUnavailable(ctx, existingPlanet);
   for (let attempt = 0; attempt < SEAT_ATTEMPTS; attempt++) {
     const free = await ctx.repo.findFreeSlotOnPlanet(planetId, ctx.landedIndices.get(planetId));
     if (!free) throw sectorFullConflict(requestedSectorId ?? 'sec_0_0', [planetId]);
@@ -411,14 +416,20 @@ export async function seatNewColony(
   requestedPlanetId?: string,
 ): Promise<HomeResponse> {
   if (requestedPlanetId) {
-    return seatOnExplicitPlanet(ctx, player, requestedPlanetId, requestedSectorId);
+    return seatOnExplicitPlanet(ctx, player, requestedPlanetId, type, requestedSectorId);
   }
   const emptyTried: string[] = [];
   const allTried: string[] = [];
   const callSkipPlanets = new Set<string>(ctx.exhausted);
   let emptyAttempts = 0;
+  const unwoken = new Set<string>();
   for (let scan = 0; scan < MAX_PLANET_SCANS && emptyAttempts < SEAT_ATTEMPTS; scan++) {
-    const { planet, colonyIndex } = await ctx.repo.findOrCreateOpenDevPlanet(type, callSkipPlanets, ctx.landedIndices);
+    const skip = unwoken.size ? new Set([...callSkipPlanets, ...unwoken]) : callSkipPlanets;
+    const { planet, colonyIndex, wake } = await pickSeatPlanet(ctx.repo, ctx.capacity, type, skip, ctx.landedIndices);
+    if (wake && !(await wakePlanet(ctx.landingHost, ctx.repo, planet).then(() => true, () => false))) {
+      unwoken.add(planet.id); // held, or its restore outran the seat budget: this request tries the next planet
+      continue;
+    }
     const isEmpty = (planet.seatsTaken ?? 0) === 0;
     if (!allTried.includes(planet.id)) allTried.push(planet.id);
     if (isEmpty && !emptyTried.includes(planet.id)) {
@@ -442,6 +453,15 @@ export async function seatNewColony(
   }
   const triedList = emptyTried.length > 0 ? emptyTried : allTried;
   throw noLandingSite(triedList);
+}
+
+/** Restores an idle-unloaded planet before a landing site is asked of it (a planet with snapshots is never generated). */
+async function wakeOrUnavailable(ctx: SeatContext, planet: PlanetRecord): Promise<void> {
+  try {
+    await wakePlanet(ctx.landingHost, ctx.repo, planet);
+  } catch (e) {
+    throw hostUnavailable(planet.id, `planet ${planet.id} cannot be restored for a new colony: ${errText(e)}`);
+  }
 }
 
 export async function buildHomeResponseForColony(opts: {

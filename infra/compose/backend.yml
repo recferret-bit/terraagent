@@ -24,6 +24,8 @@ services:
       dockerfile: infra/docker/Dockerfile.app
     container_name: terra-app
     restart: unless-stopped
+    # SIGTERM drains jobs (up to 10 s) and then snapshots every loaded planet (30 s budget); Docker's default is 10 s.
+    stop_grace_period: 60s
     logging: *json-log
     extra_hosts:
       - "host.docker.internal:host-gateway"

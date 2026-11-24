@@ -27,7 +27,8 @@ import { FlagsService } from '../flags/flags.service.js';
 import { normalizeNearAiModel } from '../ai/nearai-models.js';
 import { isLocalStakingFastTimings } from '../near/staking/local-staking-timings.js';
 import { resolveDbStakerPerks } from '../near/staking/staker-perks.js';
-import { isTeeAttestationRejected, LlmProviderPort, type LlmAttestation } from '../ports/llm-provider.port.js';
+import { LlmProviderPort } from '../ports/llm-provider.port.js';
+import { probeEnclave, type EnclaveCheck } from './enclave-probe.js';
 import { FactsStore } from '../progression/facts.store.js';
 import { W12SeedService } from '../progression/w12-seed.service.js';
 import { XpStore } from '../progression/xp.store.js';
@@ -160,13 +161,7 @@ export class MeProfileService {
     return { ...base, ...staker, model: effectiveModel };
   }
 
-  async verifyAiEnclave(playerId: string): Promise<{
-    readonly ok: boolean;
-    readonly model: string;
-    readonly managedStaker: boolean;
-    readonly usedPlayerKey: boolean;
-    readonly attestation: LlmAttestation | null;
-  }> {
+  async verifyAiEnclave(playerId: string): Promise<EnclaveCheck> {
     const [creds, staker] = await Promise.all([
       this.aiSettings.getCredentials(playerId),
       this.resolvePlayerStakerSummary(playerId),
@@ -179,29 +174,8 @@ export class MeProfileService {
       });
     }
     const model = hasKey ? creds.model : MANAGED_AI_MODEL;
-    if (!this.llm) {
-      return { ok: false, model, managedStaker: staker.stakerAutopilotActive, usedPlayerKey: hasKey, attestation: null };
-    }
-    const res = await this.llm.complete({
-      system: 'Reply strictly with JSON {"ok":true} for a TEE attestation probe.',
-      messages: [{ role: 'user', content: 'ping' }],
-      maxTokens: 24,
-      temperature: 0,
-      json: true,
-      model,
-      ...(hasKey && creds.apiKey ? { apiKey: creds.apiKey } : {}),
-    });
-    const envMap = (this.env ?? process.env) as Record<string, string | undefined>;
-    const ok = res.attestation
-      ? Boolean(res.attestation.verified) && !isTeeAttestationRejected(res.attestation)
-      : envMap.AI_PROVIDER !== 'nearai';
-    return {
-      ok,
-      model: hasKey ? res.model : MANAGED_AI_MODEL,
-      managedStaker: !hasKey && staker.stakerAutopilotActive,
-      usedPlayerKey: hasKey,
-      attestation: res.attestation ?? null,
-    };
+    const env = (this.env ?? process.env) as Record<string, string | undefined>;
+    return probeEnclave(this.llm, env, { model, apiKey: creds.apiKey ?? undefined, hasKey, stakerActive: staker.stakerAutopilotActive });
   }
 
   private activeDb(): PrismaClient | undefined {

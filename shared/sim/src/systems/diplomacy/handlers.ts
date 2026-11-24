@@ -4,6 +4,7 @@ import { checkAiCancelTrucePolicy, resolveColonyAwayRaids } from '../away/gate';
 import { isRivalAiColony } from '../rival-ai/store';
 import { commandColony, parseArgs } from '../command';
 import { cancelTruce, cancelWar, declareWar, devOfferTruce, proposeTruce, respondTruce } from './operations';
+import { isTruceReofferCoolingDown } from './parts/retention';
 import { resolveColonyIndex } from './store';
 
 const EXEMPT_AI_SOURCES = new Set(['player', 'dev', 'admin', 'system']);
@@ -22,6 +23,12 @@ export const proposeTruceHandler = defineCommandHandler({
       parsed.targetColonyId ?? parsed.targetColonyIndex ?? parsed.targetColony ?? parsed.toColony;
     const hours = parsed.hours ?? parsed.durationHours;
     if (targetRef === undefined || hours === undefined) return 'invalid_args';
+    if (
+      (cmd.source === 'ai' || cmd.source === 'bot') &&
+      isTruceReofferCoolingDown(state, colIdx, resolveColonyIndex(state, targetRef), ctx.tick)
+    ) {
+      return { code: 'rate_limited', detail: 'target declined a truce within the last 10 minutes' };
+    }
     const res = proposeTruce(state, colIdx, targetRef, hours, ctx.tick, ctx, {
       bondAmount: parsed.bondAmount,
       bondToken: parsed.bondToken,

@@ -4,7 +4,8 @@ import { hexIndex } from '../../grid/hex';
 import { isGroundPassable } from '../../grid/tileModel';
 import type { CompiledDataLike } from '../../kernel/config';
 import type { ColonyState, PlanetState } from '../../kernel/state';
-import { hasActiveTruce, readDiplomacyBlob } from '../diplomacy/store';
+import { isTruceReofferCoolingDown } from '../diplomacy/operations';
+import { hasActiveTruce, peekDiplomacyBlob } from '../diplomacy/store';
 import { checkCostAffordability } from '../economy/ledger';
 import { getColonyGoals, isGoalExecutable } from '../goals';
 import type { ColonyPowerSummary } from '../power-core/types';
@@ -408,7 +409,7 @@ function planGoalAndDiplomacyInputs(
   const diploPhase = col.index % DIPLO_CADENCE_TICKS;
   if (!flags.has('W18') || !crossedCadence(prevTick, nextTick, DIPLO_CADENCE_TICKS, diploPhase)) return out;
 
-  const dip = readDiplomacyBlob(state);
+  const dip = peekDiplomacyBlob(state);
   const pendingOffer = Object.values(dip.offers).find(
     (o) => o && o.status === 'pending' && o.toColonyIndex === col.index && Boolean(o.offerId) && o.bondToken !== 'NEAR' && (o.expiresAtTick === undefined || o.expiresAtTick > nextTick),
   );
@@ -427,6 +428,7 @@ function planGoalAndDiplomacyInputs(
       if (!c || c.index === col.index || c.status !== 'active') return false;
       if (!colonyHasAliveHq(state, c.index)) return false;
       if (hasActiveTruce(state, col.index, c.index, nextTick)) return false;
+      if (isTruceReofferCoolingDown(state, col.index, c.index, nextTick)) return false;
       return !Object.values(dip.offers).some((o) => o.status === 'pending' && o.fromColonyIndex === col.index && o.toColonyIndex === c.index);
     });
     if (other) {

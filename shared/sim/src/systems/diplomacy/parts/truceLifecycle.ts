@@ -13,6 +13,7 @@ import {
   type StoredTruceOffer,
   type StoredTruceRecord,
 } from '../store';
+import { enforceDiplomacyRetention } from './retention';
 import { cancelColonyWarsOnElimination, stepWars } from './warBonds';
 
 function truceBondEventFields(truce: StoredTruceRecord): Record<string, unknown> {
@@ -173,4 +174,5 @@ export function stepDiplomacy(state: PlanetState, ctx: StepContext): void {
   }
 
   if (changed) writeDiplomacyBlob(state, blob, tick);
+  enforceDiplomacyRetention(state, tick);
 }

@@ -17,6 +17,8 @@ export interface ThreadInit {
   readonly simModules?: readonly string[];
   /** Balance overrides from `TA_BALANCE_OVERRIDES` (D-35), applied to every planet of this thread. */
   readonly overrides?: BalanceOverrides;
+  /** Unsolicited `stats` push (reqId 0) every this many ms; the main thread caches it (default 1000, 0 = off). */
+  readonly statsEveryMs?: number;
 }
 
 export type CtlOp =
@@ -62,6 +64,23 @@ export interface LoadMsg {
    * The planet is not scheduled until they finish, then it joins as `active` (BE-57).
    */
   readonly catchUpTicks?: number;
+  /**
+   * Rebalancing move (pool-made): the route state the planet had on its old thread, applied before it is first
+   * scheduled here, so no step runs unsubscribed (the delta stream stays gapless from the handoff tick).
+   */
+  readonly moved?: { readonly subscribed: boolean; readonly mode?: 'active' | 'coarse'; readonly warp?: number; readonly carry?: PlanetCarry };
+}
+
+/** Thread-side planet state that is not in the snapshot, carried by a move (`handedOff` -> `load { moved }`). */
+export interface PlanetCarry {
+  readonly feedSeq: number;
+  readonly lastSectorSyncTick: number;
+  readonly lastInputTickByColony: readonly (readonly [number, number])[];
+  readonly seenAutopilotTickByColony: readonly (readonly [number, number])[];
+  /** Dev live tunes (D-35). */
+  readonly live?: BalanceOverrides;
+  /** Economy profile waiting for its effective tick (W13-39). */
+  readonly pendingProfile?: { readonly overrides: BalanceOverrides; readonly effectiveTick: number; readonly profileHash: string };
 }
 
 /** Generator of a load without `params` or `snapshot`: the W00 empty flat planet (tests, `GAME_DEV_PLANETS` without W01). */
@@ -96,7 +115,11 @@ export interface LoadedInfo {
 /** main → thread */
 export type ToThread =
   | LoadMsg
-  | { readonly t: 'unload'; readonly planetId: string }
+  /**
+   * `handoff` (placement rebalancing): in one dispatch, flush the planet's open delta and events, snapshot it and drop it
+   * with its queued commands; answered with `handedOff` instead of `unloaded` (no step can run in between).
+   */
+  | { readonly t: 'unload'; readonly planetId: string; readonly handoff?: boolean }
   | { readonly t: 'cmd'; readonly planetId: string; readonly cmd: SimCommandV1 }
   | { readonly t: 'subscribe'; readonly planetId: string }
   | { readonly t: 'unsubscribe'; readonly planetId: string }
@@ -132,7 +155,27 @@ export interface PlanetStats {
   /** Effective time warp (after the budget cap) and the requested one. */
   readonly warp: number;
   readonly warpRequested: number;
+  /** Wall ms of its last due slot and the smoothed average (`ta_game_planet_step_ms` has the histogram). */
+  readonly lastStepMs: number;
+  readonly avgStepMs: number;
+  /** Thread ms per wall second spent stepping it (smoothed): the placement / rebalancing load unit. */
+  readonly loadMsPerSec: number;
+  /** Due slots skipped over the debt cap. */
+  readonly droppedSlots: number;
+  /** Demoted to coarse by the scheduler (slow, nobody watching). */
+  readonly demoted: boolean;
 }
+
+/** Thread-wide load figures carried by every `stats` message. */
+export interface ThreadLoad {
+  /** Share of wall time the thread spent stepping planets (smoothed, 0..1). */
+  readonly busyRatio: number;
+  /** Due slots skipped over the debt cap since the thread started. */
+  readonly droppedSlots: number;
+}
+
+/** Step durations (ms) of one planet since the previous push. */
+export interface StepSamples { readonly planetId: string; readonly ms: readonly number[] }
 
 /** Diagnostic ring of recent scheduler passes that stepped something. */
 export interface PassStat { readonly steps: number; readonly maxPlanetSteps: number; readonly maxLag: number }
@@ -166,7 +209,22 @@ export type FromThread =
   | { readonly t: 'tuned'; readonly planetId: string; readonly reqId: number; readonly ok: boolean; readonly dataHash: string; readonly overrides: BalanceOverrides; readonly text?: string; readonly error?: string }
   | { readonly t: 'profileScheduled'; readonly thread: number; readonly reqId: number; readonly profileHash: string; readonly planets: number }
   | { readonly t: 'profileApplied'; readonly planetId: string; readonly tick: number; readonly profileHash: string; readonly dataHash: string }
-  | { readonly t: 'stats'; readonly thread: number; readonly reqId: number; readonly planets: PlanetStats[]; readonly steps: number; readonly maxLag: number; readonly recentPasses: PassStat[] }
+  /** Reply to `ctl stats` (`reqId` > 0), or the periodic push (`reqId` 0, with the step samples of the window). */
+  | ({ readonly t: 'stats'; readonly thread: number; readonly reqId: number; readonly planets: PlanetStats[]; readonly steps: number; readonly maxLag: number; readonly recentPasses: PassStat[]; readonly stepSamples?: readonly StepSamples[] } & ThreadLoad)
+  /** A step slower than a tick (rate-limited per planet; `suppressed` = slow steps not reported since the last one). */
+  | { readonly t: 'slowStep'; readonly thread: number; readonly planetId: string; readonly ms: number; readonly mode: 'active' | 'coarse'; readonly suppressed: number }
+  /** The scheduler demoted a slow planet nobody watches to `coarse`. */
+  | { readonly t: 'demoted'; readonly thread: number; readonly planetId: string; readonly avgStepMs: number }
+  /**
+   * Answer to `unload { handoff }`: the planet's full snapshot at `tick` (after its last delta), plus the commands it had
+   * queued and not applied. No `bytes` = the planet was not loaded here (the move is off).
+   */
+  | { readonly t: 'handedOff'; readonly planetId: string; readonly tick: number; readonly bytes?: Uint8Array; readonly pending: readonly SimCommandV1[]; readonly carry?: PlanetCarry }
+  /**
+   * Not from a thread: the pool tells its listeners that a planet moved between threads (rebalancing), seamlessly from
+   * `tick`; clients resync to be safe. Delivered as if from `to`.
+   */
+  | { readonly t: 'moved'; readonly planetId: string; readonly from: number; readonly to: number; readonly tick: number }
   | { readonly t: 'landingSite'; readonly planetId: string; readonly reqId: number; readonly answer: LandingSiteAnswer }
   /**
    * A step of the planet threw (BE-12). Before this message the thread posted the failed step's postings (`ledger`) and

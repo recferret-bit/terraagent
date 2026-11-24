@@ -1904,6 +1904,20 @@ model SimWorkerNode {
   @@schema("world")
 }
 
+/// Planet lifecycle (3.5): when a human player last had a socket on the planet (persisted so a restart does not reset
+/// the idle clock), and since when the planet is idle-unloaded (`dormant_since`: boot restore and lease reclaim skip it
+/// until a join or landing restores it). Read and written with raw SQL by `backend/app/src/game/lifecycle`.
+model PlanetActivity {
+  planetId        String    @id @map("planet_id")
+  lastHumanSeenAt DateTime  @map("last_human_seen_at") @db.Timestamptz(3)
+  dormantSince    DateTime? @map("dormant_since") @db.Timestamptz(3)
+  updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@index([dormantSince])
+  @@map("planet_activity")
+  @@schema("world")
+}
+
 // --- trade-api.prisma ---
 /// API key of a bot / agent bound to one colony account (W13 trade API). Only the SHA-256 of the secret is stored; the
 /// secret is shown once at creation. `scopes`: read | trade | manage.

@@ -111,21 +111,41 @@ export class HomeRepository {
   async findOrCreateOpenDevPlanet(
     type: DevPlanetType = DEV_PLANET_TYPE, skip?: ReadonlySet<string>, skipIndices?: ReadonlyMap<string, ReadonlySet<number>>,
   ): Promise<{ planet: PlanetRecord; colonyIndex: number }> {
-    const family = (await this.store.listPlanets())
-      .map((p) => ({ p, index: devPlanetIndexOf(type, p.id) }))
-      .filter((f) => f.index > 0)
-      .sort((a, b) => a.index - b.index);
-    for (const { p } of family) {
+    const [first] = await this.findOpenDevPlanets(type, skip, skipIndices, 1);
+    return first ?? this.createNextDevPlanet(type, skipIndices);
+  }
+
+  /** Existing dev planets of `type` with a free seat, in family index order (at most `limit`); never creates one. */
+  async findOpenDevPlanets(
+    type: DevPlanetType, skip?: ReadonlySet<string>, skipIndices?: ReadonlyMap<string, ReadonlySet<number>>, limit = Number.POSITIVE_INFINITY,
+  ): Promise<{ planet: PlanetRecord; colonyIndex: number }[]> {
+    const out: { planet: PlanetRecord; colonyIndex: number }[] = [];
+    for (const { p } of await this.devFamily(type)) {
+      if (out.length >= limit) break;
       if (skip?.has(p.id) || isEnded(p) || p.seatsTaken >= seatsOf(p)) continue;
       const planet = await this.fixDevPlanetType(p);
       const slot = await this.freeColonyIndex(planet, skipIndices?.get(planet.id));
-      if (slot !== undefined) return { planet, colonyIndex: slot };
+      if (slot !== undefined) out.push({ planet, colonyIndex: slot });
     }
-    const used = new Set(family.map((f) => f.index));
+    return out;
+  }
+
+  /** Creates the planet row of the family's first missing index (a wiped planet's id is reused). */
+  async createNextDevPlanet(
+    type: DevPlanetType, skipIndices?: ReadonlyMap<string, ReadonlySet<number>>,
+  ): Promise<{ planet: PlanetRecord; colonyIndex: number }> {
+    const used = new Set((await this.devFamily(type)).map((f) => f.index));
     let next = 1;
-    while (used.has(next)) next++; // the first missing index: a wiped planet's id is reused
+    while (used.has(next)) next++;
     const planet = await this.upsertDevPlanet(devPlanetIdFor(type, next), { name: devPlanetName(type, next), type, state: 'ACTIVE' });
     return { planet, colonyIndex: (await this.freeColonyIndex(planet, skipIndices?.get(planet.id))) ?? 0 };
+  }
+
+  private async devFamily(type: DevPlanetType): Promise<{ p: PlanetRecord; index: number }[]> {
+    return (await this.store.listPlanets())
+      .map((p) => ({ p, index: devPlanetIndexOf(type, p.id) }))
+      .filter((f) => f.index > 0)
+      .sort((a, b) => a.index - b.index);
   }
 
   private async freeColonyIndex(planet: PlanetRecord, skip?: ReadonlySet<number>): Promise<number | undefined> {

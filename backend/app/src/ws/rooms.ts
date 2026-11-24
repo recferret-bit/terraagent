@@ -5,6 +5,7 @@ import {
   type SimInputFeedItemV1,
 } from '@terra/contracts';
 import type { Logger } from 'pino';
+import { ownFramesFor, unpackDeltaBundle } from '@terra/sim';
 import type { SectorAntiCheatService } from '../core/anticheat';
 import type { InternalAuthEnv } from '../game/cluster/internal-auth';
 import type { GamePlanets, PlanetSubscriber } from '../game/game-planets.service';
@@ -23,6 +24,11 @@ export interface RemoteRoomSubscription {
 export interface RoomMember {
   /** Tick of the welcome snapshot once sent; deltas at or before it are skipped. Undefined while the welcome is pending. */
   welcomeTick: number | undefined;
+  /**
+   * The socket's own colony: it gets that colony's owner-field frames with each delta. Undefined (spectator, a session
+   * without a colony, a dev session): every colony's frames (the full view).
+   */
+  readonly deltaColony?: number;
   send(frame: string | Uint8Array): void;
   /** Bytes queued on the socket and not yet flushed (`ws.bufferedAmount`). */
   readonly bufferedAmount: number;
@@ -126,13 +132,37 @@ export class PlanetRooms {
       onDelta: (d) => {
         this.antiCheat?.applyPlanetDelta(planetId, d.diff, d.events);
         if (members.size === 0) return;
-        send(encodeWire({ v: 1, t: 'delta', tick: d.toTick, d: { fromTick: d.fromTick, toTick: d.toTick, diff: d.diff, events: d.events } }), d.toTick);
+        const frame = deltaVariants(d);
+        for (const m of members) {
+          if (m.welcomeTick !== undefined && d.toTick > m.welcomeTick && this.writable(m)) m.send(frame(m.deltaColony));
+        }
       },
       onEvent: (events) => {
         this.antiCheat?.applyPlanetEvents(planetId, events);
         // Until the delta builder fills `delta`, the thread sends bare events: forward the kinds the contract knows.
         for (const e of events) if (hasEventKind(e.kind)) send(encodeWire({ v: 1, t: 'event', tick: e.atTick, d: e }), e.atTick);
       },
+      // the planet moved to another sim thread (rebalancing): every welcomed socket gets a fresh `welcome {reason:'resync'}`
+      onResync: () => { for (const m of members) if (m.welcomeTick !== undefined) m.resync(); },
     };
   }
+}
+
+/**
+ * A host delta (a plain diff, or a bundle with per-colony own frames) as one encoded `delta` message per viewer kind:
+ * each colony's sockets share one frame, full viewers another; every frame is encoded once per delta.
+ */
+export function deltaVariants(d: { fromTick: number; toTick: number; diff: Uint8Array; events: readonly unknown[] }): (colony: number | undefined) => string | Uint8Array {
+  const { diff, own } = unpackDeltaBundle(d.diff);
+  const cache = new Map<number | 'all', string | Uint8Array>();
+  return (colony) => {
+    const key = colony ?? 'all';
+    let frame = cache.get(key);
+    if (frame === undefined) {
+      const frames = ownFramesFor(own, colony);
+      frame = encodeWire({ v: 1, t: 'delta', tick: d.toTick, d: { fromTick: d.fromTick, toTick: d.toTick, diff, ...(frames.length ? { own: frames } : {}), events: d.events } });
+      cache.set(key, frame);
+    }
+    return frame;
+  };
 }

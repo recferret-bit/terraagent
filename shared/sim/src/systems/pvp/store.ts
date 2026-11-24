@@ -108,6 +108,32 @@ export function resolvePvpConfig(data?: CompiledDataLike): PvpConfig {
   };
 }
 
+/** Read-only view of the PvP blob: the stored dictionaries themselves, never copies. */
+export interface PvpStateView {
+  readonly byColony: Readonly<Record<string, Readonly<ColonyPvpRecord>>>;
+  readonly raidProtectedUntilByColony: Readonly<Record<string, number>>;
+  readonly activeRaids: Readonly<Record<string, Readonly<ActiveRaidGroupState>>>;
+  readonly crossSectorEnabled?: boolean;
+  readonly nextRaidSeq: number;
+}
+
+const EMPTY_RECORDS: Readonly<Record<string, never>> = Object.freeze({});
+
+/**
+ * No-copy read of the PvP blob for pure query paths (targeting, shield checks, raid reads).
+ * Never mutate the result; writers use `getPvpState` + `savePvpState`.
+ */
+export function peekPvpState(state: PlanetState): PvpStateView {
+  const raw = state.blobs[PVP_BLOB_KEY]?.value as Partial<PvpBlobState> | undefined;
+  return {
+    byColony: raw?.byColony ?? EMPTY_RECORDS,
+    raidProtectedUntilByColony: raw?.raidProtectedUntilByColony ?? EMPTY_RECORDS,
+    activeRaids: raw?.activeRaids ?? EMPTY_RECORDS,
+    ...(raw?.crossSectorEnabled !== undefined ? { crossSectorEnabled: Boolean(raw.crossSectorEnabled) } : {}),
+    nextRaidSeq: typeof raw?.nextRaidSeq === 'number' ? raw.nextRaidSeq : 1,
+  };
+}
+
 export function getPvpState(state: PlanetState): PvpBlobState {
   const raw = state.blobs[PVP_BLOB_KEY]?.value as Partial<PvpBlobState> | undefined;
   return {
@@ -188,12 +214,12 @@ export function ensureColonyPvpRecord(
   data?: CompiledDataLike,
 ): ColonyPvpRecord {
   const col = ensureColonyRecord(state, colonyIndex, tick);
-  const pvpState = getPvpState(state);
   const key = String(colonyIndex);
-  const existing = pvpState.byColony[key];
+  const existing = peekPvpState(state).byColony[key];
   if (existing) {
     return { ...existing };
   }
+  const pvpState = getPvpState(state);
 
   const cfg = resolvePvpConfig(data);
   const foundedAtTick =

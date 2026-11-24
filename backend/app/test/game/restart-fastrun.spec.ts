@@ -11,7 +11,7 @@ import type { SnapshotStore } from '../../src/game/persistence/snapshot-store';
 import { SnapshotService } from '../../src/game/persistence/snapshot.service';
 import { installRestartFastRunMetric } from '../../src/game/restart/metric';
 import { RESTART_FASTRUN_MAX_TICKS, missedRestartTicks } from '../../src/game/restart/missed-ticks';
-import { runCoarseCatchUp } from '../../src/game/restart/fast-run';
+import { FAST_RUN_YIELD_MS, runCoarseCatchUp } from '../../src/game/restart/fast-run';
 import { SimThreadPool } from '../../src/game/sim-thread-pool';
 import { PlanetHost } from '../../src/game/thread/planet-host';
 
@@ -128,6 +128,31 @@ describe('coarse catch-up on a loaded snapshot', () => {
     });
     expect(ran).toEqual({ steps: 2, advanced: 2 * COARSE_DT, completed: true });
     expect(calls).toBe(2);
+  });
+
+  it('yields by wall time (every 50 ms), not by step count (0.7)', async () => {
+    /** Counts the steps that ran after the event loop had a turn (a `setImmediate` armed by the previous step fired). */
+    const run = async (costMs: number, steps: number) => {
+      let clock = 0;
+      let turned = false;
+      let yields = 0;
+      await runCoarseCatchUp({
+        ticks: steps * COARSE_DT,
+        now: () => clock,
+        step: () => {
+          if (turned) yields++;
+          turned = false;
+          setImmediate(() => { turned = true; });
+          clock += costMs;
+          return true;
+        },
+      });
+      return yields;
+    };
+    expect(FAST_RUN_YIELD_MS).toBe(50);
+    expect(await run(100, 10)).toBe(9); // slow steps (100 ms): a yield after every one
+    expect(await run(20, 30)).toBe(9); // 20 ms steps: a yield every 3 steps (60 ms >= 50)
+    expect(await run(0.01, 1000)).toBe(0); // fast steps: 10 ms in all, no yield needed
   });
 });
 

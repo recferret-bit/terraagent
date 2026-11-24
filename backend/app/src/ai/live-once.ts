@@ -1,6 +1,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { parseEnv } from 'node:util';
+import { LlmProviderError } from '../ports/llm-provider.port.js';
 import { DEFAULT_NEAR_AI_MODEL, NearAiLlmAdapter, normalizeNearAiModel } from './adapters/nearai-llm.adapter.js';
 
 export interface LiveReport {
@@ -41,7 +42,8 @@ export async function liveOnce(env: Record<string, string | undefined>): Promise
       error: null,
     };
   } catch (error) {
-    const name = error instanceof Error ? error.name : 'Error';
+    // `LlmProviderError:unfunded` (zero balance), `:unauthorized`, `:rate_limited`, … — never the provider's body
+    const name = error instanceof LlmProviderError ? `${error.name}:${error.kind}` : error instanceof Error ? error.name : 'Error';
     return {
       ok: false,
       model,

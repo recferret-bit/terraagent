@@ -35,7 +35,7 @@ async function join(wsUrl: string, name = 'alice') {
     for (let i = 0; i < 400; i++) { const f = frames.find(pred); if (f) return f; await new Promise((r) => setTimeout(r, 10)); }
     throw new Error('timeout waiting for frame');
   };
-  send({ t: 'hello', d: { accessToken: `dev:${name}`, proto: [1], client: { app: 'game', version: 't' } } });
+  send({ t: 'hello', d: { accessToken: `dev:${name}`, proto: [2], client: { app: 'game', version: 't' } } });
   await wait((f) => f.t === 'ready');
   send({ t: 'join', d: { planetId: PLANET } });
   const welcome = Welcome.parse(await wait((f) => f.t === 'welcome'));

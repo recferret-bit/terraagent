@@ -52,10 +52,15 @@ export class SnapshotService implements BeforeApplicationShutdown {
   private readonly total: Counter<'kind'>;
   /** Recent recovery times per planet (BE-11/BE-12), to stop restoring a planet that keeps failing. */
   private readonly recoveries = new Map<string, number[]>();
+  /** Restores in flight, by planet (see `restoreIfPersisted`). */
+  private readonly wakes = new Map<string, Promise<'loaded' | 'restored' | 'absent'>>();
   /** `SNAPSHOTS=on|off`; unset → on, except under NODE_ENV=test so unit tests never touch the dev database. */
   readonly enabled: boolean;
   /** Open away-digest bodies, flushed after a snapshot row is stored (CT-31). */
   private digestFlush?: (planetId: string, raw: Uint8Array) => Promise<void>;
+  /** Planets boot must leave unloaded (idle-unloaded: `PlanetLifecycleService`), applied to `livePlanetIds`. */
+  private bootFilter?: (ids: readonly string[]) => Promise<readonly string[]>;
+  private catchUpSkip?: (planetId: string) => Promise<boolean>;
   /** Wall ms for the restart gap (`now − savedAt`). Tests replace it; boot uses `Date.now`. */
   nowMs: () => number = () => Date.now();
 
@@ -105,6 +110,7 @@ export class SnapshotService implements BeforeApplicationShutdown {
       this.log.error({ err: errText(e) }, 'snapshot restore skipped: database unavailable (no planet is generated fresh)');
       return { ...report, dbUnavailable: true };
     }
+    if (this.bootFilter) ids = [...(await this.bootFilter(ids))];
     const outcomes = await Promise.all(
       ids.map(async (id) => {
         if (this.simLease && !(await this.simLease.tryAcquire(id))) return [id, 'skipped'] as const;
@@ -162,9 +168,22 @@ export class SnapshotService implements BeforeApplicationShutdown {
     return this.store.hasSnapshots(planetId);
   }
 
-  /** Restores a persisted planet from snapshots without generating a fresh world when no snapshot exists. */
-  async restoreIfPersisted(planetId: string): Promise<'loaded' | 'restored' | 'absent'> {
-    if (this.planets.isLoaded(planetId)) return 'loaded';
+  /**
+   * Restores a persisted planet from snapshots without generating a fresh world when no snapshot exists. Callers that
+   * arrive while a restore of the same planet is in flight (a home poll and a ws join of one returning player, or a
+   * reconnect burst) wait for it: a second restore would be refused as "already loading", and its error path
+   * released the lease of the planet that was just restored.
+   */
+  restoreIfPersisted(planetId: string): Promise<'loaded' | 'restored' | 'absent'> {
+    if (this.planets.isLoaded(planetId)) return Promise.resolve('loaded');
+    const inFlight = this.wakes.get(planetId);
+    if (inFlight) return inFlight.then((outcome) => (outcome === 'restored' ? 'loaded' : outcome));
+    const wake = this.restorePersisted(planetId).finally(() => this.wakes.delete(planetId));
+    this.wakes.set(planetId, wake);
+    return wake;
+  }
+
+  private async restorePersisted(planetId: string): Promise<'loaded' | 'restored' | 'absent'> {
     if (!this.enabled || !(await this.store.hasSnapshots(planetId))) return 'absent';
     if (this.simLease && !(await this.simLease.tryAcquire(planetId))) return 'loaded';
     let outcome: 'restored' | 'held' | 'wiped';
@@ -256,6 +275,7 @@ export class SnapshotService implements BeforeApplicationShutdown {
         env: this.env,
         flags: this.flags,
         nowMs: () => this.nowMs(),
+        skipCatchUp: this.catchUpSkip,
       },
       id,
       options,
@@ -279,6 +299,15 @@ export class SnapshotService implements BeforeApplicationShutdown {
   /** Archive committed: one `END` row. `livePlanetIds` then skips the planet. */
   end(planetId: string): Promise<void> {
     return this.capture(planetId, 'END');
+  }
+
+  setBootRestoreFilter(filter: (ids: readonly string[]) => Promise<readonly string[]>): void {
+    this.bootFilter = filter;
+  }
+
+  /** Planets restored at the tick they were saved at, with no catch-up (the lifecycle names its dormant planets). */
+  setCatchUpSkip(skip: (planetId: string) => Promise<boolean>): void {
+    this.catchUpSkip = skip;
   }
 
   /** Called by the game module. A failed flush is logged and does not fail the snapshot. */

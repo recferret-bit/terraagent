@@ -1,8 +1,13 @@
 import { Worker } from 'node:worker_threads';
 import { resolve } from 'node:path';
 import type { BalanceOverrides } from '@terra/sim';
-import { threadOf } from './thread/assign';
-import type { FromThread, PassStat, PlanetStats, ThreadInit, ToThread } from './thread/protocol';
+import { emptyThreadStats, ThreadStatsCache, threadStatsOf, UNRESPONSIVE_AFTER_MS, type ThreadStats } from './metrics/stats-cache';
+import { PlacementTable } from './placement/placement-table';
+import { PlanetMover } from './placement/planet-mover';
+import { Rebalancer, type RebalanceOptions } from './placement/rebalancer';
+import type { FromThread, ThreadInit, ToThread } from './thread/protocol';
+
+export type { ThreadStats };
 
 export interface SimThreadPoolOptions {
   readonly threads: number;
@@ -17,22 +22,20 @@ export interface SimThreadPoolOptions {
   readonly overrides?: BalanceOverrides;
   /** Thread entry; default `./thread/sim-thread.ts` next to this file. */
   readonly entry?: URL;
-}
-
-export interface ThreadStats {
-  readonly thread: number;
-  readonly planets: PlanetStats[];
-  readonly steps: number;
-  /** Max scheduler lag (steps behind) over the thread's planets. */
-  readonly maxLag: number;
-  readonly recentPasses: PassStat[];
+  /** Thread stats push interval (default 1000 ms; 0 = off). */
+  readonly statsEveryMs?: number;
+  /** Load rebalancing between threads (3.2); `false` = off. Default on with `REBALANCE_DEFAULTS`. */
+  readonly rebalance?: RebalanceOptions | false;
 }
 
 type Listener = (thread: number, msg: FromThread) => void;
 
 const SWC_LOADER = '@swc-node/register/esm-register';
 
-/** N worker threads running planets; planet → thread by `hash(planetId) % n`. The pool only routes messages; it never holds planet state. */
+/**
+ * N worker threads running planets. Planet -> thread through the placement table (lowest measured load at load time,
+ * moved by the rebalancer when a thread stays hot). The pool only routes messages; it never holds planet state.
+ */
 export class SimThreadPool {
   private readonly workers: (Worker | undefined)[] = [];
   private readonly listeners = new Set<Listener>();
@@ -42,6 +45,10 @@ export class SimThreadPool {
   private stopping = false;
   private entry: URL | undefined;
   private execArgv: string[] | undefined;
+  readonly placement: PlacementTable;
+  readonly mover: PlanetMover;
+  private readonly rebalancer: Rebalancer | undefined;
+  private readonly cache = new ThreadStatsCache();
 
   /** Thread base for threads (re)spawned later; follows every economy profile swap. */
   private baseOverrides: BalanceOverrides | undefined;
@@ -49,6 +56,9 @@ export class SimThreadPool {
   constructor(private readonly opts: SimThreadPoolOptions) {
     this.baseOverrides = opts.overrides;
     if (!Number.isInteger(opts.threads) || opts.threads < 1) throw new Error(`SIM_THREADS must be a positive integer, got ${opts.threads}`);
+    this.placement = new PlacementTable(opts.threads, (t) => !this.started || this.usable(t));
+    this.mover = new PlanetMover(this.placement, { send: (t, m, tr) => this.send(t, m, tr), emit: (t, m) => this.fan(t, m) });
+    this.rebalancer = opts.rebalance === false ? undefined : new Rebalancer(this.placement, opts.rebalance ?? {});
   }
 
   get size(): number {
@@ -60,8 +70,9 @@ export class SimThreadPool {
     return this.workers.filter(Boolean).length;
   }
 
+  /** The planet's thread (placement table); for a planet not placed, where a load would go now. */
   threadOf(planetId: string): number {
-    return threadOf(planetId, this.opts.threads);
+    return this.placement.threadOf(planetId);
   }
 
   /** Spawns all threads and resolves once each has reported `ready`. */
@@ -83,24 +94,58 @@ export class SimThreadPool {
   private spawn(thread: number): Promise<void> {
     const entry = this.entry as URL;
     const execArgv = this.execArgv;
-    const init: ThreadInit = { thread, flags: this.opts.flags, autoStep: this.opts.autoStep ?? true, deltaHz: this.opts.deltaHz, simModules: this.opts.simModules, overrides: this.baseOverrides };
+    const init: ThreadInit = {
+      thread, flags: this.opts.flags, autoStep: this.opts.autoStep ?? true, deltaHz: this.opts.deltaHz, simModules: this.opts.simModules,
+      overrides: this.baseOverrides, statsEveryMs: this.opts.statsEveryMs,
+    };
     const w = new Worker(entry, { workerData: init, ...(execArgv ? { execArgv } : {}) });
     this.workers[thread] = w;
+    this.cache.spawned(thread);
     return new Promise<void>((resolve, reject) => {
       w.on('message', (msg: FromThread) => {
         if (msg.t === 'ready') return resolve();
-        if (msg.t === 'stats') this.statWaiters.get(msg.reqId)?.({ thread: msg.thread, planets: msg.planets, steps: msg.steps, maxLag: msg.maxLag, recentPasses: msg.recentPasses });
-        for (const l of this.listeners) l(thread, msg);
+        this.onThreadMessage(thread, msg);
       });
       w.on('error', (e: Error) => {
-        this.listeners.forEach((l) => l(thread, { t: 'error', thread, message: e.message }));
+        this.fan(thread, { t: 'error', thread, message: e.message });
         reject(e);
       });
       w.on('exit', () => {
         this.workers[thread] = undefined;
-        this.listeners.forEach((l) => l(thread, { t: 'stopped', thread }));
+        this.mover.threadDown(thread);
+        this.fan(thread, { t: 'stopped', thread });
+        // after the listeners: `GamePlanets` finds the dead thread's planets through `threadOf`
+        this.placement.releaseThread(thread);
+        this.rebalancer?.forgetThread(thread);
+        this.cache.drop(thread);
       });
     });
+  }
+
+  private onThreadMessage(thread: number, msg: FromThread): void {
+    if (this.mover.intercept(thread, msg)) return;
+    if (msg.t === 'stats') this.onStats(thread, msg);
+    this.fan(thread, msg);
+    this.placement.afterMessage(thread, msg);
+  }
+
+  private fan(thread: number, msg: FromThread): void {
+    for (const l of this.listeners) l(thread, msg);
+  }
+
+  private onStats(thread: number, msg: Extract<FromThread, { t: 'stats' }>): void {
+    this.cache.put(msg);
+    this.placement.observe(thread, msg.planets);
+    if (msg.reqId > 0) this.statWaiters.get(msg.reqId)?.(threadStatsOf(msg));
+    if (!this.rebalancer || this.stopping) return;
+    const now = performance.now();
+    this.rebalancer.observe(thread, msg.busyRatio, now);
+    const live = this.workers.flatMap((_w, t) => (this.usable(t) ? [t] : []));
+    const move = this.rebalancer.decide(now, live, (id) => {
+      const p = this.placement.get(id);
+      return !!p && p.confirmed && !p.catchingUp && !this.mover.isMoving(id);
+    });
+    if (move) this.mover.start(move.planetId, move.to);
   }
 
   /** Receives every message from every thread (the GamePlanets service is the main listener). Returns an unsubscribe fn. */
@@ -109,10 +154,11 @@ export class SimThreadPool {
     return () => this.listeners.delete(l);
   }
 
-  /** Sends to a specific thread; returns false if it is dead. */
+  /** Sends to a specific thread; returns false if it is dead. A `load` sent this way places the planet there. */
   send(thread: number, msg: ToThread, transfer: ArrayBuffer[] = []): boolean {
     const w = this.workers[thread];
     if (!w) return false;
+    if (msg.t === 'load') this.placement.placeAt(thread, msg);
     w.postMessage(msg, transfer);
     return true;
   }
@@ -120,21 +166,44 @@ export class SimThreadPool {
   /** Records the base a respawned thread starts with (the live threads receive the `profile` message). */
   setBaseOverrides(o: BalanceOverrides): void { this.baseOverrides = o; }
 
-  /** Sends to the thread that owns `planetId`. */
+  /** Sends to the thread that owns `planetId` (held back while the planet moves, then delivered on its new thread). */
   sendToPlanet(planetId: string, msg: ToThread, transfer: ArrayBuffer[] = []): boolean {
-    return this.send(this.threadOf(planetId), msg, transfer);
+    const thread = this.placement.route(planetId, msg);
+    if (this.mover.buffer(planetId, msg, transfer)) return true;
+    return this.send(thread, msg, transfer);
   }
 
-  /** Asks every live thread for its planet table (`ctl stats`). Dead or silent threads are reported with no planets. */
+  /** Moves a loaded planet to another thread now (rebalancing, tools); false when it cannot move. */
+  movePlanet(planetId: string, to: number): boolean {
+    const p = this.placement.get(planetId);
+    return !!p && p.confirmed && !p.catchingUp && !!this.workers[to] && this.mover.start(planetId, to);
+  }
+
+  /** Asks every live thread for its planet table (`ctl stats`). Dead threads have no planets; a silent one its last push. */
   async stats(timeoutMs = 1500): Promise<ThreadStats[]> {
-    return Promise.all(this.workers.map((w, thread) => (w ? this.statsOf(thread, timeoutMs) : { thread, planets: [], steps: 0, maxLag: 0, recentPasses: [] })));
+    return Promise.all(this.workers.map((w, thread) => (w ? this.statsOf(thread, timeoutMs) : emptyThreadStats(thread))));
+  }
+
+  /** The last stats every thread posted, at once (metrics, placement): never waits on a busy thread. */
+  cachedStats(): ThreadStats[] {
+    return Array.from({ length: this.opts.threads }, (_, t) => (this.workers[t] ? this.cache.get(t) : emptyThreadStats(t)));
+  }
+
+  /** A thread that is dead or has not posted stats for {@link UNRESPONSIVE_AFTER_MS} (since its last push or its start). */
+  unresponsive(thread: number): boolean {
+    return !this.workers[thread] || this.cache.get(thread).ageMs > UNRESPONSIVE_AFTER_MS;
+  }
+
+  /** Alive and responsive: may receive new or moved planets. */
+  private usable(thread: number): boolean {
+    return !!this.workers[thread] && (this.opts.statsEveryMs === 0 || !this.unresponsive(thread));
   }
 
   private statsOf(thread: number, timeoutMs: number): Promise<ThreadStats> {
     const reqId = this.nextReq++;
     return new Promise<ThreadStats>((resolve) => {
       const done = (s: ThreadStats) => { clearTimeout(timer); this.statWaiters.delete(reqId); resolve(s); };
-      const timer = setTimeout(() => done({ thread, planets: [], steps: 0, maxLag: 0, recentPasses: [] }), timeoutMs);
+      const timer = setTimeout(() => done(this.cache.get(thread)), timeoutMs);
       this.statWaiters.set(reqId, done);
       this.send(thread, { t: 'ctl', op: 'stats', reqId });
     });

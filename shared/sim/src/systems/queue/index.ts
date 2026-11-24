@@ -20,7 +20,7 @@ import { enqueueWorkOrder, type WorkOrderArgs } from '../terraform-basic/workOrd
 import { checkItemUnlockStage } from '../progression/validate';
 import { checkAiRaidAwayPolicy } from '../away/gate';
 import { resolveColonyIndex } from '../diplomacy/store';
-import { launchColonyRaid } from '../pvp/raidTask';
+import { automatedRaidRelaunchReject, launchColonyRaid } from '../pvp/raidTask';
 import {
   PRECEDENCE_RANK,
   type QueueEntry,
@@ -242,8 +242,11 @@ export const enqueueTaskHandler = defineCommandHandler({
         | number
         | undefined;
       const toColony = resolveColonyIndex(state, targetRef);
+      const unitIds = (raidTask.unitIds ?? raidTask.entityIds) as number[] | undefined;
+      const busy = automatedRaidRelaunchReject(state, colIdx, cmd.source, { unitIds, data: ctx.data });
+      if (busy) return busy;
       const raidRes = launchColonyRaid(state, colIdx, toColony, ctx, {
-        unitIds: (raidTask.unitIds ?? raidTask.entityIds) as number[] | undefined,
+        unitIds,
         q: typeof raidTask.q === 'number' ? raidTask.q : undefined,
         r: typeof raidTask.r === 'number' ? raidTask.r : undefined,
         data: ctx.data,

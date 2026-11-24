@@ -16,11 +16,11 @@ import { getColonyStock } from '../../economy/store';
 import {
   hasActiveTruce,
   pairKey,
-  readDiplomacyBlob,
+  peekDiplomacyBlob,
   resolveColonyIdStr,
 } from '../diplomacy/store';
 import { getColonyHqTier } from '../goals/store';
-import { getPvpState } from '../pvp/store';
+import { peekPvpState } from '../pvp/store';
 import { isColonyRaidProtected } from '../pvp/shield';
 
 export interface SectorCadenceCheck {
@@ -116,7 +116,7 @@ function countHostileCombatUnitsNearHq(
 }
 
 function checkActiveIncomingRaid(state: PlanetState, colonyIndex: number): boolean {
-  const pvp = getPvpState(state);
+  const pvp = peekPvpState(state);
   if (Object.values(pvp.activeRaids).some((r) => r && r.targetColony === colonyIndex && !r.repelled)) {
     return true;
   }
@@ -159,7 +159,7 @@ export function computeColonyPvpThreatScore(
 }
 
 function projectSectorDiplomacy(state: PlanetState): SectorDiplomacySnap[] {
-  const blob = readDiplomacyBlob(state);
+  const blob = peekDiplomacyBlob(state);
   const snaps: SectorDiplomacySnap[] = [];
   const seen = new Set<string>();
 

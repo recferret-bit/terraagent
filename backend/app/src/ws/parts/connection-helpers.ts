@@ -7,6 +7,7 @@ import {
   type AwayDigestV1,
   type HomeResponse,
   type SimInputFeedItemV1,
+  WS_PROTO_VERSION,
 } from '@terra/contracts';
 import type { RawData } from 'ws';
 import { buildingCatalog, compileData } from '@terra/sim';
@@ -22,7 +23,7 @@ import type { VerifiedSession } from '../session-verifier';
 import { welcomeFields } from '../welcome-digest';
 
 export const TICK_MS = 200;
-export const PROTO_VERSION = 1;
+export const PROTO_VERSION = WS_PROTO_VERSION;
 
 export const rawToFrame = (data: RawData, isBinary: boolean): string | Uint8Array => {
   const buf = Array.isArray(data) ? Buffer.concat(data) : Buffer.isBuffer(data) ? data : Buffer.from(data);
