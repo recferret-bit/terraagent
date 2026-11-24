@@ -50,18 +50,17 @@ describe('ColonyAgentLoopService — human manual gate, NEAR AI Cloud attestatio
     });
     host.step(1);
 
-    const replies = [
-      { action: 'queue_goal', goal: 'grow_economy', rationale: 'Harvested metals while offline.' },
-      { action: 'cancel_truce', rationale: 'Attempt illegal oathbreaker.' },
-      { action: 'trade', tradePair: 'metals.t1/minerals.t1', tradeAmount: 10, tradeNotionalAtomic: '9999999999', rationale: 'Oversized order.' },
-    ];
-    let idx = 0;
+    const byColony: Record<number, Record<string, unknown>> = {
+      0: { action: 'queue_goal', goal: 'grow_economy', rationale: 'Harvested metals while offline.' },
+      4: { action: 'cancel_truce', rationale: 'Attempt illegal oathbreaker.' },
+      5: { action: 'trade', tradePair: 'metals.t1/minerals.t1', tradeAmount: 10, tradeNotionalAtomic: '9999999999', rationale: 'Oversized order.' },
+    };
     const llm: LlmProviderPort = {
-      complete: async () => ({
-        text: JSON.stringify(replies[idx++ % replies.length]),
-        usage: { inputTokens: 10, outputTokens: 10 },
-        model: 'mock',
-      }),
+      complete: async (req: LlmRequest) => {
+        const body = JSON.parse(req.messages[0]?.content ?? '{}') as { colonies?: Array<{ colonyIndex: number }> };
+        const directives = (body.colonies ?? []).map(({ colonyIndex }) => ({ colonyIndex, ...(byColony[colonyIndex] ?? byColony[0]) }));
+        return { text: JSON.stringify({ directives }), usage: { inputTokens: 10, outputTokens: 10 }, model: 'mock' };
+      },
     };
     const noteHighlight = vi.fn().mockResolvedValue(true);
     const digests = { noteHighlight } as unknown as AwayDigestService;
