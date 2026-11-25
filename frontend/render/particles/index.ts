@@ -8,3 +8,4 @@ export * from './WorkParticleSystem';
 export * from './validate/ParticleValidator';
 export * from './presetsPrestige';
 export * from './cutterVariant';
+export * from './surfaceContact';

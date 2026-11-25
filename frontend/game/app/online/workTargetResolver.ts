@@ -18,9 +18,16 @@ import {
   hubBuildProgressForState,
   is2x2BuildingKind,
   is3x3FootprintKind,
+  isConstructibleBuilding,
   isTrackedWalkingUnitKind,
   isWorkerUnitKind,
 } from './entityKinds';
+import {
+  buildingFootprintSurfaceRadius,
+  findBuildingAtOrNear,
+  findConstructingOrRepairTargetForWorker,
+  resolveBuildOrderTargetEntity,
+} from './buildingWorkTarget';
 
 export {
   computeWorkTarget,
@@ -137,7 +144,14 @@ interface ResolvedTargetInfo {
   q: number;
   r: number;
   targetKind: InteractionTargetKind;
+  targetEntity?: EntityMeshRecord;
   targetWorldXZ?: [number, number];
+}
+
+function repairTargetInfo(targetEntity: EntityMeshRecord | null | undefined, q: number, r: number): ResolvedTargetInfo {
+  return targetEntity
+    ? { q: targetEntity.q, r: targetEntity.r, targetKind: 'repair', targetEntity, targetWorldXZ: [targetEntity.mesh.position.x, targetEntity.mesh.position.z] }
+    : { q, r, targetKind: 'repair' };
 }
 
 function resolveFromWorkJobsAndHarvest(
@@ -156,8 +170,8 @@ function resolveFromWorkJobsAndHarvest(
       const q = Number.isFinite(job.q) ? Number(job.q) : rec.q;
       const r = Number.isFinite(job.r) ? Number(job.r) : rec.r;
       if (job.mode === 'repair' || job.mode === 'dismantle') { // a dismantle shows the same tool sparks on the building
-        const tEnt = job.targetEntityId !== undefined ? records.get(job.targetEntityId) : undefined;
-        return { q, r, targetKind: 'repair', targetWorldXZ: tEnt ? [tEnt.mesh.position.x, tEnt.mesh.position.z] : undefined };
+        const direct = job.targetEntityId !== undefined ? records.get(job.targetEntityId) : undefined;
+        return repairTargetInfo(direct ?? findBuildingAtOrNear(records, q, r, rec), q, r);
       }
       if (job.terrainKey) {
         return { q, r, targetKind: ParticlePresetRegistry.resolveTargetKind({ terrainKey: job.terrainKey, biomeKey, mode: job.mode }) };
@@ -312,7 +326,9 @@ function resolveWorkerTargetFromView(
     const cur = unitRec.current;
     const q = Number.isFinite(cur.q) ? Number(cur.q) : rec.q;
     const r = Number.isFinite(cur.r) ? Number(cur.r) : rec.r;
-    if (cur.kind === 'build' || cur.kind === 'construct') return { q, r, targetKind: 'repair' };
+    if (cur.kind === 'build' || cur.kind === 'construct') {
+      return repairTargetInfo(resolveBuildOrderTargetEntity(rec, cur, records, blobs, q, r), q, r);
+    }
     const tfOp = cur.op ?? lookupTerraformTaskOp(blobs, rec.owner, cur.orderId, q, r);
     if (tfOp && tfOp !== 'prepare' && tfOp !== 'work') {
       const terrainKey = tileTerrainKeyAt(tiles, planetRadius, q, r);
@@ -321,13 +337,8 @@ function resolveWorkerTargetFromView(
     return { q, r, targetKind: inspectTileTargetKind(tiles, planetRadius, q, r, biomeKey, false) };
   }
 
-  if (rec.state === ENTITY_STATE.constructing) {
-    for (const other of records.values()) {
-      if (other.id !== rec.id && other.state === ENTITY_STATE.constructing && Math.hypot(other.q - rec.q, other.r - rec.r) <= 3) {
-        return { q: other.q, r: other.r, targetKind: 'repair', targetWorldXZ: [other.mesh.position.x, other.mesh.position.z] };
-      }
-    }
-    return { q: rec.q, r: rec.r, targetKind: 'repair' };
+  if (rec.state === ENTITY_STATE.constructing || rec.state === ENTITY_STATE.repairing) {
+    return repairTargetInfo(findConstructingOrRepairTargetForWorker(rec, records, blobs), rec.q, rec.r);
   }
 
   if (rec.kind === ENTITY_KIND.hq) {
@@ -342,6 +353,10 @@ function resolveWorkerTargetFromView(
         if (tfOp && tfOp !== 'prepare' && tfOp !== 'work') {
           const terrainKey = tileTerrainKeyAt(tiles, planetRadius, tq, tr);
           return { q: tq, r: tr, targetKind: ParticlePresetRegistry.resolveTargetKind({ mode: tfOp, terrainKey, biomeKey }) };
+        }
+        const bldg = findBuildingAtOrNear(records, tq, tr, rec);
+        if (bldg && (bldg.state === ENTITY_STATE.constructing || bldg.state === ENTITY_STATE.waiting || isConstructibleBuilding(bldg.kind))) {
+          return repairTargetInfo(bldg, bldg.q, bldg.r);
         }
         return { q: tq, r: tr, targetKind: inspectTileTargetKind(tiles, planetRadius, tq, tr, biomeKey, false) };
       }
@@ -422,6 +437,7 @@ export function buildActiveWorkSites(params: {
     const isWorkingState =
       rec.state === ENTITY_STATE.working ||
       rec.state === ENTITY_STATE.constructing ||
+      rec.state === ENTITY_STATE.repairing ||
       rec.state === ENTITY_STATE.harvesting;
     if (!isWorkingState) continue;
 
@@ -439,18 +455,19 @@ export function buildActiveWorkSites(params: {
     let tz: number;
     if (dist > 0.35) {
       rec.targetYaw = Math.atan2(dx, dz);
-      const pullBack = Math.min(0.12, dist * 0.05);
+      const pullBack = info.targetEntity ? 0 : Math.min(0.12, dist * 0.05);
       tx = rawTx - (dx / dist) * pullBack;
       tz = rawTz - (dz / dist) * pullBack;
     } else {
-      tx = bx + Math.sin(rec.mesh.rotation.y) * 1.12;
-      tz = bz + Math.cos(rec.mesh.rotation.y) * 1.12;
+      tx = bx + Math.sin(rec.mesh.rotation.y) * 1.85;
+      tz = bz + Math.cos(rec.mesh.rotation.y) * 1.85;
     }
 
     const diff = ((((rec.targetYaw - rec.mesh.rotation.y) % (Math.PI * 2)) + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
     rec.mesh.rotation.y += diff * turnAlpha;
 
-    const groundY = terrain ? terrain.heightAt(tx, tz) : by;
+    const targetTerrainY = terrain ? terrain.heightAt(tx, tz) : by;
+    const groundY = info.targetEntity ? Math.min(by, targetTerrainY) : targetTerrainY;
     const ty = groundY + targetHeightOffset(info.targetKind);
     const toolOrigins = computeMeshToolOrigins(rec.mesh, archetypeForKind(rec.kind, rec.tier), rec.walk, rec.work);
 
@@ -462,6 +479,12 @@ export function buildActiveWorkSites(params: {
       targetPos: [tx, ty, tz],
       groundY,
       intensity: Math.max(0.85, rec.work),
+      ...(info.targetEntity
+        ? {
+            targetMesh: info.targetEntity.mesh,
+            targetFootprintRadius: buildingFootprintSurfaceRadius(info.targetEntity.kind),
+          }
+        : {}),
     });
   }
 

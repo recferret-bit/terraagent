@@ -1,11 +1,14 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
+import { createArchetypeMesh, stripBuildingPlinth } from '../kitbash';
 import {
   BUILTIN_PARTICLE_PRESETS,
   ParticlePresetRegistry,
   WorkParticleEmitter,
   WorkParticleSystem,
   computeMeshToolOrigins,
+  computeSurfaceBeamEnd,
+  computeSurfaceCutPoint,
   deltaE76,
   evalArchetypeToolOrigins,
   evalBipedArmPoint,
@@ -300,5 +303,75 @@ describe('Preset coverage & emitter robustness (@terra/render/particles)', () =>
     expect(nearest).toBeGreaterThan(0.45);
     expect(nearest).toBeLessThan(1.35);
     em.dispose();
+  });
+});
+
+describe('Building 3D surface contact & welding sparks (@terra/render/particles)', () => {
+  const scenarios = [
+    { label: 'HQ on 3x3 Command Hub', bot: 'robot.hero', building: 'building.commandHub', botPos: [-4.0, 0, 0] as [number, number, number], yaw: Math.PI / 2, minR: 2.0, maxR: 2.85 },
+    { label: 'Miner on 2x2 Solar Array', bot: 'robot.miner', building: 'building.solar', botPos: [0, 0, 3.2] as [number, number, number], yaw: Math.PI, minR: 1.35, maxR: 2.1 },
+    { label: 'Builder on 1x1 Pylon', bot: 'robot.builder', building: 'building.pylon', botPos: [2.0, 0, 0] as [number, number, number], yaw: -Math.PI / 2, minR: 0.38, maxR: 1.05 },
+  ] as const;
+
+  it.each(scenarios)('$label: laser beams land on the 3D outer hull and sparks eject outward from the wall', (sc) => {
+    const bMesh = createArchetypeMesh(sc.building, 'dune');
+    stripBuildingPlinth(bMesh);
+    bMesh.position.set(0, 0, 0);
+
+    const toolOrigins = evalArchetypeToolOrigins({
+      archetypeId: sc.bot,
+      position: sc.botPos,
+      yaw: sc.yaw,
+      time: 0.2,
+      walkWeight: 0,
+      workWeight: 1,
+    });
+    const site = {
+      workerId: `surf-${sc.bot}-${sc.building}`,
+      targetKind: 'repair' as const,
+      botOrigin: sc.botPos,
+      toolOrigins,
+      targetPos: [0, 0.48, 0] as [number, number, number],
+      groundY: 0,
+      intensity: 1,
+      targetMesh: bMesh,
+    };
+
+    const cut = computeSurfaceCutPoint(site, 0.28, 7.5, 0.1, 0.08);
+    const cutR = Math.hypot(cut[0], cut[2]);
+    expect(cutR).toBeGreaterThanOrEqual(sc.minR);
+    expect(cutR).toBeLessThanOrEqual(sc.maxR);
+
+    for (let i = 0; i < toolOrigins.length; i++) {
+      const end = computeSurfaceBeamEnd(site, toolOrigins[i]!, cut, toolOrigins.length >= 2 ? (i === 0 ? 1 : -1) : 0, 0.08);
+      const endR = Math.hypot(end[0], end[2]);
+      expect(endR).toBeGreaterThanOrEqual(sc.minR - 0.05);
+      expect(endR).toBeLessThanOrEqual(sc.maxR + 0.1);
+    }
+
+    const em = new WorkParticleEmitter(ParticlePresetRegistry.getByTargetKind('repair'), site);
+    em.step(0.016);
+    const layers = (em as unknown as {
+      layers: { px: Float32Array; py: Float32Array; pz: Float32Array; vx: Float32Array; vz: Float32Array; spec: { count: number; geometry: string } }[];
+    }).layers;
+    const [nx, nz] = [cut[0] / (cutR || 1), cut[2] / (cutR || 1)];
+    const sparkLayers = layers.filter((l) => l.spec.geometry === 'weldSpark');
+    expect(sparkLayers.length).toBeGreaterThanOrEqual(2);
+
+    for (const layer of layers) {
+      for (let i = 0; i < layer.spec.count; i++) {
+        const planeDist = (layer.px[i]! - cut[0]) * nx + (layer.pz[i]! - cut[2]) * nz;
+        expect(planeDist).toBeGreaterThanOrEqual(-0.02);
+        expect(layer.vx[i]! * nx + layer.vz[i]! * nz).toBeGreaterThan(0);
+      }
+    }
+
+    const impactOrb = em.group.children.filter((c): c is THREE.Mesh =>
+      (c as THREE.Mesh).isMesh && (c as THREE.Mesh).geometry === getParticleGeometry('energyOrb')).pop()!;
+    expect(Math.hypot(impactOrb.position.x, impactOrb.position.z)).toBeGreaterThanOrEqual(sc.minR);
+
+    em.dispose();
+    bMesh.geometry.dispose();
+    (bMesh.material as THREE.Material).dispose();
   });
 });

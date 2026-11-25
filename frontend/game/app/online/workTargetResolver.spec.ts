@@ -357,3 +357,87 @@ describe('workTargetResolver: grade reads the target tile terrain', () => {
     expect(Math.hypot(sites[0].targetPos[0] - expectedX, sites[0].targetPos[2] - expectedZ)).toBeLessThanOrEqual(0.15);
   });
 });
+
+describe('workTargetResolver: building surface targets for HQ and builders', () => {
+  it('resolves build commands and constructing/repairing workers to 1x1, 2x2, and 3x3 buildings rather than fellow workers', () => {
+    const hq = makeRecord({ id: 101, kind: ENTITY_KIND.hq, owner: 0, q: -3, r: 0, state: ENTITY_STATE.constructing });
+    const [hx, hz] = tileXZ(-3, 0);
+    hq.mesh.position.set(hx, 0, hz);
+
+    const worker2 = makeRecord({ id: 102, kind: ENTITY_KIND.worker, owner: 0, q: -2, r: 1, state: ENTITY_STATE.constructing });
+    const [w2x, w2z] = tileXZ(-2, 1);
+    worker2.mesh.position.set(w2x, 0, w2z);
+
+    const commandHub = makeRecord({ id: 201, kind: ENTITY_KIND.commandHub, owner: 0, q: 0, r: 0, state: ENTITY_STATE.constructing });
+    const [hubX, hubZ] = tileXZ(0, 0);
+    commandHub.mesh.position.set(hubX, 0.25, hubZ);
+
+    const solar = makeRecord({ id: 202, kind: ENTITY_KIND.solar, owner: 0, q: 6, r: 0, state: ENTITY_STATE.constructing });
+    const [solX, solZ] = tileXZ(6.5, 0.5);
+    solar.mesh.position.set(solX, 0, solZ);
+
+    const solarBuilder = makeRecord({ id: 103, kind: ENTITY_KIND.worker, tier: 2, owner: 0, q: 5, r: 0, state: ENTITY_STATE.working });
+    const [sbx, sbz] = tileXZ(5, 0);
+    solarBuilder.mesh.position.set(sbx, 0, sbz);
+
+    const pylon = makeRecord({ id: 203, kind: ENTITY_KIND.pylon, owner: 0, q: -6, r: 0, state: ENTITY_STATE.active });
+    const [px, pz] = tileXZ(-6, 0);
+    pylon.mesh.position.set(px, 0, pz);
+
+    const repairWorker = makeRecord({ id: 104, kind: ENTITY_KIND.worker, owner: 0, q: -5, r: 0, state: ENTITY_STATE.repairing });
+    const [rwx, rwz] = tileXZ(-5, 0);
+    repairWorker.mesh.position.set(rwx, 0, rwz);
+
+    const records = new Map<number, EntityMeshRecord>([
+      [101, hq],
+      [102, worker2],
+      [201, commandHub],
+      [202, solar],
+      [103, solarBuilder],
+      [203, pylon],
+      [104, repairWorker],
+    ]);
+
+    const view = {
+      planet: { radius: 10 },
+      blobs: {
+        units: {
+          byId: {
+            '103': { current: { kind: 'build', orderId: 'job:202', q: 6, r: 0 } },
+          },
+        },
+        construction: {
+          jobs: {
+            '202': { entityId: 202, owner: 0, q: 6, r: 0 },
+          },
+        },
+      },
+    } as unknown as ClientView;
+
+    const sites = buildActiveWorkSites({ records, view, tiles: null, terrain: null, biomeKey: 'dune' });
+    const byWorker = new Map(sites.map((s) => [s.workerId, s]));
+
+    const hqSite = byWorker.get('101')!;
+    expect(hqSite.targetKind).toBe('repair');
+    expect(hqSite.targetMesh).toBe(commandHub.mesh);
+    expect(hqSite.targetFootprintRadius).toBe(2.35);
+    expect(hqSite.targetPos[0]).toBeCloseTo(hubX, 4);
+    expect(hqSite.targetPos[2]).toBeCloseTo(hubZ, 4);
+    expect(hqSite.groundY).toBe(0);
+
+    const w2Site = byWorker.get('102')!;
+    expect(w2Site.targetMesh).toBe(commandHub.mesh);
+
+    const solarSite = byWorker.get('103')!;
+    expect(solarSite.targetKind).toBe('repair');
+    expect(solarSite.targetMesh).toBe(solar.mesh);
+    expect(solarSite.targetFootprintRadius).toBe(1.45);
+    expect(solarSite.targetPos[0]).toBeCloseTo(solX, 4);
+    expect(solarSite.targetPos[2]).toBeCloseTo(solZ, 4);
+
+    const repairSite = byWorker.get('104')!;
+    expect(repairSite.targetKind).toBe('repair');
+    expect(repairSite.targetMesh).toBe(pylon.mesh);
+    expect(repairSite.targetFootprintRadius).toBe(0.55);
+  });
+});

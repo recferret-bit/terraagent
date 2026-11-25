@@ -283,7 +283,7 @@ export class SpawnSet {
             targetKind: workTarget,
             botOrigin: [x, y, z],
             toolOrigins: computeMeshToolOrigins(s.mesh, s.id, 0, work),
-            targetPos: [x, y + 0.36, z + 1.08],
+            targetPos: [x, y + 0.36, z + 1.95],
             groundY: y,
             intensity: work,
           };

@@ -141,4 +141,10 @@ export interface ActiveWorkSiteInput {
   groundY: number;
   /** Work blend weight (0..1). */
   intensity?: number;
+  /** Optional target 3D building/object mesh so tool beams and welding sparks contact its outer 3D surface. */
+  targetMesh?: unknown;
+  /** Optional explicit or pre-resolved 3D surface contact point in world space. */
+  surfacePoint?: [number, number, number];
+  /** Fallback horizontal hull radius (metres) when `targetMesh` has no geometry triangles (e.g. unit test mocks). */
+  targetFootprintRadius?: number;
 }

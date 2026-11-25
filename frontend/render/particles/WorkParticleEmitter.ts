@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { getParticleGeometry } from './geometries';
 import { beamImpactPoint, debrisSpawnPoint, DEBRIS_SHELL_MAX, DEBRIS_SHELL_MIN, randomShellDir, SPAWN_GROUND_CLEAR } from './spawnShell';
+import { clampOutsideSurface, computeSurfaceBeamEnd, computeSurfaceCutPoint, hasSurfaceTarget, spawnSurfaceParticle } from './surfaceContact';
 import type { ActiveWorkSiteInput, ParticleLayerSpec, ParticlePresetSpec } from './types';
 
 interface LayerRuntime {
@@ -196,10 +197,11 @@ export class WorkParticleEmitter {
   get targetZ(): number { return this.site.targetPos[2]; }
 
   updateSite(site: ActiveWorkSiteInput): void {
+    const surfaceChanged = hasSurfaceTarget(site) !== hasSurfaceTarget(this.site);
     const moved = Math.hypot(site.targetPos[0] - this.site.targetPos[0], site.targetPos[2] - this.site.targetPos[2]) > 0.7;
     this.site = site;
     this.active = (site.intensity ?? 1) > 0.02;
-    if (moved && this.active) {
+    if ((moved || surfaceChanged) && this.active) {
       this.seedAllParticles(1.0);
     }
   }
@@ -217,77 +219,72 @@ export class WorkParticleEmitter {
 
   private computeCutPoint(): [number, number, number] {
     const tb = this.preset.toolBeam;
-    return beamImpactPoint(
-      this.site.targetPos,
-      this.site.botOrigin,
-      tb.sweepRadius,
-      tb.sweepFreq,
-      this.clock,
-      this.site.groundY + SPAWN_GROUND_CLEAR,
-    );
+    const floor = this.site.groundY + SPAWN_GROUND_CLEAR;
+    if (hasSurfaceTarget(this.site)) {
+      return computeSurfaceCutPoint(this.site, tb.sweepRadius, tb.sweepFreq, this.clock, floor);
+    }
+    return beamImpactPoint(this.site.targetPos, this.site.botOrigin, tb.sweepRadius, tb.sweepFreq, this.clock, floor);
   }
 
-  private spawnParticle(layer: LayerRuntime, i: number, speedBoost: number): void {
+  private spawnParticle(layer: LayerRuntime, i: number, speedBoost: number, cutPoint: readonly [number, number, number]): void {
     const { spec } = layer;
-    const center = this.site.targetPos;
-    const [bx, , bz] = this.site.botOrigin;
-    // Full 360-degree radial fountain around the target, with only a subtle bias toward the cutter.
-    let dx = bx - center[0];
-    let dz = bz - center[2];
-    const dLen = Math.hypot(dx, dz) || 1;
-    dx /= dLen;
-    dz /= dLen;
-
-    const angle = this.rand() * Math.PI * 2;
-    let dirX = Math.cos(angle) + dx * 0.18;
-    let dirZ = Math.sin(angle) + dz * 0.18;
-    const dirLen = Math.hypot(dirX, dirZ) || 1;
-    dirX /= dirLen;
-    dirZ /= dirLen;
-
+    const floor = this.site.groundY + SPAWN_GROUND_CLEAR;
     const speed = (spec.speedRange[0] + this.rand() * (spec.speedRange[1] - spec.speedRange[0])) * speedBoost;
     const up = (spec.upwardBias[0] + this.rand() * (spec.upwardBias[1] - spec.upwardBias[0])) * speedBoost;
-    const radialSpread = 0.35 + 0.65 * this.rand();
-    const horizSpeed = speed * radialSpread * 0.48;
+    const horizSpeed = speed * (0.35 + 0.65 * this.rand()) * 0.48;
 
-    const radius = DEBRIS_SHELL_MIN + this.rand() * (DEBRIS_SHELL_MAX - DEBRIS_SHELL_MIN);
-    const spawned = debrisSpawnPoint(center, randomShellDir(this.randFn), radius, this.randFn, this.site.groundY + SPAWN_GROUND_CLEAR);
-    layer.px[i] = spawned[0];
-    layer.py[i] = spawned[1];
-    layer.pz[i] = spawned[2];
-    layer.vx[i] = dirX * horizSpeed;
-    layer.vy[i] = up;
-    layer.vz[i] = dirZ * horizSpeed;
+    let spawned: [number, number, number];
+    let dirX: number;
+    let dirZ: number;
+    if (hasSurfaceTarget(this.site)) {
+      const surf = spawnSurfaceParticle(this.site, cutPoint, this.randFn, floor);
+      spawned = surf.pos;
+      dirX = surf.dirXZ[0];
+      dirZ = surf.dirXZ[1];
+    } else {
+      const center = this.site.targetPos;
+      const [bx, , bz] = this.site.botOrigin;
+      let dx = bx - center[0], dz = bz - center[2];
+      const dLen = Math.hypot(dx, dz) || 1;
+      dx /= dLen; dz /= dLen;
+      const angle = this.rand() * Math.PI * 2;
+      dirX = Math.cos(angle) + dx * 0.18;
+      dirZ = Math.sin(angle) + dz * 0.18;
+      const dirLen = Math.hypot(dirX, dirZ) || 1;
+      dirX /= dirLen; dirZ /= dirLen;
+      const radius = DEBRIS_SHELL_MIN + this.rand() * (DEBRIS_SHELL_MAX - DEBRIS_SHELL_MIN);
+      spawned = debrisSpawnPoint(center, randomShellDir(this.randFn), radius, this.randFn, floor);
+    }
 
-    layer.rx[i] = this.rand() * Math.PI * 2;
-    layer.ry[i] = this.rand() * Math.PI * 2;
-    layer.rz[i] = this.rand() * Math.PI * 2;
+    layer.px[i] = spawned[0]; layer.py[i] = spawned[1]; layer.pz[i] = spawned[2];
+    layer.vx[i] = dirX * horizSpeed; layer.vy[i] = up; layer.vz[i] = dirZ * horizSpeed;
+    layer.rx[i] = this.rand() * Math.PI * 2; layer.ry[i] = this.rand() * Math.PI * 2; layer.rz[i] = this.rand() * Math.PI * 2;
     layer.wx[i] = (this.rand() - 0.5) * 2 * spec.spinSpeed;
     layer.wy[i] = (this.rand() - 0.5) * 2 * spec.spinSpeed;
     layer.wz[i] = (this.rand() - 0.5) * 2 * spec.spinSpeed;
-
     layer.lifetime[i] = spec.lifetimeRange[0] + this.rand() * (spec.lifetimeRange[1] - spec.lifetimeRange[0]);
     layer.baseScale[i] = spec.sizeRange[0] + this.rand() * (spec.sizeRange[1] - spec.sizeRange[0]);
   }
 
   private seedAllParticles(speedBoost: number): void {
+    const cutPoint = this.computeCutPoint();
     for (const layer of this.layers) {
       for (let i = 0; i < layer.spec.count; i++) {
-        this.spawnParticle(layer, i, speedBoost);
-        if (speedBoost > 1.2) {
-          layer.age[i] = this.rand() * 0.12;
-        }
+        this.spawnParticle(layer, i, speedBoost, cutPoint);
+        if (speedBoost > 1.2) layer.age[i] = this.rand() * 0.12;
       }
     }
   }
 
-  private stepLayer(layer: LayerRuntime, dt: number, canRespawn: boolean): number {
+  private stepLayer(layer: LayerRuntime, dt: number, canRespawn: boolean, cutPoint: readonly [number, number, number]): number {
     const { spec } = layer;
     const n = spec.count;
     const dampXZ = Math.exp(-spec.drag * dt);
     const dampY = Math.exp(-spec.drag * 0.55 * dt);
     const swirl = spec.swirl ?? 0;
-    const [tx, , tz] = this.site.targetPos;
+    const surfaceMode = hasSurfaceTarget(this.site);
+    const swirlX = surfaceMode ? cutPoint[0] : this.site.targetPos[0];
+    const swirlZ = surfaceMode ? cutPoint[2] : this.site.targetPos[2];
     const groundY = this.site.groundY;
     const weight = Math.max(this.site.intensity ?? 1, this.burstRemaining > 0 ? 1 : 0);
     let aliveCount = 0;
@@ -297,53 +294,32 @@ export class WorkParticleEmitter {
       if (layer.age[i] >= layer.lifetime[i]) {
         if (canRespawn) {
           layer.age[i] = 0;
-          this.spawnParticle(layer, i, 1.0);
+          this.spawnParticle(layer, i, 1.0, cutPoint);
         } else {
-          DUMMY.scale.setScalar(0);
-          DUMMY.updateMatrix();
-          layer.mesh.setMatrixAt(i, DUMMY.matrix);
+          DUMMY.scale.setScalar(0); DUMMY.updateMatrix(); layer.mesh.setMatrixAt(i, DUMMY.matrix);
           continue;
         }
       }
       aliveCount++;
-
-      let vx = layer.vx[i] * dampXZ;
-      let vy = layer.vy[i] * dampY - spec.gravity * dt;
-      let vz = layer.vz[i] * dampXZ;
-
+      let vx = layer.vx[i] * dampXZ, vy = layer.vy[i] * dampY - spec.gravity * dt, vz = layer.vz[i] * dampXZ;
       if (swirl !== 0) {
-        const dx = layer.px[i] - tx;
-        const dz = layer.pz[i] - tz;
+        const dx = layer.px[i] - swirlX, dz = layer.pz[i] - swirlZ;
         const r = Math.hypot(dx, dz) + 0.05;
-        vx += (-dz / r) * swirl * dt;
-        vz += (dx / r) * swirl * dt;
+        vx += (-dz / r) * swirl * dt; vz += (dx / r) * swirl * dt;
       }
-
-      let px = layer.px[i] + vx * dt;
-      let py = layer.py[i] + vy * dt;
-      let pz = layer.pz[i] + vz * dt;
-
+      let px = layer.px[i] + vx * dt, py = layer.py[i] + vy * dt, pz = layer.pz[i] + vz * dt;
       const floorY = groundY + layer.baseScale[i] * 0.35;
       if (py < floorY && vy < 0 && spec.bounce > 0) {
-        py = floorY;
-        vy = -vy * spec.bounce;
-        vx *= 0.72;
-        vz *= 0.72;
-        layer.wx[i] *= 0.68;
-        layer.wy[i] *= 0.68;
-        layer.wz[i] *= 0.68;
+        py = floorY; vy = -vy * spec.bounce; vx *= 0.72; vz *= 0.72;
+        layer.wx[i] *= 0.68; layer.wy[i] *= 0.68; layer.wz[i] *= 0.68;
       }
-
-      layer.px[i] = px;
-      layer.py[i] = py;
-      layer.pz[i] = pz;
-      layer.vx[i] = vx;
-      layer.vy[i] = vy;
-      layer.vz[i] = vz;
-
-      layer.rx[i] += layer.wx[i] * dt;
-      layer.ry[i] += layer.wy[i] * dt;
-      layer.rz[i] += layer.wz[i] * dt;
+      if (surfaceMode) {
+        const clamped = clampOutsideSurface(this.site, cutPoint, px, pz, vx, vz);
+        px = clamped.px; pz = clamped.pz; vx = clamped.vx; vz = clamped.vz;
+      }
+      layer.px[i] = px; layer.py[i] = py; layer.pz[i] = pz;
+      layer.vx[i] = vx; layer.vy[i] = vy; layer.vz[i] = vz;
+      layer.rx[i] += layer.wx[i] * dt; layer.ry[i] += layer.wy[i] * dt; layer.rz[i] += layer.wz[i] * dt;
 
       const u = Math.min(1, layer.age[i] / Math.max(0.05, layer.lifetime[i]));
       const popIn = Math.min(1, u / 0.09);
@@ -357,8 +333,7 @@ export class WorkParticleEmitter {
       if (stretch > 1.05 && speed > 0.05) {
         TMP_DIR.set(vx / speed, vy / speed, vz / speed);
         DUMMY.quaternion.setFromUnitVectors(FORWARD_Z, TMP_DIR);
-        const vMag = Math.min(2.4, 1 + speed * 0.14 * (stretch - 1));
-        DUMMY.scale.set(s, s, s * vMag);
+        DUMMY.scale.set(s, s, s * Math.min(2.4, 1 + speed * 0.14 * (stretch - 1)));
       } else {
         DUMMY.rotation.set(layer.rx[i], layer.ry[i], layer.rz[i]);
         DUMMY.scale.setScalar(s);
@@ -376,56 +351,43 @@ export class WorkParticleEmitter {
     const origins = this.site.toolOrigins;
     const pulse = 0.8 + 0.35 * Math.sin(this.clock * tb.pulseFreq);
     const weight = this.site.intensity ?? 1;
+    const surfaceMode = hasSurfaceTarget(this.site);
+    const floor = this.site.groundY + SPAWN_GROUND_CLEAR;
 
     for (let i = 0; i < this.beams.length; i++) {
-      const pair = this.beams[i];
-      const muzzle = this.muzzleFlares[i];
+      const pair = this.beams[i], muzzle = this.muzzleFlares[i];
       if (!showBeams || i >= origins.length || weight <= 0.05) {
-        pair.core.visible = false;
-        pair.sheath.visible = false;
-        muzzle.visible = false;
+        pair.core.visible = false; pair.sheath.visible = false; muzzle.visible = false;
         continue;
       }
       const orig = origins[i];
-      const rawDx = cutPoint[0] - orig[0];
-      const rawDz = cutPoint[2] - orig[2];
-      const rawHoriz = Math.hypot(rawDx, rawDz) || 1;
-      const perpX = -rawDz / rawHoriz;
-      const perpZ = rawDx / rawHoriz;
-      const sideOffset = origins.length >= 2 ? (i === 0 ? 1 : -1) * 0.035 : 0;
-
       TMP_START.set(orig[0], orig[1], orig[2]);
-      TMP_END.set(cutPoint[0] + perpX * sideOffset, cutPoint[1], cutPoint[2] + perpZ * sideOffset);
+      const sideSign = origins.length >= 2 ? (i === 0 ? 1 : -1) : 0;
+      if (surfaceMode) {
+        const end = computeSurfaceBeamEnd(this.site, orig, cutPoint, sideSign, floor);
+        TMP_END.set(end[0], end[1], end[2]);
+      } else {
+        const rawDx = cutPoint[0] - orig[0], rawDz = cutPoint[2] - orig[2];
+        const rawHoriz = Math.hypot(rawDx, rawDz) || 1;
+        const sideOffset = sideSign * 0.035;
+        TMP_END.set(cutPoint[0] + (-rawDz / rawHoriz) * sideOffset, cutPoint[1], cutPoint[2] + (rawDx / rawHoriz) * sideOffset);
+      }
       TMP_DIR.subVectors(TMP_END, TMP_START);
       const len = TMP_DIR.length();
       if (len < 0.05) {
-        pair.core.visible = false;
-        pair.sheath.visible = false;
-        muzzle.visible = false;
+        pair.core.visible = false; pair.sheath.visible = false; muzzle.visible = false;
         continue;
       }
       TMP_DIR.divideScalar(len);
       TMP_QUAT.setFromUnitVectors(UP_AXIS, TMP_DIR);
 
-      const midX = (TMP_START.x + TMP_END.x) * 0.5;
-      const midY = (TMP_START.y + TMP_END.y) * 0.5;
-      const midZ = (TMP_START.z + TMP_END.z) * 0.5;
+      const midX = (TMP_START.x + TMP_END.x) * 0.5, midY = (TMP_START.y + TMP_END.y) * 0.5, midZ = (TMP_START.z + TMP_END.z) * 0.5;
       const rCore = tb.beamRadius * pulse * weight;
       const rSheath = rCore * 2.3;
 
-      pair.core.visible = true;
-      pair.core.position.set(midX, midY, midZ);
-      pair.core.quaternion.copy(TMP_QUAT);
-      pair.core.scale.set(rCore, len, rCore);
-
-      pair.sheath.visible = true;
-      pair.sheath.position.set(midX, midY, midZ);
-      pair.sheath.quaternion.copy(TMP_QUAT);
-      pair.sheath.scale.set(rSheath, len, rSheath);
-
-      muzzle.visible = true;
-      muzzle.position.set(orig[0], orig[1], orig[2]);
-      muzzle.rotation.set(this.clock * 7, this.clock * 11, 0);
+      pair.core.visible = true; pair.core.position.set(midX, midY, midZ); pair.core.quaternion.copy(TMP_QUAT); pair.core.scale.set(rCore, len, rCore);
+      pair.sheath.visible = true; pair.sheath.position.set(midX, midY, midZ); pair.sheath.quaternion.copy(TMP_QUAT); pair.sheath.scale.set(rSheath, len, rSheath);
+      muzzle.visible = true; muzzle.position.set(orig[0], orig[1], orig[2]); muzzle.rotation.set(this.clock * 7, this.clock * 11, 0);
       muzzle.scale.setScalar((0.042 + 0.012 * pulse) * weight);
     }
 
@@ -442,8 +404,9 @@ export class WorkParticleEmitter {
     const showRing = showBeams || this.burstRemaining > 0;
     this.shockRing.visible = showRing;
     if (showRing) {
-      const [tx, , tz] = this.site.targetPos;
-      this.shockRing.position.set(tx, this.site.groundY + 0.035, tz);
+      const rx = surfaceMode ? cutPoint[0] : this.site.targetPos[0];
+      const rz = surfaceMode ? cutPoint[2] : this.site.targetPos[2];
+      this.shockRing.position.set(rx, this.site.groundY + 0.035, rz);
       const ringRadius = this.burstRemaining > 0 ? 0.45 + (1 - this.burstRemaining / this.burstDuration) * 1.45 : 0.32 + ringPhase * 0.78;
       this.shockRing.scale.set(ringRadius, 1, ringRadius);
       this.ringMat.opacity = (1 - ringPhase) * 0.78;
@@ -455,17 +418,13 @@ export class WorkParticleEmitter {
     if (!(dt > 0)) return true; // paused (0) or NaN: freeze this frame instead of poisoning the clock
     const clampedDt = Math.min(0.05, Math.max(0.001, dt));
     this.clock += clampedDt;
-    if (this.burstRemaining > 0) {
-      this.burstRemaining = Math.max(0, this.burstRemaining - clampedDt);
-    }
+    if (this.burstRemaining > 0) this.burstRemaining = Math.max(0, this.burstRemaining - clampedDt);
     const canRespawn = this.active || this.burstRemaining > 0;
     const cutPoint = this.computeCutPoint();
     this.updateToolBeams(cutPoint, this.active && this.burstRemaining <= 0);
 
     let totalAlive = 0;
-    for (const layer of this.layers) {
-      totalAlive += this.stepLayer(layer, clampedDt, canRespawn);
-    }
+    for (const layer of this.layers) totalAlive += this.stepLayer(layer, clampedDt, canRespawn, cutPoint);
     return canRespawn || totalAlive > 0;
   }
 
