@@ -1,5 +1,6 @@
 import type { PlanetKind } from '@terra/render/planets/PlanetSpec';
 import type { OnlineSession } from '../../app/online/OnlineSession';
+import { setGameInputBlocked } from '../../core/input/gameInputBlock';
 import type { ClientView } from '../../store/replica/viewCodec';
 import {
   COMBAT_SPAWN_PRESETS,
@@ -265,6 +266,7 @@ export class CombatTestPanel {
       return;
     }
     this.armedPreset = preset;
+    setGameInputBlocked('combat-test-spawn', true);
     for (const [id, btn] of this.presetButtons) btn.dataset.armed = String(id === preset.id);
     this.armedBannerEl.replaceChildren();
     const txt = document.createElement('span');
@@ -290,6 +292,7 @@ export class CombatTestPanel {
 
   disarm(): void {
     this.armedPreset = null;
+    setGameInputBlocked('combat-test-spawn', false);
     for (const btn of this.presetButtons.values()) btn.dataset.armed = 'false';
     this.armedBannerEl.hidden = true;
   }
@@ -401,6 +404,7 @@ export class CombatTestPanel {
   }
 
   dispose(): void {
+    setGameInputBlocked('combat-test-spawn', false);
     for (const fn of this.cleanups.splice(0)) fn();
     this.topbarEl.remove();
     this.dockEl.remove();

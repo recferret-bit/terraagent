@@ -152,7 +152,7 @@ function collectCandidateHexes(
 
   const idx = hexIndex(state.grid.radius);
   const fromIdx = idx.indexOf(uq, ur);
-  const profile = (data ? mobileStats(cols.kind[unitRow]!, data)?.profile : undefined) ?? 'none';
+  const profile = (data ? mobileStats(cols.kind[unitRow]!, data)?.profile : undefined) ?? 'ground';
   const blockers = pathBlockersFor(state, profile, fromIdx, data);
 
   const candidates: CandidateHex[] = [];

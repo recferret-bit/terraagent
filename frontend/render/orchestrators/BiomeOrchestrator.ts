@@ -1,9 +1,9 @@
 import * as THREE from 'three';
 import { hexDistance, hexIndex } from '@terra/sim/grid/hex';
 import type { BiosphereHabitatIndex, PlanetBiosphere } from '../biosphere/biosphereTypes';
-import { buildHexHabitatIndex } from '../biosphere/habitatIndex';
+import { buildHexHabitatIndex, isPassableAnimalTile } from '../biosphere/habitatIndex';
 import { PLANET_SPECS, type PlanetSpec } from '../planets/PlanetSpec';
-import { HEX_TERRAIN, type HexTileLayers } from '../planets/hex/chunkMesh';
+import type { HexTileLayers } from '../planets/hex/chunkMesh';
 import type { HexPropScatter } from '../planets/hex/chunkPropScatter';
 import type { HexFloraLayer } from '../planets/hex/flora/HexFloraLayer';
 import { tileAt } from '../planets/hex/hexMath';
@@ -67,9 +67,8 @@ function rehydrateHabitatIndex(
       const pick = tileAt(radius, x, z);
       if (!pick || !terrain || hexDistance(0, 0, pick.q, pick.r) > innerRadius) return false;
       const t = terrain[pick.i] ?? 0;
-      if (t === HEX_TERRAIN.hole) return false;
-      if (kind !== 'dune' && (t === HEX_TERRAIN.shallow || t === HEX_TERRAIN.deep)) return false;
-      return true;
+      const p = layers.prep?.[pick.i] ?? 0;
+      return isPassableAnimalTile(t, p, kind);
     },
     heightAt,
   };

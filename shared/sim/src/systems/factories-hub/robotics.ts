@@ -2,8 +2,9 @@ import { dataRow, type CompiledRow } from '../../data';
 import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
 import { placeSpawnedEntity } from '../../ecs/placement';
 import { insertRow, rowOf } from '../../ecs/store';
+import { isPreparedGround } from '../../grid/geo';
 import { hexDistance, hexIndex } from '../../grid/hex';
-import { PREP, TERRAIN } from '../../grid/layers';
+import { DEPOSIT, PREP, TERRAIN } from '../../grid/layers';
 import type { CompiledDataLike } from '../../kernel/config';
 import type { StepContext } from '../../kernel/context';
 import { setBlob, type PlanetState } from '../../kernel/state';
@@ -270,16 +271,28 @@ export function findFactoryEdgeSpawnTile(
 
   const layers = state.grid.layers;
   const candidates = buildPerimeterCandidates(facQ, facR, facW, facD);
+  const isBasePassable = (t: number) =>
+    t >= 0 &&
+    !occupied.has(t) &&
+    layers.terrain[t] !== TERRAIN.deep &&
+    layers.terrain[t] !== TERRAIN.hole &&
+    !(layers.terrain[t] === TERRAIN.rock && !isPreparedGround(layers.prep[t])) &&
+    layers.prep[t] !== PREP.ridge &&
+    layers.prep[t] !== PREP.moat;
   for (const c of candidates) {
     const t = idx.indexOf(c.q, c.r);
     if (
-      t >= 0 &&
-      !occupied.has(t) &&
-      layers.terrain[t] !== TERRAIN.deep &&
-      layers.terrain[t] !== TERRAIN.hole &&
-      layers.prep[t] !== PREP.ridge &&
-      layers.prep[t] !== PREP.moat
+      isBasePassable(t) &&
+      layers.terrain[t] !== TERRAIN.shallow &&
+      layers.terrain[t] !== TERRAIN.forest &&
+      layers.deposit[t] === DEPOSIT.none
     ) {
+      return { q: c.q, r: c.r, producerRow, producerEntityId };
+    }
+  }
+  for (const c of candidates) {
+    const t = idx.indexOf(c.q, c.r);
+    if (isBasePassable(t)) {
       return { q: c.q, r: c.r, producerRow, producerEntityId };
     }
   }

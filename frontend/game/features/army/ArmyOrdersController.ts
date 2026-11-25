@@ -1,21 +1,19 @@
-import { ENTITY_KIND, ENTITY_STATE, type ViewEntity } from '@terra/sim';
+import { ENTITY_KIND } from '@terra/sim';
 import type { SendCommand } from '../../net/commandBus';
-import { forEachEntity, type EntityRow } from '../../store/replica/viewCodec';
+import type { EntityRow } from '../../store/replica/viewCodec';
 import { isHotkeyPress, isTypingTarget } from '../shared/hotkeys';
 import { resolvePointerTile, type TilePickerFn } from '../shared/pointer';
-import { extractHqFromView } from '../shared/hqView';
+import type { SelectionCombatSummary } from '../landfall/HqPanel';
 import type { LandfallController, StoreLike } from '../landfall/selection';
-import {
-  BLDG_META,
-  buildSupplementalUnitMap,
-  isArmyCombatUnitKind,
-  isBuildingCoveringTile,
-  isFaunaOrHiveKind,
-  isHiveKind,
-  isSelectableCombatUnitKind,
-  normalizeEntityRowWithSupplements,
-} from '../landfall/selectionHelpers';
+import { isArmyCombatUnitKind } from '../landfall/selectionHelpers';
 import { ORDER_MARKER_TTL_MS, type OrderMarker, type OrderMarkerKind } from './OrderMarkersRenderer';
+import {
+  collectEntitiesFromView,
+  findHostileOrFaunaTargetOnTile,
+  findOwnCombatUnitsOnTile,
+  isEntityAlive,
+  summarizeSelectedCombatUnits,
+} from './parts/armyEntityQueries';
 
 export type ArmyStance = 'hold' | 'defend' | 'hunt';
 
@@ -43,63 +41,10 @@ export interface ArmyOrdersControllerOptions {
   now?: () => number;
 }
 
-function collectEntitiesFromView(rawView: unknown, ownerColonyIndex: number): EntityRow[] {
-  if (!rawView || typeof rawView !== 'object') return [];
-  const view = rawView as { entities?: Float32Array | ViewEntity[] | Record<string, unknown>; count?: number } & Record<string, unknown>;
-  const supMap = buildSupplementalUnitMap(view);
-  const rowsById = new Map<number, EntityRow>();
-  const addRaw = (raw: Record<string, unknown>) => {
-    const id = Number(raw.id ?? raw.entityId ?? 0);
-    const row = normalizeEntityRowWithSupplements(raw, supMap.get(id));
-    if (row.id > 0) rowsById.set(row.id, row);
-  };
-  if (view.entities instanceof Float32Array || Array.isArray(view.entities)) {
-    forEachEntity(view.entities, view.count, (e) => addRaw(e as unknown as Record<string, unknown>));
-  } else if (view.entities && typeof view.entities === 'object') {
-    for (const [k, v] of Object.entries(view.entities)) {
-      if (v && typeof v === 'object') addRaw({ id: Number(k), ...(v as Record<string, unknown>) });
-    }
-  }
-  for (const [id, sup] of supMap.entries()) {
-    if (!rowsById.has(id)) addRaw(sup);
-  }
-  const hq = extractHqFromView(rawView, ownerColonyIndex);
-  if (hq && !rowsById.has(hq.entityId)) {
-    rowsById.set(hq.entityId, {
-      id: hq.entityId, kind: ENTITY_KIND.hq, owner: hq.owner ?? ownerColonyIndex,
-      q: hq.q, r: hq.r, x: hq.x, y: hq.y, rot: 0, hp: hq.hp, hpMax: hq.hpMax, state: ENTITY_STATE.idle, progress: 0, tier: 1,
-    });
-  }
-  return [...rowsById.values()];
-}
-
-function isEntityAlive(row: EntityRow): boolean {
-  return row.hp > 0 && row.state !== ENTITY_STATE.descending && row.state !== ENTITY_STATE.inert;
-}
-
-function isUnitOnTile(row: EntityRow, q: number, r: number): boolean {
-  return (Math.round(row.x) === q && Math.round(row.y) === r) || (row.q === q && row.r === r) || Math.hypot(row.x - q, row.y - r) <= 0.75;
-}
-
-function isTargetCoveringTile(row: EntityRow, q: number, r: number): boolean {
-  if (isHiveKind(row.kind)) {
-    const bq = Number.isFinite(row.x) ? Math.round(row.x) : row.q;
-    const br = Number.isFinite(row.y) ? Math.round(row.y) : row.r;
-    return (Math.abs(q - row.q) <= 1 && Math.abs(r - row.r) <= 1) || (Math.abs(q - bq) <= 1 && Math.abs(r - br) <= 1);
-  }
-  const bldg = BLDG_META[row.kind];
-  if (bldg) {
-    return isBuildingCoveringTile(
-      {
-        entityId: row.id, kind: row.kind, kindLabel: bldg.label, shortCode: bldg.code,
-        isUnit: false, isMovable: false, tier: 1, q: row.q, r: row.r, x: row.x, y: row.y,
-        hp: row.hp, hpMax: row.hpMax, currentJob: 'online', queueCount: 0, footprintW: bldg.w, footprintD: bldg.d,
-      },
-      q,
-      r,
-    );
-  }
-  return isUnitOnTile(row, q, r);
+function hasAuthoritativeEntityList(view: unknown): boolean {
+  if (!view || typeof view !== 'object') return false;
+  const v = view as Record<string, unknown>;
+  return v.entities !== undefined || v.units !== undefined || v.colonies !== undefined;
 }
 
 export class ArmyOrdersController {
@@ -113,6 +58,7 @@ export class ArmyOrdersController {
   private readonly listeners = new Set<ArmyOrdersListener>();
   private readonly cleanups: Array<() => void> = [];
   private suppressLandfallSync = false;
+  private lastLandfallId: number | null = null;
   private pickTile?: TilePickerFn;
   private readonly now: () => number;
 
@@ -127,10 +73,33 @@ export class ArmyOrdersController {
     this.cleanups.push(this.bindHotkeys());
   }
 
+  private recoverSurvivingSquadFromDeadPrimary(): boolean {
+    if (this.selectedEntityIds.length <= 1 || this.lastLandfallId === null) return false;
+    const view = this.opts.store?.latest ?? this.opts.getView?.() ?? this.latestView;
+    if (!hasAuthoritativeEntityList(view)) return false;
+    const rows = collectEntitiesFromView(view, this.resolveColonyIndex());
+    const rowById = new Map(rows.map((r) => [r.id, r]));
+    const primaryRow = rowById.get(this.lastLandfallId);
+    if (primaryRow && isEntityAlive(primaryRow)) return false;
+
+    const aliveIds = this.selectedEntityIds.filter((id) => {
+      const r = rowById.get(id);
+      return Boolean(r && isEntityAlive(r));
+    });
+    if (aliveIds.length === 0) return false;
+    this.latestView = view;
+    this.selectedEntityIds = aliveIds;
+    this.syncLandfallSelection(aliveIds[aliveIds.length - 1]!);
+    this.emit();
+    return true;
+  }
+
   private bindLandfall(landfall: LandfallController): () => void {
     return landfall.onChange(({ selectedEntityId, selectedEntity }) => {
       if (this.suppressLandfallSync) return;
       if (selectedEntityId === null) {
+        if (this.recoverSurvivingSquadFromDeadPrimary()) return;
+        this.lastLandfallId = null;
         if (this.selectedEntityIds.length > 0 || this.attackMoveArmed) {
           this.selectedEntityIds = [];
           this.attackMoveArmed = false;
@@ -138,13 +107,14 @@ export class ArmyOrdersController {
         }
         return;
       }
+      this.lastLandfallId = selectedEntityId;
       if (selectedEntity && isArmyCombatUnitKind(selectedEntity.kind)) {
-        if (!this.selectedEntityIds.includes(selectedEntityId)) {
+        if (this.selectedEntityIds.length !== 1 || this.selectedEntityIds[0] !== selectedEntityId) {
           this.selectedEntityIds = [selectedEntityId];
           this.currentStance = this.stanceByUnitId.get(selectedEntityId) ?? this.currentStance;
           this.emit();
         }
-      } else if (this.selectedEntityIds.length > 0 && !this.selectedEntityIds.includes(selectedEntityId)) {
+      } else if (this.selectedEntityIds.length > 0) {
         this.selectedEntityIds = [];
         this.attackMoveArmed = false;
         this.emit();
@@ -166,6 +136,7 @@ export class ArmyOrdersController {
   }
 
   private syncLandfallSelection(entityId: number | null): void {
+    this.lastLandfallId = entityId;
     if (!this.opts.landfall) return;
     this.suppressLandfallSync = true;
     try {
@@ -219,16 +190,19 @@ export class ArmyOrdersController {
 
   onView(view: unknown): void {
     this.latestView = view;
+    if (!hasAuthoritativeEntityList(view)) return;
     const rows = collectEntitiesFromView(view, this.resolveColonyIndex());
-    if (rows.length === 0) return;
     const rowById = new Map(rows.map((r) => [r.id, r]));
     const aliveIds = this.selectedEntityIds.filter((id) => {
       const r = rowById.get(id);
-      return !r || isEntityAlive(r);
+      return Boolean(r && isEntityAlive(r));
     });
     if (aliveIds.length !== this.selectedEntityIds.length) {
       this.selectedEntityIds = aliveIds;
       if (this.selectedEntityIds.length === 0) this.attackMoveArmed = false;
+      this.syncLandfallSelection(aliveIds[aliveIds.length - 1] ?? null);
+      this.emit();
+    } else if (this.selectedEntityIds.length > 1) {
       this.emit();
     }
   }
@@ -290,31 +264,20 @@ export class ArmyOrdersController {
     return [...this.orderMarkers];
   }
 
+  getSelectionSummary(): SelectionCombatSummary | null {
+    return summarizeSelectedCombatUnits(this.resolveView(), this.resolveColonyIndex(), this.selectedEntityIds);
+  }
+
+  findHostileTargetAt(q: number, r: number): EntityRow | null {
+    return findHostileOrFaunaTargetOnTile(this.resolveView(), this.resolveColonyIndex(), q, r);
+  }
+
   private findOwnCombatUnitsAt(q: number, r: number): EntityRow[] {
-    const owner = this.resolveColonyIndex();
-    const rows = collectEntitiesFromView(this.resolveView(), owner);
-    const armyHits = rows
-      .filter((row) => isEntityAlive(row) && row.owner === owner && isArmyCombatUnitKind(row.kind) && isUnitOnTile(row, q, r))
-      .sort((a, b) => Math.hypot(a.x - q, a.y - r) - Math.hypot(b.x - q, b.y - r) || a.id - b.id);
-    if (armyHits.length > 0) return armyHits;
-    return rows.filter(
-      (row) => isEntityAlive(row) && row.owner === owner && isSelectableCombatUnitKind(row.kind) && isUnitOnTile(row, q, r),
-    );
+    return findOwnCombatUnitsOnTile(this.resolveView(), this.resolveColonyIndex(), q, r);
   }
 
   private findNonOwnTargetAt(q: number, r: number): EntityRow | null {
-    const owner = this.resolveColonyIndex();
-    const rows = collectEntitiesFromView(this.resolveView(), owner);
-    const candidates = rows.filter(
-      (row) => isEntityAlive(row) && (isFaunaOrHiveKind(row.kind) || row.owner !== owner) && isTargetCoveringTile(row, q, r),
-    );
-    if (candidates.length === 0) return null;
-    candidates.sort((a, b) => {
-      const aMobile = !isHiveKind(a.kind) && !BLDG_META[a.kind] ? 0 : 1;
-      const bMobile = !isHiveKind(b.kind) && !BLDG_META[b.kind] ? 0 : 1;
-      return aMobile !== bMobile ? aMobile - bMobile : Math.hypot(a.x - q, a.y - r) - Math.hypot(b.x - q, b.y - r) || a.id - b.id;
-    });
-    return candidates[0] ?? null;
+    return this.findHostileTargetAt(q, r);
   }
 
   clickTile(q: number, r: number, shiftKey = false): boolean {
@@ -371,6 +334,15 @@ export class ArmyOrdersController {
       const landfallSel = this.opts.landfall?.getSelectedEntity();
       if (landfallSel && isArmyCombatUnitKind(landfallSel.kind)) {
         this.selectedEntityIds = [landfallSel.entityId];
+      } else if (landfallSel && landfallSel.kind === ENTITY_KIND.hq) {
+        const target = this.findNonOwnTargetAt(q, r);
+        if (target) {
+          this.dispatchCommand('attackTarget', { unitIds: [landfallSel.entityId], targetId: target.id });
+          this.addOrderMarker('attackTarget', q, r, target.id);
+          this.emit();
+          return true;
+        }
+        return false;
       }
     }
     if (this.selectedEntityIds.length === 0) return false;
@@ -437,6 +409,8 @@ export class ArmyOrdersController {
       if (shouldConsume) {
         e.stopImmediatePropagation?.();
         this.clickTile(pick.q, pick.r, shift);
+      } else if (shift && this.selectedEntityIds.length > 0 && !this.opts.landfall?.pickEntityAt(pick.q, pick.r)) {
+        e.stopImmediatePropagation?.();
       } else if (!shift && this.selectedEntityIds.length > 0) {
         this.selectedEntityIds = [];
         this.attackMoveArmed = false;
@@ -445,9 +419,17 @@ export class ArmyOrdersController {
     };
 
     const handleRight = (e: MouseEvent, fromPointerUp: boolean) => {
-      if (isBlocked() || this.selectedEntityIds.length === 0) return;
+      if (isBlocked()) return;
       const pick = resolvePointerTile(e, this.pickTile);
       if (!pick) return;
+      const landfallSel = this.opts.landfall?.getSelectedEntity();
+      const canHandleHqAttack =
+        this.selectedEntityIds.length === 0 &&
+        landfallSel?.kind === ENTITY_KIND.hq &&
+        this.findNonOwnTargetAt(pick.q, pick.r) !== null;
+      if (this.selectedEntityIds.length === 0 && !(landfallSel && isArmyCombatUnitKind(landfallSel.kind)) && !canHandleHqAttack) {
+        return;
+      }
       e.preventDefault?.();
       e.stopImmediatePropagation?.();
       if (!fromPointerUp && suppressContext && this.now() - suppressContext.at < 400 && suppressContext.q === pick.q && suppressContext.r === pick.r) {

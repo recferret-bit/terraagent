@@ -56,12 +56,64 @@ function depositMeta(deposit: number, tier: number): { code: string; name: strin
 }
 
 /**
+ * Optional combat-squad summary supplied by the `army` feature when 1+ combat units are selected,
+ * allowing combat orders to dock inline inside the single `HqPanel` bar instead of opening a second panel.
+ */
+export interface SelectionCombatSummary {
+  count: number;
+  code?: string;
+  title?: string;
+  hp?: number;
+  hpMax?: number;
+}
+
+export interface SelectionCombatHost {
+  readonly slotEl: HTMLElement;
+  setCombatSelection(summary: SelectionCombatSummary | null): void;
+}
+
+/**
  * Faction Plate Selected Unit / Building / Deposit bottom-centered horizontal bar (`data-testid="hq-panel"`).
  */
-export class HqPanel {
+function buildPanelFooter(onCancel: () => void): {
+  footer: HTMLElement;
+  jobText: HTMLElement;
+  queueText: HTMLElement;
+  tierText: HTMLElement;
+  cancelBtn: HTMLButtonElement;
+} {
+  const footer = document.createElement('div');
+  footer.className = 'ta-hq-panel__footer';
+  const jobText = document.createElement('span');
+  jobText.className = 'ta-hq-panel__job';
+  jobText.dataset.testid = 'hq-job';
+  jobText.textContent = 'idle';
+  jobText.title = 'Right-click a tile: move · X: stop';
+  const queueText = document.createElement('span');
+  queueText.className = 'ta-hq-panel__queue';
+  queueText.dataset.testid = 'hq-queue';
+  queueText.textContent = 'Queue: 0';
+  const tierText = document.createElement('span');
+  tierText.className = 'ta-hq-panel__queue';
+  tierText.dataset.testid = 'hq-extractor-tier';
+  tierText.hidden = true;
+  const cancelBtn = document.createElement('button');
+  cancelBtn.type = 'button';
+  cancelBtn.className = 'ta-hq-panel__cancel btn-sm';
+  cancelBtn.dataset.testid = 'hq-panel-cancel';
+  cancelBtn.textContent = 'CANCEL JOB';
+  cancelBtn.title = "Cancel this unit's current job (X stops movement only)";
+  cancelBtn.hidden = true;
+  cancelBtn.onclick = onCancel;
+  footer.append(jobText, queueText, tierText, cancelBtn);
+  return { footer, jobText, queueText, tierText, cancelBtn };
+}
+
+export class HqPanel implements SelectionCombatHost {
   readonly el: HTMLElement;
+  readonly slotEl: HTMLElement;
   readonly details: SelectionDetails;
-  private readonly slotEl: HTMLElement;
+  private readonly codeBadgeEl: HTMLElement;
   private readonly countEl: HTMLElement;
   private readonly titleEl: HTMLElement;
   private readonly entityIdEl: HTMLElement;
@@ -79,6 +131,13 @@ export class HqPanel {
   private readonly queueText: HTMLElement;
   private readonly tierText: HTMLElement;
   private readonly cancelBtn: HTMLButtonElement;
+  private combatSummary: SelectionCombatSummary | null = null;
+  private lastSnap: {
+    hq: HqStatusView | null;
+    isEntitySelected: boolean;
+    selectedEntity: SelectedEntityView | null;
+    selectedDeposit: SelectedDepositView | null;
+  } = { hq: null, isEntitySelected: false, selectedEntity: null, selectedDeposit: null };
   private readonly offChange: () => void;
 
   constructor(parent: HTMLElement, private readonly controller: LandfallController) {
@@ -91,16 +150,16 @@ export class HqPanel {
     const grid = document.createElement('div');
     grid.className = 'ta-hq-panel__grid';
     grid.dataset.testid = 'selection-grid';
-    this.slotEl = document.createElement('span');
-    this.slotEl.className = 'ta-hq-panel__slot';
-    this.slotEl.dataset.testid = 'selection-slot';
-    this.slotEl.textContent = 'HQ';
+    this.codeBadgeEl = document.createElement('span');
+    this.codeBadgeEl.className = 'ta-hq-panel__slot';
+    this.codeBadgeEl.dataset.testid = 'selection-slot';
+    this.codeBadgeEl.textContent = 'HQ';
     this.countEl = document.createElement('span');
     this.countEl.className = 'ta-hq-panel__count';
     this.countEl.dataset.testid = 'selection-count';
     this.countEl.textContent = '1';
     this.countEl.title = 'Selected count';
-    grid.append(this.slotEl, this.countEl);
+    grid.append(this.codeBadgeEl, this.countEl);
 
     const head = document.createElement('div');
     head.className = 'ta-hq-panel__head';
@@ -140,43 +199,33 @@ export class HqPanel {
     this.progressText = prog.valEl;
     this.progressFill = prog.fillEl;
 
-    const footer = document.createElement('div');
-    footer.className = 'ta-hq-panel__footer';
-    this.jobText = document.createElement('span');
-    this.jobText.className = 'ta-hq-panel__job';
-    this.jobText.dataset.testid = 'hq-job';
-    this.jobText.textContent = 'idle';
-    this.jobText.title = 'Right-click a tile: move · X: stop';
-    this.queueText = document.createElement('span');
-    this.queueText.className = 'ta-hq-panel__queue';
-    this.queueText.dataset.testid = 'hq-queue';
-    this.queueText.textContent = 'Queue: 0';
+    const ft = buildPanelFooter(() => this.controller.cancelSelected());
+    this.jobText = ft.jobText;
+    this.queueText = ft.queueText;
+    this.tierText = ft.tierText;
+    this.cancelBtn = ft.cancelBtn;
 
-    this.tierText = document.createElement('span');
-    this.tierText.className = 'ta-hq-panel__queue';
-    this.tierText.dataset.testid = 'hq-extractor-tier';
-    this.tierText.hidden = true;
+    this.slotEl = document.createElement('div');
+    this.slotEl.className = 'ta-hq-panel__combat-slot';
+    this.slotEl.dataset.testid = 'hq-panel-combat-slot';
+    this.slotEl.hidden = true;
 
-    this.cancelBtn = document.createElement('button');
-    this.cancelBtn.type = 'button';
-    this.cancelBtn.className = 'ta-hq-panel__cancel btn-sm';
-    this.cancelBtn.dataset.testid = 'hq-panel-cancel';
-    this.cancelBtn.textContent = 'CANCEL JOB';
-    this.cancelBtn.title = 'Cancel this unit\'s current job (X stops movement only)';
-    this.cancelBtn.hidden = true;
-    this.cancelBtn.onclick = () => {
-      this.controller.cancelSelected();
-    };
-    footer.append(this.jobText, this.queueText, this.tierText, this.cancelBtn);
-
-    this.el.append(grid, head, hp.stat, this.cellStat, this.progressStat, footer);
+    this.el.append(grid, head, hp.stat, this.cellStat, this.progressStat, ft.footer, this.slotEl);
     this.details = new SelectionDetails(this.el);
     parent.appendChild(this.el);
 
     this.offChange = this.controller.onChange(({ hq, selectedEntityId, selectedEntity, selectedDeposit }) => {
       const isEntitySelected = selectedEntityId !== null && (selectedEntity !== null || hq !== null);
+      this.lastSnap = { hq, isEntitySelected, selectedEntity, selectedDeposit };
       this.render(hq, isEntitySelected, selectedEntity, selectedDeposit);
     });
+  }
+
+  setCombatSelection(summary: SelectionCombatSummary | null): void {
+    this.combatSummary = summary && summary.count > 0 ? summary : null;
+    this.slotEl.hidden = this.combatSummary === null;
+    const { hq, isEntitySelected, selectedEntity, selectedDeposit } = this.lastSnap;
+    this.render(hq, isEntitySelected, selectedEntity, selectedDeposit);
   }
 
   private renderDeposit(deposit: SelectedDepositView): void {
@@ -188,7 +237,7 @@ export class HqPanel {
     this.selectBtn.setAttribute('aria-pressed', 'true');
     this.el.hidden = false;
 
-    this.slotEl.textContent = meta.code;
+    this.codeBadgeEl.textContent = meta.code;
     this.countEl.hidden = true; // the stage is the footer status (one place, like a unit's job)
     this.titleEl.textContent = meta.name;
     this.entityIdEl.hidden = true;
@@ -202,6 +251,8 @@ export class HqPanel {
     this.progressStat.hidden = true;
     this.cancelBtn.hidden = true;
     this.tierText.hidden = true;
+    this.slotEl.hidden = true;
+    this.queueText.hidden = false;
 
     this.jobText.textContent = stageLabel;
     this.queueText.textContent = `(${deposit.q}, ${deposit.r})`;
@@ -231,21 +282,28 @@ export class HqPanel {
       this.cancelBtn.hidden = true;
       this.progressStat.hidden = true;
       this.entityIdEl.hidden = true;
+      this.slotEl.hidden = true;
       delete this.el.dataset.entityId;
       return;
     }
 
+    const combat = this.combatSummary;
+    const isMultiCombat = Boolean(combat && combat.count > 1);
+    const hasCombatControls = Boolean(combat && combat.count > 0);
+
     this.el.hidden = false;
     this.el.dataset.entityId = String(entity.entityId);
-    this.entityIdEl.hidden = false;
+    this.entityIdEl.hidden = isMultiCombat;
     this.entityIdEl.textContent = `#${entity.entityId}`;
-    this.slotEl.textContent = entity.shortCode;
+    this.codeBadgeEl.textContent = isMultiCombat && combat?.code ? combat.code : entity.shortCode;
     this.countEl.hidden = false;
-    this.countEl.textContent = '1';
-    this.titleEl.textContent = entity.kindLabel;
+    this.countEl.textContent = String(hasCombatControls ? combat!.count : 1);
+    this.titleEl.textContent = isMultiCombat && combat?.title ? combat.title : entity.kindLabel;
     this.hpKey.textContent = 'HULL HP';
-    this.hpText.textContent = `${Math.round(entity.hp)} / ${Math.round(entity.hpMax)}`;
-    setProgress(this.hpFill, entity.hp, entity.hpMax);
+    const hpVal = isMultiCombat && typeof combat?.hp === 'number' ? combat.hp : entity.hp;
+    const hpMaxVal = isMultiCombat && typeof combat?.hpMax === 'number' ? combat.hpMax : entity.hpMax;
+    this.hpText.textContent = `${Math.round(hpVal)} / ${Math.round(hpMaxVal)}`;
+    setProgress(this.hpFill, hpVal, hpMaxVal);
 
     if (typeof entity.cell === 'number' && typeof entity.cellMax === 'number' && entity.cellMax > 0) {
       this.cellStat.hidden = false;
@@ -267,6 +325,8 @@ export class HqPanel {
 
     this.jobText.textContent = entity.currentJob;
     this.queueText.textContent = `Queue: ${entity.queueCount}`;
+    this.queueText.hidden = hasCombatControls;
+    this.slotEl.hidden = !hasCombatControls;
     if (entity.extractorTier) {
       this.tierText.hidden = false;
       this.tierText.textContent = entity.extractorTier.summaryText;
@@ -279,7 +339,7 @@ export class HqPanel {
       delete this.tierText.dataset.ringPct;
     }
     const isSpec = Boolean((this.controller as { isSpectator?: () => boolean }).isSpectator?.());
-    this.cancelBtn.hidden = isSpec || !isEntityBusy(entity, prog);
+    this.cancelBtn.hidden = isSpec || hasCombatControls || !isEntityBusy(entity, prog);
   }
 
   dispose(): void {

@@ -206,7 +206,7 @@ export function engageTargetInRangeOrApproach(
   rec.targetId = targetId;
 
   if (dist < minRange - 1e-5) {
-    const backoff = pickMinRangeBackoffNeighbor(state, row, targetRow);
+    const backoff = pickMinRangeBackoffNeighbor(state, row, targetRow, ctx.data);
     if (backoff) {
       orderCombatUnitMove(state, row, { q: backoff[0], r: backoff[1], minDist: 0, maxDist: 0 }, ctx);
     }

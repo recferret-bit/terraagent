@@ -1,10 +1,11 @@
 import { globalTileToSector } from '../atlas/partition';
 import type { CompiledDataLike } from '../kernel/config';
 import type { PlanetState } from '../kernel/state';
-import { isGroundMoveBlocked, isTileUneven } from './geo';
+import { isGroundMoveBlocked, isPreparedGround, isTileUneven } from './geo';
 import { hexIndex } from './hex';
 import { DEPOSIT, PREP, TERRAIN } from './layers';
 import { isPassableTerrain } from './tileModel';
+import { getWreckTileSet } from '../systems/combat/wrecks';
 
 /**
  * Footprints (tile index lists) ground units cannot walk through (buildings). Registered by the module that owns the
@@ -39,46 +40,87 @@ interface Blockers { blocked: Predicate; goalBlocked: Predicate }
  * Named movement profiles for path requests. A request in the path queue is plain data (it lives in a blob), so it
  * names its obstacle rule instead of carrying a function. `none` = terrain passability only (Deep, Ridge, Moat block).
  */
-export type PathProfileId = 'none' | 'ground' | 'worker' | 'hover';
+export type PathProfileId = 'none' | 'ground' | 'terraform' | 'worker' | 'hover';
+
+const isMountainTile = (terrain: number, prep: number): boolean =>
+  terrain === TERRAIN.rock && !isPreparedGround(prep);
 
 const PROFILES: Record<PathProfileId, ((state: PlanetState, fromIdx: number, data?: CompiledDataLike) => Blockers) | null> = {
   none: null,
-  /** Ground units: non-flat terrain (forest, rock, dunes/slope, holes, water), uneven tiles, deposits and footprints block. */
+  /** Ground units: flat ground and non-terraformed dunes (`slope`) are passable; mountains (`rock`), forest, holes, water, deposits and footprints block. */
   ground: (state, fromIdx, data) => {
-    const { terrain, prep, deposit, height } = state.grid.layers;
+    const { terrain, prep, deposit } = state.grid.layers;
     const { own, others } = occupiedTiles(state, fromIdx, data);
+    const wrecks = getWreckTileSet(state);
     const blocked: Predicate = (i) =>
       (i !== fromIdx &&
         (!isPassableTerrain(terrain[i], prep[i]) ||
+          isMountainTile(terrain[i], prep[i]) ||
           isGroundMoveBlocked(terrain[i], deposit[i]) ||
-          isTileUneven(state.grid.radius, i, terrain, height))) ||
+          wrecks.has(i))) ||
       others.has(i);
-    return { blocked, goalBlocked: (i) => blocked(i) || own.has(i) || !isPassableTerrain(terrain[i], prep[i]) };
+    return {
+      blocked,
+      goalBlocked: (i) => blocked(i) || own.has(i) || wrecks.has(i) || !isPassableTerrain(terrain[i], prep[i]) || isMountainTile(terrain[i], prep[i]),
+    };
   },
-  /** Workers: cross flat, slope, forest and rock tiles freely, but never step inside resource deposits, water, holes, ridges, moats or buildings. */
+  /** HQ terraform stand (E1–E3): walks across flat and non-terraformed dunes, but only ends on a level Flat stand so dunes are cut from the edge inward. */
+  terraform: (state, fromIdx, data) => {
+    const { terrain, prep, deposit, height } = state.grid.layers;
+    const { own, others } = occupiedTiles(state, fromIdx, data);
+    const wrecks = getWreckTileSet(state);
+    const blocked: Predicate = (i) =>
+      (i !== fromIdx &&
+        (!isPassableTerrain(terrain[i], prep[i]) ||
+          isMountainTile(terrain[i], prep[i]) ||
+          isGroundMoveBlocked(terrain[i], deposit[i]) ||
+          wrecks.has(i))) ||
+      others.has(i);
+    return {
+      blocked,
+      goalBlocked: (i) =>
+        blocked(i) ||
+        own.has(i) ||
+        wrecks.has(i) ||
+        !isPassableTerrain(terrain[i], prep[i]) ||
+        isMountainTile(terrain[i], prep[i]) ||
+        terrain[i] !== TERRAIN.flat ||
+        isTileUneven(state.grid.radius, i, terrain, height),
+    };
+  },
+  /** Workers & insects: cross flat, non-terraformed dunes (`slope`) and forest freely, but never cross mountains (`rock`), deposits, wrecks, water, holes, ridges, moats or buildings. */
   worker: (state, fromIdx, data) => {
     const { terrain, prep, deposit } = state.grid.layers;
     const { own, others } = occupiedTiles(state, fromIdx, data);
+    const wrecks = getWreckTileSet(state);
     const blocked: Predicate = (i) =>
       (i !== fromIdx &&
         (!isPassableTerrain(terrain[i], prep[i]) ||
+          isMountainTile(terrain[i], prep[i]) ||
           terrain[i] === TERRAIN.shallow ||
-          deposit[i] !== DEPOSIT.none)) ||
+          deposit[i] !== DEPOSIT.none ||
+          wrecks.has(i))) ||
       others.has(i);
-    return { blocked, goalBlocked: (i) => blocked(i) || own.has(i) || !isPassableTerrain(terrain[i], prep[i]) };
+    return {
+      blocked,
+      goalBlocked: (i) => blocked(i) || own.has(i) || wrecks.has(i) || !isPassableTerrain(terrain[i], prep[i]) || isMountainTile(terrain[i], prep[i]),
+    };
   },
-  /** Hover units: cross flat, slope, forest, rock, resource deposits and shallow water freely; blocked only by deep water, holes, ridges, moats and buildings. */
+  /** Hover units: cross flat, non-terraformed dunes (`slope`), forest, deposits and shallow water; blocked by mountains (`rock`), wrecks, deep water, holes, ridges, moats and buildings. */
   hover: (state, fromIdx, data) => {
     const { terrain, prep } = state.grid.layers;
     const { own, others } = occupiedTiles(state, fromIdx, data);
+    const wrecks = getWreckTileSet(state);
     const blocked: Predicate = (i) =>
       (i !== fromIdx &&
         (terrain[i] === TERRAIN.deep ||
           terrain[i] === TERRAIN.hole ||
+          isMountainTile(terrain[i], prep[i]) ||
           prep[i] === PREP.ridge ||
-          prep[i] === PREP.moat)) ||
+          prep[i] === PREP.moat ||
+          wrecks.has(i))) ||
       others.has(i);
-    return { blocked, goalBlocked: (i) => blocked(i) || own.has(i) };
+    return { blocked, goalBlocked: (i) => blocked(i) || own.has(i) || wrecks.has(i) || isMountainTile(terrain[i], prep[i]) };
   },
 };
 

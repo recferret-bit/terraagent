@@ -1,17 +1,24 @@
 import { ENTITY_STATE } from '../../ecs/columns';
 import { placeSpawnedEntity } from '../../ecs/placement';
 import { insertRow, rowOf } from '../../ecs/store';
+import { isPreparedGround } from '../../grid/geo';
 import { hexDistance, hexIndex, inHex } from '../../grid/hex';
 import { PREP, TERRAIN } from '../../grid/layers';
 import { defineCommandHandler } from '../../kernel/commands';
 import type { StepContext } from '../../kernel/context';
 import { setBlob, type PlanetState } from '../../kernel/state';
-import { occupiedGroundTiles } from '../construction/occupancy';
 import { isColonyGodMode } from '../combat/damage';
+import { getWreckTileSet } from '../combat/wrecks';
 import { setUnitStance } from '../combat/stances';
 import { emitFaunaDirective } from '../fauna/directives';
 import { provokeHive } from '../fauna/provocation';
-import { findPassableEntranceTile, spawnFaunaBug, spawnHiveSite } from '../fauna/spawn';
+import {
+  collectBlockedHiveTiles,
+  findNearestHiveSpawnTile,
+  isHiveSitePlaceable,
+  spawnFaunaBug,
+  spawnHiveSite,
+} from '../fauna/spawn';
 import { getFaunaHivesState } from '../fauna/state';
 import { resolveSpeciesConfig, type FaunaBehaviorMode, type FaunaSpeciesId } from '../fauna/types';
 import { getFaunaSpeciesThreatCost, hasAnyAliveColonyEntity, spawnHiveRaidWave } from '../fauna/waves';
@@ -53,8 +60,10 @@ function isCombatTestWorld(state: PlanetState): boolean {
 function isCombatTestPassableTile(state: PlanetState, q: number, r: number): boolean {
   const idx = hexIndex(state.grid.radius).indexOf(q, r);
   if (idx < 0) return false;
+  if (getWreckTileSet(state).has(idx)) return false;
   const terrain = state.grid.layers.terrain[idx] ?? TERRAIN.flat;
   const prep = state.grid.layers.prep[idx] ?? PREP.wild;
+  if (terrain === TERRAIN.rock && !isPreparedGround(prep)) return false;
   return (
     terrain !== TERRAIN.deep &&
     terrain !== TERRAIN.shallow &&
@@ -181,28 +190,27 @@ export const devSpawnHive = defineCommandHandler({
     const colonyIndex = resolveColonyIdx(cmd, args.colonyIndex);
     ensureDevColony(state, colonyIndex, ctx.tick);
     const anchor = findColonyAnchorTile(state, colonyIndex);
-    let q = args.q ?? Math.min(state.grid.radius - 2, anchor.q + 10);
+    const hasExplicitCoords = args.q !== undefined || args.r !== undefined;
+    let q = args.q ?? Math.min(state.grid.radius - 3, anchor.q + 15);
     let r = args.r ?? anchor.r;
-    if (!inHex(q, r, state.grid.radius)) return 'invalid_args';
-    if (isCombatTestWorld(state)) {
-      const idx = hexIndex(state.grid.radius);
-      const occupied = occupiedGroundTiles(state, ctx.data);
-      const canPlaceHiveAt = (hq: number, hr: number) => {
-        const ti = idx.indexOf(hq, hr);
-        return (
-          ti >= 0 &&
-          isCombatTestPassableTile(state, hq, hr) &&
-          !occupied.has(ti) &&
-          findPassableEntranceTile(state, hq, hr, args.entranceQ, args.entranceR, ctx.data) !== null
-        );
-      };
-      if (!canPlaceHiveAt(q, r)) {
-        if (args.q !== undefined || args.r !== undefined) return 'site_blocked';
-        const dry = findNearestCombatTestSpawnTile(state, q, r, canPlaceHiveAt);
-        if (!dry) return 'site_blocked';
-        q = dry.q;
-        r = dry.r;
+    if (hasExplicitCoords) {
+      if (!inHex(q, r, state.grid.radius)) return 'invalid_args';
+    } else if (!inHex(q, r, state.grid.radius)) {
+      q = anchor.q;
+      r = anchor.r;
+    }
+
+    const combatTest = isCombatTestWorld(state);
+    const blocked = collectBlockedHiveTiles(state, ctx.data);
+    if (hasExplicitCoords) {
+      if (!isHiveSitePlaceable(state, q, r, { data: ctx.data, blocked, disallowAllOwned: combatTest })) {
+        return 'site_blocked';
       }
+    } else {
+      const found = findNearestHiveSpawnTile(state, q, r, { data: ctx.data, blocked, disallowAllOwned: combatTest });
+      if (!found) return 'site_blocked';
+      q = found.q;
+      r = found.r;
     }
 
     const hiveId = spawnHiveSite(

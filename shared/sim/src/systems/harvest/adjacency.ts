@@ -5,6 +5,7 @@ import {
 } from '@terra/contracts';
 import { ENTITY_STATE } from '../../ecs/columns';
 import { rowOf, setField } from '../../ecs/store';
+import { isPreparedGround } from '../../grid/geo';
 import { HEX_DIRS, hexDistance, hexIndex } from '../../grid/hex';
 import { DEPOSIT, PREP, TERRAIN } from '../../grid/layers';
 import type { StepContext } from '../../kernel/context';
@@ -70,6 +71,7 @@ export function isPassableAdjacentHex(state: PlanetState, tileIdx: number, occup
   const t = terrain[tileIdx];
   const p = prep[tileIdx];
   if (t === TERRAIN.deep || t === TERRAIN.shallow || t === TERRAIN.hole) return false;
+  if (t === TERRAIN.rock && !isPreparedGround(p)) return false;
   if (p === PREP.ridge || p === PREP.moat) return false;
   return true;
 }

@@ -1,44 +1,126 @@
-import { hexDistance, hexIndex, inHex, PREP, TERRAIN } from '@terra/sim';
+import {
+  entityFootprint,
+  getBuildingFootprintTiles,
+  getWreckTileSet,
+  HEX_DIRS,
+  hexDistance,
+  hexIndex,
+  inHex,
+  isPreparedGround,
+  OCCUPYING_BUILDING_KINDS,
+  PREP,
+  TERRAIN,
+} from '@terra/sim';
 import type { OnlineSession } from '../../app/online/OnlineSession';
 import { forEachEntity } from '../../store/replica/viewCodec';
 import { hiveSpeciesForPresetId, type CombatSpawnPreset } from './catalog';
 import { HIVE_KINDS, type RosterSnapshot } from './roster';
 
-function isTilePassableForSpawn(terrain: number, prep: number): boolean {
+export function isTilePassableForSpawn(terrain: number, prep: number, allowHiveTerraform = false): boolean {
+  if (!allowHiveTerraform) {
+    if (terrain === TERRAIN.hole) return false;
+    if (terrain === TERRAIN.rock && !isPreparedGround(prep)) return false;
+  }
   return (
     terrain !== TERRAIN.deep &&
     terrain !== TERRAIN.shallow &&
-    terrain !== TERRAIN.hole &&
     prep !== PREP.ridge &&
     prep !== PREP.moat
   );
+}
+
+function collectBlockedClientSpawnTiles(session: OnlineSession, radius: number): Set<number> {
+  const latest = session.store.latest;
+  const blocked = getWreckTileSet(latest as unknown as Record<string, unknown> | undefined);
+  if (!latest || radius <= 0) return blocked;
+  const hx = hexIndex(radius);
+  forEachEntity(latest.entities, latest.count, (e) => {
+    if (e.hp <= 0 || !OCCUPYING_BUILDING_KINDS.has(e.kind)) return;
+    const fp = HIVE_KINDS.has(e.kind) ? 3 : entityFootprint(e.kind);
+    for (const pt of getBuildingFootprintTiles(Math.round(e.q), Math.round(e.r), fp)) {
+      const ti = hx.indexOf(pt.q, pt.r);
+      if (ti >= 0) blocked.add(ti);
+    }
+  });
+  return blocked;
+}
+
+function isClientHiveSiteValid(
+  hx: ReturnType<typeof hexIndex>,
+  tiles: { terrain: ArrayLike<number>; prep: ArrayLike<number>; owner?: ArrayLike<number> },
+  blocked: ReadonlySet<number>,
+  cq: number,
+  cr: number,
+  includeHexRing: boolean,
+): boolean {
+  const validTile = (tx: number, ty: number): boolean => {
+    const ti = hx.indexOf(tx, ty);
+    if (ti < 0 || blocked.has(ti)) return false;
+    if (tiles.owner && (tiles.owner[ti] ?? -1) >= 0) return false;
+    const t = tiles.terrain[ti] ?? TERRAIN.flat;
+    const p = tiles.prep[ti] ?? PREP.wild;
+    return isTilePassableForSpawn(t, p, true);
+  };
+  const half = includeHexRing ? 2 : 1;
+  for (let fr = -half; fr <= half; fr++) {
+    for (let fq = -half; fq <= half; fq++) {
+      const tq = cq + fq;
+      const tr = cr + fr;
+      if (!validTile(tq, tr)) return false;
+      if (includeHexRing) {
+        for (const [dq, dr] of HEX_DIRS) {
+          if (!validTile(tq + dq, tr + dr)) return false;
+        }
+      }
+    }
+  }
+  return true;
 }
 
 function resolveFallbackDryTile(
   session: OnlineSession,
   q: number,
   r: number,
+  allowHiveTerraform = false,
 ): { q: number; r: number } {
-  const tiles = session.store.latestTiles;
+  const tiles = session.store.latestTiles as
+    | { terrain: ArrayLike<number>; prep: ArrayLike<number>; owner?: ArrayLike<number> }
+    | null
+    | undefined;
   const radius = session.store.latest?.planet?.radius ?? 0;
   if (!tiles || radius <= 0) return { q, r };
   const hx = hexIndex(radius);
-  for (let dist = 0; dist <= Math.min(20, radius); dist++) {
-    for (let dq = -dist; dq <= dist; dq++) {
-      for (let dr = -dist; dr <= dist; dr++) {
-        if (hexDistance(0, 0, dq, dr) !== dist) continue;
-        const cq = q + dq;
-        const cr = r + dr;
-        if (!inHex(cq, cr, radius)) continue;
-        const idx = hx.indexOf(cq, cr);
-        if (idx < 0) continue;
-        const t = tiles.terrain[idx] ?? TERRAIN.flat;
-        const p = tiles.prep[idx] ?? PREP.wild;
-        if (isTilePassableForSpawn(t, p)) return { q: cq, r: cr };
+  const blocked = collectBlockedClientSpawnTiles(session, radius);
+  const maxDist = allowHiveTerraform ? radius * 2 : Math.min(20, radius);
+
+  const search = (check: (cq: number, cr: number, idx: number) => boolean): { q: number; r: number } | null => {
+    for (let dist = 0; dist <= maxDist; dist++) {
+      for (let dq = -dist; dq <= dist; dq++) {
+        for (let dr = -dist; dr <= dist; dr++) {
+          if (hexDistance(0, 0, dq, dr) !== dist) continue;
+          const cq = q + dq;
+          const cr = r + dr;
+          if (!inHex(cq, cr, radius)) continue;
+          const idx = hx.indexOf(cq, cr);
+          if (idx >= 0 && check(cq, cr, idx)) return { q: cq, r: cr };
+        }
       }
     }
+    return null;
+  };
+
+  if (allowHiveTerraform) {
+    return (
+      search((cq, cr) => isClientHiveSiteValid(hx, tiles, blocked, cq, cr, true)) ??
+      (radius < 5 ? search((cq, cr) => isClientHiveSiteValid(hx, tiles, blocked, cq, cr, false)) : null) ??
+      { q, r }
+    );
   }
-  return { q, r };
+
+  return (
+    search((_, __, idx) => !blocked.has(idx) && isTilePassableForSpawn(tiles.terrain[idx] ?? TERRAIN.flat, tiles.prep[idx] ?? PREP.wild, false)) ??
+    { q, r }
+  );
 }
 
 export interface CombatCommandContext {
@@ -108,7 +190,8 @@ export function dispatchCombatTestSpawn(
     return;
   }
   const mode = insectAggressive ? 'aggressive' : 'passive';
-  const target = fallbackNear ? resolveFallbackDryTile(ctx.session, q, r) : { q, r };
+  const isHiveSpawn = preset.commandKind === 'dev.spawnhive';
+  const target = fallbackNear ? resolveFallbackDryTile(ctx.session, q, r, isHiveSpawn) : { q, r };
   if (preset.commandKind === 'dev.spawnhive') {
     ctx.setStatus(`Spawning ${preset.label} at (${target.q}, ${target.r})...`);
     void trackCombatCommand(

@@ -3,6 +3,7 @@ import { InsectActionBook } from './insectActions';
 import { Combatant } from '../combat/Combatant';
 import { ENTITY_STATE } from '../../ecs/columns';
 import { rowOf } from '../../ecs/store';
+import { isPreparedGround } from '../../grid/geo';
 import { hexDistance, hexIndex, inHex } from '../../grid/hex';
 import { DEPOSIT, PREP, TERRAIN } from '../../grid/layers';
 import { isGroundPassable } from '../../grid/tileModel';
@@ -97,6 +98,7 @@ function collectPatrolCandidates(
       const t = terrain[ti];
       const p = prep[ti];
       if (t === TERRAIN.deep || t === TERRAIN.shallow || t === TERRAIN.hole) continue;
+      if (t === TERRAIN.rock && !isPreparedGround(p)) continue;
       if (p === PREP.ridge || p === PREP.moat) continue;
       if (deposit[ti] !== DEPOSIT.none) continue;
       if (!isGroundPassable(state.grid, ti, ctx.data)) continue;

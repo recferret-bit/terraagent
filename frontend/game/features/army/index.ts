@@ -11,6 +11,7 @@ import type { SendCommand } from '../../net/commandBus';
 import { isReadOnlySpectator, ownColonyIndex } from '../shared/colony';
 import type { TilePickerFn } from '../shared/pointer';
 import type { Scene3dService } from '../shared/scene3d';
+import type { SelectionCombatHost } from '../landfall/HqPanel';
 import type { LandfallController, StoreLike } from '../landfall/selection';
 import {
   ArmyOrdersController,
@@ -58,6 +59,7 @@ export interface MountArmyOptions {
   surface?: HTMLElement | null;
   canvas?: HTMLElement | null;
   landfall?: LandfallController;
+  selectionCombatHost?: SelectionCombatHost | null;
   ownerColonyIndex?: number;
   scene3d?: Scene3dService | null;
   services?: Partial<FeatureContext['services']>;
@@ -117,7 +119,8 @@ function ensureArmyController(opts: MountArmyOptions): { controller: ArmyOrdersC
 export function mountArmy(opts: MountArmyOptions = {}): MountedArmy {
   const hostEl = opts.el ?? opts.hudRoot ?? (typeof document !== 'undefined' ? document.body : ({} as HTMLElement));
   const { controller, owned } = ensureArmyController(opts);
-  const panel = new ArmyStancePanel(hostEl, controller);
+  const combatHost = opts.selectionCombatHost !== undefined ? opts.selectionCombatHost : (opts.services?.selectionCombatHost ?? null);
+  const panel = new ArmyStancePanel(hostEl, controller, combatHost);
   const scene3d = opts.scene3d ?? opts.services?.scene3d ?? null;
   const renderer = scene3d
     ? new OrderMarkersRenderer({

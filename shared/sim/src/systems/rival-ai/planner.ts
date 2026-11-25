@@ -1,7 +1,6 @@
 import type { SimCommandV1 } from '@terra/contracts';
 import { ENTITY_KIND } from '../../ecs/columns';
 import { hexIndex } from '../../grid/hex';
-import { isGroundPassable } from '../../grid/tileModel';
 import type { CompiledDataLike } from '../../kernel/config';
 import type { ColonyState, PlanetState } from '../../kernel/state';
 import { isTruceReofferCoolingDown } from '../diplomacy/operations';
@@ -23,6 +22,7 @@ import {
   buildingCostOf,
   crossedCadence,
   findNearestPassableDeposit,
+  isReconPatrolGoalPassable,
   scanColonyState,
   sectorOfColony,
   stockCount,
@@ -315,7 +315,7 @@ function planTacticalAndWorkerInput(
         const pq = scan.anchorQ + slot[0];
         const pr = scan.anchorR + slot[1];
         const idx = hx.indexOf(pq, pr);
-        if (idx < 0 || !isGroundPassable(state, idx, data) || (recon.q === pq && recon.r === pr)) continue;
+        if ((recon.q === pq && recon.r === pr) || !isReconPatrolGoalPassable(state, recon.q, recon.r, idx, data)) continue;
         const cmdId = `bot_${tick}_${col.index}_${nextSeq()}`;
         out.push({
           cmd: { colonyIndex: col.index, source: 'bot', commandId: cmdId, kind: 'moveUnit', args: { entityId: recon.id, q: pq, r: pr } },

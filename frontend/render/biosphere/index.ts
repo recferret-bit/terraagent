@@ -7,6 +7,7 @@ export { LandAnimalSimulator } from './LandAnimalSim';
 export {
   buildContinuousHabitatIndex,
   buildHexHabitatIndex,
+  isPassableAnimalTile,
 } from './habitatIndex';
 export {
   BIRD_SPECIES_CATALOG,

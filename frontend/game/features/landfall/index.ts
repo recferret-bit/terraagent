@@ -1,7 +1,7 @@
 import type { ViewEntity } from '@terra/sim';
 import { defineFeature, type Feature, type FeatureContext, type GameView } from '../../core/registry/types';
 import type { SendCommand } from '../../net/commandBus';
-import { HqPanel } from './HqPanel';
+import { HqPanel, type SelectionCombatHost, type SelectionCombatSummary } from './HqPanel';
 import {
   extractHqFromView,
   extractSelectableEntities,
@@ -26,6 +26,8 @@ export {
   extractSelectableEntities,
   hqJobFromStateCode,
   HqPanel,
+  type SelectionCombatHost,
+  type SelectionCombatSummary,
   inspectDepositAt,
   isTileNearHq,
   LandfallController,
@@ -48,6 +50,7 @@ declare module '../../core/registry/types' {
   }
   interface FeatureServices {
     landfall?: LandfallController;
+    selectionCombatHost?: SelectionCombatHost;
     canvas?: HTMLElement | null;
   }
 }
@@ -96,7 +99,7 @@ export function mountLandfall(ctx: MountLandfallCtx): MountedLandfall {
       sendCommand: ctx.sendCommand ?? ctx.services?.sendCommand,
       pickTile: ctx.pickTile ?? ctx.services?.pickTile,
       canvas: ctx.canvas ?? ctx.services?.canvas,
-      ownerColonyIndex: ctx.ownerColonyIndex,
+      ownerColonyIndex: ctx.ownerColonyIndex ?? (typeof ctx.services?.colonyId === 'number' ? ctx.services.colonyId : undefined),
       autoSelect: ctx.autoSelect,
       onTargetMove: ctx.onTargetMove,
     });
@@ -104,7 +107,10 @@ export function mountLandfall(ctx: MountLandfallCtx): MountedLandfall {
     ctx.services.landfall = controller;
   }
   const panel = new HqPanel(hostEl, controller);
-  if (ctx.services) ctx.services.selectionDetails = panel.details;
+  if (ctx.services) {
+    ctx.services.selectionDetails = panel.details;
+    ctx.services.selectionCombatHost = panel;
+  }
 
   return {
     controller,
@@ -125,6 +131,7 @@ export function mountLandfall(ctx: MountLandfallCtx): MountedLandfall {
     update: (view) => controller.onView(view),
     dispose: () => {
       if (ctx.services?.selectionDetails === panel.details) ctx.services.selectionDetails = undefined;
+      if (ctx.services?.selectionCombatHost === panel) ctx.services.selectionCombatHost = undefined;
       panel.dispose();
       if (ownedCtl) controller.dispose();
     },

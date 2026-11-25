@@ -12,14 +12,14 @@ export { isTileUneven, levelledFlatHeight };
 /** Why a tile cannot take a building (UI text in `GEO_BLOCK_TEXT`, reject code via `placementRejectCode`). */
 export type GeoBlock = 'water' | 'trees' | 'rock' | 'slope' | 'hole' | 'ridge' | 'deposit' | 'noDeposit';
 
-/** Non-Flat ground (mountains/rock, dunes/slopes, trees/forest, sinkholes, water): ground units cannot enter until terraformed Flat. */
+/** Ground obstacles (mountains/rock, trees/forest, sinkholes, water): ground units cannot enter until terraformed Flat. Non-terraformed dunes (`TERRAIN.slope`) are passable. */
 export function isGroundObstacle(terrain: number): boolean {
-  return terrain !== TERRAIN.flat;
+  return terrain !== TERRAIN.flat && terrain !== TERRAIN.slope;
 }
 
 /**
- * Ground movement: only terraformed Flat ground free of resource deposits (ore, crystal and oil nodes stand on the tile)
- * can be entered by ground units. Deep water, ridges and moats are also impassable by terrain (`isGroundPassable`).
+ * Ground movement: Flat ground and non-terraformed dunes (`TERRAIN.slope`) free of resource deposits (ore, crystal and oil
+ * nodes stand on the tile) can be entered by ground units. Mountains (`TERRAIN.rock`), forests, holes, water, ridges and moats block.
  */
 export function isGroundMoveBlocked(terrain: number, deposit: number): boolean {
   return isGroundObstacle(terrain) || deposit !== DEPOSIT.none;

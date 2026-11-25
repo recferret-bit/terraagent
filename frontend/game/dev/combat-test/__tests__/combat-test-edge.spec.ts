@@ -2,10 +2,10 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
-import { TERRAIN, PREP, hexCount, hexIndex } from '@terra/sim';
+import { ENTITY_KIND, HEX_DIRS, TERRAIN, PREP, hexCount, hexDistance, hexIndex } from '@terra/sim';
 import { extractModeFromArgv, isCombatTestExcludedFromBuild } from '../buildGate';
 import { COMBAT_SPAWN_PRESETS } from '../catalog';
-import { dispatchCombatTestSpawn } from '../panelActions';
+import { dispatchCombatTestSpawn, isTilePassableForSpawn } from '../panelActions';
 import type { OnlineSession } from '../../../app/online/OnlineSession';
 import { HudRoot } from '../../../core/hud/HudRoot';
 import { defineFeature, type FeatureContext } from '../../../core/registry/types';
@@ -56,7 +56,70 @@ describe('combat-test water-safe fallback, preview gate parity & Faction Plate C
     });
     expect(sent[2]?.args.q === 0 && sent[2]?.args.r === 0).toBe(false);
   });
+});
 
+describe('combat-test hive terraform holes/mountains & fallbackNear exclusion rules', () => {
+  it('allows holes/mountains for hive terraform while fallbackNear skips owned staging, buildings, wrecks, water, and rim', () => {
+    expect(isTilePassableForSpawn(TERRAIN.hole, PREP.wild, false)).toBe(false);
+    expect(isTilePassableForSpawn(TERRAIN.rock, PREP.wild, false)).toBe(false);
+    expect(isTilePassableForSpawn(TERRAIN.hole, PREP.wild, true)).toBe(true);
+    expect(isTilePassableForSpawn(TERRAIN.rock, PREP.wild, true)).toBe(true);
+    expect(isTilePassableForSpawn(TERRAIN.shallow, PREP.wild, true)).toBe(false);
+    expect(isTilePassableForSpawn(TERRAIN.flat, PREP.ridge, true)).toBe(false);
+
+    const radius = 14;
+    const count = hexCount(radius);
+    const hx = hexIndex(radius);
+    const terrain = new Uint8Array(count).fill(TERRAIN.hole);
+    const prep = new Uint8Array(count).fill(PREP.wild);
+    const owner = new Int16Array(count).fill(-1);
+    for (let i = 0; i < count; i++) {
+      if (hexDistance(0, 0, hx.q[i]!, hx.r[i]!) <= 3) owner[i] = 0;
+    }
+    const wreckTile = hx.indexOf(7, 0);
+    const sent: Array<{ kind: string; args: Record<string, unknown> }> = [];
+    const session = {
+      store: {
+        latest: {
+          planet: { radius },
+          entities: [{ id: 5, kind: ENTITY_KIND.commandHub, owner: 0, q: -7, r: 0, hp: 1000, hpMax: 1000 }],
+          count: 1,
+          blobs: { wrecks: { byId: { '88': { id: 88, kind: ENTITY_KIND.demoTank, owner: 0, q: 7, r: 0, tiles: [wreckTile], createdAt: 1 } } } },
+        },
+        latestTiles: { terrain, prep, owner },
+      },
+      commandBus: {
+        send: vi.fn((kind: string, args: Record<string, unknown>) => {
+          sent.push({ kind, args });
+          return Promise.resolve({ ok: true });
+        }),
+      },
+    } as unknown as OnlineSession;
+
+    const hive = COMBAT_SPAWN_PRESETS.find((p) => p.id === 'hiveBlackAnt')!;
+    dispatchCombatTestSpawn({ session, setStatus: vi.fn() }, {
+      preset: hive, q: 0, r: 0, owner: 0, count: 1, insectAggressive: false, fallbackNear: true,
+    });
+    const hq = Number(sent[0]?.args.q);
+    const hr = Number(sent[0]?.args.r);
+    for (let fr = -2; fr <= 2; fr++) {
+      for (let fq = -2; fq <= 2; fq++) {
+        const ti = hx.indexOf(hq + fq, hr + fr);
+        expect(ti).toBeGreaterThanOrEqual(0);
+        expect(owner[ti]).toBe(-1);
+        expect(ti).not.toBe(wreckTile);
+        for (const [dq, dr] of HEX_DIRS) {
+          const ni = hx.indexOf(hq + fq + dq, hr + fr + dr);
+          expect(ni).toBeGreaterThanOrEqual(0);
+          expect(owner[ni]).toBe(-1);
+          expect(ni).not.toBe(wreckTile);
+        }
+      }
+    }
+  });
+});
+
+describe('combat-test preview gate parity & Faction Plate CSS invariants', () => {
   it('keeps preview --mode development parity even when NODE_ENV=production is inherited', () => {
     const argv = ['node', 'vite', 'preview', '--mode', 'development'];
     expect(isCombatTestExcludedFromBuild({
@@ -161,5 +224,50 @@ describe('combat-test HUD suppression', () => {
     } finally {
       normal.dispose();
     }
+  });
+
+  it('searches across the full radius=56 arena for a hex-ring hive site instead of falling back to a 3x3 island at dist<=36', () => {
+    const radius = 56;
+    const count = hexCount(radius);
+    const hx = hexIndex(radius);
+    const terrain = new Uint8Array(count).fill(TERRAIN.deep);
+    const prep = new Uint8Array(count).fill(PREP.wild);
+
+    // Tiny 3x3 island at (10, 0) surrounded by ocean (server dev.spawnhive rejects this!)
+    for (let dr = -1; dr <= 1; dr++) {
+      for (let dq = -1; dq <= 1; dq++) {
+        terrain[hx.indexOf(10 + dq, dr)] = TERRAIN.slope;
+      }
+    }
+    // Full dry landmass around (42, 0) beyond old maxDist=36 cap
+    for (let dr = -5; dr <= 5; dr++) {
+      for (let dq = -5; dq <= 5; dq++) {
+        const ti = hx.indexOf(42 + dq, dr);
+        if (ti >= 0) terrain[ti] = TERRAIN.slope;
+      }
+    }
+
+    const sent: Array<{ kind: string; args: Record<string, unknown> }> = [];
+    const session = {
+      store: {
+        latest: { planet: { radius }, entities: [], count: 0 },
+        latestTiles: { terrain, prep },
+      },
+      commandBus: {
+        send: vi.fn((kind: string, args: Record<string, unknown>) => {
+          sent.push({ kind, args });
+          return Promise.resolve({ ok: true });
+        }),
+      },
+    } as unknown as OnlineSession;
+
+    const hive = COMBAT_SPAWN_PRESETS.find((p) => p.id === 'hiveBlackAnt')!;
+    dispatchCombatTestSpawn({ session, setStatus: vi.fn() }, {
+      preset: hive, q: 0, r: 0, owner: 0, count: 1, insectAggressive: false, fallbackNear: true,
+    });
+    const hq = Number(sent[0]?.args.q);
+    const hr = Number(sent[0]?.args.r);
+    expect([hq, hr]).not.toEqual([10, 0]);
+    expect(hexDistance(0, 0, hq, hr)).toBeGreaterThan(36);
   });
 });

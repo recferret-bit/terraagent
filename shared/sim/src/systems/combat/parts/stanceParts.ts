@@ -98,7 +98,7 @@ export function findLeashChaseTile(
   const cols = state.entities.cols;
   const idx = hexIndex(state.grid.radius);
   const here = idx.indexOf(cols.q[unitRow]!, cols.r[unitRow]!);
-  const profile = (data ? mobileStats(cols.kind[unitRow]!, data)?.profile : undefined) ?? 'hover';
+  const profile = (data ? mobileStats(cols.kind[unitRow]!, data)?.profile : undefined) ?? 'ground';
   const blockers = pathBlockersFor(state, profile, here, data);
 
   let bestQ = anchorQ;
@@ -184,7 +184,7 @@ export function resolveAttackMoveGoalBand(
   const idx = hexIndex(state.grid.radius);
   const here = idx.indexOf(cols.q[row]!, cols.r[row]!);
   const goalIdx = idx.indexOf(goal.q, goal.r);
-  const profile = (data ? mobileStats(cols.kind[row]!, data)?.profile : undefined) ?? 'hover';
+  const profile = (data ? mobileStats(cols.kind[row]!, data)?.profile : undefined) ?? 'ground';
   const blockers = pathBlockersFor(state, profile, here, data);
   const maxDist = goalIdx >= 0 && blockers?.goalBlocked(goalIdx) ? 2 : 0;
   return { q: goal.q, r: goal.r, minDist: 0, maxDist };

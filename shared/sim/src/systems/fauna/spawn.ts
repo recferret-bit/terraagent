@@ -2,12 +2,25 @@ import { ENTITY_STATE } from '../../ecs/columns';
 import { placeSpawnedEntity } from '../../ecs/placement';
 import { insertRow, rowOf } from '../../ecs/store';
 import { getWorldgenHiveSites, type PlanHiveSitesOptions, planWorldgenHiveSites } from '../../gen/world/stages/faunaHives';
+import { isPreparedGround } from '../../grid/geo';
 import { HEX_DIRS, hexDistance, hexIndex, inHex } from '../../grid/hex';
 import { DEPOSIT, PREP, TERRAIN } from '../../grid/layers';
 import { bumpPathEpoch, isGroundPassable } from '../../grid/tileModel';
 import type { CompiledDataLike } from '../../kernel/config';
 import type { PlanetState } from '../../kernel/state';
 import { occupiedGroundTiles } from '../construction/occupancy';
+import {
+  collectBlockedHiveTiles,
+  findNearestHiveSpawnTile,
+  HIVE_HEX_RADIUS,
+  HIVE_PLANAR_RADIUS_DEFAULT,
+  HIVE_PLANAR_RADIUS_DESERT,
+  HIVE_TERRAFORM_RADIUS,
+  type HiveSitePlacementOptions,
+  isHiveSitePlaceable,
+  isWithinHivePadOffset,
+  terraformHiveGround,
+} from './hiveGround';
 import { getFaunaHivesState, saveFaunaHivesState } from './state';
 import {
   defaultFaunaData,
@@ -16,6 +29,19 @@ import {
   type HiveRecord,
   type ResidentBugRecord,
 } from './types';
+
+export {
+  collectBlockedHiveTiles,
+  findNearestHiveSpawnTile,
+  HIVE_HEX_RADIUS,
+  HIVE_PLANAR_RADIUS_DEFAULT,
+  HIVE_PLANAR_RADIUS_DESERT,
+  HIVE_TERRAFORM_RADIUS,
+  type HiveSitePlacementOptions,
+  isHiveSitePlaceable,
+  isWithinHivePadOffset,
+  terraformHiveGround,
+};
 
 export interface SpawnHiveOptions {
   species: FaunaSpeciesId;
@@ -57,6 +83,7 @@ function isTileWalkableForFauna(
   const t = terrain[idx];
   const p = prep[idx];
   if (t === TERRAIN.deep || t === TERRAIN.shallow || t === TERRAIN.hole) return false;
+  if (t === TERRAIN.rock && !isPreparedGround(p)) return false;
   if (p === PREP.ridge || p === PREP.moat) return false;
   if (deposit[idx] !== DEPOSIT.none) return false;
   return isGroundPassable(state.grid, idx, data);
@@ -222,6 +249,10 @@ export function spawnHiveEntity(
 ): number {
   const resolvedData = data ?? defaultFaunaData();
   const cfg = resolveSpeciesConfig(opts.species, resolvedData);
+  const footprintW = opts.footprintW ?? 3;
+  const footprintD = opts.footprintD ?? 3;
+  terraformHiveGround(state, opts.q, opts.r, tick, resolvedData, Math.max(footprintW, footprintD));
+
   const entrance = findPassableEntranceTile(
     state,
     opts.q,
@@ -242,8 +273,8 @@ export function spawnHiveEntity(
   cols.owner[row] = -1;
   cols.hp[row] = hpMax;
   cols.hpMax[row] = hpMax;
-  cols.footprintW[row] = opts.footprintW ?? 2;
-  cols.footprintD[row] = opts.footprintD ?? 2;
+  cols.footprintW[row] = footprintW;
+  cols.footprintD[row] = footprintD;
   cols.state[row] = ENTITY_STATE.active;
   placeSpawnedEntity(state.entities, row, opts.q, opts.r, tick);
   bumpPathEpoch(state.meta);
@@ -358,6 +389,21 @@ export function spawnFaunaBug(
  * Materializes the planned worldgen hive sites on `state` into authoritative ECS hive and resident bug
  * entities (`fauna-hives-spec.md` §1–§3). Idempotent: returns existing hive IDs if already initialized.
  */
+function touchesOwnedColonyTerritory(state: PlanetState, cq: number, cr: number): boolean {
+  const hex = hexIndex(state.grid.radius);
+  const owner = state.grid.layers.owner;
+  const planarRadius = state.meta.planetType === 'desert' ? HIVE_PLANAR_RADIUS_DESERT : HIVE_PLANAR_RADIUS_DEFAULT;
+  const bound = Math.ceil((planarRadius * 2) / Math.sqrt(3)) + 1;
+  for (let dr = -bound; dr <= bound; dr++) {
+    for (let dq = -bound; dq <= bound; dq++) {
+      if (!isWithinHivePadOffset(dq, dr, planarRadius, HIVE_TERRAFORM_RADIUS)) continue;
+      const ti = hex.indexOf(cq + dq, cr + dr);
+      if (ti >= 0 && (owner[ti] ?? -1) >= 0) return true;
+    }
+  }
+  return false;
+}
+
 export function materializeWorldgenHives(
   state: PlanetState,
   tick = state.meta.tick,
@@ -382,6 +428,7 @@ export function materializeWorldgenHives(
   const spawnedHiveIds: number[] = [];
   for (const site of sites) {
     if (hexDistance(0, 0, site.q, site.r) > state.grid.radius) continue;
+    if (touchesOwnedColonyTerritory(state, site.q, site.r)) continue;
     const hiveId = spawnHiveEntity(
       state,
       {

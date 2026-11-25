@@ -1,8 +1,13 @@
 import { ENTITY_STATE } from '../../ecs/columns';
 import { rowOf } from '../../ecs/store';
-import { HEX_DIRS, hexDistance, inHex } from '../../grid/hex';
+import { isPreparedGround } from '../../grid/geo';
+import { HEX_DIRS, hexDistance, hexIndex, inHex } from '../../grid/hex';
+import { TERRAIN } from '../../grid/layers';
+import { pathBlockersFor } from '../../grid/pathProfiles';
+import { isPassableTerrain } from '../../grid/tileModel';
 import type { CompiledDataLike } from '../../kernel/config';
 import type { PlanetState } from '../../kernel/state';
+import { movementProfile } from '../../units/mobility';
 import { hasActiveTruce } from '../diplomacy/store';
 import { mercenariesKeepPeace } from '../mercenary/blob';
 import { isColonyRaidProtected } from '../pvp/shield';
@@ -276,6 +281,7 @@ export function pickMinRangeBackoffNeighbor(
   state: PlanetState,
   attackerRow: number,
   threatRow: number,
+  data?: CompiledDataLike,
 ): [number, number] | null {
   const count = state.entities.count;
   if (attackerRow < 0 || attackerRow >= count || threatRow < 0 || threatRow >= count) return null;
@@ -284,6 +290,11 @@ export function pickMinRangeBackoffNeighbor(
   const ar = cols.r[attackerRow]!;
   const [tx, ty] = getEntityAxialCoords(cols, threatRow);
   const currentDist = hexDistance(aq, ar, tx, ty);
+  const idx = hexIndex(state.grid.radius);
+  const fromIdx = idx.indexOf(aq, ar);
+  const profile = data ? movementProfile(cols.kind[attackerRow]!, data) : 'ground';
+  const blockers = pathBlockersFor(state, profile, fromIdx, data);
+  const { terrain, prep } = state.grid.layers;
 
   let bestNeighbor: [number, number] | null = null;
   let bestDist = currentDist;
@@ -292,6 +303,11 @@ export function pickMinRangeBackoffNeighbor(
     const nq = aq + dq;
     const nr = ar + dr;
     if (!inHex(nq, nr, state.grid.radius)) continue;
+    const nIdx = idx.indexOf(nq, nr);
+    if (nIdx < 0) continue;
+    if (!isPassableTerrain(terrain[nIdx]!, prep[nIdx]!)) continue;
+    if (terrain[nIdx] === TERRAIN.rock && !isPreparedGround(prep[nIdx]!)) continue;
+    if (blockers?.goalBlocked(nIdx)) continue;
     const d = hexDistance(nq, nr, tx, ty);
     if (d > bestDist + 1e-5) {
       bestDist = d;

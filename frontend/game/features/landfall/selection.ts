@@ -147,6 +147,7 @@ export class LandfallController {
 
   getOwnerColonyIndex(): number | undefined { return this.ownerColonyIndex; }
   isSpectator(): boolean { return this.spectator; }
+  isDeployed(): boolean { return this.opts.isHqDeployed ? this.opts.isHqDeployed() : true; }
 
   setSpectator(on: boolean): void {
     if (this.spectator === on) return;
@@ -240,7 +241,11 @@ export class LandfallController {
       this.deselect();
       return null;
     }
-    const target = this.entitiesById.get(entityId);
+    let target = this.entitiesById.get(entityId);
+    if (!target && this.opts.store?.latest && this.opts.store.latest !== this.latestView) {
+      this.onView(this.opts.store.latest);
+      target = this.entitiesById.get(entityId);
+    }
     if (
       this.latestHq &&
       entityId === this.latestHq.entityId &&

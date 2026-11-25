@@ -2,11 +2,14 @@ import type { ResourceKey } from '@terra/contracts';
 import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
 import { hexDistance, hexIndex } from '../../grid/hex';
 import { DEPOSIT } from '../../grid/layers';
+import { pathBlockersFor } from '../../grid/pathProfiles';
 import { isGroundPassable } from '../../grid/tileModel';
 import type { CompiledDataLike } from '../../kernel/config';
 import type { ColonyState, PlanetState } from '../../kernel/state';
+import { mobileStats } from '../../units/mobility';
 import { hasActiveTruce } from '../diplomacy/store';
 import { resolveBuildingRow } from '../economy/buildingRows';
+import { hasAnyPassableNeighbor } from '../harvest';
 import {
   getEffectiveColonyStageForShield,
   isW18PvpActive,
@@ -91,6 +94,20 @@ export function buildingCostOf(building: string, data: CompiledDataLike): Partia
   return cost;
 }
 
+export function isReconPatrolGoalPassable(
+  state: PlanetState,
+  fromQ: number,
+  fromR: number,
+  targetIdx: number,
+  data?: CompiledDataLike,
+): boolean {
+  if (targetIdx < 0 || !isGroundPassable(state, targetIdx, data)) return false;
+  const fromIdx = hexIndex(state.grid.radius).indexOf(fromQ, fromR);
+  const profile = data ? (mobileStats(ENTITY_KIND.recon, data)?.profile ?? 'ground') : 'ground';
+  const blockers = pathBlockersFor(state, profile, fromIdx, data);
+  return !(blockers?.goalBlocked(targetIdx) ?? false);
+}
+
 export function findNearestPassableDeposit(
   state: PlanetState,
   q: number,
@@ -109,7 +126,7 @@ export function findNearestPassableDeposit(
       const tr = r + dr;
       const idx = hx.indexOf(tq, tr);
       if (idx < 0 || (dep[idx] ?? DEPOSIT.none) === DEPOSIT.none) continue;
-      if (!isGroundPassable(state, idx, data)) continue;
+      if (!isGroundPassable(state, idx, data) || !hasAnyPassableNeighbor(state, tq, tr)) continue;
       if (!best || dist < best.d) best = { q: tq, r: tr, d: dist };
     }
   }

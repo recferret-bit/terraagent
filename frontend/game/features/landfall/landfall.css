@@ -197,6 +197,16 @@
   color: var(--ta-text-2);
 }
 
+.ta-hq-panel__queue[hidden],
+.ta-hq-panel__combat-slot[hidden] {
+  display: none !important;
+}
+
+.ta-hq-panel__combat-slot {
+  display: flex;
+  align-items: center;
+}
+
 .ta-hq-panel { flex-wrap: wrap; gap: var(--ta-s2); max-width: calc(100vw - 602px); }
 /* Expanded details (e.g. a Trade Hub) are a temporary wide sheet: they sit above open side drawers (z-index 40) and below modals (50). */
 .ta-hq-panel[data-expanded='true'] { z-index: 45; width: min(800px, calc(100vw - 32px)); max-width: calc(100vw - 32px); }

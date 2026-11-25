@@ -1,5 +1,6 @@
 import { compileData } from '../../data';
 import { resolveTileSector } from '../../atlas/crossSectorGameplay';
+import { isPreparedGround } from '../../grid/geo';
 import { hexDistance, hexIndex } from '../../grid/hex';
 import { DEPOSIT, PREP, TERRAIN } from '../../grid/layers';
 import { isGroundPassable, setTileHeight, setTileOwner, setTilePrep, setTileTerrain } from '../../grid/tileModel';
@@ -11,6 +12,7 @@ import type { LedgerPosting, StepContext } from '../../kernel/context';
 import type { PlanetState } from '../../kernel/state';
 import { applyAutopilot } from '../away/store';
 import { ensureColonyCargoState } from '../cargo/state';
+import { getWreckTileSet } from '../combat/wrecks';
 import { occupiedGroundTiles } from '../construction/occupancy';
 import { mirrorAutopilotOnDirector } from '../director/store';
 import { readDiplomacyBlob, writeDiplomacyBlob } from '../diplomacy/store';
@@ -177,20 +179,27 @@ function findSeedUnitSpawnTiles(
 ): Array<{ q: number; r: number }> {
   const hx = hexIndex(state.grid.radius);
   const occupied = occupiedGroundTiles(state, data);
-  const deposit = state.grid.layers.deposit;
+  const wrecks = getWreckTileSet(state);
+  const { terrain, prep, deposit } = state.grid.layers;
   const used = new Set<number>();
   const out: Array<{ q: number; r: number }> = [];
+  const isWalkableSeedTile = (idx: number): boolean => {
+    if (idx < 0 || used.has(idx) || occupied.has(idx) || wrecks.has(idx)) return false;
+    if (!isGroundPassable(state, idx, data)) return false;
+    const t = terrain[idx] ?? TERRAIN.flat;
+    const p = prep[idx] ?? PREP.wild;
+    if (t === TERRAIN.hole || t === TERRAIN.shallow || (t === TERRAIN.rock && !isPreparedGround(p))) return false;
+    return !deposit || deposit[idx] === DEPOSIT.none;
+  };
 
-  for (let dist = 2; dist <= 5 && out.length < needed; dist++) {
+  for (let dist = 2; dist <= 12 && out.length < needed; dist++) {
     for (let dr = -dist; dr <= dist && out.length < needed; dr++) {
       for (let dq = -dist; dq <= dist && out.length < needed; dq++) {
         if (hexDistance(0, 0, dq, dr) !== dist) continue;
         const q = anchorQ + dq;
         const r = anchorR + dr;
         const idx = hx.indexOf(q, r);
-        if (idx < 0 || used.has(idx) || occupied.has(idx)) continue;
-        if (!isGroundPassable(state, idx, data)) continue;
-        if (deposit && deposit[idx] !== DEPOSIT.none) continue;
+        if (!isWalkableSeedTile(idx)) continue;
         used.add(idx);
         out.push({ q, r });
       }

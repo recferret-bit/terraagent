@@ -25,9 +25,25 @@
   display: none !important;
 }
 
-.ta-army-panel[data-visible='true'] {
+.ta-army-panel[data-visible='true']:not(.ta-army-panel--inline) {
   border-color: var(--ta-orange);
   box-shadow: var(--ta-glow-1);
+}
+
+.ta-army-panel--inline {
+  position: static;
+  transform: none;
+  z-index: auto;
+  padding: 0 0 0 var(--ta-s3);
+  background: transparent;
+  border: none;
+  border-left: 1px solid var(--ta-seam);
+  box-shadow: none;
+  gap: var(--ta-s2);
+}
+
+.ta-army-panel--inline .ta-army-panel__head {
+  display: none;
 }
 
 .ta-army-panel__head {

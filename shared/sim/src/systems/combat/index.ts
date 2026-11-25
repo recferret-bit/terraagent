@@ -26,6 +26,7 @@ export * from './targeting';
 export * from './turrets';
 export * from './vision';
 export * from './weaponRows';
+export * from './wrecks';
 
 export const combatSystem = defineSystem({
   id: 'combat.stances',

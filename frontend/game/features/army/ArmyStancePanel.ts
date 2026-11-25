@@ -1,3 +1,4 @@
+import type { SelectionCombatHost } from '../landfall/HqPanel';
 import type { ArmyOrdersController, ArmyOrdersSnapshot, ArmyStance } from './ArmyOrdersController';
 import { syncDomOrderMarkers } from './OrderMarkersRenderer';
 
@@ -18,10 +19,13 @@ export class ArmyStancePanel {
   constructor(
     parent: HTMLElement,
     private readonly controller: ArmyOrdersController,
+    private readonly combatHost: SelectionCombatHost | null = null,
   ) {
+    const inline = Boolean(combatHost);
     this.el = document.createElement('div');
-    this.el.className = 'plate ta-army-panel';
+    this.el.className = inline ? 'ta-army-panel ta-army-panel--inline' : 'plate ta-army-panel';
     this.el.dataset.testid = 'army-stance-panel';
+    this.el.dataset.inline = String(inline);
     this.el.dataset.visible = 'false';
     this.el.hidden = true;
 
@@ -77,7 +81,12 @@ export class ArmyStancePanel {
     this.markersEl.className = 'ta-army-markers';
     this.markersEl.dataset.testid = 'army-order-markers';
 
-    parent.append(this.el, this.markersEl);
+    if (combatHost) {
+      combatHost.slotEl.appendChild(this.el);
+      parent.appendChild(this.markersEl);
+    } else {
+      parent.append(this.el, this.markersEl);
+    }
 
     this.offChange = this.controller.onChange((snap) => this.render(snap));
   }
@@ -90,6 +99,7 @@ export class ArmyStancePanel {
     this.el.dataset.visible = String(visible);
     this.el.dataset.selectedCount = String(count);
     this.countBadgeEl.textContent = String(count);
+    this.combatHost?.setCombatSelection(visible ? this.controller.getSelectionSummary() : null);
 
     for (const [stance, btn] of this.stanceButtons.entries()) {
       const active = snap.currentStance === stance;
@@ -107,6 +117,7 @@ export class ArmyStancePanel {
 
   dispose(): void {
     this.offChange();
+    this.combatHost?.setCombatSelection(null);
     this.el.remove();
     this.markersEl.remove();
   }

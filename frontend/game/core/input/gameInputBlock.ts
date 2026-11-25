@@ -7,11 +7,25 @@
  */
 
 const blockers = new Set<string>();
+const listeners = new Set<() => void>();
+
+function notifyChange(): void {
+  for (const fn of [...listeners]) fn();
+}
 
 /** Turns the block of `source` on or off (idempotent; sources are independent). */
 export function setGameInputBlocked(source: string, blocked: boolean): void {
+  const had = blockers.has(source);
+  if (blocked === had) return;
   if (blocked) blockers.add(source);
   else blockers.delete(source);
+  notifyChange();
+}
+
+/** Subscribes to changes in the active game-input block set. */
+export function onGameInputBlockChange(fn: () => void): () => void {
+  listeners.add(fn);
+  return () => listeners.delete(fn);
 }
 
 /** Some modal holds the input; `except` ignores that one source (a modal asking whether *another* one is up). */
@@ -29,5 +43,7 @@ export function gameInputBlockers(): string[] {
 
 /** Test helper: drops every block. */
 export function resetGameInputBlock(): void {
+  if (blockers.size === 0) return;
   blockers.clear();
+  notifyChange();
 }

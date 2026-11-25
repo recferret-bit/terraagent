@@ -1,12 +1,14 @@
 import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
 import { rowOf } from '../../ecs/store';
+import { isPreparedGround } from '../../grid/geo';
 import { hexDistance, hexIndex } from '../../grid/hex';
-import { pathBlockersFor } from '../../grid/pathProfiles';
+import { TERRAIN } from '../../grid/layers';
 import { isGroundPassable, isTileExplored } from '../../grid/tileModel';
 import type { CompiledDataLike } from '../../kernel/config';
 import type { StepContext } from '../../kernel/context';
 import type { PlanetState } from '../../kernel/state';
 import { isTargetSpottedByColony, updateColonyVisionCache } from '../combat/vision';
+import { getWreckTileSet } from '../combat/wrecks';
 import { hasActiveTruce, resolveColonyIdStr } from '../diplomacy/store';
 import { orderRaidGroupFlowMarch } from './raidFlowMarch';
 import { getPvpState, savePvpState, type ActiveRaidGroupState } from './store';
@@ -63,6 +65,13 @@ export function resolveDormantGateBypassTile(
  * Ensures the raid destination tile `(q, r)` is on a passable ground hex around a structure/obstacle.
  * If `(targetQ, targetR)` is impassable terrain (e.g. deep water / canyon), picks the closest passable neighbor.
  */
+function isPassableNonMountainRaidTile(state: PlanetState, tileIdx: number, data?: CompiledDataLike): boolean {
+  if (tileIdx < 0 || !isGroundPassable(state.grid, tileIdx, data)) return false;
+  if (getWreckTileSet(state).has(tileIdx)) return false;
+  const { terrain, prep } = state.grid.layers;
+  return !(terrain[tileIdx] === TERRAIN.rock && !isPreparedGround(prep[tileIdx]!));
+}
+
 export function resolvePassableRaidApproachTile(
   state: PlanetState,
   originQ: number,
@@ -74,10 +83,9 @@ export function resolvePassableRaidApproachTile(
   const gated = resolveDormantGateBypassTile(state, targetQ, targetR);
   const idx = hexIndex(state.grid.radius);
   const centerIdx = idx.indexOf(gated.q, gated.r);
-  if (centerIdx >= 0 && isGroundPassable(state.grid, centerIdx, data)) {
+  if (isPassableNonMountainRaidTile(state, centerIdx, data)) {
     return gated;
   }
-  const blockers = pathBlockersFor(state, 'ground', -1, data);
   let bestQ = gated.q;
   let bestR = gated.r;
   let bestDist = Infinity;
@@ -90,8 +98,7 @@ export function resolvePassableRaidApproachTile(
       const nq = gated.q + dq;
       const nr = gated.r + dr;
       const nIdx = idx.indexOf(nq, nr);
-      if (nIdx < 0 || !isGroundPassable(state.grid, nIdx, data)) continue;
-      if (blockers?.blocked(nIdx)) continue;
+      if (!isPassableNonMountainRaidTile(state, nIdx, data)) continue;
       const td = hexDistance(gated.q, gated.r, nq, nr);
       const d = hexDistance(originQ, originR, nq, nr);
       if (td < bestTargetDist || (td === bestTargetDist && d < bestDist)) {
@@ -132,7 +139,7 @@ function findNearestOwnedFrontierTile(
   let bestDist = Infinity;
   for (let i = 0; i < idx.count; i++) {
     if (ownerLayer[i] !== targetColony) continue;
-    if (!isGroundPassable(state.grid, i, data)) continue;
+    if (!isPassableNonMountainRaidTile(state, i, data)) continue;
     const d = hexDistance(originQ, originR, idx.q[i]!, idx.r[i]!);
     if (d < bestDist) {
       bestDist = d;

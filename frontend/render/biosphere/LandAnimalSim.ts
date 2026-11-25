@@ -272,8 +272,10 @@ export class LandAnimalSimulator {
           ? habitat.forestAnchors
           : habitat.grassAnchors.length > 0
             ? habitat.grassAnchors
-            : habitat.rockAnchors;
-      const safePool = anchors.length > 0 ? anchors : [{ x: 4, z: 4, tileIndex: -1 }];
+            : habitat.forestAnchors.length > 0
+              ? habitat.forestAnchors
+              : habitat.waterAnchors;
+      const safePool = anchors.length > 0 ? anchors : [{ x: 0, z: 0, tileIndex: -1 }];
 
       for (let g = 0; g < groupsPerSpecies; g++) {
         const anchor = safePool[(g * 11 + slot * 5) % safePool.length]!;

@@ -1,8 +1,9 @@
 import type { ResourceKey } from '@terra/contracts';
 import { CANCEL_REFUND_RATE } from '../../data';
 import { ENTITY_KIND } from '../../ecs/columns';
+import { isPreparedGround } from '../../grid/geo';
 import { hexIndex } from '../../grid/hex';
-import { PREP, TERRAIN } from '../../grid/layers';
+import { DEPOSIT, PREP, TERRAIN } from '../../grid/layers';
 import type { CompiledDataLike } from '../../kernel/config';
 import type { StepContext } from '../../kernel/context';
 import { setBlob, type PlanetState } from '../../kernel/state';
@@ -115,6 +116,8 @@ export function findHubEdgeSpawnTile(state: PlanetState, colonyIndex: number, da
       layers.terrain[t] !== TERRAIN.deep &&
       layers.terrain[t] !== TERRAIN.shallow &&
       layers.terrain[t] !== TERRAIN.hole &&
+      !(layers.terrain[t] === TERRAIN.rock && !isPreparedGround(layers.prep[t])) &&
+      layers.deposit[t] === DEPOSIT.none &&
       layers.prep[t] !== PREP.ridge &&
       layers.prep[t] !== PREP.moat
     ) {

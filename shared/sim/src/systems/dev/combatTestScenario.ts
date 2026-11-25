@@ -186,22 +186,24 @@ function stripAllPvpProtection(state: PlanetState, data?: CompiledDataLike): voi
 }
 
 function isSafeWildHiveTile(state: PlanetState, q: number, r: number, staging: { q: number; r: number }): boolean {
-  if (!inHex(q, r, state.grid.radius - 3)) return false;
+  if (!inHex(q, r, state.grid.radius - 6)) return false;
   if (hexDistance(q, r, staging.q, staging.r) < 12) return false;
   const hx = hexIndex(state.grid.radius);
   const terrain = state.grid.layers.terrain;
+  const owner = state.grid.layers.owner;
   const cols = state.entities.cols;
   for (let row = 0; row < state.entities.count; row++) {
     if (cols.hp[row]! <= 0) continue;
     if (hexDistance(q, r, Math.round(cols.q[row]!), Math.round(cols.r[row]!)) < 10) return false;
   }
-  for (let dq = -1; dq <= 1; dq++) {
-    for (let dr = -1; dr <= 1; dr++) {
-      if (hexDistance(0, 0, dq, dr) > 1) continue;
+  for (let dq = -5; dq <= 5; dq++) {
+    for (let dr = -5; dr <= 5; dr++) {
+      if (hexDistance(0, 0, dq, dr) > 5) continue;
       const idx = hx.indexOf(q + dq, r + dr);
       if (idx < 0) return false;
       const t = terrain[idx] ?? TERRAIN.flat;
       if (t === TERRAIN.shallow || t === TERRAIN.deep) return false;
+      if ((owner[idx] ?? -1) >= 0) return false;
     }
   }
   return true;

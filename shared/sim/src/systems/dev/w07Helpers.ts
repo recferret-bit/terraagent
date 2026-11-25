@@ -1,7 +1,7 @@
 import type { CompiledRow } from '../../data';
 import { ENTITY_KIND } from '../../ecs/columns';
 import { rowOf, setField } from '../../ecs/store';
-import { hexDistance } from '../../grid/hex';
+import { hexDistance, inHex } from '../../grid/hex';
 import type { SimCommand } from '../../kernel/commands';
 import type { StepContext } from '../../kernel/context';
 import { setBlob, type PlanetState } from '../../kernel/state';
@@ -11,7 +11,14 @@ import { ensureColonyLedger } from '../economy/ledger';
 import { syncReconView } from '../factories-hub/robotics';
 import { emitFaunaDirective } from '../fauna/directives';
 import { clearHiveAggression, provokeFaunaBug, provokeHive } from '../fauna/provocation';
-import { spawnFaunaBug, spawnHiveSite, spawnResidentBug } from '../fauna/spawn';
+import {
+  collectBlockedHiveTiles,
+  findNearestHiveSpawnTile,
+  isHiveSitePlaceable,
+  spawnFaunaBug,
+  spawnHiveSite,
+  spawnResidentBug,
+} from '../fauna/spawn';
 import { getFaunaHivesState, saveFaunaHivesState } from '../fauna/state';
 import {
   resolveSpeciesConfig,
@@ -149,11 +156,30 @@ export function selectOrSpawnRaidHive(
   if (candidate) return { hive: candidate, countOverride };
 
   const anchor = findColonyAnchorTile(state, colonyIndex);
-  const spawnQ = args.q ?? Math.min(state.grid.radius - 2, anchor.q + 10);
-  const spawnR = args.r ?? anchor.r;
+  const hasExplicit = args.q !== undefined || args.r !== undefined;
+  let q = args.q ?? Math.min(state.grid.radius - 3, anchor.q + 15);
+  let r = args.r ?? anchor.r;
+  if (hasExplicit) {
+    if (!inHex(q, r, state.grid.radius)) return { hive: null, error: 'invalid_args' };
+  } else if (!inHex(q, r, state.grid.radius)) {
+    q = anchor.q;
+    r = anchor.r;
+  }
+  const combatTest = Boolean((state.blobs.combatTest?.value as { enabled?: boolean } | undefined)?.enabled);
+  const blocked = collectBlockedHiveTiles(state, ctx.data);
+  if (hasExplicit) {
+    if (!isHiveSitePlaceable(state, q, r, { data: ctx.data, blocked, disallowAllOwned: combatTest })) {
+      return { hive: null, error: 'site_blocked' };
+    }
+  } else {
+    const found = findNearestHiveSpawnTile(state, q, r, { data: ctx.data, blocked, disallowAllOwned: combatTest });
+    if (!found) return { hive: null, error: 'site_blocked' };
+    q = found.q;
+    r = found.r;
+  }
   const newHiveId = spawnHiveSite(
     state,
-    { species: species ?? 'blackAnt', q: spawnQ, r: spawnR },
+    { species: species ?? 'blackAnt', q, r },
     ctx.tick,
     ctx.data,
   );

@@ -1,8 +1,26 @@
 import { HEX_DIRS, hexDistance, hexIndex, mixGroundSeed } from '@terra/sim/grid/hex';
-import type { PlanetSpec } from '../planets/PlanetSpec';
-import { HEX_TERRAIN, isClearedPrep, tileHash01, type HexTileLayers } from '../planets/hex/chunkMesh';
+import type { PlanetKind, PlanetSpec } from '../planets/PlanetSpec';
+import { HEX_PREP, HEX_TERRAIN, isClearedPrep, tileHash01, type HexTileLayers } from '../planets/hex/chunkMesh';
 import { planetExtent, tileAt, tileXZ } from '../planets/hex/hexMath';
 import type { BiosphereHabitatIndex, HabitatAnchor } from './biosphereTypes';
+
+/**
+ * Shared passability rule for warm-blooded land animals across direct and worker-hydrated habitat indices:
+ * animals traverse flat ground, non-terraformed dunes (`slope`), and forests freely, and never climb mountains (`rock`),
+ * ridges, moats, holes, or non-dune water.
+ */
+export function isPassableAnimalTile(terrainCode: number, prepCode: number, planetKind: PlanetKind): boolean {
+  if (prepCode === HEX_PREP.ridge || prepCode === HEX_PREP.moat) return false;
+  if (terrainCode === HEX_TERRAIN.hole) return false;
+  if (terrainCode === HEX_TERRAIN.rock && !isClearedPrep(prepCode)) return false;
+  if (planetKind !== 'dune' && !isClearedPrep(prepCode) && (terrainCode === HEX_TERRAIN.shallow || terrainCode === HEX_TERRAIN.deep)) {
+    return false;
+  }
+  if (planetKind === 'dune' && !isClearedPrep(prepCode) && terrainCode === HEX_TERRAIN.deep) {
+    return false;
+  }
+  return true;
+}
 
 function subsampleAnchors(list: HabitatAnchor[], cap: number): HabitatAnchor[] {
   if (list.length <= cap) return list;
@@ -46,9 +64,14 @@ export function buildHexHabitatIndex(
       if (t === HEX_TERRAIN.forest) {
         forestRaw.push({ x, z, tileIndex: i });
         forestTileSet.add(i);
-      } else if (t === HEX_TERRAIN.flat) {
+      } else if (t === HEX_TERRAIN.flat || (t === HEX_TERRAIN.slope && prep !== HEX_PREP.ridge && prep !== HEX_PREP.moat)) {
         grassRaw.push({ x, z, tileIndex: i });
-        if (look.kind === 'dune' && (layers.height[i] ?? 0) < 0.45 && tileHash01(q, r, mixGroundSeed(layers.seed ?? look.seed, 503)) > 0.72) {
+        if (
+          t === HEX_TERRAIN.flat &&
+          look.kind === 'dune' &&
+          (layers.height[i] ?? 0) < 0.45 &&
+          tileHash01(q, r, mixGroundSeed(layers.seed ?? look.seed, 503)) > 0.72
+        ) {
           waterRaw.push({ x, z, tileIndex: i });
         }
       } else if (t === HEX_TERRAIN.rock) {
@@ -87,9 +110,8 @@ export function buildHexHabitatIndex(
       const pick = tileAt(radius, x, z);
       if (!pick || !terrain || hexDistance(0, 0, pick.q, pick.r) > innerRadius) return false;
       const t = terrain[pick.i] ?? 0;
-      if (t === HEX_TERRAIN.hole) return false;
-      if (look.kind !== 'dune' && (t === HEX_TERRAIN.shallow || t === HEX_TERRAIN.deep)) return false;
-      return true;
+      const p = layers.prep?.[pick.i] ?? 0;
+      return isPassableAnimalTile(t, p, look.kind);
     },
     heightAt,
   };
@@ -142,7 +164,9 @@ export function buildContinuousHabitatIndex(
     },
     isPassableLand(x, z) {
       if (Math.abs(x) > halfSize * 0.92 || Math.abs(z) > halfSize * 0.92) return false;
-      if (waterLevel !== null && heightAt(x, z) <= waterLevel + 0.06) return false;
+      const y = heightAt(x, z);
+      if (y > 4.2) return false;
+      if (waterLevel !== null && y <= waterLevel + 0.06) return false;
       return true;
     },
     heightAt,
