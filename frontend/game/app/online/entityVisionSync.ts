@@ -196,8 +196,10 @@ export function syncColonyVisionAndProjectors(opts: {
   colonyActive?: boolean;
   /** Spectator all-bots FoV mode: unites live vision, projectors, and explored memory across every active colony. */
   spectatorAllVision?: boolean;
+  /** Sandbox full-map observer mode: turns off FoV shroud and reveals all colonies, hives, and insects. */
+  fullVision?: boolean;
 }): void {
-  const { records, ownerColonyIndex, terrain, tiles, spectatorAllVision } = opts;
+  const { records, ownerColonyIndex, terrain, tiles, spectatorAllVision, fullVision } = opts;
   const active = opts.colonyActive ?? true;
   const blend = stepFovBlend(active);
   const dnParams = getDayNightParams();
@@ -221,12 +223,12 @@ export function syncColonyVisionAndProjectors(opts: {
     attachEntityProjectorRig(rec.mesh, archetypeId);
     if (isEntityInViewFocus(rec.mesh)) applyBuildingLight(rec.mesh, stateMul, rigIntensity, rec.buildStage);
 
-    if (spectatorAllVision ? rec.owner >= 0 : rec.owner === ownerColonyIndex) {
+    if (fullVision || spectatorAllVision ? rec.owner >= 0 : rec.owner === ownerColonyIndex) {
       collectOwnedEntityVisionAndProjectors(rec, visionSources, projectors, lightScale, stateMul, opts.data);
     }
   }
 
-  if (terrain && active) {
+  if (terrain && active && !fullVision) {
     if (spectatorAllVision && (tiles?.exploredByColony || tiles?.explored)) {
       const arrays = Object.values(tiles.exploredByColony ?? {}).filter(
         (a): a is Uint8Array => Boolean(a && a.length > 0),
@@ -266,8 +268,8 @@ export function syncColonyVisionAndProjectors(opts: {
 
   updateColonyProjectorsAndVision({
     projectors: lightScale <= 0.005 ? [] : projectors,
-    visionSources: blend > 0 ? visionSources : [],
-    fovEnabled: Boolean(terrain) && blend > 0,
+    visionSources: blend > 0 && !fullVision ? visionSources : [],
+    fovEnabled: Boolean(terrain) && blend > 0 && !fullVision,
     fovStrength: blend,
     fovDim: dnParams.fovDim,
     nightFactor: active ? nightFactor : undefined,
@@ -283,15 +285,20 @@ export function syncEntitiesVisionAndForeignVisibility(opts: {
   tiles: ClientTiles | null;
   colonyActive: boolean;
   spectatorAllVision: boolean;
+  fullVision?: boolean;
   isTileVisible: ((q: number, r: number) => boolean) | null;
   isMeshVisible: (rec: EntityMeshRecord) => boolean;
 }): void {
-  const { entries, ownerColonyIndex, terrain, hasTerrain, tiles, colonyActive, spectatorAllVision, isTileVisible, isMeshVisible } = opts;
+  const { entries, ownerColonyIndex, terrain, hasTerrain, tiles, colonyActive, spectatorAllVision, fullVision, isTileVisible, isMeshVisible } = opts;
   syncColonyVisionAndProjectors({
-    records: entries.values(), data: opts.data, ownerColonyIndex, terrain, tiles, colonyActive, spectatorAllVision,
+    records: entries.values(), data: opts.data, ownerColonyIndex, terrain, tiles, colonyActive, spectatorAllVision, fullVision,
   });
   const fogOn = (getColonyVisionUniforms().uFovEnabled.value as number) > 0.001;
   for (const rec of entries.values()) {
+    if (fullVision) {
+      rec.mesh.visible = isMeshVisible(rec);
+      continue;
+    }
     const foreign = spectatorAllVision ? rec.owner < 0 : rec.owner !== ownerColonyIndex;
     const ownPod = !spectatorAllVision && !foreign && rec.kind === ENTITY_KIND.pod;
     if (!foreign && !(ownPod && fogOn)) continue;

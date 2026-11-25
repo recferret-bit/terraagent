@@ -166,6 +166,27 @@ export function evaluateColonyPower(
 
   const col = state.colonies[colonyIndex];
   if (col) col.pollution = Number(col.pollution ?? 0);
+  if ((col as { noPowerGridLock?: boolean } | undefined)?.noPowerGridLock === true && graph.unattachedBuildingRows.length > 0) {
+    const nextCompId = graph.components.reduce((maxId, c) => Math.max(maxId, c.componentId + 1), 0);
+    const sandboxComp = {
+      componentId: nextCompId,
+      hasHub: false,
+      hubIds: [],
+      pylonIds: [],
+      attachedBuildingRows: [] as number[],
+      attachedBuildingIds: [] as number[],
+    };
+    const cols = state.entities.cols;
+    for (const r of graph.unattachedBuildingRows) {
+      const id = cols.id[r]!;
+      sandboxComp.attachedBuildingRows.push(r);
+      sandboxComp.attachedBuildingIds.push(id);
+      graph.componentByBuildingId.set(id, sandboxComp.componentId);
+    }
+    graph.components.push(sandboxComp);
+    graph.unattachedBuildingRows.length = 0;
+    graph.unattachedBuildingIds.length = 0;
+  }
 
   const unitDemand = graph.hasHub ? calculateUnitDemand(state, colonyIndex, data) : 0;
   const work = graph.hasHub ? collectWorkLoad(state, colonyIndex, data) : { demand: 0, candidates: [] };
@@ -184,8 +205,13 @@ export function evaluateColonyPower(
     acc.allShedEntityIds, acc.allOverloadedEntityIds, acc.offlineReasons, acc.entityPower,
   );
 
+  const overridePower = typeof col?.powerSupplyOverride === 'number' && Number.isFinite(col.powerSupplyOverride)
+    ? Math.max(0, col.powerSupplyOverride)
+    : 0;
   const workDemand = Math.max(0, Number((work.demand - acc.totalShedWorkDemand).toFixed(4)));
-  const effectiveSupply = Math.max(0, Number(acc.totalSupply.toFixed(4)));
+  const effectiveSupply = acc.results.length === 0 && overridePower > 0
+    ? overridePower
+    : Math.max(0, Number(acc.totalSupply.toFixed(4)));
   const demand = Math.max(0, Number(acc.totalDemand.toFixed(4)));
   const rawDemand = Math.max(0, Number(acc.totalRawDemand.toFixed(4)));
   const buildingDemand = Math.max(0, Number(acc.totalBuildingDemand.toFixed(4)));

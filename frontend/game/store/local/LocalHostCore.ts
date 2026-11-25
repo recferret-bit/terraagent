@@ -1,6 +1,6 @@
 import { commandGate, flagsFromList, newId, parseWaves, PlanetType, precheckClientCommand, REJECT_CODES, REJECT_DETAIL_MAX, type RejectCode, type ServerMessage } from '@terra/contracts';
 import {
-  applyTunedEntityHealth, buildPipeline, buildingCatalog, createPipeline, effectiveOverrides, GEN_VERSION,
+  applyTunedEntityHealth, buildPipeline, buildingCatalog, COMBAT_TEST_FLAGS, createPipeline, effectiveOverrides, GEN_VERSION,
   planBackendBotActions, PlanetJournal, PlanetScheduler, shadowedClientDeltaFrames, SIM_VERSION, SimHost, SINGLE_PLANET_SCHEDULE, TICK_MS,
   type BalanceOverrides, type JournalProblem, type CommandOutcome, type PlanetTuning, type SimCommand, type SimEvent,
 } from '@terra/sim';
@@ -9,7 +9,7 @@ import { describeJournalProblem, resumeJournal } from './hostJournal';
 import { LocalCargoRelay } from './localCargoRelay';
 import { LocalFeedCollector } from './parts/localBotFeed';
 import { LocalDevError, runLocalDevCommand } from './parts/localDevCommands';
-import { scenarioSource, spectatorScenarioSource, spectatorSource, type PlanetSource, type SeededPlanet } from './planetSource';
+import { combatTestSource, scenarioSource, spectatorScenarioSource, spectatorSource, type PlanetSource, type SeededPlanet } from './planetSource';
 import type { FromLocalHost, LocalHostOptions, LocalPost, ToLocalHost } from './protocol';
 import { LocalHardModeClock } from './devPresence';
 import { compatible, snapshotKey, type LocalSnapshot, type SnapshotStore } from './snapshotStore';
@@ -79,14 +79,19 @@ export class LocalHostCore {
 
   /** `?host=local`: loads the saved planet of `opts.scenario` when compatible, else a fresh one; starts stepping. */
   static async create(opts: LocalHostOptions, deps: LocalHostDeps, post: LocalPost): Promise<LocalHostCore> {
-    const waves = parseWaves(opts.waves).list;
+    const isCombatTest = Boolean(opts.combatTest || opts.scenario === 'combatTest');
+    const waves = isCombatTest && !opts.waves
+      ? COMBAT_TEST_FLAGS
+      : parseWaves(opts.waves).list;
     const core = new LocalHostCore(waves, deps, post);
-    core.spectatorMode = Boolean(opts.spectator || opts.scenario === 'spectator');
-    const source = core.spectatorMode
-      ? !opts.scenario || opts.scenario === 'spectator'
-        ? spectatorSource({ planetType: opts.planetType, seed: opts.seed, waves, botCount: opts.botCount })
-        : spectatorScenarioSource(opts.scenario, { waves, botCount: opts.botCount })
-      : scenarioSource(opts.scenario, waves);
+    core.spectatorMode = !isCombatTest && Boolean(opts.spectator || opts.scenario === 'spectator');
+    const source = isCombatTest
+      ? combatTestSource({ planetType: opts.planetType, seed: opts.seed, waves, botCount: opts.botCount })
+      : core.spectatorMode
+        ? !opts.scenario || opts.scenario === 'spectator'
+          ? spectatorSource({ planetType: opts.planetType, seed: opts.seed, waves, botCount: opts.botCount })
+          : spectatorScenarioSource(opts.scenario, { waves, botCount: opts.botCount })
+        : scenarioSource(opts.scenario, waves);
     await core.build(source, Boolean(opts.reset));
     core.run();
     return core;

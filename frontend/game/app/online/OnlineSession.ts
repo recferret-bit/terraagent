@@ -12,6 +12,7 @@ import type { ConnectionState, SessionTarget, Transport } from '../../net/types'
 import { warpOfMessage } from '../../net/warpFeed';
 import type { WsTransportDeps } from '../../net/WsTransport';
 import { LocalHost } from '../../store/local/LocalHost';
+import type { LocalHostOptions } from '../../store/local/protocol';
 import type { WorldStore } from '../../store/WorldStore';
 import type { ClientTiles, ClientView } from '../../store/replica/viewCodec';
 import { isProductionBuild } from '../../core/buildEnv';
@@ -24,10 +25,7 @@ import type { EntityMeshes, MeshFactory } from './EntityMeshes';
 import type { FeatureHud } from './featureHud';
 import type { GuestBootTarget } from './guestBoot';
 import { isLocalSpectatorAllowed, isSpectatorSearch, stripSpectatorResetFromUrl, type OnlineMode } from './onlineMode';
-import {
-  applySessionBootResult, attachSessionLocalHost, bindSessionKeys, createSessionBootRig,
-  resolveInitialLoadMode, resolveSocketFallback, runGuestBootSequence,
-} from './parts/sessionBoot';
+import { applySessionBootResult, attachSessionLocalHost, bindSessionKeys, createSessionBootRig, resolveInitialLoadMode, resolveSocketFallback, runGuestBootSequence } from './parts/sessionBoot';
 import { bindSessionTerrainLoader } from './parts/sessionTerrainLoader';
 import { applySessionOrbitalReveal, applySessionSpacePhase, resolveSeatIndexFromSearch, settleArrivalHud, syncSessionBootOverlayOnView, syncSessionFrameHud } from './parts/sessionViewSync';
 import { applySpectatorViewSetup, computeNextSessionLoopDelayMs, findColonyFocusTile, stepOnlineSessionFrame } from './parts/sessionSpectator';
@@ -42,11 +40,7 @@ import { scenarioParam } from './sessionTarget';
 import { normalizeSectorIntent, type SectorIntentInput, type SectorIntentV1 } from '../../ui/lobby/orbitalPickerModel';
 import { bindStoreCombatEvents, ingestHostMessageCombatEvents } from './combatSync';
 import { bindOnlineDayNightSync, type OnlineDayNightSync } from './dayNightSync';
-import {
-  acquireSessionViewport, applyChangedTileList, bindLocalSaveListeners,
-  listSceneEntities, pickTerrainAt, projectTileToScreen, resolveOnlinePlanetLook, resolveSessionPlanetKind,
-  type TileChangePatchItem, writeStoredPlanetKind,
-} from './viewportHelper';
+import { acquireSessionViewport, applyChangedTileList, bindLocalSaveListeners, listSceneEntities, pickTerrainAt, projectTileToScreen, resolveOnlinePlanetLook, resolveSessionPlanetKind, type TileChangePatchItem, writeStoredPlanetKind } from './viewportHelper';
 import '../../../design/css/tokens.css';
 import '../../../design/css/base.css';
 
@@ -63,7 +57,7 @@ export interface OnlineSessionOptions {
   /** May an unreachable game server fall back to a browser-local host (FA-06)? Default: dev builds only. */
   allowLocalFallback?: boolean;
   /** When false, skip `/v1/auth/refresh` on initial boot and log in with `deviceSecret` directly. */
-  tryRefresh?: boolean;
+  tryRefresh?: boolean; localHostOptions?: LocalHostOptions; combatTest?: boolean;
 }
 
 /** Online play flow (`/play.html` short landing or `/play.html?planet=<kind>` full space-to-surface landing). */
@@ -81,7 +75,7 @@ export class OnlineSession {
   bootResult: BootAuthResult | null = null; planetKind: PlanetKind | null;
   readonly sectorIntent: SectorIntentV1;
 
-  private biomeKey = 'forestRock'; private terrainBiomeKey = ''; private lastHudMs = 0;
+  private biomeKey = 'forestRock'; private terrainBiomeKey = ''; private lastHudMs = 0; private readonly combatTest: boolean;
   private readonly ownsViewport: boolean; private readonly externalFrameLoop: boolean; private readonly search: string;
   private skipDescent: boolean; private readonly fromSpaceDescent: boolean; private readonly fastStartLand: boolean;
   private readonly onReturnToOrbit?: (kind: PlanetKind) => void; private readonly allowLocalFallback: boolean;
@@ -90,7 +84,7 @@ export class OnlineSession {
   private readonly bootTarget: SessionTarget; private readonly guest: GuestBootTarget | null;
   private disposed = false; private localHost: LocalHost | null = null;
   private showSpaceTerrain = false; private cameraCentered = false; private landSent = false; private hqDeployedSynced = false;
-  spectator: boolean; private spectatorVisionAll = true; private spectatorAutoFocused = false;
+  spectator: boolean; private spectatorVisionAll = true; private spectatorAutoFocused = false; private fullVision: boolean;
   private freshDeployment: boolean; private orbitalCameraDrop: boolean; private deferReveal: boolean;
   loadMode: ColonyLoadMode; private readonly explicitLoadMode: boolean;
   private sawPodDescending = false; private firstObservedTick: number | null = null;
@@ -111,12 +105,14 @@ export class OnlineSession {
 
   constructor(root: HTMLElement, readonly mode: OnlineMode = 'boot', opts: OnlineSessionOptions = {}) {
     this.externalFrameLoop = Boolean(opts.externalFrameLoop);
+    this.combatTest = Boolean(opts.combatTest);
+    this.fullVision = this.combatTest;
     this.search = opts.search ?? (typeof location !== 'undefined' ? location.search : '');
     const q = new URLSearchParams(this.search);
     this.spectator = isSpectatorSearch(this.search);
     const lm = resolveInitialLoadMode(opts, this.search, mode);
-    this.loadMode = lm.loadMode; this.explicitLoadMode = lm.explicit;
-    this.skipDescent = Boolean(opts.skipDescent || q.get('skip') === '1' || this.loadMode === 'instant' || this.spectator);
+    this.loadMode = this.combatTest ? 'instant' : lm.loadMode; this.explicitLoadMode = this.combatTest || lm.explicit;
+    this.skipDescent = Boolean(opts.skipDescent || q.get('skip') === '1' || this.loadMode === 'instant' || this.spectator || this.combatTest);
     this.fromSpaceDescent = Boolean(!this.spectator && opts.fromSpaceDescent && this.loadMode === 'pod');
     this.freshDeployment = Boolean(!this.spectator && opts.freshDeployment && this.loadMode === 'pod');
     const devBuild = !isProductionBuild();
@@ -147,10 +143,11 @@ export class OnlineSession {
     this.transport = rig.transport; this.banner = rig.banner; this.store = rig.store;
     this.cleanups.push(bindVersionMismatchNotice(uiParent, this.store, () => this.store.currentPlanetId() || this.planetId || null));
     this.commandBus = rig.commandBus; this.commands = this.commandBus; this.entities = rig.entities; this.bootOverlay = rig.bootOverlay;
+    if (this.fullVision) this.entities.setFullVision(true);
     const control = createUnitControl({
       store: this.store, commandBus: this.commandBus, canvas: this.viewport.renderer.domElement, entities: this.entities,
       pickAt: (cx, cy) => this.pickAt(cx, cy), terrain: () => this.terrain, toast: (m) => this.hud?.toast(m), netStats: this.netStats,
-      spectator: () => this.spectator, onColonyInspected: (idx) => this.inspectColony(idx, false),
+      spectator: () => this.spectator, noHqRequired: () => this.combatTest, onColonyInspected: (idx) => this.inspectColony(idx, false),
     });
     this.landfall = control.landfall; this.landfall.deselect(); this.cleanups.push(control.dispose);
     this.hud = createSessionHud({
@@ -162,7 +159,8 @@ export class OnlineSession {
       renderedEntityPosition: (id) => this.entities.getRecord(id)?.mesh.position ?? null,
       deferInitialMount: Boolean(opts.externalFrameLoop && ((this.fromSpaceDescent && !this.skipDescent) || this.deferReveal)),
       isLocalHost: Boolean(rig.local || opts.localHost || (devBuild && q.get('host') === 'local')),
-      isSpectator: () => this.spectator, isSpectatorVisionAll: () => this.spectatorVisionAll, setSpectatorVisionAll: (on) => this.setSpectatorVisionAll(on),
+      isSpectator: () => this.spectator, isSpectatorVisionAll: () => this.spectatorVisionAll, setSpectatorVisionAll: (on) => this.setSpectatorVisionAll(on), isCombatTest: () => this.combatTest,
+      isFullVision: () => this.fullVision, setFullVision: (on) => this.setFullVision(on),
       inspectColony: (idx, focus) => this.inspectColony(idx, focus), onReadOnlyReject: () => this.hud.toast('Spectator mode is read-only'),
     });
     this.pauseOverlay = new PauseOverlay(uiParent, { onResume: () => this.setPaused(false), onReturnToOrbit: () => this.returnToOrbit() });
@@ -277,8 +275,12 @@ export class OnlineSession {
   }
 
   setSpectatorVisionAll(on: boolean): void {
-    this.spectatorVisionAll = on;
-    this.entities.setSpectatorAllVision(on);
+    this.spectatorVisionAll = on; this.entities.setSpectatorAllVision(on);
+    if (this.store.latest) this.hud.update({ ...this.store.latest, tick: this.store.latest.tick, warp: this.warp, net: this.netStats.view(this.store.predictionInfo) });
+  }
+  isFullVision(): boolean { return this.fullVision; }
+  setFullVision(on: boolean): void {
+    this.fullVision = on; this.entities.setFullVision(on);
     if (this.store.latest) this.hud.update({ ...this.store.latest, tick: this.store.latest.tick, warp: this.warp, net: this.netStats.view(this.store.predictionInfo) });
   }
 
@@ -382,6 +384,8 @@ export class OnlineSession {
       }
     }
     this.dayNightSync?.syncFrame();
+    const ctStaging = this.combatTest ? (v.blobs?.combatTest as { staging?: { q: number; r: number } } | undefined)?.staging : undefined;
+    if (ctStaging) { this.spawn = { q: ctStaging.q, r: ctStaging.r }; if (!this.cameraCentered) this.cameraTargetTile = { q: ctStaging.q, r: ctStaging.r }; }
     const status = extractPodDescentStatus(v, this.colonyIndex, this.spawn);
     if (this.entities.podTouchdown.isSpacePhaseActive() || this.deferReveal) this.cameraTargetTile = { q: status.q, r: status.r };
     if (v.tiles) this.onTiles(v, v.tiles);
@@ -453,10 +457,9 @@ export class OnlineSession {
   stepFrame(dt: number, nowMs?: number): void {
     const now = nowMs ?? (this.last + dt * 1000);
     const rawDt = nowMs !== undefined ? Math.max(0, (now - this.last) / 1000) : Math.max(0, dt);
-    const animDt = Math.min(rawDt, 0.4) * Math.max(1, this.warp);
     this.last = now;
     stepOnlineSessionFrame({
-      dt, now, rawDt, animDt, skipDescent: this.skipDescent, loadMode: this.loadMode,
+      dt, now, rawDt, animDt: Math.min(rawDt, 0.4) * Math.max(1, this.warp), skipDescent: this.skipDescent, loadMode: this.loadMode,
       hqDeployedSynced: this.hqDeployedSynced, deferReveal: this.deferReveal, externalFrameLoop: this.externalFrameLoop, ownsViewport: this.ownsViewport,
       viewport: this.viewport, terrain: this.terrain, cam: this.cam, entities: this.entities,
       preloader: this.preloader, store: this.store, arrival: this.arrival, landfall: this.landfall, hud: this.hud,
@@ -487,8 +490,7 @@ export class OnlineSession {
     this.disposed = true; this.terrainLoader.dispose(); this.preloader.dispose(); this.guest?.dispose();
     if (typeof cancelAnimationFrame === 'function') cancelAnimationFrame(this.raf);
     this.localHost?.stop(); this.cleanups.forEach((f) => f());
-    this.pauseOverlay.dispose(); this.bootOverlay?.dispose(); this.landfall.dispose(); this.entities.dispose();
-    this.commandBus.dispose(); this.cam?.dispose(); this.store.dispose();
+    this.pauseOverlay.dispose(); this.bootOverlay?.dispose(); this.landfall.dispose(); this.entities.dispose(); this.commandBus.dispose(); this.cam?.dispose(); this.store.dispose();
     if (this.transport.dispose) this.transport.dispose(); else this.transport.stop();
     this.hud.dispose(); this.banner?.dispose();
     if (this.terrain) { this.viewport.scene.remove(this.terrain.group); this.terrain.dispose(); this.terrain = null; }

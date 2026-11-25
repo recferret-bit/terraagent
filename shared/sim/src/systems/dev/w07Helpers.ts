@@ -63,7 +63,13 @@ export function findColonyAnchorTile(state: PlanetState, colonyIndex: number): {
     }
     if (!fallback) fallback = { q: cols.q[r]!, r: cols.r[r]! };
   }
-  return fallback ?? { q: 0, r: 0 };
+  if (fallback) return fallback;
+  const col = state.colonies[colonyIndex] as { spawnQ?: number; spawnR?: number } | undefined;
+  if (typeof col?.spawnQ === 'number' && typeof col?.spawnR === 'number') {
+    return { q: col.spawnQ, r: col.spawnR };
+  }
+  const ctStaging = (state.blobs.combatTest?.value as { staging?: { q: number; r: number } } | undefined)?.staging;
+  return ctStaging ?? { q: 0, r: 0 };
 }
 
 export function replenishHiveResidentsForDevRaid(

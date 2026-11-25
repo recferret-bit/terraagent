@@ -25,6 +25,17 @@
   pointer-events: auto;
 }
 
+.ta-hud-min--chrome-hidden {
+  height: 0;
+  padding: 0;
+  gap: 0;
+  pointer-events: none;
+}
+
+.ta-hud-min--chrome-hidden::before {
+  display: none;
+}
+
 .ta-hud-min::before,
 .ta-hud-min.ta-resources-hud::before {
   content: '';

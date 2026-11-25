@@ -53,6 +53,9 @@ export interface SessionHudDeps {
   isSpectator?(): boolean;
   isSpectatorVisionAll?(): boolean;
   setSpectatorVisionAll?(on: boolean): void;
+  isFullVision?(): boolean;
+  setFullVision?(on: boolean): void;
+  isCombatTest?(): boolean;
   inspectColony?(colonyIndex: number, focusCamera?: boolean): void;
   onReadOnlyReject?(kind: string): void;
 }
@@ -96,6 +99,9 @@ export function createSessionHud(d: SessionHudDeps): FeatureHud {
     isSpectator: d.isSpectator,
     isSpectatorVisionAll: d.isSpectatorVisionAll,
     setSpectatorVisionAll: d.setSpectatorVisionAll,
+    isFullVision: d.isFullVision,
+    setFullVision: d.setFullVision,
+    isCombatTest: d.isCombatTest,
     inspectColony: d.inspectColony,
   };
   Object.defineProperties(services, {

@@ -99,6 +99,7 @@ function tryDiplomacyAction(
   tick: number,
   ctx?: StepContext,
 ): GovernorStepDecision | null {
+  if ((state.blobs.combatTest?.value as { enabled?: boolean } | undefined)?.enabled === true) return null;
   if (ctx && !ctx.flags.has('W18')) return null;
   const meta = getRivalColonyMeta(state, colonyIndex);
   const warAllowed = Boolean(meta?.allowWarDiplomacy || resolveColonyAwayRaids(state, colonyIndex));

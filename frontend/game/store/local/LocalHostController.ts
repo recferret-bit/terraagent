@@ -1,5 +1,6 @@
 import { LocalDevError, LocalHostCore, type LocalHostDeps } from './LocalHostCore';
 import type { LocalPost, ToLocalHost } from './protocol';
+import { memorySnapshotStore } from './snapshotStore';
 
 /**
  * Message routing of the local host without the Worker (like `SimWorkerController`): `init` boots the core (async, it
@@ -33,7 +34,8 @@ export class LocalHostController {
 
   private async boot(msg: Extract<ToLocalHost, { t: 'init' }>): Promise<void> {
     try {
-      const core = await LocalHostCore.create(msg.opts, this.deps, this.post);
+      const bootDeps = msg.opts.ephemeral ? { ...this.deps, store: memorySnapshotStore() } : this.deps;
+      const core = await LocalHostCore.create(msg.opts, bootDeps, this.post);
       if (this.stopped) { void core.stop(); return; }
       this.core = core;
       for (const m of this.queue.splice(0)) this.dispatch(core, m);

@@ -1,15 +1,17 @@
 import { ENTITY_STATE } from '../../ecs/columns';
 import { placeSpawnedEntity } from '../../ecs/placement';
 import { insertRow, rowOf } from '../../ecs/store';
-import { inHex } from '../../grid/hex';
+import { hexDistance, hexIndex, inHex } from '../../grid/hex';
+import { PREP, TERRAIN } from '../../grid/layers';
 import { defineCommandHandler } from '../../kernel/commands';
 import type { StepContext } from '../../kernel/context';
 import { setBlob, type PlanetState } from '../../kernel/state';
+import { occupiedGroundTiles } from '../construction/occupancy';
 import { isColonyGodMode } from '../combat/damage';
 import { setUnitStance } from '../combat/stances';
 import { emitFaunaDirective } from '../fauna/directives';
 import { provokeHive } from '../fauna/provocation';
-import { spawnFaunaBug, spawnHiveSite } from '../fauna/spawn';
+import { findPassableEntranceTile, spawnFaunaBug, spawnHiveSite } from '../fauna/spawn';
 import { getFaunaHivesState } from '../fauna/state';
 import { resolveSpeciesConfig, type FaunaBehaviorMode, type FaunaSpeciesId } from '../fauna/types';
 import { getFaunaSpeciesThreatCost, hasAnyAliveColonyEntity, spawnHiveRaidWave } from '../fauna/waves';
@@ -44,6 +46,43 @@ function dispatchRaidFromHive(
   return spawnHiveRaidWave(state, hiveId, colonyIndex, ctx.tick, ctx);
 }
 
+function isCombatTestWorld(state: PlanetState): boolean {
+  return Boolean((state.blobs.combatTest?.value as { enabled?: boolean } | undefined)?.enabled);
+}
+
+function isCombatTestPassableTile(state: PlanetState, q: number, r: number): boolean {
+  const idx = hexIndex(state.grid.radius).indexOf(q, r);
+  if (idx < 0) return false;
+  const terrain = state.grid.layers.terrain[idx] ?? TERRAIN.flat;
+  const prep = state.grid.layers.prep[idx] ?? PREP.wild;
+  return (
+    terrain !== TERRAIN.deep &&
+    terrain !== TERRAIN.shallow &&
+    terrain !== TERRAIN.hole &&
+    prep !== PREP.ridge &&
+    prep !== PREP.moat
+  );
+}
+
+function findNearestCombatTestSpawnTile(
+  state: PlanetState,
+  cq: number,
+  cr: number,
+  check: (q: number, r: number) => boolean,
+): { q: number; r: number } | null {
+  for (let dist = 0; dist <= Math.min(20, state.grid.radius); dist++) {
+    for (let dq = -dist; dq <= dist; dq++) {
+      for (let dr = -dist; dr <= dist; dr++) {
+        if (hexDistance(0, 0, dq, dr) !== dist) continue;
+        const q = cq + dq;
+        const r = cr + dr;
+        if (inHex(q, r, state.grid.radius) && check(q, r)) return { q, r };
+      }
+    }
+  }
+  return null;
+}
+
 export const devSpawnRaid = defineCommandHandler({
   kind: 'dev.spawnraid',
   wave: 'W07',
@@ -59,7 +98,9 @@ export const devSpawnRaid = defineCommandHandler({
     };
     const colonyIndex = resolveColonyIdx(cmd, args.colonyIndex);
     ensureDevColony(state, colonyIndex, ctx.tick);
+    const combatTestMode = isCombatTestWorld(state);
     if (!hasAnyAliveColonyEntity(state, colonyIndex)) {
+      if (combatTestMode) return 'no_target_entities';
       spawnHqUnit(state, { owner: colonyIndex, q: 0, r: 0 });
     }
 
@@ -140,9 +181,29 @@ export const devSpawnHive = defineCommandHandler({
     const colonyIndex = resolveColonyIdx(cmd, args.colonyIndex);
     ensureDevColony(state, colonyIndex, ctx.tick);
     const anchor = findColonyAnchorTile(state, colonyIndex);
-    const q = args.q ?? Math.min(state.grid.radius - 2, anchor.q + 10);
-    const r = args.r ?? anchor.r;
+    let q = args.q ?? Math.min(state.grid.radius - 2, anchor.q + 10);
+    let r = args.r ?? anchor.r;
     if (!inHex(q, r, state.grid.radius)) return 'invalid_args';
+    if (isCombatTestWorld(state)) {
+      const idx = hexIndex(state.grid.radius);
+      const occupied = occupiedGroundTiles(state, ctx.data);
+      const canPlaceHiveAt = (hq: number, hr: number) => {
+        const ti = idx.indexOf(hq, hr);
+        return (
+          ti >= 0 &&
+          isCombatTestPassableTile(state, hq, hr) &&
+          !occupied.has(ti) &&
+          findPassableEntranceTile(state, hq, hr, args.entranceQ, args.entranceR, ctx.data) !== null
+        );
+      };
+      if (!canPlaceHiveAt(q, r)) {
+        if (args.q !== undefined || args.r !== undefined) return 'site_blocked';
+        const dry = findNearestCombatTestSpawnTile(state, q, r, canPlaceHiveAt);
+        if (!dry) return 'site_blocked';
+        q = dry.q;
+        r = dry.r;
+      }
+    }
 
     const hiveId = spawnHiveSite(
       state,
@@ -177,25 +238,38 @@ export const devSpawnUnit = defineCommandHandler({
       count?: number;
       colonyIndex?: number;
       owner?: number;
+      mode?: 'passive' | 'aggressive';
+      targetColony?: number;
     };
     const unitRaw = typeof args.unit === 'string' ? args.unit.trim() : '';
     const count = args.count ?? 1;
     if (!unitRaw || !Number.isInteger(count) || count <= 0 || count > 100) return 'invalid_args';
 
     const colonyIndex = resolveColonyIdx(cmd, args.colonyIndex);
-    ensureDevColony(state, colonyIndex, ctx.tick);
-    const anchor = findColonyAnchorTile(state, colonyIndex);
-    const baseQ = args.q ?? anchor.q + 1;
-    const baseR = args.r ?? anchor.r;
+    const owner = args.owner !== undefined ? args.owner : colonyIndex;
+    if (owner >= 0) ensureDevColony(state, owner, ctx.tick);
+    const anchor = findColonyAnchorTile(state, owner >= 0 ? owner : colonyIndex);
+    let baseQ = args.q ?? anchor.q + 1;
+    let baseR = args.r ?? anchor.r;
     if (!inHex(baseQ, baseR, state.grid.radius)) return 'invalid_args';
+    const combatTest = isCombatTestWorld(state);
+    if (combatTest && !isCombatTestPassableTile(state, baseQ, baseR)) {
+      if (args.q !== undefined || args.r !== undefined) return 'site_blocked';
+      const dry = findNearestCombatTestSpawnTile(state, baseQ, baseR, (tq, tr) => isCombatTestPassableTile(state, tq, tr));
+      if (!dry) return 'site_blocked';
+      baseQ = dry.q;
+      baseR = dry.r;
+    }
 
     if (isSpecies(unitRaw)) {
       const fallbackHp: Record<FaunaSpeciesId, number> = { blackAnt: 85, blueBeetle: 320, greenSpitter: 130 };
       const cfg = resolveSpeciesConfig(unitRaw, ctx.data);
+      const bugMode = args.mode ?? 'passive';
+      const targetColony = bugMode === 'aggressive' ? (args.targetColony ?? colonyIndex) : null;
       for (let i = 0; i < count; i++) {
         spawnFaunaBug(
           state,
-          { species: unitRaw, q: baseQ, r: baseR, hp: cfg.hp || fallbackHp[unitRaw] },
+          { species: unitRaw, q: baseQ, r: baseR, hp: cfg.hp || fallbackHp[unitRaw], mode: bugMode, targetColony },
           ctx.tick,
           ctx.data,
         );
@@ -213,10 +287,13 @@ export const devSpawnUnit = defineCommandHandler({
       }
     }
 
-    const owner = args.owner !== undefined ? args.owner : colonyIndex;
     for (let i = 0; i < count; i++) {
-      const uQ = spreadRow ? baseQ + (i % 6) : baseQ;
-      const uR = spreadRow ? baseR + Math.floor(i / 6) : baseR;
+      let uQ = spreadRow ? baseQ + (i % 6) : baseQ;
+      let uR = spreadRow ? baseR + Math.floor(i / 6) : baseR;
+      if (combatTest && spreadRow && !isCombatTestPassableTile(state, uQ, uR)) {
+        uQ = baseQ;
+        uR = baseR;
+      }
       const entityId = ctx.newEntityId();
       const row = insertRow(state.entities, entityId, ctx.tick);
       const cols = state.entities.cols;

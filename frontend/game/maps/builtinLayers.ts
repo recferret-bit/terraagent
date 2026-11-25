@@ -77,7 +77,7 @@ export function drawTerrainLayer(
   const adapter = resolveMapAdapterForView(view);
   const drawableTiles = adapter.getDrawableTiles(tiles.count);
   const r = view.tilePixelRadius * 1.08;
-  const viewerColony = view.spectatorAllVision ? -1 : (view.ownColonySlot ?? 0);
+  const viewerColony = view.spectatorAllVision || view.fullVision ? -1 : (view.ownColonySlot ?? 0);
   for (let idx = 0; idx < drawableTiles.length; idx++) {
     const t = drawableTiles[idx]!;
     const { x, y } = view.axialToPixel(t.q, t.r);
@@ -113,7 +113,7 @@ export function drawTerritoryLayer(
     const i = t.bufferIndex;
     const owner = tiles.owner[i] ?? -1;
     if (owner < 0) continue;
-    if (!isMapTileExplored(view, i) && owner !== ownSlot) continue;
+    if (!isMapTileExplored(view, i) && owner !== ownSlot && !view.fullVision) continue;
 
     ownedTileCount++;
     const q = t.q;

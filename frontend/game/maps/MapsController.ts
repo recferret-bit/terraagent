@@ -398,7 +398,8 @@ export class MapsController {
     const radius = cv.planet?.radius ?? view.planet?.radius;
     const viewerColony = this.ctx.services.colonyId ?? 0;
     const spectatorAllVision = Boolean(this.ctx.services.isSpectator?.() && (this.ctx.services.isSpectatorVisionAll?.() ?? true));
-    const rasterViewerColony = spectatorAllVision ? -1 : viewerColony;
+    const fullVision = Boolean(this.ctx.services.isFullVision?.());
+    const rasterViewerColony = spectatorAllVision || fullVision ? -1 : viewerColony;
     const w11Enabled = this.ctx.flags.has('W11');
     const atlasBlob = extractViewAtlasBlob(cv, view);
     const manifest = this.sectorSelection.atlasManifest ?? atlasBlob?.manifest ?? null;
@@ -406,7 +407,7 @@ export class MapsController {
       manifest?.atlasHash ?? atlasBlob?.atlasHash ?? this.sectorSelection.planetSummary?.atlasHash ?? null;
     const atlasVersion =
       manifest?.atlasVersion ?? atlasBlob?.atlasVersion ?? this.sectorSelection.planetSummary?.atlasVersion ?? null;
-    const worldContextKey = `${planetId}|${atlasHash ?? ''}|${atlasVersion ?? ''}|${rasterViewerColony}|${w11Enabled ? 1 : 0}`;
+    const worldContextKey = `${planetId}|${atlasHash ?? ''}|${atlasVersion ?? ''}|${rasterViewerColony}|${w11Enabled ? 1 : 0}|${fullVision ? 1 : 0}`;
     const planetOrAtlasChanged =
       (this.lastPlanetId !== null && this.lastPlanetId !== planetId) ||
       (this.lastAtlasHash !== null && this.lastAtlasHash !== atlasHash);
@@ -455,6 +456,7 @@ export class MapsController {
       simData: this.ctx.services.store?.simData?.() ?? undefined,
       ownColonySlot: viewerColony,
       spectatorAllVision,
+      fullVision,
       atlasAdapter: this.currentAdapter?.isAtlas ? this.currentAdapter : null,
     });
 

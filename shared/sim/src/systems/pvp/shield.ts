@@ -13,6 +13,10 @@ import {
   type ColonyPvpRecord,
 } from './store';
 
+function isCombatTestWorld(state: PlanetState): boolean {
+  return (state.blobs.combatTest?.value as { enabled?: boolean } | undefined)?.enabled === true;
+}
+
 /**
  * Initializes the newcomer shield (`raidProtectedUntil`) when a colony is founded (`UO-T-05`, `W18-06`).
  * Protected for 6 hours (`21,600s` = `108,000` ticks) while below `shieldDropStage` (`S4` in Tier-1 vertical slice).
@@ -31,7 +35,7 @@ export function initColonyNewcomerShield(
   const key = String(colonyIndex);
   const prev = pvpState.byColony[key];
 
-  const raidProtectedUntil = stage >= cfg.shieldDropStage ? 0 : tick + cfg.shieldDurationTicks;
+  const raidProtectedUntil = isCombatTestWorld(state) || stage >= cfg.shieldDropStage ? 0 : tick + cfg.shieldDurationTicks;
   const shieldDropped = raidProtectedUntil <= 0;
 
   const next: ColonyPvpRecord = {
@@ -154,6 +158,7 @@ export function isColonyRaidProtected(
   tick = state.meta.tick,
   data?: CompiledDataLike,
 ): boolean {
+  if (isCombatTestWorld(state)) return false;
   if (!isW18PvpActive(data)) return false;
   if (colonyIndex < 0 || colonyIndex >= state.colonies.length) return false;
   const col = state.colonies[colonyIndex];

@@ -2,6 +2,11 @@ import { defineConfig, type Plugin } from 'vite';
 import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { parseEnv } from 'node:util';
+import {
+  extractModeFromArgv,
+  isCombatTestExcludedFromBuild,
+  stripCombatTestLinkFromHubHtml,
+} from './game/dev/combat-test/buildGate';
 import { prerenderLandingHtml } from './landing/seoPrerender';
 
 const frontend = import.meta.dirname;
@@ -22,6 +27,7 @@ const hasExplicitProcessAppEnv = Object.prototype.hasOwnProperty.call(process.en
 const resolvedAppEnv = hasExplicitProcessAppEnv
   ? (process.env.VITE_APP_ENV ?? '').trim()
   : (typeof env.VITE_APP_ENV === 'string' ? env.VITE_APP_ENV.trim() : '');
+const cliMode = extractModeFromArgv(process.argv);
 const defineAppEnv = hasExplicitProcessAppEnv || resolvedAppEnv.length > 0;
 
 function splitUrl(raw: string): { path: string; search: string } {
@@ -57,6 +63,12 @@ function rewriteEconomySim(req: { url?: string }): void {
   const { path, search } = splitUrl(req.url ?? '');
   if (path !== '/dev/economy-sim') return;
   req.url = `/dev/economy-sim/index.html${search}`;
+}
+
+function rewriteCombatTest(req: { url?: string }): void {
+  const { path, search } = splitUrl(req.url ?? '');
+  if (path !== '/dev/combat-test') return;
+  req.url = `/dev/combat-test/index.html${search}`;
 }
 
 function emitDeedEntryAssets(distDir: string): void {
@@ -101,16 +113,40 @@ const chainTxPage: Plugin = {
       rewriteMePage(req);
       rewriteDeedPage(req);
       rewriteEconomySim(req);
+      rewriteCombatTest(req);
       next();
     });
   },
   configurePreviewServer(server) {
-    server.middlewares.use((req, _res, next) => {
+    server.middlewares.use((req, res, next) => {
       rewriteChainTx(req);
       rewriteMockOauth(req);
       rewriteMePage(req);
       rewriteDeedPage(req);
       rewriteEconomySim(req);
+      const { path } = splitUrl(req.url ?? '');
+      const isCombatTestPath = path === '/dev/combat-test' || path.startsWith('/dev/combat-test/');
+      const combatTestDistHtml = resolve(frontend, 'dist/dev/combat-test/index.html');
+      const previewExcluded = isCombatTestExcludedFromBuild({
+        viteAppEnv: resolvedAppEnv,
+        nodeEnv: env.NODE_ENV,
+        mode: cliMode,
+        argv: process.argv,
+      });
+      if (isCombatTestPath) {
+        if (previewExcluded || !existsSync(combatTestDistHtml)) {
+          res.statusCode = 404;
+          const notFoundPath = resolve(frontend, 'dist/404.html');
+          if (existsSync(notFoundPath)) {
+            res.setHeader('Content-Type', 'text/html; charset=utf-8');
+            res.end(readFileSync(notFoundPath, 'utf8'));
+          } else {
+            res.end('Not found');
+          }
+          return;
+        }
+        rewriteCombatTest(req);
+      }
       next();
     });
   },
@@ -118,6 +154,30 @@ const chainTxPage: Plugin = {
     emitDeedEntryAssets(resolve(frontend, 'dist'));
   },
 };
+
+function createCombatTestHubGatePlugin(): Plugin {
+  let excludeCombatTest = false;
+  return {
+    name: 'combat-test-hub-gate',
+    configResolved(resolved) {
+      excludeCombatTest = isCombatTestExcludedFromBuild({
+        viteAppEnv: resolvedAppEnv,
+        nodeEnv: resolved.command === 'build' ? env.NODE_ENV : process.env.NODE_ENV,
+        mode: resolved.mode,
+        argv: resolved.command === 'build' ? [...process.argv, 'build'] : process.argv,
+      });
+    },
+    transformIndexHtml: {
+      order: 'pre',
+      handler(html, ctx) {
+        const file = ctx.filename.replace(/\\/g, '/');
+        const isHubIndex = ctx.path === '/index.html' || ctx.path === '/' || file.endsWith('/frontend/index.html');
+        if (!isHubIndex) return html;
+        return stripCombatTestLinkFromHubHtml(html, excludeCombatTest);
+      },
+    },
+  };
+}
 
 const landingSeoPlugin: Plugin = {
   name: 'landing-seo-prerender',
@@ -136,7 +196,7 @@ const landingSeoPlugin: Plugin = {
 // One Vite app rooted at frontend/. URLs mirror the file layout: /play.html, /landing.html, /playground.html, /design/.
 // `@terra/*` (render, sim, contracts, …) resolve as npm workspace packages; there are no path aliases.
 export default defineConfig({
-  plugins: [chainTxPage, landingSeoPlugin],
+  plugins: [chainTxPage, landingSeoPlugin, createCombatTestHubGatePlugin()],
   root: frontend,
   envDir,
   ...(defineAppEnv
@@ -172,6 +232,14 @@ export default defineConfig({
         devEconomySim: resolve(frontend, 'dev/economy-sim/index.html'),
         devMockOauth: resolve(frontend, 'dev/mock-oauth/index.html'),
         devParity: resolve(frontend, 'dev/parity/index.html'),
+        ...(isCombatTestExcludedFromBuild({
+          viteAppEnv: resolvedAppEnv,
+          nodeEnv: env.NODE_ENV,
+          mode: cliMode,
+          argv: process.argv,
+        })
+          ? {}
+          : { devCombatTest: resolve(frontend, 'dev/combat-test/index.html') }),
         design: resolve(frontend, 'design/index.html'),
         designFoundations: resolve(frontend, 'design/foundations.html'),
         designStorybook: resolve(frontend, 'design/storybook.html'),

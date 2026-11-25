@@ -151,6 +151,7 @@ export class MinimapHud {
   private simData?: CompiledDataLike;
   private atlasAdapter: AtlasMapAdapter | null = null;
   private spectatorAllVision = false;
+  private fullVision = false;
 
   updateData(opts: {
     simData?: CompiledDataLike;
@@ -159,6 +160,7 @@ export class MinimapHud {
     clientView?: ClientView | null;
     ownColonySlot?: number;
     spectatorAllVision?: boolean;
+    fullVision?: boolean;
     atlasAdapter?: AtlasMapAdapter | null;
   }): void {
     this.simData = opts.simData;
@@ -167,6 +169,7 @@ export class MinimapHud {
     if (opts.clientView !== undefined) this.lastClientView = opts.clientView;
     if (opts.ownColonySlot !== undefined) this.ownColonySlot = opts.ownColonySlot;
     if (opts.spectatorAllVision !== undefined) this.spectatorAllVision = opts.spectatorAllVision;
+    if (opts.fullVision !== undefined) this.fullVision = opts.fullVision;
     if (opts.atlasAdapter !== undefined) this.atlasAdapter = opts.atlasAdapter;
   }
 
@@ -187,6 +190,7 @@ export class MinimapHud {
       simData: this.simData,
       ownColonySlot: this.ownColonySlot,
       spectatorAllVision: this.spectatorAllVision,
+      fullVision: this.fullVision,
       axialToPixel: (q, r) =>
         adapter ? adapter.axialToPixel(q, r, size) : axialToCanvasPixel(q, r, size, radius),
       pixelToAxial: (x, y) =>

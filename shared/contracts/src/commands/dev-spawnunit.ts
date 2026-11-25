@@ -14,6 +14,8 @@ export const command = defineCommand({
     count: z.number().int().positive().optional(),
     colonyIndex: z.number().int().nonnegative().optional(),
     owner: z.number().int().min(-1).optional(),
+    mode: z.enum(['passive', 'aggressive']).optional(),
+    targetColony: z.number().int().nonnegative().optional(),
   }),
   summary: 'Dev console (`spawnUnit` / `spawn builder|harvester`): spawns colony combat/worker units or neutral fauna bugs at (q, r) (W07-29, W13-57).',
 });

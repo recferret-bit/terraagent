@@ -134,7 +134,13 @@ export function computeEntityMeshVisible(
   wx?: number,
   wz?: number,
   spectatorAllVision = false,
+  fullVision = false,
 ): boolean {
+  if (fullVision) {
+    if (kind === ENTITY_KIND.hq && state === ENTITY_STATE.descending) return false;
+    if (kind === ENTITY_KIND.tradeHub && (state === ENTITY_STATE.inert || !w10Enabled)) return false;
+    return true;
+  }
   if ((spectatorAllVision ? owner < 0 : owner !== ownerColonyIndex) && hasTerrain && wx !== undefined && wz !== undefined) {
     if (!isWorldPointInColonyFov(wx, wz)) return false;
   }

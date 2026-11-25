@@ -174,6 +174,9 @@ export function eliminateColony(
   opts?: ApplyDamageOptions,
 ): void {
   if (colonyIndex < 0) return;
+  if (colonyIndex === 0 && (state.blobs.combatTest?.value as { enabled?: boolean } | undefined)?.enabled === true) {
+    return;
+  }
   const store = getEliminationStore(state);
   const rec = ensureColonyEliminationRecord(store, colonyIndex);
   const col = ensureColonyRecord(state, colonyIndex, tick);

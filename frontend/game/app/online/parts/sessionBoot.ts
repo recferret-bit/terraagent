@@ -268,7 +268,9 @@ export function createSessionBootRig(params: {
   const bootTarget = guest ?? createSessionTarget(loc);
   const pilot = new PilotBridge({ fetch: opts.fetch, target: () => guest, sessionToken: () => bootTarget.accessToken });
 
-  const localOpts = devBuild && !useGuestBoot && !opts.transport && !opts.localHost ? localHostOptions(search) : null;
+  const localOpts = devBuild && !useGuestBoot && !opts.transport && !opts.localHost
+    ? (opts.localHostOptions ?? localHostOptions(search))
+    : null;
   const local = localOpts ? new LocalTransport(workerLink(createLocalWorker()), localOpts) : null;
   const transport = withDevLag(opts.transport ?? local ?? new WsTransport(bootTarget, opts.wsDeps ?? browserDeps()), search);
   const banner = typeof window !== 'undefined' && typeof document !== 'undefined' && typeof document.createTextNode === 'function'

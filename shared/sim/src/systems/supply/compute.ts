@@ -114,8 +114,15 @@ export function computeColonySupply(
     sum += total;
     sources.push({ building: p.building, label: p.label, count, each: p.provided, total });
   }
+  const supplyOverride = Number((state.colonies[colonyIndex] as { supplyCapOverride?: unknown } | undefined)?.supplyCapOverride ?? 0);
+  if (Number.isFinite(supplyOverride) && supplyOverride > 0) {
+    const bonus = Math.floor(supplyOverride);
+    sum += bonus;
+    sources.push({ building: 'sandbox', label: 'Combat Sandbox', count: 1, each: bonus, total: bonus });
+  }
   const reserved = reservedSupply(state, colonyIndex, data, opts);
-  const cap = Math.min(src.capMax, sum);
+  const capMax = Number.isFinite(supplyOverride) && supplyOverride > src.capMax ? Math.floor(supplyOverride) : src.capMax;
+  const cap = Math.min(capMax, sum);
   const used = units + reserved;
   return {
     used,

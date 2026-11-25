@@ -2242,6 +2242,60 @@
       "summary": "Inserts the W00 test entity (kind 1) at tile (q, r); x/y are the tile centre in axial float coordinates.",
       "wave": "W00"
     },
+    "dev.spawnbuilding": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "building": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "fallbackNear": {
+            "type": "boolean"
+          },
+          "owner": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "q": {
+            "maximum": 32767,
+            "minimum": -32768,
+            "type": "integer"
+          },
+          "r": {
+            "maximum": 32767,
+            "minimum": -32768,
+            "type": "integer"
+          },
+          "rot": {
+            "maximum": 5,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "tier": {
+            "maximum": 3,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "building"
+        ],
+        "type": "object"
+      },
+      "dev": true,
+      "origin": "client",
+      "summary": "Dev combat sandbox: spawns a completed active building (turrets, factories, arrays, generators) at (q, r) without requiring an HQ or worker.",
+      "wave": "W07"
+    },
     "dev.spawndeposit": {
       "args": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -2419,6 +2473,13 @@
             "maximum": 9007199254740991,
             "type": "integer"
           },
+          "mode": {
+            "enum": [
+              "passive",
+              "aggressive"
+            ],
+            "type": "string"
+          },
           "owner": {
             "maximum": 9007199254740991,
             "minimum": -1,
@@ -2432,6 +2493,11 @@
           "r": {
             "maximum": 32767,
             "minimum": -32768,
+            "type": "integer"
+          },
+          "targetColony": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
             "type": "integer"
           },
           "unit": {

@@ -166,7 +166,9 @@ export function recomputeFamilyCaps(
   tick?: number,
 ): Record<ResourceFamily, number> {
   const c = ensureColonyLedger(colony);
-  const cap = (hasHub ? BASE_HUB_STORAGE_CAP : 0) + depotCount * DEPOT_STORAGE_CAP;
+  const overrideCap = Number((colony as { storageCapOverride?: unknown }).storageCapOverride ?? 0);
+  const minCap = Number.isFinite(overrideCap) && overrideCap > 0 ? Math.floor(overrideCap) : 0;
+  const cap = Math.max(minCap, (hasHub ? BASE_HUB_STORAGE_CAP : 0) + depotCount * DEPOT_STORAGE_CAP);
   let changed = false;
   for (const f of RESOURCE_FAMILIES) {
     const cur = c.caps[f] ?? 0;

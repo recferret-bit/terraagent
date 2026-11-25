@@ -57,6 +57,7 @@ export function mountMinimalHud(ctx: MountMinimalHudCtx): MountedMinimalHud {
     ownerColonyIndex: ctx.ownerColonyIndex,
     getOwnerColonyIndex: () => ctx.ownerColonyIndex ?? ctx.services?.landfall?.getOwnerColonyIndex(),
     isSpectator: () => Boolean(ctx.services?.isSpectator?.() || ctx.services?.store?.isSpectator?.()),
+    hideChrome: Boolean(ctx.services?.isCombatTest?.()),
     isWaveOn: ctx.flags ? (wave) => ctx.flags!.has(wave) : undefined,
   });
   if (ctx.services && !ctx.services.hudMin) {
@@ -89,6 +90,11 @@ export const hudMinFeature: Feature & { mount(ctx: MountMinimalHudCtx): MountedM
         slot: 'bottom-left',
         order: 6,
         mount(el, ctx) {
+          if (ctx.services?.isCombatTest?.()) {
+            el.hidden = true;
+            el.remove();
+            return { dispose() {} };
+          }
           ctx.services.hudMin?.attachEnvPanel(el);
           return { dispose() {} };
         },

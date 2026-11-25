@@ -2,6 +2,9 @@ import { flagsFromList, newId, parseWaves, PlanetType } from '@terra/contracts';
 import { createScenarioPlanet } from '@terra/scenarios';
 import {
   createPlanet,
+  COMBAT_TEST_FLAGS,
+  createCombatTestHost,
+  normalizeCombatTestBiome,
   prepareSpectatorScenarioHost,
   seedRivalAiColonies,
   SimHost,
@@ -99,6 +102,31 @@ export function spectatorSource(opts: {
       } finally {
         off();
       }
+      return { host, setupPostings };
+    },
+  };
+}
+
+/** Combat test sandbox planet (`/dev/combat-test/`): radius 56, 3 biomes, no player HQ/Hub, bots, insects, no PvP shield. */
+export function combatTestSource(opts: {
+  planetType?: string;
+  seed?: string;
+  waves?: readonly string[];
+  botCount?: number;
+} = {}): PlanetSource {
+  const biome = normalizeCombatTestBiome(opts.planetType);
+  const seedStr = opts.seed && opts.seed.trim() ? opts.seed.trim() : `combat-test-${biome}`;
+  const botCount = Math.max(1, Math.min(5, opts.botCount ?? 3));
+  const flagsList = opts.waves && opts.waves.length > 0 ? opts.waves : COMBAT_TEST_FLAGS;
+  return {
+    name: `combatTest:${biome}:${botCount}:${seedStr}`,
+    seed: () => {
+      const { host, setupPostings } = createCombatTestHost({
+        planetType: biome,
+        seed: seedStr,
+        botCount,
+        flags: flagsList,
+      });
       return { host, setupPostings };
     },
   };

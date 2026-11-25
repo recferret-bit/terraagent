@@ -10,13 +10,7 @@ import { rotorClockRate } from '@terra/render/core/rotorSpeed';
 import { computeSolarState, getDayNightParams, isDayNightOn, isSceneInDescent } from '@terra/render/core/dayNightConfig';
 import { createArchetypeMesh, setArchetypeBuildProgress, tickArchetypeMesh } from '@terra/render/kitbash';
 import { GridCableRenderer } from '@terra/render/lighting/gridCables';
-import {
-  BugsOrchestrator,
-  BuildingsOrchestrator,
-  buildBuildingsOrchestratorConfig,
-  buildUnitsOrchestratorConfig,
-  UnitsOrchestrator,
-} from '@terra/render/orchestrators';
+import { BugsOrchestrator, BuildingsOrchestrator, buildBuildingsOrchestratorConfig, buildUnitsOrchestratorConfig, UnitsOrchestrator } from '@terra/render/orchestrators';
 import type { PoolStats } from '@terra/render/pools';
 import { WorkParticleSystem } from '@terra/render/particles';
 import { tileXZ, type HexTerrain } from '@terra/render/planets/hex';
@@ -34,37 +28,10 @@ import { PodTouchdownFx, type PodTouchdownState } from './PodTouchdownFx';
 import { UnitHealthBars } from './unitHealthBars';
 import { syncBiosphereAggressors } from './biosphereAggressorSync';
 import { CombatSyncController } from './combatSync';
-import {
-  archetypeForKind,
-  entityWorldXZ,
-  is3x3FootprintKind,
-  isConstructibleBuilding,
-  isTrackedWalkingUnitKind,
-} from './entityKinds';
-import {
-  findOwnedPodMesh,
-  makeGroundRing,
-  placeMeshOnTrack,
-  planetKindForBiome,
-  stepPodTouchdownForEntries,
-  stepTargetMarker,
-} from './parts/entityMarkers';
-import {
-  acquirePooledEntityMesh,
-  collectEntityPoolStats,
-  computeEntityMeshVisible,
-  normalizeEntityBiomeKey,
-  releasePooledEntityMesh,
-  resetEntitiesOnPlanetSwitch,
-  switchAndPrewarmEntityBiome,
-} from './parts/entityPoolRouter';
-import {
-  buildActiveWorkSites,
-  computeWorkTarget,
-  entityGroundY,
-  hubBuildProgressForState,
-  is2x2BuildingKind,
-} from './workTargetResolver';
+import { archetypeForKind, entityWorldXZ, is3x3FootprintKind, isConstructibleBuilding, isTrackedWalkingUnitKind } from './entityKinds';
+import { findOwnedPodMesh, makeGroundRing, placeMeshOnTrack, planetKindForBiome, stepPodTouchdownForEntries, stepTargetMarker } from './parts/entityMarkers';
+import { acquirePooledEntityMesh, collectEntityPoolStats, computeEntityMeshVisible, normalizeEntityBiomeKey, releasePooledEntityMesh, resetEntitiesOnPlanetSwitch, switchAndPrewarmEntityBiome } from './parts/entityPoolRouter';
+import { buildActiveWorkSites, computeWorkTarget, entityGroundY, hubBuildProgressForState, is2x2BuildingKind } from './workTargetResolver';
 
 export { entityWorldXZ, archetypeForKind };
 
@@ -106,6 +73,7 @@ export class EntityMeshes {
   private selectedEntityId: number | null = null;
   private ownerColonyIndex = 0;
   private spectatorAllVision = false;
+  private fullVision = false;
   private markerT = 99;
   private markerTile: { q: number; r: number } | null = null;
   private time = 0;
@@ -174,13 +142,19 @@ export class EntityMeshes {
     this.spectatorAllVision = on;
     this.refreshVision();
   }
+  setFullVision(on: boolean): void {
+    if (this.fullVision === on) return;
+    this.fullVision = on;
+    this.refreshVision();
+  }
   private refreshVision(): void {
     const td = this.podTouchdown.computeState(false, 1);
     if (!this.latestView) {
       for (const rec of this.entries.values()) rec.mesh.visible = this.computeMeshVisible(rec.kind, rec.owner, rec.state, td);
+      this.syncVisionAndForeignVisibility(this.lastTerrain, td);
       return;
     }
-    this.isTileVisible = createMapVisibility({ simData: this.simData, clientView: this.latestView, tiles: this.latestTiles, radius: this.latestView.planet.radius, ownColonySlot: this.ownerColonyIndex, spectatorAllVision: this.spectatorAllVision });
+    this.isTileVisible = createMapVisibility({ simData: this.simData, clientView: this.latestView, tiles: this.latestTiles, radius: this.latestView.planet.radius, ownColonySlot: this.ownerColonyIndex, spectatorAllVision: this.spectatorAllVision, fullVision: this.fullVision });
     this.syncVisionAndForeignVisibility(this.lastTerrain, td);
     const ground = this.lastTerrain ? (x: number, z: number) => this.lastTerrain!.heightAt(x, z) : undefined;
     this.gridCables.setSpans(derivePowerCableSpans(this.entries.values(), this.latestView, this.ownerColonyIndex), ground);
@@ -208,7 +182,7 @@ export class EntityMeshes {
   }
 
   private computeMeshVisible(kind: number, owner: number, state: number, tdState: PodTouchdownState, wx?: number, wz?: number): boolean {
-    return computeEntityMeshVisible(kind, owner, state, this.ownerColonyIndex, this.hasTerrain, this.isW10Enabled(), tdState, wx, wz, this.spectatorAllVision);
+    return computeEntityMeshVisible(kind, owner, state, this.ownerColonyIndex, this.hasTerrain, this.isW10Enabled(), tdState, wx, wz, this.spectatorAllVision, this.fullVision);
   }
 
   /**
@@ -252,7 +226,7 @@ export class EntityMeshes {
     if (view.tiles) this.latestTiles = view.tiles;
     this.isTileVisible = createMapVisibility({
       simData: data, clientView: view, tiles: this.latestTiles, radius: view.planet.radius,
-      ownColonySlot: this.ownerColonyIndex, spectatorAllVision: this.spectatorAllVision,
+      ownColonySlot: this.ownerColonyIndex, spectatorAllVision: this.spectatorAllVision, fullVision: this.fullVision,
     });
     this.hasTerrain = Boolean(terrain);
     this.clock.observe(Math.min(confirmedTick, view.tick));
@@ -317,7 +291,7 @@ export class EntityMeshes {
       data: this.simData, entries: this.entries, ownerColonyIndex: this.ownerColonyIndex,
       terrain, hasTerrain: this.hasTerrain, tiles: this.latestTiles,
       colonyActive: !this.podTouchdown.isSpacePhaseActive() && !isSceneInDescent(this.scene),
-      spectatorAllVision: this.spectatorAllVision, isTileVisible: this.isTileVisible,
+      spectatorAllVision: this.spectatorAllVision, fullVision: this.fullVision, isTileVisible: this.isTileVisible,
       isMeshVisible: (rec) => this.computeMeshVisible(rec.kind, rec.owner, rec.state, tdState),
     });
   }

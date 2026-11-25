@@ -40,7 +40,12 @@ export class HudRoot {
 
     const defs = features.flatMap((f) => (f.hud ?? []).map((p) => ({ f, p })));
     defs.sort((a, b) => (a.p.order ?? 0) - (b.p.order ?? 0));
-    this.mountBooks(defs, ctx);
+    if (ctx.services.isCombatTest?.()) {
+      const rightSlot = this.slots.get('top-right');
+      if (rightSlot) rightSlot.hidden = true;
+    } else {
+      this.mountBooks(defs, ctx);
+    }
     this.provideServices(ctx);
 
     for (const def of defs) this.mountPanel(def, ctx);
@@ -221,6 +226,12 @@ export class HudRoot {
 
   private mountPanel(def: PanelDef, ctx: FeatureContext): void {
     const { f, p } = def;
+    if (
+      ctx.services.isCombatTest?.() &&
+      (p.slot === 'top-right' || resolveDockTabForFeature(f.id, ctx.flags) !== null || resolveColonyTab(f.id, p.id) !== null)
+    ) {
+      return;
+    }
     const el = document.createElement('div');
     el.className = 'ta-hud__panel';
     el.dataset.feature = f.id;

@@ -37,6 +37,7 @@ export interface MapLayerDrawView {
   readonly clientView: ClientView | null;
   readonly ownColonySlot?: number;
   readonly spectatorAllVision?: boolean;
+  readonly fullVision?: boolean;
   readonly colonyColors?: Record<number, number>;
   readonly axialToPixel: AxialToPixelFn;
   readonly pixelToAxial: PixelToAxialFn;

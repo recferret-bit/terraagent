@@ -5,6 +5,7 @@ import { resolveMapAdapterForView } from './atlasMapAdapter';
 import type { MapLayerDrawView } from './types';
 
 export function isMapTileExplored(view: MapLayerDrawView, index: number): boolean {
+  if (view.fullVision) return true;
   const tiles = view.tiles;
   if (!tiles || (!tiles.explored && !tiles.exploredByColony)) return true; // Preview maps without fog data.
   if (view.spectatorAllVision) return isAnyColonyTileExplored(tiles, index);
@@ -16,9 +17,10 @@ export function isMapTileExplored(view: MapLayerDrawView, index: number): boolea
 export function createMapVisibility(
   view: Pick<
     MapLayerDrawView,
-    'tiles' | 'ownColonySlot' | 'spectatorAllVision' | 'radius' | 'clientView' | 'simData' | 'atlasAdapter' | 'atlasManifest'
+    'tiles' | 'ownColonySlot' | 'spectatorAllVision' | 'fullVision' | 'radius' | 'clientView' | 'simData' | 'atlasAdapter' | 'atlasManifest'
   >,
 ): (q: number, r: number) => boolean {
+  if (view.fullVision) return () => true;
   const colony = view.ownColonySlot ?? 0;
   const allColonies = Boolean(view.spectatorAllVision);
   const adapter = resolveMapAdapterForView(view);
@@ -114,7 +116,7 @@ function buildFogCacheKey(ctx: CanvasRenderingContext2D, view: MapLayerDrawView,
       visionSig = `e:${eh}`;
     }
   }
-  return `${w}x${h}|${tx}|${view.radius}|${colony}|${view.spectatorAllVision ? 1 : 0}|${view.tilePixelRadius.toFixed(2)}|${origin.x.toFixed(2)},${origin.y.toFixed(2)}|${hashExploredTiles(view)}|${visionSig}`;
+  return `${w}x${h}|${tx}|${view.radius}|${colony}|${view.spectatorAllVision ? 1 : 0}|${view.fullVision ? 1 : 0}|${view.tilePixelRadius.toFixed(2)}|${origin.x.toFixed(2)},${origin.y.toFixed(2)}|${hashExploredTiles(view)}|${visionSig}`;
 }
 
 function paintMapFogHexes(ctx: CanvasRenderingContext2D, view: MapLayerDrawView): void {
@@ -146,7 +148,7 @@ function paintMapFogHexes(ctx: CanvasRenderingContext2D, view: MapLayerDrawView)
 
 /** Darken explored terrain outside current sight while preserving its map memory. */
 export function drawMapFog(ctx: CanvasRenderingContext2D, view: MapLayerDrawView): void {
-  if ((!view.tiles?.explored && !view.tiles?.exploredByColony) || !view.clientView) return;
+  if (view.fullVision || (!view.tiles?.explored && !view.tiles?.exploredByColony) || !view.clientView) return;
   const targetCanvas = (ctx as { canvas?: HTMLCanvasElement | null }).canvas;
   if (typeof document === 'undefined' || !targetCanvas || typeof ctx.drawImage !== 'function') {
     paintMapFogHexes(ctx, view);

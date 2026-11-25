@@ -47,6 +47,11 @@ export interface FeatureServices {
   /** True when Spectator mode renders union FoV/visibility across all bots. */
   isSpectatorVisionAll?: () => boolean;
   setSpectatorVisionAll?: (on: boolean) => void;
+  /** True when combat sandbox full-map observer vision disables FoV shroud across all colonies & fauna. */
+  isFullVision?: () => boolean;
+  setFullVision?: (on: boolean) => void;
+  /** True when the session is running inside the stripped-down dev `/dev/combat-test/` harness. */
+  isCombatTest?: () => boolean;
   /** Switches the HUD & camera inspection target to a specific bot colony. */
   inspectColony?: (colonyIndex: number, focusCamera?: boolean) => void;
 }

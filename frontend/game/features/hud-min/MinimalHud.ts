@@ -36,6 +36,8 @@ export interface MinimalHudOptions {
   ownerColonyIndex?: number;
   getOwnerColonyIndex?: () => number | undefined;
   isSpectator?: () => boolean;
+  /** Hides the top resource/clock bar and bottom-left EnvPanel while keeping toasts active (used by combat-test). */
+  hideChrome?: boolean;
   /**
    * Whether wave `wave` is on (the live client flags). The planet time of day and the grid supply / demand lines are
    * W02 (power-core, environment): with W02 off (`?waves=..01`) they are hidden. Default: every wave on.
@@ -155,8 +157,16 @@ export class MinimalHud {
     this.toastContainer.setAttribute('role', 'status');
     this.toastContainer.setAttribute('aria-live', 'polite');
 
-    this.el.append(stocks, cellEl, brand, this.toastContainer);
-    parent.insertBefore(this.el, this.env.el);
+    if (opts.hideChrome) {
+      this.el.className = 'ta-hud-min ta-hud-min--chrome-hidden';
+      this.el.dataset.testid = 'hud-toast-host';
+      this.el.append(this.toastContainer);
+      parent.appendChild(this.el);
+      this.env.el.remove();
+    } else {
+      this.el.append(stocks, cellEl, brand, this.toastContainer);
+      parent.insertBefore(this.el, this.env.el);
+    }
     this.initListeners();
   }
 
@@ -189,6 +199,7 @@ export class MinimalHud {
   }
 
   update(view: GameView): void {
+    if (this.opts.hideChrome) return;
     const v = view as { tick?: number };
     this.clockEl.textContent = formatClock(v.tick ?? 0);
 

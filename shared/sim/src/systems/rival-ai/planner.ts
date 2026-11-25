@@ -368,6 +368,10 @@ function planTacticalAndWorkerInput(
   return out;
 }
 
+function isCombatTestWorld(state: PlanetState): boolean {
+  return (state.blobs.combatTest?.value as { enabled?: boolean } | undefined)?.enabled === true;
+}
+
 function colonyHasAliveHq(state: PlanetState, colonyIndex: number): boolean {
   const { count, cols } = state.entities;
   for (let row = 0; row < count; row++) {
@@ -405,6 +409,8 @@ function planGoalAndDiplomacyInputs(
       });
     }
   }
+
+  if (isCombatTestWorld(state)) return out;
 
   const diploPhase = col.index % DIPLO_CADENCE_TICKS;
   if (!flags.has('W18') || !crossedCadence(prevTick, nextTick, DIPLO_CADENCE_TICKS, diploPhase)) return out;

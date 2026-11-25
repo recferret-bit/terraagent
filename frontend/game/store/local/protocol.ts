@@ -13,10 +13,14 @@ export interface LocalHostOptions {
   planetType?: string;
   /** Seed override for spectator / generated local worlds. */
   seed?: string;
-  /** Number of initial bot colonies when booting spectator mode (1..6; default 2). */
+  /** Number of initial bot colonies when booting spectator or combatTest mode (1..6; default 2/3). */
   botCount?: number;
   /** When true, wipes any persisted local snapshot for this source and starts bots from scratch. */
   reset?: boolean;
+  /** Combat test sandbox mode: 3 biome maps, common radius 56, no HQ/Hub needed, bots + insects + no PvP shield. */
+  combatTest?: boolean;
+  /** When true, keeps snapshots strictly in memory (never writes IndexedDB). */
+  ephemeral?: boolean;
 }
 
 /** What the page sends to the local host: the same client messages as `/ws`, plus dev commands and housekeeping. */

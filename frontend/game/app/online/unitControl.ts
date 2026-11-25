@@ -18,6 +18,7 @@ export interface UnitControlDeps {
   /** Dev net stats: rolled-back commands and the pose corrections the renderer applied. */
   netStats: Pick<NetStatsBoard, 'recordRollback' | 'recordCorrection'>;
   spectator?: () => boolean;
+  noHqRequired?: () => boolean;
   onColonyInspected?: (colonyIndex: number) => void;
 }
 
@@ -35,7 +36,7 @@ export function createUnitControl(d: UnitControlDeps): { landfall: LandfallContr
     pickTile: (cx, cy) => d.pickAt(cx, cy), canvas: d.canvas,
     spectator: Boolean(d.spectator?.()),
     onColonyInspected: d.onColonyInspected,
-    isHqDeployed: () => Boolean(d.spectator?.() || d.entities.isHqDeployed()),
+    isHqDeployed: () => Boolean(d.spectator?.() || d.noHqRequired?.() || d.entities.isHqDeployed()),
     onTargetMove: (q, r) => d.entities.flashTarget(q, r, d.terrain()),
     onOrderFailed: () => d.toast('No path: the HQ cannot reach that tile'),
   });

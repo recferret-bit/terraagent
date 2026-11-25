@@ -143,3 +143,19 @@ export * from './systems/elimination';
 export * from './systems/rival-ai';
 export * from './data';
 export * from './host';
+export {
+  COMBAT_TEST_BIOMES,
+  COMBAT_TEST_FLAGS,
+  createCombatTestHost,
+  findCombatTestStagingSite,
+  normalizeCombatTestBiome,
+  setupCombatTestWorld,
+  type CombatTestSetupOptions,
+  type CombatTestWorldMeta,
+} from './systems/dev/combatTestScenario';
+export {
+  devSpawnBuilding,
+  spawnCompletedBuilding,
+  type SpawnCompletedBuildingOptions,
+  type SpawnCompletedBuildingResult,
+} from './systems/dev/spawnBuilding';

@@ -93,7 +93,7 @@ export function mountTerritoryBorder(
   opts: MountTerritoryBorderOptions = {},
 ): TerritoryBorderFeatureHandle {
   const hasDom = typeof document !== 'undefined';
-  const hideToggle = opts.hideToggle ?? isProductionBuild();
+  const hideToggle = opts.hideToggle ?? (Boolean(opts.services?.isCombatTest?.()) || isProductionBuild());
   const hostEl = hideToggle ? null : (opts.el ?? (hasDom ? document.body : null));
   if (hideToggle && opts.el) {
     opts.el.hidden = true;
