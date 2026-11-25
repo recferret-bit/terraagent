@@ -9,6 +9,17 @@ export {
   type RangeRingStyleSpec,
 } from './InstancedRangeRings';
 export {
+  computeRingHalfWidthM,
+  decodeU16Pair,
+  encodeU16Pair,
+  RING_HEIGHT_MIN,
+  RING_HEIGHT_SPAN,
+  RING_SEGMENTS,
+  RING_SLOPE_MIN,
+  RING_SLOPE_SPAN,
+  type RingHeightSampler,
+} from './ringHeightTexture';
+export {
   buildRingFragmentShader,
   buildRingVertexShader,
   createRingShaderMaterial,

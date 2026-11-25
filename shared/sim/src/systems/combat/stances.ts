@@ -330,6 +330,7 @@ function stepSingleCombatUnit(
   ) {
     rec.anchorQ = uRec.current.q;
     rec.anchorR = uRec.current.r;
+    rec.targetId = null;
     rec.returningToAnchor = false;
     return;
   }

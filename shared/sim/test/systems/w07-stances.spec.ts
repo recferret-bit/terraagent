@@ -405,4 +405,41 @@ describe('W07-12 · stationary defense turrets and HQ auto-turret firing', () =>
     // Tick-6 bullets are still in flight.
     expect(state.entities.cols.hp[ant.row]).toBe(240);
   });
+
+  it('clears battle targetId when enemies die or when a combat unit receives a manual player move order', () => {
+    const { host, state } = makeW07Host('w07-clear-battle-target');
+    const recon = spawnTestEntity(state, { kind: ENTITY_KIND.recon, owner: 0, q: 0, r: 0, hp: 200 });
+    const ant = spawnTestEntity(state, { kind: ENTITY_KIND.blackAnt, owner: -1, q: 3, r: 0, hp: 500 });
+
+    stepTicks(host, 2);
+
+    const battleBefore = state.blobs.battle?.value as { byEntityId?: Record<number, { targetId: number | null }> } | undefined;
+    expect(battleBefore?.byEntityId?.[recon.id]?.targetId).toBe(ant.id);
+
+    // Manual player move order must drop the stale target so client turrets return to default pose.
+    const moveRes = submitAndStep(host, {
+      commandId: 'move-recon-away',
+      colonyIndex: 0,
+      source: 'player',
+      kind: 'moveUnit',
+      args: { entityId: recon.id, q: -4, r: 0 },
+    });
+    expect(moveRes.outcomes[0]?.code).toBeUndefined();
+    const battleAfterMove = state.blobs.battle?.value as { byEntityId?: Record<number, { targetId: number | null }> } | undefined;
+    expect(battleAfterMove?.byEntityId?.[recon.id]?.targetId).toBeNull();
+
+    // When attacking an explicit target that is killed, battle targetId also clears to null.
+    submitAndStep(host, {
+      commandId: 'atk-ant-kill',
+      colonyIndex: 0,
+      source: 'player',
+      kind: 'attackTarget',
+      args: { entityIds: [recon.id], targetId: ant.id },
+    });
+    stepTicks(host, 2);
+    expect((state.blobs.battle?.value as { byEntityId?: Record<number, { targetId: number | null }> } | undefined)?.byEntityId?.[recon.id]?.targetId).toBe(ant.id);
+    state.entities.cols.hp[ant.row] = 0;
+    stepTicks(host, 1);
+    expect((state.blobs.battle?.value as { byEntityId?: Record<number, { targetId: number | null }> } | undefined)?.byEntityId?.[recon.id]?.targetId).toBeNull();
+  });
 });

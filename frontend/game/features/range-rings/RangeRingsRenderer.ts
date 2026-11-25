@@ -1,18 +1,29 @@
-import { tileXZ } from '@terra/render/planets/hex';
+import {
+  HEX_WATER_LEVEL,
+  tileAt,
+  type HexTerrain,
+} from '@terra/render/planets/hex';
 import {
   InstancedRangeRings,
   type RangeRingDescriptor,
   type RangeRingInput,
+  type RingHeightSampler,
 } from '@terra/render/visuals/rings';
-import { ENTITY_STATE, hexDistance, type CompiledDataLike, type ViewEntity } from '@terra/sim';
+import { ENTITY_STATE, hexDistance, type CompiledDataLike } from '@terra/sim';
 import { isTypingTarget } from '../shared/hotkeys';
 import { ownColonyIndex } from '../shared/colony';
+import { waterTileTest } from '../shared/hexTiles3d';
 import type { FeatureContext, GameView, RendererInstance } from '../../core/registry/types';
-import { forEachEntity } from '../../store/replica/viewCodec';
 import type { PlacementGhostState } from '../construction-menu/PlacementGhost';
+import { RingLabelsOverlay } from './RingLabelsOverlay';
+import {
+  computeGhostWorldPos,
+  extractRingEntities,
+  pushOwnEntityRings,
+  type NormalizedRingEntity,
+} from './ringEntities';
 import { computeEntityWorldPos } from './ringPosition';
 import {
-  normalizeRingEntityKind,
   rangeRingsData,
   resolveEntityRingSpec,
   resolveGhostTurretRingSpec,
@@ -32,161 +43,16 @@ export interface RangeRingsService {
   update(view?: GameView, dt?: number): void;
 }
 
-interface NormalizedRingEntity {
-  id: number;
-  kindOrName: number | string;
-  kind: number;
-  owner: number;
-  q: number;
-  r: number;
-  x: number;
-  y: number;
-  hp: number;
-  state: number;
-  weaponId?: string;
-}
-
-function readWeaponOverridesFromView(rawView: unknown): Record<number, string> {
-  const blobs = (rawView as { blobs?: Record<string, unknown> } | null)?.blobs;
-  const cw = blobs?.combatWeapons as { byEntityId?: Record<number, string> } | undefined;
-  return cw?.byEntityId ?? {};
-}
-
-function extractRingEntities(view: GameView | undefined): NormalizedRingEntity[] {
-  if (!view || typeof view !== 'object') return [];
-  const v = view as {
-    entities?: Float32Array | ViewEntity[] | Array<Record<string, unknown>>;
-    count?: number;
-    sim?: { view?: { entities?: Float32Array | ViewEntity[]; count?: number; blobs?: Record<string, unknown> } };
-  };
-  const ents = v.entities ?? v.sim?.view?.entities;
-  const count = v.count ?? v.sim?.view?.count;
-  const weaponOverrides = {
-    ...readWeaponOverridesFromView(v.sim?.view),
-    ...readWeaponOverridesFromView(v),
-  };
-  const out: NormalizedRingEntity[] = [];
-
-  if (ents instanceof Float32Array) {
-    forEachEntity(ents, count, (row) => {
-      const ax = row.x === 0 && row.y === 0 && (row.q !== 0 || row.r !== 0) ? row.q : row.x;
-      const ay = row.x === 0 && row.y === 0 && (row.q !== 0 || row.r !== 0) ? row.r : row.y;
-      out.push({
-        id: row.id,
-        kindOrName: row.kind,
-        kind: row.kind,
-        owner: row.owner,
-        q: row.q,
-        r: row.r,
-        x: ax,
-        y: ay,
-        hp: row.hp,
-        state: row.state,
-        weaponId: weaponOverrides[row.id],
-      });
-    });
-    return out;
-  }
-
-  if (Array.isArray(ents)) {
-    const n = count !== undefined ? Math.min(count, ents.length) : ents.length;
-    for (let i = 0; i < n; i++) {
-      const raw = ents[i] as Record<string, unknown> | undefined;
-      if (!raw) continue;
-      const id = Number(raw.id ?? raw.entityId ?? i + 1);
-      const kindOrName = (raw.unit ?? raw.building ?? raw.species ?? raw.kind ?? 0) as number | string;
-      const { kind } = normalizeRingEntityKind(kindOrName);
-      const q = Number(raw.q ?? raw.x ?? 0);
-      const r = Number(raw.r ?? raw.y ?? 0);
-      const rx = Number(raw.x ?? q);
-      const ry = Number(raw.y ?? r);
-      const ax = rx === 0 && ry === 0 && (q !== 0 || r !== 0) ? q : rx;
-      const ay = rx === 0 && ry === 0 && (q !== 0 || r !== 0) ? r : ry;
-      const hp = Number(raw.hp ?? raw.hpMax ?? 100);
-      const state = Number(raw.state ?? ENTITY_STATE.idle);
-      const weaponId = typeof raw.weaponId === 'string' ? raw.weaponId : weaponOverrides[id];
-      out.push({
-        id,
-        kindOrName,
-        kind,
-        owner: Number(raw.owner ?? 0),
-        q,
-        r,
-        x: ax,
-        y: ay,
-        hp,
-        state,
-        weaponId,
-      });
-    }
-  }
-  return out;
-}
-
-function computeGhostWorldPos(
-  ctx: FeatureContext,
-  ghost: PlacementGhostState,
-): { worldX: number; groundY: number; worldZ: number } {
-  const s3 = ctx.services.scene3d;
-  if (ghost.tiles && ghost.tiles.length > 0) {
-    let sumX = 0;
-    let sumZ = 0;
-    let maxY = -Infinity;
-    for (const t of ghost.tiles) {
-      const p = s3 ? s3.tileToWorld(t.q, t.r) : (() => { const [wx, wz] = tileXZ(t.q, t.r); return { x: wx, y: 0, z: wz }; })();
-      sumX += p.x;
-      sumZ += p.z;
-      if (p.y > maxY) maxY = p.y;
-    }
-    const n = ghost.tiles.length;
-    return { worldX: sumX / n, groundY: Number.isFinite(maxY) ? maxY : 0, worldZ: sumZ / n };
-  }
-  const p = s3 ? s3.tileToWorld(ghost.q, ghost.r) : (() => { const [wx, wz] = tileXZ(ghost.q, ghost.r); return { x: wx, y: 0, z: wz }; })();
-  return { worldX: p.x, groundY: p.y, worldZ: p.z };
-}
-
-function pushOwnEntityRings(
-  out: RangeRingInput[],
-  ctx: FeatureContext,
-  ent: NormalizedRingEntity,
-  data: CompiledDataLike,
-): void {
-  const spec = resolveEntityRingSpec(ent.kindOrName, data, ent.weaponId);
-  const { worldX, groundY, worldZ } = computeEntityWorldPos(ctx, ent.id, spec.kind, ent.x, ent.y);
-  if (spec.weaponRangeTiles > 0) {
-    out.push({
-      entityId: ent.id,
-      kind: 'weapon',
-      radiusTiles: spec.weaponRangeTiles,
-      worldX,
-      groundY,
-      worldZ,
-    });
-  }
-  if (spec.minRangeTiles > 0) {
-    out.push({
-      entityId: ent.id,
-      kind: 'minRange',
-      radiusTiles: spec.minRangeTiles,
-      worldX,
-      groundY,
-      worldZ,
-    });
-  }
-  if (spec.viewRangeTiles > 0) {
-    out.push({
-      entityId: ent.id,
-      kind: 'viewRange',
-      radiusTiles: spec.viewRangeTiles,
-      worldX,
-      groundY,
-      worldZ,
-    });
-  }
+interface TerrainAndGhostServices {
+  hexTerrain?: HexTerrain | null;
+  getPlacementGhostState?: () => PlacementGhostState | null;
+  getGhostState?: () => PlacementGhostState | null;
+  armyOrders?: { getSelectedEntityIds?(): readonly number[] };
 }
 
 export class RangeRingsController implements RangeRingsService, RendererInstance {
   readonly rings: InstancedRangeRings;
+  private readonly labels: RingLabelsOverlay;
   private altPressed = false;
   private hoveredEntityId: number | null = null;
   private hoveredTile: { q: number; r: number } | null = null;
@@ -194,10 +60,15 @@ export class RangeRingsController implements RangeRingsService, RendererInstance
   private selectedEntityIds: number[] = [];
   private fallbackSelectedId: number | null = null;
   private latestView: GameView | undefined;
+  private groundTerrain: ArrayLike<number> | undefined;
+  private groundRadius: number | undefined;
+  private lastTilesRef: unknown = null;
+  private terrainRevision = 0;
   private readonly cleanups: Array<() => void> = [];
 
   constructor(private readonly ctx: FeatureContext) {
     this.rings = new InstancedRangeRings(ctx.services.scene3d?.scene ?? null);
+    this.labels = new RingLabelsOverlay(ctx);
     this.bindInputListeners();
     this.installLandfallTurretFallback();
   }
@@ -309,6 +180,43 @@ export class RangeRingsController implements RangeRingsService, RendererInstance
     );
   }
 
+  private trackTerrainUpdates(view: GameView | undefined): void {
+    const v = view as {
+      tiles?: { terrain?: ArrayLike<number> };
+      planet?: { radius?: number };
+      sim?: { view?: { tiles?: { terrain?: ArrayLike<number> }; planet?: { radius?: number } } };
+    } | undefined;
+    const incomingTiles = v?.tiles ?? v?.sim?.view?.tiles;
+    const incomingRadius = v?.planet?.radius ?? v?.sim?.view?.planet?.radius;
+    if (typeof incomingRadius === 'number') this.groundRadius = incomingRadius;
+    if (incomingTiles?.terrain && incomingTiles !== this.lastTilesRef) {
+      this.lastTilesRef = incomingTiles;
+      this.groundTerrain = incomingTiles.terrain;
+      this.terrainRevision++;
+    }
+  }
+
+  private resolveSurfaceSampler(): RingHeightSampler | null {
+    const services = this.ctx.services as TerrainAndGhostServices;
+    const hexTerrain = services.hexTerrain ?? null;
+    const s3Height = this.ctx.services.scene3d?.heightAt;
+    if (!hexTerrain && !s3Height) return null;
+
+    const rawHeight: RingHeightSampler = hexTerrain
+      ? (wx, wz) => hexTerrain.heightAt(wx, wz)
+      : (wx, wz) => s3Height!(wx, wz);
+
+    const isWater = waterTileTest(this.groundTerrain, this.groundRadius);
+    const radius = this.groundRadius;
+    if (!isWater || typeof radius !== 'number') return rawHeight;
+
+    return (wx, wz) => {
+      const y = rawHeight(wx, wz);
+      const hit = tileAt(radius, wx, wz);
+      return hit && isWater(hit.q, hit.r) ? Math.max(y, HEX_WATER_LEVEL) : y;
+    };
+  }
+
   getActiveRings(): ReadonlyArray<RangeRingDescriptor> {
     return this.rings.getActiveRings();
   }
@@ -351,7 +259,7 @@ export class RangeRingsController implements RangeRingsService, RendererInstance
 
   private collectSelectedIdSet(): Set<number> {
     const ids = new Set<number>(this.selectedEntityIds);
-    const armyIds = (this.ctx.services as { armyOrders?: { getSelectedEntityIds?(): readonly number[] } }).armyOrders?.getSelectedEntityIds?.();
+    const armyIds = (this.ctx.services as TerrainAndGhostServices).armyOrders?.getSelectedEntityIds?.();
     if (armyIds) {
       for (const id of armyIds) ids.add(id);
     }
@@ -387,9 +295,38 @@ export class RangeRingsController implements RangeRingsService, RendererInstance
     return best;
   }
 
+  private pushGhostRings(inputs: RangeRingInput[], data: CompiledDataLike): void {
+    const services = this.ctx.services as TerrainAndGhostServices;
+    const ghost = services.getPlacementGhostState?.() ?? services.getGhostState?.() ?? null;
+    if (!ghost) return;
+    const ghostSpec = resolveGhostTurretRingSpec(ghost.building, data);
+    if (!ghostSpec) return;
+    const { worldX, groundY, worldZ } = computeGhostWorldPos(this.ctx, ghost);
+    if (ghostSpec.weaponRangeTiles > 0) {
+      inputs.push({
+        kind: 'ghostWeapon',
+        radiusTiles: ghostSpec.weaponRangeTiles,
+        worldX,
+        groundY,
+        worldZ,
+      });
+    }
+    if (ghostSpec.viewRangeTiles > 0) {
+      inputs.push({
+        kind: 'viewRange',
+        radiusTiles: ghostSpec.viewRangeTiles,
+        worldX,
+        groundY,
+        worldZ,
+      });
+    }
+  }
+
   update(view?: GameView, dt = 0): void {
     if (view !== undefined) this.latestView = view;
     const effView = this.resolveCurrentView(view);
+    this.trackTerrainUpdates(effView);
+
     const data = rangeRingsData(this.ctx.flags, this.ctx.services.store);
     const ownColony = ownColonyIndex(this.ctx.services);
     const entities = extractRingEntities(effView);
@@ -434,11 +371,7 @@ export class RangeRingsController implements RangeRingsService, RendererInstance
       const spec = resolveEntityRingSpec(hoveredEnemy.kindOrName, data, hoveredEnemy.weaponId);
       if (spec.weaponRangeTiles > 0) {
         const { worldX, groundY, worldZ } = computeEntityWorldPos(
-          this.ctx,
-          hoveredEnemy.id,
-          spec.kind,
-          hoveredEnemy.x,
-          hoveredEnemy.y,
+          this.ctx, hoveredEnemy.id, spec.kind, hoveredEnemy.x, hoveredEnemy.y,
         );
         inputs.push({
           entityId: hoveredEnemy.id,
@@ -451,34 +384,13 @@ export class RangeRingsController implements RangeRingsService, RendererInstance
       }
     }
 
-    const ghost = this.ctx.services.getPlacementGhostState?.() ?? this.ctx.services.getGhostState?.() ?? null;
-    if (ghost) {
-      const ghostSpec = resolveGhostTurretRingSpec(ghost.building, data);
-      if (ghostSpec) {
-        const { worldX, groundY, worldZ } = computeGhostWorldPos(this.ctx, ghost);
-        if (ghostSpec.weaponRangeTiles > 0) {
-          inputs.push({
-            kind: 'ghostWeapon',
-            radiusTiles: ghostSpec.weaponRangeTiles,
-            worldX,
-            groundY,
-            worldZ,
-          });
-        }
-        if (ghostSpec.viewRangeTiles > 0) {
-          inputs.push({
-            kind: 'viewRange',
-            radiusTiles: ghostSpec.viewRangeTiles,
-            worldX,
-            groundY,
-            worldZ,
-          });
-        }
-      }
-    }
+    this.pushGhostRings(inputs, data);
 
-    this.rings.setRings(inputs);
+    const surfaceSampler = this.resolveSurfaceSampler();
+    this.rings.setHeightSampler(surfaceSampler, this.terrainRevision);
+    this.rings.setRings(inputs, this.terrainRevision);
     this.rings.tick(dt);
+    this.labels.update(this.rings.getActiveRings(), surfaceSampler);
   }
 
   dispose(): void {
@@ -487,6 +399,7 @@ export class RangeRingsController implements RangeRingsService, RendererInstance
     if (this.ctx.services.rangeRings === this) {
       this.ctx.services.rangeRings = undefined;
     }
+    this.labels.dispose();
     this.rings.dispose();
   }
 }

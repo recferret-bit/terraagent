@@ -94,6 +94,50 @@ describe('battle recoil, spread and surface contacts', () => {
   });
 });
 
+describe('turret return to default on target loss or cancellation', () => {
+  it('returns unit and building turrets smoothly to default forward pose when targets die, clear, or pending shots cancel', () => {
+    // 1. Target cleared via sim battle blob (targetId -> null or omitted from byEntityId)
+    for (const arch of ['robot.recon', 'robot.artillery', 'building.turret'] as const) {
+      const shooter = createArchetypeMesh(arch);
+      const enemy = new THREE.Mesh(new THREE.SphereGeometry(0.5), new THREE.MeshBasicMaterial());
+      enemy.position.set(-7, 1, -6);
+      let enemyAlive = true;
+      const battle = new BattlePresentation(id => (id === 1 ? shooter : id === 2 && enemyAlive ? enemy : undefined));
+      battle.sync({ byEntityId: { 1: { targetId: 2 } } });
+      battle.shot(1, { weaponKind: arch === 'robot.artillery' ? 'shell' : 'bullet', from: { x: 0, y: 1 }, to: { x: -7, y: 1, z: -6 }, targetId: 2, impactTick: 3 });
+      const rig = battle.getRig(1)!;
+      expect(Math.abs(rig.currentYaw)).toBeGreaterThan(1.5);
+
+      battle.sync(arch === 'robot.recon' ? { byEntityId: {} } : { byEntityId: { 1: { targetId: null } } });
+      for (let i = 0; i < 60; i++) battle.update(0.05);
+      expect(rig.currentYaw).toBeCloseTo(0, 5);
+
+      // 2. Enemy mesh disappears while hold is active -> immediate release back to 0
+      enemyAlive = true;
+      battle.sync({ byEntityId: { 1: { targetId: 2 } } });
+      battle.shot(1, { weaponKind: 'bullet', from: { x: 0, y: 1 }, to: { x: -7, y: 1, z: -6 }, targetId: 2, impactTick: 9 });
+      for (let i = 0; i < 40; i++) battle.update(0.05);
+      expect(Math.abs(rig.currentYaw)).toBeGreaterThan(1.5);
+      enemyAlive = false;
+      for (let i = 0; i < 60; i++) battle.update(0.05);
+      expect(rig.currentYaw).toBeCloseTo(0, 5);
+    }
+
+    // 3. Pending pre-fire hold cancelled after shot abort -> turret relaxes back to 0
+    const shooter = createArchetypeMesh('robot.recon');
+    const enemy = new THREE.Mesh(new THREE.SphereGeometry(0.5), new THREE.MeshBasicMaterial());
+    enemy.position.set(10, 1, 0);
+    const battle = new BattlePresentation(id => (id === 1 ? shooter : id === 2 ? enemy : undefined));
+    battle.prepareShot(1, { weaponKind: 'bullet', from: { x: 0, y: 0 }, to: { x: 10, y: 1, z: 0 }, targetId: 2 });
+    for (let i = 0; i < 5; i++) battle.update(0.03);
+    const rig = battle.getRig(1)!;
+    expect(rig.currentYaw).toBeGreaterThan(0.2);
+    battle.cancelPendingShot(1);
+    for (let i = 0; i < 40; i++) battle.update(0.05);
+    expect(rig.currentYaw).toBeCloseTo(0, 5);
+  });
+});
+
 describe('pooled combat effects', () => {
   it('attaches a gun flash to its socket and excludes laser discharges', () => {
     const { battle } = fixture();

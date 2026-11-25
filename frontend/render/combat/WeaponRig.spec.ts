@@ -186,8 +186,49 @@ describe('/boost spider, rocket pod, recon & finite-speed slewing upgrades', () 
 
       const yawBeforeLoseTarget = rig.currentYaw;
       rig.aim(null);
-      rig.update(0.2);
-      expect(rig.currentYaw).toBeCloseTo(yawBeforeLoseTarget, 5);
+      rig.update(0.15);
+      expect(Math.abs(rig.currentYaw)).toBeLessThan(Math.abs(yawBeforeLoseTarget));
+      expect(Math.abs(rig.currentYaw)).toBeGreaterThan(0.1);
+      for (let i = 0; i < 40; i++) rig.update(0.05);
+      expect(rig.currentYaw).toBeCloseTo(0, 5);
+      expect((mesh.userData as { turretYaw?: number }).turretYaw).toBeCloseTo(0, 5);
+    }
+  });
+});
+
+describe('turret return-to-default on target loss', () => {
+  it('returns every unit and turret rig smoothly along shortest yaw arc to default forward pose when losing targets', () => {
+    for (const id of IDS) {
+      for (const rearTarget of [new THREE.Vector3(-4, 2.2, -9), new THREE.Vector3(4, -0.4, -9)]) {
+        const mesh = createArchetypeMesh(id);
+        if (id.startsWith('building.')) stripBuildingPlinth(mesh);
+        const rig = new WeaponRig(mesh, WeaponRigRegistry.get(id)!);
+        rig.snapAim(rearTarget);
+        rig.update(0.016);
+        const startYaw = rig.currentYaw;
+        expect(Math.abs(startYaw)).toBeGreaterThan(2.0);
+
+        rig.aim(null);
+        let prevAbs = Math.abs(startYaw);
+        for (let step = 0; step < 30; step++) {
+          rig.update(0.05);
+          const curAbs = Math.abs(rig.currentYaw);
+          expect(curAbs).toBeLessThanOrEqual(prevAbs + 1e-6);
+          if (curAbs > 1e-4) expect(Math.sign(rig.currentYaw)).toBe(Math.sign(startYaw));
+          prevAbs = curAbs;
+        }
+        expect(rig.currentYaw).toBeCloseTo(0, 6);
+        expect((mesh.userData as { turretYaw?: number }).turretYaw).toBeCloseTo(0, 6);
+        const forward = rig.direction(0);
+        expect(forward.x).toBeCloseTo(0, 5);
+        expect(forward.z).toBeCloseTo(1, 5);
+
+        // Acquiring a fresh target after resting still slews at finite speed rather than teleporting.
+        rig.aim(new THREE.Vector3(8, 1, 0));
+        rig.update(0.02);
+        expect(rig.currentYaw).toBeGreaterThan(0);
+        expect(rig.currentYaw).toBeLessThan(Math.PI / 2 - 0.2);
+      }
     }
   });
 });

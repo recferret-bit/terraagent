@@ -70,6 +70,7 @@ export function createSessionHud(d: SessionHudDeps): FeatureHud {
   const scene3d: Scene3dService = {
     scene: d.scene,
     tileToWorld: (x, y) => { const [wx, wz] = tileXZ(x, y); return { x: wx, y: d.terrain()?.heightAt(wx, wz) ?? 0, z: wz }; },
+    heightAt: (wx, wz) => d.terrain()?.heightAt(wx, wz) ?? 0,
     biomeKey: d.biomeKey,
     renderedEntityGroundPosition: (entityId) => {
       const p = d.renderedEntityPosition?.(entityId);

@@ -6,6 +6,8 @@ export interface Scene3dService {
   scene: THREE.Scene;
   /** Axial float tile coords to world metres, y = terrain height there. */
   tileToWorld(x: number, y: number): { x: number; y: number; z: number };
+  /** Surface height in world metres at world `(x, z)`, if terrain is mounted. */
+  heightAt?(worldX: number, worldZ: number): number;
   /** Live interpolated entity centre, projected onto terrain for ground indicators. */
   renderedEntityGroundPosition?(entityId: number): { x: number; y: number; z: number } | null;
   /** Biome key of the current planet look (`PlanetSpec.biomeKey`). */

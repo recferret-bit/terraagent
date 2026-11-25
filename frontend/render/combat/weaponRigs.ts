@@ -8,6 +8,8 @@ export interface WeaponRigDefinition {
   chassisAim?: boolean;
   /** Maximum turret yaw rotation speed in radians/second (smooth slewing, no teleports). */
   turnSpeedRadPerS?: number;
+  /** Turret yaw return-to-rest speed in radians/second when no target is tracked (defaults to 0.65 * turnSpeedRadPerS). */
+  returnTurnSpeedRadPerS?: number;
   /** Glow heat multiplier for barrel heating (`0` disables barrel thermal glow, e.g. laser apertures & rocket pods). */
   heatScale?: number;
   /** Heat gained per fired round (`0..1`). */

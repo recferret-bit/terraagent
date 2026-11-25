@@ -136,6 +136,7 @@ export class CombatSyncController {
           if (waitedS > 1.8) {
             this.heldFiredKeys.delete(key);
             this.heldImpacts.delete(alignKey);
+            this.battle.cancelPendingShot(shooter);
             return true;
           }
           return false;
@@ -144,6 +145,7 @@ export class CombatSyncController {
         if (waitedS > 3.5 || (parsed.input.targetId !== undefined && this.confirmedDeaths.has(parsed.input.targetId))) {
           this.heldFiredKeys.delete(key);
           this.heldImpacts.delete(alignKey);
+          this.battle.cancelPendingShot(shooter);
           return true;
         }
         if (!this.shots.isReadyToFire(shooter, parsed.input)) return false;
@@ -160,11 +162,13 @@ export class CombatSyncController {
         if (this.meshForEntity && !this.meshForEntity(shooter)) {
           this.heldFiredKeys.delete(key);
           this.heldImpacts.delete(alignKey);
+          this.battle.cancelPendingShot(shooter);
           return true;
         }
         if (waitedS > 3.5 || (parsed.input.targetId !== undefined && this.confirmedDeaths.has(parsed.input.targetId))) {
           this.heldFiredKeys.delete(key);
           this.heldImpacts.delete(alignKey);
+          this.battle.cancelPendingShot(shooter);
           return true;
         }
         if (!this.shots.isReadyToFire(shooter, parsed.input)) return false;

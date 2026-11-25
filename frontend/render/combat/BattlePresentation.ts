@@ -10,13 +10,14 @@ import { meshAimPoint, point3, surfaceContact, type ShotContact } from './shotCo
 interface TargetState { targetId: number | null }
 interface ShotHold {
   target: THREE.Vector3; targetId?: number; root?: THREE.Vector3; lift: number;
-  kind: ReturnType<typeof resolveVfxWeaponKind>; arc?: 'direct' | 'indirect'; pending?: boolean;
+  kind: ReturnType<typeof resolveVfxWeaponKind>; arc?: 'direct' | 'indirect'; pending?: boolean; pendingAge?: number;
 }
 /** Presentation adapter shared by the game and gallery. Rules remain in the sim orchestrator. */
 export class BattlePresentation {
   readonly insects = new InsectPresentation();
   private readonly rigs = new Map<number, WeaponRig>();
   private targets: Record<number, TargetState> = {};
+  private hasSynced = false;
   private readonly holds = new Map<number, ShotHold>();
   private readonly contacts = new Map<string, ShotContact>();
   private sequence = 0;
@@ -27,6 +28,13 @@ export class BattlePresentation {
     const slot = raw as { value?: unknown } | undefined;
     const data = (slot?.value ?? raw) as { byEntityId?: Record<number, TargetState> } | undefined;
     this.targets = data?.byEntityId ?? {};
+    this.hasSynced = true;
+  }
+
+  /** Drops any pending pre-fire alignment hold so an aborted shot lets the turret return to default pose. */
+  cancelPendingShot(attackerId: number): void {
+    const hold = this.holds.get(attackerId);
+    if (hold?.pending) this.holds.delete(attackerId);
   }
 
   update(dt: number): void {
@@ -36,7 +44,16 @@ export class BattlePresentation {
       if (this.meshFor(id) !== rig.mesh) { this.rigs.delete(id); this.holds.delete(id); continue; }
       const hold = this.holds.get(id);
       const targetId = this.targets[id]?.targetId;
-      if (hold && (hold.pending || targetId === undefined || targetId === hold.targetId)) {
+      const targetMeshPresent = hold?.targetId === undefined || this.meshFor(hold.targetId) !== undefined;
+      let keepPending = false;
+      if (hold?.pending) {
+        hold.pendingAge = (hold.pendingAge ?? 0) + Math.max(0, dt);
+        keepPending = targetMeshPresent && hold.pendingAge <= 3.6;
+      }
+      const keepShotHold = Boolean(
+        hold && !hold.pending && targetMeshPresent && (this.hasSynced ? (targetId != null && targetId === hold.targetId) : true),
+      );
+      if (hold && (keepPending || keepShotHold)) {
         this.trackHold(rig, hold);
         rig.aim(hold.target, hold.lift);
       } else {
@@ -148,7 +165,7 @@ export class BattlePresentation {
   }
 
   getRig(id: number): WeaponRig | undefined { return this.rig(id); }
-  clear(): void { this.insects.clear(); this.rigs.clear(); this.holds.clear(); this.contacts.clear(); this.targets = {}; }
+  clear(): void { this.insects.clear(); this.rigs.clear(); this.holds.clear(); this.contacts.clear(); this.targets = {}; this.hasSynced = false; }
 
   private key(attacker: number, input: { targetId?: number; impactTick?: number; weaponId?: string }): string {
     return `${attacker}:${input.targetId ?? 0}:${input.weaponId ?? ''}:${input.impactTick ?? this.sequence++}`;

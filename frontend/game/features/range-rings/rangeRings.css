@@ -1,0 +1,120 @@
+.ta-hud__overlay > .ta-range-rings-overlay,
+.ta-range-rings-overlay {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 18;
+}
+
+.ta-range-rings-overlay[hidden],
+.ta-range-rings-legend[hidden] {
+  display: none !important;
+}
+
+.ta-range-rings-tags {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.ta-range-ring-tag {
+  position: fixed;
+  transform: translate(-50%, -50%);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ta-s2);
+  padding: 3px var(--ta-s2);
+  background: var(--ta-plate);
+  border: 1px solid var(--ta-seam-3);
+  color: var(--ta-text);
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-label);
+  font-weight: 600;
+  letter-spacing: var(--ta-track-label);
+  line-height: 1.15;
+  white-space: nowrap;
+  pointer-events: none;
+  clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
+}
+
+.ta-range-ring-tag[data-kind='weapon'],
+.ta-range-ring-tag[data-kind='ghostWeapon'] {
+  border-color: var(--ta-orange);
+  color: var(--ta-orange-hi);
+}
+
+.ta-range-ring-tag[data-kind='viewRange'] {
+  border-color: var(--ta-energy);
+  color: var(--ta-energy);
+}
+
+.ta-range-ring-tag[data-kind='enemyWeapon'] {
+  border-color: var(--ta-fault);
+  color: var(--ta-fault-text);
+}
+
+.ta-range-rings-swatch {
+  display: inline-block;
+  width: 16px;
+  height: 3px;
+  flex: none;
+}
+
+.ta-range-rings-swatch[data-kind='weapon'],
+.ta-range-rings-swatch[data-kind='ghostWeapon'] {
+  background: var(--ta-orange);
+}
+
+.ta-range-rings-swatch[data-kind='viewRange'] {
+  background: repeating-linear-gradient(
+    90deg,
+    var(--ta-energy) 0,
+    var(--ta-energy) 5px,
+    transparent 5px,
+    transparent 9px
+  );
+}
+
+.ta-range-rings-swatch[data-kind='enemyWeapon'] {
+  background: var(--ta-fault);
+}
+
+.ta-range-rings-legend {
+  position: fixed;
+  top: 64px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ta-s3);
+  padding: var(--ta-s1) var(--ta-s3);
+  background: var(--ta-plate);
+  border: 1px solid var(--ta-seam-2);
+  color: var(--ta-text-2);
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-label);
+  font-weight: 600;
+  letter-spacing: var(--ta-track-label);
+  white-space: nowrap;
+  pointer-events: none;
+  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+}
+
+.ta-range-rings-legend__item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ta-s2);
+}
+
+.ta-range-rings-legend__item[data-kind='weapon'],
+.ta-range-rings-legend__item[data-kind='ghostWeapon'] {
+  color: var(--ta-orange-hi);
+}
+
+.ta-range-rings-legend__item[data-kind='viewRange'] {
+  color: var(--ta-energy);
+}
+
+.ta-range-rings-legend__item[data-kind='enemyWeapon'] {
+  color: var(--ta-fault-text);
+}

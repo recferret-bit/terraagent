@@ -87,7 +87,7 @@ describe('W07-21 rendered pose alignment', () => {
 });
 
 describe('W07-21 selection range and view rings', () => {
-  it('selects the Autocannon -> renders an 8-tile weapon ring (16 m, solid orange) and a 5-tile view ring (10 m, dashed white 0.4)', () => {
+  it('selects the Autocannon -> renders an 8-tile weapon ring (16 m, solid orange) and a 5-tile sight ring (10 m, dashed cyan)', () => {
     const landfall = new LandfallController({ ownerColonyIndex: 0, autoSelect: false });
     const { ctx, scene } = makeContext({ landfall });
     const renderer = createRangeRingsRenderer(ctx);
@@ -116,7 +116,7 @@ describe('W07-21 selection range and view rings', () => {
       radiusTiles: 8,
       radiusMeters: 8 * TILE_M,
       colorHex: RING_STYLE_BY_KIND.weapon.colorHex,
-      opacity: 0.9,
+      opacity: RING_STYLE_BY_KIND.weapon.opacity,
       dashed: false,
     });
     expect(viewRing).toMatchObject({
@@ -124,8 +124,8 @@ describe('W07-21 selection range and view rings', () => {
       kind: 'viewRange',
       radiusTiles: 5,
       radiusMeters: 5 * TILE_M,
-      colorHex: 0xffffff,
-      opacity: 0.4,
+      colorHex: RING_STYLE_BY_KIND.viewRange.colorHex,
+      opacity: RING_STYLE_BY_KIND.viewRange.opacity,
       dashed: true,
     });
 
@@ -141,7 +141,7 @@ describe('W07-21 selection range and view rings', () => {
     renderer.dispose();
   });
 
-  it('selects demoArtillery -> renders weapon ring (14 tiles = 28 m), min-range ring (3 tiles = 6 m, dashed red), and view ring (6 tiles = 12 m)', () => {
+  it('selects demoArtillery -> renders strictly 2 rings: weapon range (14 tiles = 28 m) and sight (6 tiles = 12 m), without a 3rd min-range circle', () => {
     const { ctx } = makeContext();
     const renderer = createRangeRingsRenderer(ctx);
 
@@ -155,29 +155,23 @@ describe('W07-21 selection range and view rings', () => {
     renderer.update(view, 0.016);
 
     const active = renderer.getActiveRings();
-    expect(active).toHaveLength(3);
-    expect(renderer.rings.mesh.count).toBe(3);
+    expect(active).toHaveLength(2);
+    expect(renderer.rings.mesh.count).toBe(2);
+    expect(active.find((r) => r.kind === 'minRange')).toBeUndefined();
 
     expect(active.find((r) => r.kind === 'weapon')).toMatchObject({
       entityId: 202,
       radiusTiles: 14,
       radiusMeters: 28,
-      colorHex: 0xff6a13,
+      colorHex: RING_STYLE_BY_KIND.weapon.colorHex,
       dashed: false,
-    });
-    expect(active.find((r) => r.kind === 'minRange')).toMatchObject({
-      entityId: 202,
-      radiusTiles: 3,
-      radiusMeters: 6,
-      colorHex: 0xff3b3b,
-      dashed: true,
     });
     expect(active.find((r) => r.kind === 'viewRange')).toMatchObject({
       entityId: 202,
       radiusTiles: 6,
       radiusMeters: 12,
-      colorHex: 0xffffff,
-      opacity: 0.4,
+      colorHex: RING_STYLE_BY_KIND.viewRange.colorHex,
+      opacity: RING_STYLE_BY_KIND.viewRange.opacity,
       dashed: true,
     });
 
@@ -186,7 +180,7 @@ describe('W07-21 selection range and view rings', () => {
 });
 
 describe('W07-21 Alt all-units view and enemy hover rings', () => {
-  it('holds Alt with multiple own units -> renders all own units and turrets rings in 1 InstancedMesh draw call', () => {
+  it('holds Alt with multiple own units -> renders up to 2 rings per own unit in 1 InstancedMesh draw call', () => {
     const { ctx } = makeContext();
     const renderer = createRangeRingsRenderer(ctx);
 
@@ -208,10 +202,12 @@ describe('W07-21 Alt all-units view and enemy hover rings', () => {
     renderer.update(view, 0.016);
 
     const active = renderer.getActiveRings();
-    expect(active).toHaveLength(10);
+    // 4 armed entities * 2 rings (weapon + viewRange) + 1 worker * 1 ring (viewRange) = 9
+    expect(active).toHaveLength(9);
     expect(renderer.rings.mesh).toBeInstanceOf(THREE.InstancedMesh);
-    expect(renderer.rings.mesh.count).toBe(10);
+    expect(renderer.rings.mesh.count).toBe(9);
     expect(active.some((r) => r.entityId === 99)).toBe(false);
+    expect(active.some((r) => r.kind === 'minRange')).toBe(false);
 
     window.dispatchEvent(new KeyboardEvent('keyup', { key: 'Alt', altKey: false }));
     renderer.update(view, 0.016);
@@ -379,6 +375,10 @@ describe('W07 live range settings', () => {
     expect(rings.material.vertexShader).toContain('aRingStyle');
     expect(rings.material.fragmentShader).toContain('computeRingDashMask');
     expect(rings.material.fragmentShader).toContain('computeRingRadialMask');
+    expect(rings.material.depthTest).toBe(false);
+    expect(rings.material.depthWrite).toBe(false);
+    expect(rings.material.transparent).toBe(true);
+    expect(rings.mesh.renderOrder).toBe(9);
     rings.dispose();
   });
 });

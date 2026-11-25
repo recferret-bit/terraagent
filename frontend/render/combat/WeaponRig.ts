@@ -220,8 +220,20 @@ export class WeaponRig {
         pitchErr = desiredPitch - this.pitch;
       }
     } else if (dt > 0) {
-      const relax = 2.5 * dt;
-      this.pitch += THREE.MathUtils.clamp(0 - this.pitch, -relax, relax);
+      const maxReturnYaw = (def.returnTurnSpeedRadPerS ?? (def.turnSpeedRadPerS ?? 5.0) * 0.65) * dt;
+      const yawToRest = wrapAngle(0 - this.yaw);
+      if (Math.abs(yawToRest) <= maxReturnYaw) {
+        this.yaw = 0;
+      } else {
+        this.yaw = wrapAngle(this.yaw + Math.sign(yawToRest) * maxReturnYaw);
+      }
+      const relaxPitch = 2.5 * dt;
+      const pitchToRest = 0 - this.pitch;
+      if (Math.abs(pitchToRest) <= relaxPitch) {
+        this.pitch = 0;
+      } else {
+        this.pitch += Math.sign(pitchToRest) * relaxPitch;
+      }
     }
 
     const cp = Math.cos(this.pitch), sp = Math.sin(this.pitch);
