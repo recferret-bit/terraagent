@@ -59,7 +59,12 @@ describe('W03-17 Construction catalog & deposit ghost rules', () => {
       'supplyDepot',
       'waterExtractor',
       'petroleumWell',
+      'sensorArray',
     ]);
+
+    const sensorCard = w03Cards.find((c) => c.building === 'sensorArray')!;
+    expect(sensorCard.label).toBe('Sensor Array');
+    expect(sensorCard.powerText).toBe('−20 E/s');
 
     const capCard = w03Cards.find((c) => c.building === 'capacitor')!;
     expect(capCard.powerText).toBe('−2 E/s · 1500 E');

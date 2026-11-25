@@ -38,6 +38,8 @@ const EXTRA_KIND_BY_NAME: Readonly<Record<string, number>> = {
   turret: ENTITY_KIND.turret,
   laserTower: ENTITY_KIND.laserTower,
   pulseTurret: ENTITY_KIND.pulseTurret,
+  sensorArray: ENTITY_KIND.sensorArray,
+  radar: ENTITY_KIND.sensorArray,
 };
 
 export function resolveHealthBarKind(raw: number | string): number {
@@ -69,6 +71,7 @@ const BUILDING_2X2_KINDS = new Set<number>([
   ENTITY_KIND.mineralsQuarry,
   ENTITY_KIND.waterExtractor,
   ENTITY_KIND.petroleumWell,
+  ENTITY_KIND.sensorArray,
 ]);
 
 const BUILDING_1X1_KINDS = new Set<number>([

@@ -353,6 +353,7 @@ export function buildGlobalMapDrawView(params: {
     homeTile: sectorSelection.homeTile,
     currentSectorId: sectorSelection.currentSectorId,
     cameraTile: sectorSelection.cameraTile,
+    landAnimals: ctx.services.hexTerrain?.biosphere.getLandAnimals(),
   };
 }
 

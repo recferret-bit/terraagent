@@ -75,6 +75,9 @@ export const BUILDING_LIGHT_RIGS: Readonly<Record<string, readonly ArchetypeLigh
   'building.rocket': rig([
     ['gantry aviation', [2.38, 10.15, 0], [2.3, 0.02, 0], CRIMSON, 1.05, 9, 1.8],
   ]),
+  'building.sensorArray': rig([
+    ['sensor cabin header', [-0.15, 0.88, 1.10], [-0.15, 0.02, 3.2], 0x22d3ee, 1.05, 7, 1.7],
+  ]),
 };
 
 /** Ids that must have an explicit rig. Kept next to the table so a new building cannot inherit another rig. */

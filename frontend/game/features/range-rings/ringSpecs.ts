@@ -1,5 +1,5 @@
 import type { FlagSet } from '@terra/contracts';
-import { ENTITY_KIND, getEntitySpottingRadius, isFaunaBugKind, isFaunaHiveKind, resolveKindWeaponRow, type CompiledDataLike } from '@terra/sim';
+import { ENTITY_KIND, getEntitySpottingRadius, getSensorArrayRadarRadius, isFaunaBugKind, isFaunaHiveKind, resolveKindWeaponRow, type CompiledDataLike } from '@terra/sim';
 import { clientDataFor } from '../../core/flags/data';
 import type { FeatureStore } from '../../core/registry/types';
 
@@ -46,6 +46,8 @@ const KIND_NAME_TO_CODE: Readonly<Record<string, number>> = {
   waterPump: RING_ENTITY_KIND.waterPump,
   petroleumWell: RING_ENTITY_KIND.petroleumWell,
   oilWell: RING_ENTITY_KIND.oilWell,
+  sensorArray: RING_ENTITY_KIND.sensorArray,
+  radar: RING_ENTITY_KIND.sensorArray,
   roboticsFactory: RING_ENTITY_KIND.roboticsFactory,
   droneControlArray: RING_ENTITY_KIND.droneControlArray,
   droneArray: RING_ENTITY_KIND.droneArray,
@@ -93,6 +95,7 @@ const CODE_TO_KIND_NAME: Readonly<Record<number, string>> = {
   [RING_ENTITY_KIND.mineralsQuarry]: 'mineralsQuarry',
   [RING_ENTITY_KIND.waterExtractor]: 'waterExtractor',
   [RING_ENTITY_KIND.petroleumWell]: 'petroleumWell',
+  [RING_ENTITY_KIND.sensorArray]: 'sensorArray',
   [RING_ENTITY_KIND.roboticsFactory]: 'roboticsFactory',
   [RING_ENTITY_KIND.droneControlArray]: 'droneControlArray',
   [RING_ENTITY_KIND.autocannon]: 'autocannon',
@@ -123,6 +126,7 @@ const TWO_BY_TWO_BUILDING_CODES: ReadonlySet<number> = new Set([
   RING_ENTITY_KIND.mineralsQuarry,
   RING_ENTITY_KIND.waterExtractor,
   RING_ENTITY_KIND.petroleumWell,
+  RING_ENTITY_KIND.sensorArray,
 ]);
 
 function toFlagSet(flags: ReadonlySet<string> | FlagSet): FlagSet {
@@ -159,7 +163,7 @@ export function is2x2RingBuildingKind(kind: number): boolean {
 
 const OTHER_BUILDINGS = new Set<number>([
   ENTITY_KIND.commandHub, ENTITY_KIND.pod, ENTITY_KIND.pylon, ENTITY_KIND.roboticsFactory,
-  ENTITY_KIND.droneControlArray, ENTITY_KIND.autocannon, ENTITY_KIND.laserTower, RING_ENTITY_KIND.outpostBeacon,
+  ENTITY_KIND.droneControlArray, ENTITY_KIND.autocannon, ENTITY_KIND.laserTower, ENTITY_KIND.sensorArray, RING_ENTITY_KIND.outpostBeacon,
 ]);
 
 /** UI metadata only: combat and sight numbers come from the same shared rules the host enforces. */
@@ -199,6 +203,12 @@ export function resolveGhostTurretRingSpec(
   if (building === 'laserTower' || building === 'pulseTurret') {
     const spec = resolveEntityRingSpec(RING_ENTITY_KIND.laserTower, data);
     return { weaponRangeTiles: spec.weaponRangeTiles, viewRangeTiles: spec.viewRangeTiles };
+  }
+  if (building === 'sensorArray' || building === 'radar') {
+    return {
+      weaponRangeTiles: getSensorArrayRadarRadius(data),
+      viewRangeTiles: getEntitySpottingRadius(RING_ENTITY_KIND.sensorArray, data),
+    };
   }
   return null;
 }

@@ -68,6 +68,8 @@ export const ENTITY_KIND = {
   lightningRod: 41,
   hydro: 42,
   hydroGenerator: 42,
+  sensorArray: 43,
+  radar: 43,
   recon: 51,
   demoTank: 52,
   demoArtillery: 53,

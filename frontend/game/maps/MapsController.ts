@@ -16,6 +16,7 @@ import { GlobalMapOpenCloseController, type MapNavAction } from './openCloseCont
 import { PlanetRasterCache, type PlanetRasterEntry } from './rasterCache';
 import { MapRedrawScheduler } from './redrawScheduler';
 import { drawResourcesLayer } from './resourceLayer';
+import { drawRadarCoverageLayer } from './radarLayer';
 import {
   bindGlobalOverlayPointerInteraction,
   buildGlobalMapDrawView,
@@ -299,43 +300,31 @@ export class MapsController {
   }
 
   private drawMinimapOverlays(ctx2d: CanvasRenderingContext2D, drawView: MapLayerDrawView): void {
-    if (this.chipController.isLayerActive('resources')) drawResourcesLayer(ctx2d, drawView);
-    drawMapFog(ctx2d, drawView);
-    this.lastDotCount = drawEntityDots(ctx2d, drawView).length;
-    if (this.chipController.isLayerActive('bounties')) this.registry.get('bounties')?.draw(ctx2d, drawView);
-    this.lastTrapezoid = drawCameraTrapezoid(ctx2d, drawView, {
-      camera: this.ctx.services.camera ?? null,
-      rtsCamera: this.ctx.services.rtsCamera ?? null,
-    });
+    const landAnimals = this.ctx.services.hexTerrain?.biosphere.getLandAnimals();
+    const view = landAnimals ? { ...drawView, landAnimals } : drawView;
+    if (this.chipController.isLayerActive('resources')) drawResourcesLayer(ctx2d, view);
+    drawMapFog(ctx2d, view);
+    drawRadarCoverageLayer(ctx2d, view);
+    this.lastDotCount = drawEntityDots(ctx2d, view).length;
+    if (this.chipController.isLayerActive('bounties')) this.registry.get('bounties')?.draw(ctx2d, view);
+    this.lastTrapezoid = drawCameraTrapezoid(ctx2d, view, { camera: this.ctx.services.camera ?? null, rtsCamera: this.ctx.services.rtsCamera ?? null });
   }
 
   private drawGlobalMap(ctx2d: CanvasRenderingContext2D, canvas: HTMLCanvasElement): void {
-    const w = canvas.width || GLOBAL_MAP_CANVAS_SIZE;
-    const h = canvas.height || GLOBAL_MAP_CANVAS_SIZE;
+    const w = canvas.width || GLOBAL_MAP_CANVAS_SIZE, h = canvas.height || GLOBAL_MAP_CANVAS_SIZE;
     const size = Math.max(1, Math.min(w, h));
     const drawView = buildGlobalMapDrawView({
-      size,
-      radius: this.getActiveRadius(),
-      adapter: this.getActiveAdapter(),
-      lastEntry: this.lastEntry,
-      lastTiles: this.lastTiles,
-      lastClientView: this.lastClientView,
-      ctx: this.ctx,
-      viewport: this.globalViewport,
-      sectorSelection: this.sectorSelection,
+      size, radius: this.getActiveRadius(), adapter: this.getActiveAdapter(), lastEntry: this.lastEntry,
+      lastTiles: this.lastTiles, lastClientView: this.lastClientView, ctx: this.ctx,
+      viewport: this.globalViewport, sectorSelection: this.sectorSelection,
     });
     ctx2d.save();
     this.globalViewport.applyToContext(ctx2d, w, h);
     ctx2d.translate((w - size) / 2, (h - size) / 2);
     ctx2d.imageSmoothingEnabled = false;
-    this.lastComposite = renderCompositeMapLayers(
-      ctx2d, drawView, this.chipController.getActiveSet(), this.chipController.getVisibleLayers(),
-    );
+    this.lastComposite = renderCompositeMapLayers(ctx2d, drawView, this.chipController.getActiveSet(), this.chipController.getVisibleLayers());
     if (this.lastComposite.unitDots > 0) this.lastDotCount = this.lastComposite.unitDots;
-    drawCameraTrapezoid(ctx2d, drawView, {
-      camera: this.ctx.services.camera ?? null,
-      rtsCamera: this.ctx.services.rtsCamera ?? null,
-    });
+    drawCameraTrapezoid(ctx2d, drawView, { camera: this.ctx.services.camera ?? null, rtsCamera: this.ctx.services.rtsCamera ?? null });
     ctx2d.restore();
     this.updateReadout();
   }

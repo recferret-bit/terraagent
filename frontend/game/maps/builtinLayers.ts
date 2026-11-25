@@ -2,8 +2,9 @@ import { HEX_DIRS } from '@terra/sim/grid/hex';
 import { DEFAULT_COLONY_COLORS } from '@terra/contracts/tiles/codes';
 import { MAP_LAYER_META, type MapLayerId } from '@terra/contracts';
 import { resolveMapAdapterForView } from './atlasMapAdapter';
-import { drawMapFog, isMapTileExplored } from './visibility';
+import { createMapVisibility, drawMapFog, isMapTileExplored } from './visibility';
 import { drawEntityDots } from './entityDots';
+import { drawRadarCoverageLayer } from './radarLayer';
 import { drawResourcesLayer } from './resourceLayer';
 import {
   createSectorsMapLayer,
@@ -106,6 +107,13 @@ export function drawTerritoryLayer(
 
   let ownedTileCount = 0;
   let borderEdgeCount = 0;
+  const live = createMapVisibility(view);
+  const hasLiveFog = Boolean(
+    !view.spectatorAllVision &&
+    !view.fullVision &&
+    view.clientView &&
+    (view.clientView.blobs?.combatVision || view.clientView.count > 0),
+  );
 
   ctx.save();
   for (let idx = 0; idx < drawableTiles.length; idx++) {
@@ -113,7 +121,10 @@ export function drawTerritoryLayer(
     const i = t.bufferIndex;
     const owner = tiles.owner[i] ?? -1;
     if (owner < 0) continue;
-    if (!isMapTileExplored(view, i) && owner !== ownSlot && !view.fullVision) continue;
+    if (owner !== ownSlot && !view.spectatorAllVision && !view.fullVision) {
+      if (!isMapTileExplored(view, i)) continue;
+      if (hasLiveFog && !live(t.q, t.r)) continue;
+    }
 
     ownedTileCount++;
     const q = t.q;
@@ -225,6 +236,7 @@ export function renderCompositeMapLayers(
     drawnLayers.push('resources');
   }
   drawMapFog(ctx, view);
+  drawRadarCoverageLayer(ctx, view);
   if (activeLayers.has('sectors')) {
     sectors = drawSectorsLayer(ctx, view);
     drawnLayers.push('sectors');

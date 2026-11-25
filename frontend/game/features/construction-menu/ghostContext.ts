@@ -59,6 +59,7 @@ const DEFAULT_LABELS: Record<string, string> = {
   mineralsQuarry: 'Minerals Quarry',
   waterExtractor: 'Water Extractor',
   petroleumWell: 'Petroleum Well',
+  sensorArray: 'Sensor Array',
   tradeHub: 'Inter-Colony Trade Hub',
   roboticsFactory: 'Robotics Factory',
   droneControlArray: 'Drone Control Array',
@@ -88,6 +89,7 @@ const TWO_BY_TWO_KINDS = new Set<number>([
   ENTITY_KIND.mineralsQuarry,
   ENTITY_KIND.waterExtractor,
   ENTITY_KIND.petroleumWell,
+  ENTITY_KIND.sensorArray,
 ]);
 
 export function resolveBuildingMeta(data: CompiledDataLike, building: string): BuildingRowMeta {

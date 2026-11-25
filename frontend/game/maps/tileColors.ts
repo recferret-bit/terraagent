@@ -112,7 +112,13 @@ export function classifyTileState(
   if ((tiles.explored || tiles.exploredByColony) && !explored) {
     return 'unexplored';
   }
-  const prep = tiles.prep ? (tiles.prep[index] ?? PREP_CODES.wild) : PREP_CODES.wild;
+  const tileOwner = tiles.owner ? (tiles.owner[index] ?? -1) : -1;
+  const hideForeignPrep = colonyIndex >= 0 && tileOwner >= 0 && tileOwner !== colonyIndex;
+  const prep = hideForeignPrep
+    ? PREP_CODES.wild
+    : tiles.prep
+      ? (tiles.prep[index] ?? PREP_CODES.wild)
+      : PREP_CODES.wild;
   if (prep === PREP_CODES.living || prep === PREP_CODES.irrigated) {
     return 'living';
   }

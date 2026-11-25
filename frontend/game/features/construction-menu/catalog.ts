@@ -26,6 +26,7 @@ export type BuildingKind =
   | 'laserTower'
   | 'turret'
   | 'outpostBeacon'
+  | 'sensorArray'
   | 'tradeHub';
 
 /** Welcome catalog fields the build menu may overlay onto a card. */
@@ -85,6 +86,7 @@ const LABELS: Record<string, string> = {
   mineralsQuarry: 'Minerals Quarry',
   waterExtractor: 'Water Extractor',
   petroleumWell: 'Petroleum Well',
+  sensorArray: 'Sensor Array',
 };
 
 const numField = (row: Record<string, unknown>, key: string): number =>

@@ -36,6 +36,8 @@ export const BUILDING_KIND_BY_NAME: Readonly<Record<string, number>> = {
   water: ENTITY_KIND.waterExtractor,
   petroleumWell: ENTITY_KIND.petroleumWell,
   oilWell: ENTITY_KIND.petroleumWell,
+  sensorArray: ENTITY_KIND.sensorArray,
+  radar: ENTITY_KIND.sensorArray,
   tradeHub: ENTITY_KIND.tradeHub,
   interColonyTradeHub: ENTITY_KIND.tradeHub,
   roboticsFactory: ENTITY_KIND.roboticsFactory,
@@ -59,6 +61,7 @@ const ECONOMY_BUILDING_KINDS: ReadonlySet<number> = new Set([
   ENTITY_KIND.mineralsQuarry,
   ENTITY_KIND.waterExtractor,
   ENTITY_KIND.petroleumWell,
+  ENTITY_KIND.sensorArray,
   ENTITY_KIND.tradeHub,
   ENTITY_KIND.roboticsFactory,
   ENTITY_KIND.droneControlArray,
@@ -109,6 +112,9 @@ export function resolveBuildingRow(building: string, data?: CompiledDataLike): {
   if (building === 'petroleumWell' || building === 'oilWell') {
     return grid?.petroleumWell ? { row: grid.petroleumWell, entityKind: ENTITY_KIND.petroleumWell } : null;
   }
+  if (building === 'sensorArray' || building === 'radar') {
+    return grid?.sensorArray ? { row: grid.sensorArray, entityKind: ENTITY_KIND.sensorArray } : null;
+  }
   if (building === 'tradeHub' || building === 'interColonyTradeHub') {
     const tradeHubTable = data?.tables?.tradeHub as Record<string, CompiledRow> | undefined;
     if (data?.tables && !tradeHubTable?.t1) return null;
@@ -148,6 +154,7 @@ export function buildingKindName(entityKind: number): string {
   if (entityKind === ENTITY_KIND.mineralsQuarry) return 'mineralsQuarry';
   if (entityKind === ENTITY_KIND.waterExtractor) return 'waterExtractor';
   if (entityKind === ENTITY_KIND.petroleumWell) return 'petroleumWell';
+  if (entityKind === ENTITY_KIND.sensorArray) return 'sensorArray';
   if (entityKind === ENTITY_KIND.tradeHub) return 'tradeHub';
   if (entityKind === ENTITY_KIND.roboticsFactory) return 'roboticsFactory';
   if (entityKind === ENTITY_KIND.droneControlArray) return 'droneControlArray';

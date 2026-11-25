@@ -25,6 +25,7 @@ const VISION_BUILDING_KINDS: ReadonlySet<number> = new Set([
   ENTITY_KIND.mineralsQuarry,
   ENTITY_KIND.waterExtractor,
   ENTITY_KIND.petroleumWell,
+  ENTITY_KIND.sensorArray,
   ENTITY_KIND.roboticsFactory,
   ENTITY_KIND.droneControlArray,
   ENTITY_KIND.autocannon,
@@ -95,6 +96,9 @@ export function getEntityFootprintSize(kind: number, data?: CompiledDataLike): n
   }
   if (kind === ENTITY_KIND.tradeHub) {
     return Number(tradeHub?.t1?.footprintW ?? tradeHub?.t1?.footprint ?? 2);
+  }
+  if (kind === ENTITY_KIND.sensorArray) {
+    return Number(grid?.sensorArray?.footprintW ?? grid?.sensorArray?.footprint ?? 2);
   }
   if (
     kind === ENTITY_KIND.capacitor ||
@@ -376,4 +380,48 @@ export function canAttackerSpotOrFireOnTarget(
   if (owner < 0) return true;
 
   return isTargetSpottedByColony(state, owner, targetRow, data);
+}
+
+/** Default surveillance radar radius (in hex tiles) of an active T1 Sensor Array. */
+export const DEFAULT_SENSOR_ARRAY_RADAR_RADIUS = 24;
+
+const SENSOR_INACTIVE_STRING_STATES = new Set([
+  'constructing',
+  'descending',
+  'inert',
+  'waiting',
+  'offlineBrownout',
+  'offlineUnpowered',
+  'offlineCapped',
+  'offlineOverload',
+  'offlineNoFuel',
+  'offlineNoGrid',
+  'offline',
+]);
+
+/** Returns the radar radius (in tiles) for Sensor Arrays from `data.tables.grid.sensorArray`. */
+export function getSensorArrayRadarRadius(data?: CompiledDataLike): number {
+  const grid = data?.tables?.grid as Record<string, CompiledRow> | undefined;
+  const raw = Number(grid?.sensorArray?.radarRadius ?? grid?.radar?.radarRadius);
+  return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_SENSOR_ARRAY_RADAR_RADIUS;
+}
+
+/** True when a Sensor Array is constructed, alive, and powered (`active`, `idle`, `working`, etc.). */
+export function isSensorArrayActive(state: string | number | null | undefined, hp = 1): boolean {
+  if (typeof hp === 'number' && hp <= 0) return false;
+  if (typeof state === 'number') {
+    return (
+      state === ENTITY_STATE.idle ||
+      state === ENTITY_STATE.moving ||
+      state === ENTITY_STATE.working ||
+      state === ENTITY_STATE.active ||
+      state === ENTITY_STATE.harvesting ||
+      state === ENTITY_STATE.repairing
+    );
+  }
+  if (typeof state === 'string') {
+    if (!state) return true;
+    return !SENSOR_INACTIVE_STRING_STATES.has(state);
+  }
+  return true;
 }

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { isWorldPointInColonyFov } from '../lighting/ColonyVisionAndLights';
 import { useVertebrateInstanceAttributes } from '../animation/vertebrates/instanceShader';
 import { getVertebrateConfig, isVertebrateGeometry } from '../animation/vertebrates/rig';
 import { VERTEBRATE_ANIMATION } from '../animation/vertebrates/shader';
@@ -138,6 +139,7 @@ export class AnimalsOrchestrator {
         if (a.speciesSlot !== slotIdx) continue;
         if (drawn >= rs.capacity) break;
         if (bounded && !inViewFocus(a.x, a.z, 14)) continue;
+        if (!isWorldPointInColonyFov(a.x, a.z)) continue;
         this.pos.set(a.x, a.y, a.z);
         this.euler.set(0, a.yaw, 0, 'YXZ');
         this.quat.setFromEuler(this.euler);

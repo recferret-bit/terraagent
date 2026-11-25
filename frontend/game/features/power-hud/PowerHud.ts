@@ -20,6 +20,7 @@ const KIND_NAMES: Record<number, string> = {
   [ENTITY_KIND.mineralsQuarry]: 'Minerals Quarry',
   [ENTITY_KIND.waterExtractor]: 'Water Extractor',
   [ENTITY_KIND.petroleumWell]: 'Petroleum Well',
+  [ENTITY_KIND.sensorArray]: 'Sensor Array',
 };
 
 const BUILDING_KINDS: ReadonlySet<number> = new Set<number>([
@@ -37,6 +38,7 @@ const BUILDING_KINDS: ReadonlySet<number> = new Set<number>([
   ENTITY_KIND.mineralsQuarry,
   ENTITY_KIND.waterExtractor,
   ENTITY_KIND.petroleumWell,
+  ENTITY_KIND.sensorArray,
 ]);
 
 /** A `SimView` entity as the inspector reads it (tests pass partial rows). */

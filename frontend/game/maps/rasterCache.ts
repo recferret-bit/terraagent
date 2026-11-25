@@ -24,7 +24,9 @@ export const defaultTileColorResolver: TileColorResolver = (
   if ((tiles.explored || tiles.exploredByColony) && !explored) {
     return '#3B4C6B';
   }
-  const prep = tiles.prep[index] ?? PREP_CODES.wild;
+  const tileOwner = tiles.owner ? (tiles.owner[index] ?? -1) : -1;
+  const hideForeignPrep = viewerColony >= 0 && tileOwner >= 0 && tileOwner !== viewerColony;
+  const prep = hideForeignPrep ? PREP_CODES.wild : (tiles.prep[index] ?? PREP_CODES.wild);
   if (prep === PREP_CODES.living || prep === PREP_CODES.irrigated) return '#3DEB8A';
   if (prep === PREP_CODES.prepared) return '#F3E3A6';
   if (prep === PREP_CODES.ridge || prep === PREP_CODES.moat) return '#A583EE';

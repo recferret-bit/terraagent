@@ -16,6 +16,7 @@ const CONSUMER_ROWS: ReadonlyArray<readonly [number, string, string]> = [
   [ENTITY_KIND.mineralsQuarry, 'grid', 'mineralsQuarry'],
   [ENTITY_KIND.waterExtractor, 'grid', 'waterExtractor'],
   [ENTITY_KIND.petroleumWell, 'grid', 'petroleumWell'],
+  [ENTITY_KIND.sensorArray, 'grid', 'sensorArray'],
   [ENTITY_KIND.metalsExtractor, 'economyT1Basic', 'metalsExtractor'],
   [ENTITY_KIND.roboticsFactory, 'combatUnits', 'roboticsFactory'],
   [ENTITY_KIND.droneControlArray, 'combatUnits', 'droneControlArray'],

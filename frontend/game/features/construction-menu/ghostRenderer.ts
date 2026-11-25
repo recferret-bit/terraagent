@@ -27,6 +27,7 @@ const ARCHETYPE_BY_BUILDING: Record<string, string> = {
   mineralsQuarry: 'building.quarry',
   waterExtractor: 'building.waterPump',
   petroleumWell: 'building.oilWell',
+  sensorArray: 'building.sensorArray',
   tradeHub: 'building.tradeHub',
   roboticsFactory: 'building.roboticsFactory',
   droneControlArray: 'building.droneArray',

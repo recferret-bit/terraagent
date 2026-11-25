@@ -236,6 +236,7 @@ const POWERED_BUILDING_KINDS: ReadonlySet<number> = new Set<number>([
   ENTITY_KIND.mineralsQuarry,
   ENTITY_KIND.waterExtractor,
   ENTITY_KIND.petroleumWell,
+  ENTITY_KIND.sensorArray,
   ENTITY_KIND.supplyDepot,
   ENTITY_KIND.tradeHub,
   ENTITY_KIND.roboticsFactory,

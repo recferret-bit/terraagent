@@ -143,10 +143,17 @@ const EDGE_FRAG = /* glsl */ `#include <alphatest_fragment>
   vec2 o = tp - cen;
   float e = 0.5 - max(max(abs(o.x), abs(dot(o, vec2(0.5, 0.8660254)))), abs(dot(o, vec2(-0.5, 0.8660254))));
   float em = e * 2.0;                              // metres to the edge
+  float colonyFovGate = uFovEnabled > 0.001
+    ? mix(1.0, smoothstep(0.02, 0.25, evalColonyFovMask(vLP).x), clamp(uFovEnabled, 0.0, 1.0))
+    : 1.0;
+  vec3 preTintRgb = diffuseColor.rgb;
 ${HEX_TINT_GLSL}
-  float hexGrid = max(hexGridCell(ownAx), hexGridCell(ownAx + nbStep)); // own cell or the one across the nearest edge
+  diffuseColor.rgb = mix(preTintRgb, diffuseColor.rgb, colonyFovGate);
+  float hexGrid = max(hexGridCell(ownAx), hexGridCell(ownAx + nbStep)) * colonyFovGate; // own cell or the one across the nearest edge
 ${HEX_SHORE_BEACH_GLSL}
+  vec3 preTerraformRgb = diffuseColor.rgb;
 ${HEX_TERRAFORM_GLSL}
+  diffuseColor.rgb = mix(preTerraformRgb, diffuseColor.rgb, colonyFovGate);
   float w = max(0.025, fwidth(em) * 0.75);
   float line = 1.0 - smoothstep(w, w * 2.2, em);
   diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * 0.62, line * uEdge * hexGrid);

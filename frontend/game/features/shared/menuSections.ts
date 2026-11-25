@@ -34,7 +34,7 @@ export const BUILD_GROUPS: readonly MenuGroup[] = [
     text: 'Depots and the trade hub. Store cargo and ship it.',
     keys: ['supplyDepot', 'depot', 'tradeHub'],
   },
-  { id: 'defense', title: 'Defense', text: 'Turrets that hold the perimeter.', keys: ['turret', 'autocannon', 'laserTower'] },
+  { id: 'defense', title: 'Defense', text: 'Turrets that hold the perimeter.', keys: ['turret', 'autocannon', 'laserTower', 'sensorArray'] },
   { id: 'territory', title: 'Territory', text: 'Beacons that claim sectors past the hub.', keys: ['outpostBeacon'] },
 ];
 

@@ -39,6 +39,7 @@ export function lightArchetypeForKind(kind: number, tier?: number): string {
   if (kind === ENTITY_KIND.metalsExtractor) return 'building.mine';
   if (kind === ENTITY_KIND.solar) return 'building.solar';
   if (kind === ENTITY_KIND.tradeHub) return 'building.tradeHub';
+  if (kind === ENTITY_KIND.sensorArray) return 'building.sensorArray';
   if (kind === ENTITY_KIND.pod) return 'ship.dropPod';
   if (kind === ENTITY_KIND.hq) return 'robot.hero';
   if (kind === ENTITY_KIND.worker) return archetypeForKind(kind, tier);
@@ -51,6 +52,7 @@ export function scaleForKind(kind: number, tier?: number): number {
   if (kind === ENTITY_KIND.metalsExtractor) return 1.3;
   if (kind === ENTITY_KIND.solar) return 1.3;
   if (kind === ENTITY_KIND.tradeHub) return 1.3;
+  if (kind === ENTITY_KIND.sensorArray) return 1.3;
   if (kind === ENTITY_KIND.pod) return 1.15;
   if (kind === ENTITY_KIND.hq) return 1.15;
   if (kind === ENTITY_KIND.worker) return tier === 2 || tier === 3 ? 1 : 1.05;

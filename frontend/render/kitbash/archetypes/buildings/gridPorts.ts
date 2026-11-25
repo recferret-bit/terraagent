@@ -11,6 +11,7 @@ export const GRID_PORTS: Readonly<Record<string, V3>> = {
   'building.supplyDepot': [0.4, 3.8, -0.8],
   'building.coalGen': [-0.9, 6.1, 0.5],
   'building.waterPump': [0, 4.2, -0.2],
+  'building.sensorArray': [1.35, 2.95, -1.25],
 };
 
 export function gridPort(b: KitbashBuilder, id: string, baseY: number): void {

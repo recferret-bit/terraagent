@@ -29,6 +29,8 @@ const ITEM_STAGE_ALIASES: Readonly<Record<string, string>> = {
   droneControlArray: 'roboticsFactory',
   drone_control_array: 'roboticsFactory',
   droneArray: 'roboticsFactory',
+  sensorArray: 'pylon',
+  sensor_array: 'pylon',
 };
 
 function snakeToCamel(id: string): string {

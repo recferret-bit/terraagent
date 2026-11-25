@@ -24,7 +24,7 @@ describe('building night lights', () => {
   });
 
   it('gives every building its own short rig and does not copy one onto another', () => {
-    expect(BUILDING_LIGHT_IDS).toHaveLength(16);
+    expect(BUILDING_LIGHT_IDS).toHaveLength(17);
     const seen = new Map<string, string>();
     for (const id of BUILDING_LIGHT_IDS) {
       const lights = getArchetypeLights(id);

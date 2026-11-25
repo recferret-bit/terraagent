@@ -15,6 +15,7 @@ export const BUILDING_POOL_THRESHOLDS: Readonly<Record<string, PoolThresholdSpec
   'building.claimBeacon': { initialSize: 2, threshold: 24 },
   'building.roboticsFactory': { initialSize: 2, threshold: 16 },
   'building.droneArray': { initialSize: 2, threshold: 16 },
+  'building.sensorArray': { initialSize: 2, threshold: 24 },
   'building.pylon': { initialSize: 8, threshold: 120 },
   'building.solar': { initialSize: 6, threshold: 96 },
   'building.wind': { initialSize: 6, threshold: 80 },

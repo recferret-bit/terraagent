@@ -1,9 +1,10 @@
 import { DEFAULT_COLONY_COLORS } from '@terra/contracts/tiles/codes';
 import { ENTITY_KIND, presenceRoleOf, type ViewEntity } from '@terra/sim';
-import { hexRound } from '@terra/sim/grid/hex';
+import { hexDistance, hexRound } from '@terra/sim/grid/hex';
 import { is2x2BuildingKind, isConstructibleBuilding } from '../app/online/entityKinds';
 import { E, ENTITY_FIELDS, entityCount, readEntity, type EntityRow } from '../store/replica/viewCodec';
 import { createMapVisibility } from './visibility';
+import { collectActiveSensorArrays, isTileInSensorRadar, type ActiveSensorArray } from './radarLayer';
 import type { MapLayer, MapLayerDrawView } from './types';
 
 /** Most markers drawn per map; units are kept first, buildings fill what is left. */
@@ -12,6 +13,7 @@ export const MAX_ENTITY_DOTS = 1500;
 export const DEFAULT_DOT_RADIUS_PX = 2.5;
 export const DEFAULT_OWN_DOT_COLOR = '#FF6B1A';
 export const DEFAULT_FAUNA_DOT_COLOR = '#F04848';
+export const DEFAULT_ANIMAL_DOT_COLOR = '#3DEB8A';
 export const DEFAULT_GUILD_DOT_COLOR = '#52B4FF';
 export const DEFAULT_NEUTRAL_DOT_COLOR = '#8A93A6';
 
@@ -26,7 +28,7 @@ export const OWNER_NONE = -1;
 export const OWNER_FAUNA = -2;
 export const OWNER_GUILD = -3;
 
-export type EntityDotRole = 'own' | 'foreign' | 'fauna' | 'guild' | 'neutral';
+export type EntityDotRole = 'own' | 'foreign' | 'fauna' | 'animal' | 'guild' | 'neutral';
 /** `square` = building (drawn first, under the units), `dot` = unit. */
 export type EntityDotShape = 'dot' | 'square';
 
@@ -48,6 +50,7 @@ export interface EntityDot {
 export interface DotPalette {
   readonly own: string;
   readonly fauna: string;
+  readonly animal?: string;
   readonly guild: string;
   readonly neutral: string;
 }
@@ -83,6 +86,7 @@ export function resolveDotPalette(): DotPalette {
   return {
     own: read('--ta-orange', DEFAULT_OWN_DOT_COLOR),
     fauna: read('--ta-fault', DEFAULT_FAUNA_DOT_COLOR),
+    animal: read('--ta-green', DEFAULT_ANIMAL_DOT_COLOR),
     guild: read('--ta-blue-hi', DEFAULT_GUILD_DOT_COLOR),
     neutral: read('--ta-steel', DEFAULT_NEUTRAL_DOT_COLOR),
   };
@@ -154,7 +158,11 @@ export function resolveEntityDotColor(
   if (role === 'foreign') {
     return resolveForeignColonyColor(owner, context?.colonyColors, context?.ownColonySlot ?? 0);
   }
-  return (context?.palette ?? resolveDotPalette())[role];
+  const pal = context?.palette ?? resolveDotPalette();
+  if (role === 'animal') {
+    return pal.animal ?? DEFAULT_ANIMAL_DOT_COLOR;
+  }
+  return pal[role];
 }
 
 /**
@@ -194,22 +202,27 @@ function descriptorOf(raw: Record<string, unknown> | undefined): string {
 const finiteOr = (v: number | undefined, fallback: number): number =>
   typeof v === 'number' && !Number.isNaN(v) ? v : fallback;
 
+const SQRT3 = Math.sqrt(3);
+
 interface DotContext {
   readonly view: MapLayerDrawView;
   readonly ownColonySlot: number;
   readonly visible: (q: number, r: number) => boolean;
+  readonly radarArrays: readonly ActiveSensorArray[];
   readonly radiusPx: number;
   readonly palette: DotPalette;
 }
 
-/** One map marker for `row`, or null when it sits outside current sight (own entities always show). */
+/** One map marker for `row`, or null when it sits outside current sight & sensor radar (own entities always show). */
 function makeDot(c: DotContext, row: EntityRow, raw: Record<string, unknown> | undefined): EntityDot | null {
   if (row.hp <= 0) return null;
   const role = classifyEntityRole(row.owner, c.ownColonySlot, descriptorOf(raw), row.kind);
   const axialQ = finiteOr(row.x, row.q ?? 0);
   const axialR = finiteOr(row.y, row.r ?? 0);
   const [roundedQ, roundedR] = hexRound(axialQ, axialR);
-  if (role !== 'own' && !(c.view.spectatorAllVision && row.owner >= 0) && !c.visible(roundedQ, roundedR)) return null;
+  const inRadar = c.radarArrays.length > 0 && isTileInSensorRadar(axialQ, axialR, c.radarArrays);
+  const allVisible = Boolean(c.view.fullVision) || Boolean(c.view.spectatorAllVision && row.owner >= 0);
+  if (role !== 'own' && !allVisible && !c.visible(roundedQ, roundedR) && !inRadar) return null;
   const q = finiteOr(row.q, roundedQ);
   const r = finiteOr(row.r, roundedR);
   const { x, y } = c.view.axialToPixel(axialQ, axialR);
@@ -223,30 +236,60 @@ function makeDot(c: DotContext, row: EntityRow, raw: Record<string, unknown> | u
   return { id: row.id, kind: row.kind, q, r, x, y, color, role, shape: square ? 'square' : 'dot', radiusPx };
 }
 
+/** Collects map markers for vertebrate land animals (birds ignored) visible to sight or active sensor radar. */
+function collectLandAnimalDots(c: DotContext, limit: number): EntityDot[] {
+  const animals = c.view.landAnimals;
+  if (!animals?.length || limit <= 0) return [];
+  const out: EntityDot[] = [];
+  const color = c.palette.animal ?? DEFAULT_ANIMAL_DOT_COLOR;
+  const radiusPx = Math.max(1.5, c.radiusPx * 0.85);
+  const maxR = typeof c.view.radius === 'number' && c.view.radius > 0 ? c.view.radius : null;
+
+  for (let i = 0; i < animals.length && out.length < limit; i++) {
+    const a = animals[i]!;
+    const ar = a.z / SQRT3;
+    const aq = a.x * 0.5 - ar * 0.5;
+    const [rq, rr] = hexRound(aq, ar);
+    if (maxR !== null && hexDistance(0, 0, rq, rr) > maxR) continue;
+    const spotted = Boolean(c.view.fullVision) || c.visible(rq, rr) || isTileInSensorRadar(aq, ar, c.radarArrays) || Boolean(c.view.spectatorAllVision);
+    if (!spotted) continue;
+    const { x, y } = c.view.axialToPixel(aq, ar);
+    out.push({ id: -(100_000 + i), kind: -1, q: rq, r: rr, x, y, color, role: 'animal', shape: 'dot', radiusPx });
+  }
+  return out;
+}
+
 /**
- * Map markers for every visible entity: buildings first (drawn under), then units. Under `MAX_ENTITY_DOTS` units
- * are kept first and buildings fill the remaining room.
+ * Map markers for every visible entity and land animal: buildings first (drawn under), then units & animals.
+ * Under `MAX_ENTITY_DOTS` mobile entities and animals are kept first and buildings fill the remaining room.
  */
 export function collectEntityDots(view: MapLayerDrawView, options?: CollectEntityDotsOptions): EntityDot[] {
-  if (!view.clientView?.entities) return [];
+  const hasEntities = Boolean(view.clientView?.entities);
+  const hasAnimals = Boolean(view.landAnimals?.length);
+  if (!hasEntities && !hasAnimals) return [];
   const ctx: DotContext = {
     view,
     ownColonySlot: view.ownColonySlot ?? 0,
     visible: createMapVisibility(view),
+    radarArrays: collectActiveSensorArrays(view),
     radiusPx: options?.radiusPx ?? DEFAULT_DOT_RADIUS_PX,
     palette: options?.palette ?? resolveDotPalette(),
   };
   const units: EntityDot[] = [];
   const buildings: EntityDot[] = [];
-  walkEntityRows(view.clientView.entities as Float32Array | readonly unknown[], view.clientView.count, (row, raw) => {
-    const building = isBuildingKind(row.kind);
-    if (building && buildings.length >= MAX_ENTITY_DOTS) return true;
-    const dot = makeDot(ctx, row, raw);
-    if (dot) (building ? buildings : units).push(dot);
-    return units.length < MAX_ENTITY_DOTS;
-  });
-  if (buildings.length > MAX_ENTITY_DOTS - units.length) buildings.length = MAX_ENTITY_DOTS - units.length;
-  return buildings.concat(units);
+  if (view.clientView?.entities) {
+    walkEntityRows(view.clientView.entities as Float32Array | readonly unknown[], view.clientView.count, (row, raw) => {
+      const building = isBuildingKind(row.kind);
+      if (building && buildings.length >= MAX_ENTITY_DOTS) return true;
+      const dot = makeDot(ctx, row, raw);
+      if (dot) (building ? buildings : units).push(dot);
+      return units.length < MAX_ENTITY_DOTS;
+    });
+  }
+  const animalDots = collectLandAnimalDots(ctx, MAX_ENTITY_DOTS - units.length);
+  const mobile = units.concat(animalDots);
+  if (buildings.length > MAX_ENTITY_DOTS - mobile.length) buildings.length = MAX_ENTITY_DOTS - mobile.length;
+  return buildings.concat(mobile);
 }
 
 /**

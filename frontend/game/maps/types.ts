@@ -52,6 +52,14 @@ export interface MapLayerDrawView {
   readonly homeTile?: { readonly q: number; readonly r: number } | null;
   readonly currentSectorId?: SectorId | null;
   readonly cameraTile?: { readonly q: number; readonly r: number } | null;
+  /** Ambient land animals from biosphere (never birds) for live-sight / radar blips. */
+  readonly landAnimals?: readonly MapLandAnimalPoint[];
+}
+
+export interface MapLandAnimalPoint {
+  readonly x: number;
+  readonly z: number;
+  readonly kind?: string;
 }
 
 export interface MapLayer {

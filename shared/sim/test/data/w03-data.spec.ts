@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parseWaves } from '@terra/contracts';
 import { compileData, dataRow } from '../../src/data';
+import { ENTITY_STATE, getSensorArrayRadarRadius, isSensorArrayActive } from '../../src';
 import { resolveItemUnlockStage } from '../../src/systems/progression/validate';
 
 describe('W03-01 data rows: grid table (Builder + 8 W03 buildings + queueConfig)', () => {
@@ -88,6 +89,7 @@ describe('W03-01 data rows: grid table (Builder + 8 W03 buildings + queueConfig)
       supplyDepot: 2,
       waterExtractor: 2,
       petroleumWell: 2,
+      sensorArray: 1,
     };
     for (const [id, stage] of Object.entries(expected)) {
       const row = dataRow(compiled, 'grid', id);
@@ -96,5 +98,28 @@ describe('W03-01 data rows: grid table (Builder + 8 W03 buildings + queueConfig)
     }
     expect(dataRow(compiled, 'economyT1Basic', 'metalsExtractor').unlockStage).toBe(1);
     expect(dataRow(compiled, 'economyT1Basic', 'solar').unlockStage).toBe(1);
+  });
+});
+
+describe('W03 Sensor Array data and radar helpers', () => {
+  it('configures T1 Sensor Array with high power drain, 24-tile radar, and active-state gating', () => {
+    const compiled = compileData(parseWaves('..03'));
+    const row = dataRow(compiled, 'grid', 'sensorArray');
+    expect(row).toMatchObject({
+      tier: 1,
+      unlockStage: 1,
+      footprintW: 2,
+      footprintD: 2,
+      archetype: 'building.sensorArray',
+      powerDrainPerS: 20,
+      radarRadius: 24,
+    });
+    expect(getSensorArrayRadarRadius(compiled)).toBe(24);
+    expect(isSensorArrayActive(ENTITY_STATE.active, 420)).toBe(true);
+    expect(isSensorArrayActive(ENTITY_STATE.idle, 420)).toBe(true);
+    expect(isSensorArrayActive(ENTITY_STATE.offlineBrownout, 420)).toBe(false);
+    expect(isSensorArrayActive(ENTITY_STATE.offlineUnpowered, 420)).toBe(false);
+    expect(isSensorArrayActive(ENTITY_STATE.constructing, 420)).toBe(false);
+    expect(isSensorArrayActive('active', 0)).toBe(false);
   });
 });

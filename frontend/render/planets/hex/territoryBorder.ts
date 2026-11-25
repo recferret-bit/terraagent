@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { HEX_DIRS, hexIndex } from '@terra/sim/grid/hex';
+import { COLONY_VISION_AND_LIGHTS_GLSL, getColonyVisionUniforms } from '../../lighting/ColonyVisionAndLights';
 import { DEFAULT_COLONY_COLORS as CONTRACT_COLONY_COLORS } from '@terra/contracts/tiles/codes';
 import { computeEffectiveHeights, type HexTileLayers } from './chunkMesh';
 import { makeHeightSampler } from './heightSampler';
@@ -264,7 +265,7 @@ export function buildTerritoryBorderGeometry(
 }
 
 export function createTerritoryBorderMaterial(): THREE.MeshBasicMaterial {
-  return new THREE.MeshBasicMaterial({
+  const mat = new THREE.MeshBasicMaterial({
     vertexColors: true,
     side: THREE.DoubleSide,
     transparent: true,
@@ -274,4 +275,30 @@ export function createTerritoryBorderMaterial(): THREE.MeshBasicMaterial {
     polygonOffsetFactor: -1,
     polygonOffsetUnits: -1,
   });
+  mat.customProgramCacheKey = () => 'territory_border_fov_v1';
+  mat.onBeforeCompile = (shader) => {
+    Object.assign(shader.uniforms, getColonyVisionUniforms());
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vTerritoryWorldPos;')
+      .replace(
+        '#include <project_vertex>',
+        'vec4 territoryWorldPos = modelMatrix * vec4(transformed, 1.0);\nvTerritoryWorldPos = territoryWorldPos.xyz;\n#include <project_vertex>',
+      );
+    shader.fragmentShader = shader.fragmentShader
+      .replace(
+        '#include <common>',
+        `#include <common>\n${COLONY_VISION_AND_LIGHTS_GLSL}\nvarying vec3 vTerritoryWorldPos;`,
+      )
+      .replace(
+        '#include <alphatest_fragment>',
+        `#include <alphatest_fragment>
+if (uFovEnabled > 0.001) {
+  float fovVis = evalColonyFovMask(vTerritoryWorldPos).x;
+  float fovGate = smoothstep(0.02, 0.28, fovVis);
+  diffuseColor.a *= mix(1.0, fovGate, clamp(uFovEnabled, 0.0, 1.0));
+  if (diffuseColor.a < 0.01) discard;
+}`,
+      );
+  };
+  return mat;
 }

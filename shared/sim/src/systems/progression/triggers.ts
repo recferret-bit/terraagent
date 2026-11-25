@@ -96,6 +96,7 @@ function buildingAliases(kind: string): readonly string[] {
   if (kind === 'mineralsExtractor' || kind === 'mineralsQuarry') return ['mineralsExtractor', 'mineralsQuarry'];
   if (kind === 'turret' || kind === 'autocannon') return ['turret', 'autocannon'];
   if (kind === 'pulseTurret' || kind === 'laserTower') return ['pulseTurret', 'laserTower'];
+  if (kind === 'radar' || kind === 'sensorArray') return ['radar', 'sensorArray'];
   return [kind];
 }
 

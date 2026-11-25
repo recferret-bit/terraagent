@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from 'vitest';
-import { ENTITY_KIND, type ViewEntity } from '@terra/sim';
+import { ENTITY_KIND, ENTITY_STATE, type ViewEntity } from '@terra/sim';
 import { hexCount, hexIndex } from '@terra/sim/grid/hex';
 import {
   ClientTiles,
@@ -13,6 +13,9 @@ import {
   classifyEntityRole,
   collectEntityDots,
   createUnitsMapLayer,
+  DEFAULT_ANIMAL_DOT_COLOR,
+  DEFAULT_FAUNA_DOT_COLOR,
+  DEFAULT_OWN_DOT_COLOR,
   drawEntityDots,
   formatHexColor,
   MAX_ENTITY_DOTS,
@@ -349,5 +352,64 @@ describe('W04 entity markers branch on kind', () => {
     collectEntityDots(viewOf(list));
     expect(spy).toHaveBeenCalledTimes(1);
     spy.mockRestore();
+  });
+});
+
+describe('Sensor Array radar dots (animals, insects, bots/players)', () => {
+  it('reveals animals, insects, and foreign bots within active Sensor Array radar with distinct colors', () => {
+    const radius = 32;
+    const hx = hexIndex(radius);
+    const makeDotEntity = (id: number, owner: number, q: number, r: number, kind: number, state: number, hp: number): ViewEntity =>
+      ({ id, kind, owner, tier: 1, q, r, x: q, y: r, rot: 0, hp, hpMax: hp, state, progress: 1 });
+    const makeDrawView = (sensorState: number): MapLayerDrawView => {
+      const entities: ViewEntity[] = [
+        makeDotEntity(1, 0, 0, 0, ENTITY_KIND.sensorArray, sensorState, 420),
+        makeDotEntity(2, 1, 14, 0, ENTITY_KIND.hq, ENTITY_STATE.idle, 300),
+        makeDotEntity(3, -1, -12, 4, ENTITY_KIND.blackAnt, ENTITY_STATE.idle, 120),
+        makeDotEntity(4, 1, 29, 0, ENTITY_KIND.worker, ENTITY_STATE.idle, 100),
+      ];
+      return {
+        width: 200,
+        height: 200,
+        radius,
+        tiles: { count: hx.count, terrain: new Uint8Array(hx.count), prep: new Uint8Array(hx.count), height: new Float32Array(hx.count), owner: new Int8Array(hx.count).fill(-1) },
+        clientView: {
+          tick: 10,
+          planet: { id: 'radar-dots', type: 'temperate', radius },
+          colonies: [],
+          count: entities.length,
+          entities: packEntities(entities),
+          blobs: { combatVision: { byColony: { 0: [hx.indexOf(0, 0)] } } },
+        },
+        ownColonySlot: 0,
+        axialToPixel: (q, r) => ({ x: 100 + q * 2, y: 100 + r * 2 }),
+        pixelToAxial: (x, y) => ({ q: (x - 100) / 2, r: (y - 100) / 2 }),
+        tilePixelRadius: 2,
+        landAnimals: [
+          { x: 20, z: 0, kind: 'wolf' },
+          { x: 56, z: 0, kind: 'stag' },
+        ],
+      };
+    };
+
+    const dots = collectEntityDots(makeDrawView(ENTITY_STATE.active));
+    const foreignBot = dots.find((d) => d.id === 2);
+    const insect = dots.find((d) => d.id === 3);
+    const animal = dots.find((d) => d.role === 'animal');
+    const outOfRange = dots.find((d) => d.id === 4);
+
+    expect(foreignBot?.role).toBe('foreign');
+    expect(insect?.role).toBe('fauna');
+    expect(insect?.color).toBe(DEFAULT_FAUNA_DOT_COLOR);
+    expect(animal?.color).toBe(DEFAULT_ANIMAL_DOT_COLOR);
+    expect(foreignBot!.color).not.toBe(DEFAULT_ANIMAL_DOT_COLOR);
+    expect(foreignBot!.color).not.toBe(DEFAULT_FAUNA_DOT_COLOR);
+    expect(foreignBot!.color).not.toBe(DEFAULT_OWN_DOT_COLOR);
+    expect(dots.filter((d) => d.role === 'animal')).toHaveLength(1);
+    expect(outOfRange).toBeUndefined();
+
+    // Offline Sensor Array reveals no out-of-sight targets
+    const offlineDots = collectEntityDots(makeDrawView(ENTITY_STATE.offlineBrownout));
+    expect(offlineDots.map((d) => d.id)).toEqual([1]);
   });
 });
