@@ -6,7 +6,7 @@ export const DASHBOARD_DEFS = [
   {
     key: 'exec',
     name: 'TerraAgent · Executive, Views & Countries',
-    description: '[ta-dashboard:exec] Starter overview: visitors (DAU/WAU), pageviews by surface, GeoIP countries, traffic/UTM sources, consent, D1-D7 retention, and landing/content conversions.',
+    description: '[ta-dashboard:exec] Starter overview: cookieless visitors (DAU/WAU), pageviews by surface, GeoIP countries, traffic/UTM sources, D1-D7 retention, and landing/content conversions.',
     tags: ['terraagent', 'exec'],
   },
   {

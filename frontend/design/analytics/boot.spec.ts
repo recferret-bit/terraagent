@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { browserDeps, resetBrowserAnalyticsForTest } from '../../game/core/analytics/browser';
 import {
   classifyAuthFailure, consentedAuthHeaders, rememberAuthProvider, succeedAuth, beginAuth,
 } from './auth';
@@ -26,6 +27,7 @@ describe('product analytics boot', () => {
     track.mockClear();
     flush.mockClear();
     consentAllowed = false;
+    resetBrowserAnalyticsForTest();
     document.body.innerHTML = '';
     const { resetUiDelegationForTest } = await import('./ui');
     resetUiDelegationForTest();
@@ -38,23 +40,20 @@ describe('product analytics boot', () => {
     vi.stubGlobal('matchMedia', (query: string) => ({ matches: false, media: query }));
   });
 
-  it('pings the surface without consent and does not track or mint an anon id', async () => {
+  it('boots cookieless immediately with no dialog, writes zero cookies, tracks surface_viewed and drops a bad utm', async () => {
+    consentAllowed = true;
     await bootLanding();
     expect(fetch).toHaveBeenCalledWith('/v1/analytics/surface', expect.objectContaining({
       method: 'POST',
-      body: JSON.stringify({ surface: 'landing', consent: 'unknown' }),
+      body: JSON.stringify({ surface: 'landing', consent: 'allow' }),
     }));
-    expect(track).not.toHaveBeenCalled();
+    expect(document.querySelector('[data-testid="analytics-consent"]')).toBeNull();
+    expect(document.querySelector('[data-testid="analytics-consent-allow"]')).toBeNull();
     expect(document.cookie).not.toContain('ta_aid');
-    expect(document.querySelector('[data-testid="analytics-consent-allow"]')).not.toBeNull();
-  });
-
-  it('Allow tracks consent_granted then surface_viewed and drops a bad utm', async () => {
-    await bootLanding();
-    document.querySelector<HTMLButtonElement>('[data-testid="analytics-consent-allow"]')!.click();
-    expect(track.mock.calls.map((call) => call[0])).toEqual(['consent_granted', 'surface_viewed']);
-    expect(track.mock.calls[0]?.[1]).toMatchObject({ surface: 'landing', runtime: 'local' });
-    expect(track.mock.calls[1]?.[1]).toMatchObject({
+    expect(document.cookie).not.toContain('ta_consent');
+    expect(document.cookie).not.toContain('ta_ft');
+    expect(track.mock.calls.map((call) => call[0])).toEqual(['surface_viewed']);
+    expect(track.mock.calls[0]?.[1]).toMatchObject({
       surface: 'landing',
       runtime: 'local',
       viewport: 'desktop',
@@ -64,18 +63,56 @@ describe('product analytics boot', () => {
       utm_campaign: 'spring',
       first_touch: '1',
     });
-    expect(track.mock.calls[1]?.[1]).not.toHaveProperty('utm_medium');
+    expect(track.mock.calls[0]?.[1]).not.toHaveProperty('utm_medium');
     expect(flush).toHaveBeenCalledTimes(1);
   });
 
-  it('does not offer Allow when Global Privacy Control is set and pings decline', async () => {
+  it('honors Global Privacy Control by pinging decline and tracking nothing', async () => {
     Object.defineProperty(navigator, 'globalPrivacyControl', { configurable: true, value: true });
     await bootLanding();
     expect(fetch).toHaveBeenCalledWith('/v1/analytics/surface', expect.objectContaining({
       body: JSON.stringify({ surface: 'landing', consent: 'decline' }),
     }));
-    expect(document.querySelector('[data-testid="analytics-consent-allow"]')).toBeNull();
+    expect(document.querySelector('[data-testid="analytics-consent"]')).toBeNull();
     expect(track).not.toHaveBeenCalled();
+    expect(flush).not.toHaveBeenCalled();
+  });
+
+  it('honors a legacy ta_consent=analytics:0 opt-out cookie', async () => {
+    document.cookie = 'ta_consent=analytics:0; Path=/';
+    await bootLanding();
+    expect(fetch).toHaveBeenCalledWith('/v1/analytics/surface', expect.objectContaining({
+      body: JSON.stringify({ surface: 'landing', consent: 'decline' }),
+    }));
+    expect(track).not.toHaveBeenCalled();
+  });
+
+  it('marks intra-site navigation from terraagent.fun as first_touch 0 without cookies', async () => {
+    const { firstTouchBit } = await import('./context');
+    expect(firstTouchBit('')).toBe('1');
+    expect(firstTouchBit('https://google.com/')).toBe('1');
+    expect(firstTouchBit('https://terraagent.fun/landing.html')).toBe('0');
+    expect(firstTouchBit('https://play.terraagent.fun/')).toBe('0');
+    expect(document.cookie).not.toContain('ta_ft');
+  });
+
+  it('browserDeps defaults to cookieless enabled, writes zero cookies, and honors GPC and opt-out', () => {
+    const deps = browserDeps();
+    expect(deps.readConsent()).toBe(true);
+    const id = deps.anonId();
+    expect(id).toMatch(/^[0-9a-f-]{36}$/i);
+    expect(deps.anonId()).toBe(id);
+    expect(document.cookie).not.toContain('ta_aid');
+    expect(document.cookie).not.toContain('ta_consent');
+
+    deps.writeConsent(false);
+    expect(deps.readConsent()).toBe(false);
+    expect(document.cookie).not.toContain('ta_consent');
+
+    deps.writeConsent(true);
+    expect(deps.readConsent()).toBe(true);
+    Object.defineProperty(navigator, 'globalPrivacyControl', { configurable: true, value: true });
+    expect(deps.readConsent()).toBe(false);
   });
 });
 
@@ -139,17 +176,19 @@ describe('product analytics pathGroup', () => {
     expect(pathGroup('/', 'hub')).toBe('hub');
   });
 
-  it('tracks staking profile section and preserves wallet_kind on wallet redirect recovery', () => {
+  it('tracks staking profile section and preserves wallet_kind on wallet redirect recovery without writing cookies', () => {
     track.mockClear();
     consentAllowed = true;
-    document.cookie = 'ta_aid=3f0c6f0e-6a53-4d34-9a3e-2f1b6a1a9c11; Path=/';
     noteProfileSection('staking');
     noteProfileSection('not-a-section');
     rememberAuthProvider('near-wallet', 'my-near-wallet');
-    expect(consentedAuthHeaders()).toEqual({
-      'x-terra-anon': '3f0c6f0e-6a53-4d34-9a3e-2f1b6a1a9c11',
+    const headers = consentedAuthHeaders();
+    expect(headers).toEqual({
+      'x-terra-anon': expect.stringMatching(/^[0-9a-f-]{36}$/i),
       'x-terra-wallet': 'my-near-wallet',
     });
+    expect(consentedAuthHeaders()['x-terra-anon']).toBe(headers['x-terra-anon']);
+    expect(document.cookie).not.toContain('ta_aid');
     succeedAuth();
     expect(track.mock.calls.map(([n, p]) => [n, p])).toEqual([
       ['profile_section_opened', { section: 'staking', runtime: 'local' }],

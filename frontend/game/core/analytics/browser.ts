@@ -1,37 +1,38 @@
 import type { AnalyticsDeps } from './client';
 
-const DAY = 86_400;
-const cookieAttrs = (maxAge: number) =>
-  `; Path=/; Max-Age=${maxAge}; SameSite=Lax${typeof location !== 'undefined' && location.protocol === 'https:' ? '; Secure' : ''}`;
-// Production shares the choice across subdomains (CLIENT §10.1); dev/localhost sets no Domain.
-const domainAttr = () => {
-  const host = typeof location !== 'undefined' ? location.hostname : '';
-  if (host === 'terraagent.fun' || host.endsWith('.terraagent.fun')) return '; Domain=.terraagent.fun';
-  if (host === 'terraagent.com' || host.endsWith('.terraagent.com')) return '; Domain=.terraagent.com';
-  return '';
-};
+let memAnonId: string | undefined;
+let optedOut: boolean | undefined;
+
+function isGpc(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  return (navigator as Navigator & { globalPrivacyControl?: boolean }).globalPrivacyControl === true;
+}
 
 export function getCookie(name: string): string | undefined {
   if (typeof document === 'undefined' || typeof document.cookie !== 'string') return undefined;
   return document.cookie.split('; ').find((c) => c.startsWith(`${name}=`))?.slice(name.length + 1);
 }
-function setCookie(name: string, value: string, maxAge: number): void {
-  if (typeof document === 'undefined') return;
-  document.cookie = `${name}=${value}${domainAttr()}${cookieAttrs(maxAge)}`;
+
+/** Test-only reset for in-memory cookieless state across cases. */
+export function resetBrowserAnalyticsForTest(): void {
+  memAnonId = undefined;
+  optedOut = undefined;
 }
 
+/** Cookieless by default: writes zero cookies/storage, honors GPC and legacy `ta_consent=analytics:0` opt-out. */
 export const browserDeps = (): AnalyticsDeps => ({
-  readConsent: () => getCookie('ta_consent') === 'analytics:1',
-  writeConsent: (allowed) => setCookie('ta_consent', allowed ? 'analytics:1' : 'analytics:0', 180 * DAY),
-  anonId: () => {
-    let id = getCookie('ta_aid');
-    if (!id) {
-      id = crypto.randomUUID();
-      setCookie('ta_aid', id, 180 * DAY);
-    }
-    return id;
+  readConsent: () => !isGpc() && optedOut !== true && getCookie('ta_consent') !== 'analytics:0',
+  writeConsent: (allowed) => {
+    optedOut = !allowed;
+    if (!allowed) memAnonId = undefined;
   },
-  clearAnonId: () => setCookie('ta_aid', '', 0),
+  anonId: () => {
+    memAnonId ??= crypto.randomUUID();
+    return memAnonId;
+  },
+  clearAnonId: () => {
+    memAnonId = undefined;
+  },
   newSessionId: () => crypto.randomUUID(),
   fetch: (url, init) => fetch(url, init),
   sendBeacon: (url, body) => navigator.sendBeacon(url, body),

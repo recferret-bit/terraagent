@@ -1,38 +1,24 @@
-import { flush, setConsent } from '../../game/core/analytics';
+import { flush } from '../../game/core/analytics';
 import {
-  currentSurface, firstTouchBit, globalPrivacyControl, noteFirstTouchSession, pathGroup, pingConsent,
+  currentSurface, firstTouchBit, pathGroup, pingConsent,
   referrerClass, rememberSurface, runtimeLabel, type AnalyticsSurface, utmProps, viewportClass,
 } from './context';
-import { mountConsentPlate } from './consentPlate';
 import { installClientErrorTracking } from './errors';
 import { trackProduct } from './trackSafe';
 import { installUiActionDelegation } from './ui';
 
 let surfaceViewed = false;
 
+/** Boots cookieless product analytics immediately (zero cookies, zero banner; honors GPC). */
 export function bootProductAnalytics(surface: AnalyticsSurface): void {
   rememberSurface(surface);
-  noteFirstTouchSession();
   const consent = pingConsent();
   void postSurfacePing(surface, consent);
   installClientErrorTracking(surface);
   installUiActionDelegation(surface);
   if (consent === 'allow') {
     emitSurfaceViewed();
-    return;
-  }
-  if (consent === 'unknown' && !globalPrivacyControl()) {
-    mountConsentPlate({
-      onAllow() {
-        setConsent(true);
-        trackProduct('consent_granted', { surface, runtime: runtimeLabel() });
-        emitSurfaceViewed();
-        void flush();
-      },
-      onDecline() {
-        setConsent(false);
-      },
-    });
+    void flush();
   }
 }
 

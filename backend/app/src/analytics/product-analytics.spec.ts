@@ -7,6 +7,7 @@ import { AnalyticsController } from './analytics.controller';
 import { AnalyticsCounters } from './analytics.counters';
 import { AnalyticsService } from './analytics.service';
 import { env } from './analytics.module';
+import { dailyCookielessId, hasGpcHeader } from './cookieless-id';
 import { extractGeoContext, isPublicIp } from './geo-context';
 import { PostHogClient } from './posthog-client';
 import { ProductRecorder } from './product-recorder';
@@ -243,5 +244,67 @@ describe('geo context relay', () => {
       headers: { 'x-forwarded-for': '192.168.0.1', 'cf-ipcountry': 'XX' },
       ip: '127.0.0.1',
     })).toEqual({});
+  });
+});
+
+describe('cookieless daily visitor ID', () => {
+  const day1 = new Date('2026-11-25T10:00:00Z');
+  const day1Late = new Date('2026-11-25T23:59:59Z');
+  const day2 = new Date('2026-11-26T00:00:01Z');
+
+  it('produces a deterministic UUID per UTC day, rotates across midnight, and isolates different visitors', () => {
+    const reqA = { headers: { 'x-forwarded-for': '1.2.3.4', 'user-agent': 'Mozilla/5.0 TestBrowser' } };
+    const reqB = { headers: { 'x-forwarded-for': '5.6.7.8', 'user-agent': 'Mozilla/5.0 TestBrowser' } };
+    const id1 = dailyCookielessId(reqA, 'salt-1', day1);
+    const id1Later = dailyCookielessId(reqA, 'salt-1', day1Late);
+    const id2 = dailyCookielessId(reqA, 'salt-1', day2);
+    const idB = dailyCookielessId(reqB, 'salt-1', day1);
+    expect(id1).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+    expect(id1).toBe(id1Later);
+    expect(id2).not.toBe(id1);
+    expect(idB).not.toBe(id1);
+    expect(dailyCookielessId({ headers: {} }, 'salt-1', day1)).toBeUndefined();
+  });
+
+  it('stitches client batches and server commits onto the same daily cookieless ID and honors Sec-GPC', async () => {
+    const { svc, recorder, sent, rows, appEnv } = harness({ ...on, POSTHOG_PERSON_SALT: 'person-salt' });
+    const ctrl = new AnalyticsController(svc, appEnv);
+    const httpReq = {
+      headers: { 'x-forwarded-for': '1.2.3.4', 'user-agent': 'Chrome/130', 'x-terra-anon': ANON },
+      is: () => false,
+    } as unknown as Parameters<AnalyticsController['events']>[0];
+
+    await ctrl.events(httpReq, {
+      anonId: '11111111-1111-4111-8111-111111111111',
+      sessionId: 's1',
+      events: [{ name: 'surface_viewed', ts: TS, props: { surface: 'landing' } }],
+    });
+    await recorder.recordAuthCompleted(httpReq as unknown as IncomingMessage, 'google', PLAYER);
+
+    const clientDistinct = sent[0]?.body.batch[0]?.distinct_id;
+    const serverAuth = sent[1]?.body.batch.find((e) => e.event === 'auth_completed');
+    const serverIdentify = sent[1]?.body.batch.find((e) => e.event === '$identify');
+    expect(clientDistinct).toBeDefined();
+    expect(clientDistinct).not.toBe('11111111-1111-4111-8111-111111111111');
+    expect(clientDistinct).not.toBe(ANON);
+    expect(serverAuth?.distinct_id).toBe(clientDistinct);
+    expect(serverIdentify?.properties.$anon_distinct_id).toBe(clientDistinct);
+    expect(JSON.stringify(rows)).not.toContain('1.2.3.4');
+    expect(JSON.stringify(rows)).not.toContain('Chrome/130');
+
+    // Sec-GPC: 1 drops both client batches and server PostHog/DB rows
+    const gpcReq = {
+      headers: { 'x-forwarded-for': '1.2.3.4', 'user-agent': 'Chrome/130', 'x-terra-anon': ANON, 'sec-gpc': '1' },
+      is: () => false,
+    } as unknown as Parameters<AnalyticsController['events']>[0];
+    expect(hasGpcHeader(gpcReq)).toBe(true);
+    const sentBefore = sent.length;
+    await ctrl.events(gpcReq, {
+      anonId: ANON,
+      sessionId: 's2',
+      events: [{ name: 'surface_viewed', ts: TS, props: { surface: 'play' } }],
+    });
+    await recorder.recordAuthCompleted(gpcReq as unknown as IncomingMessage, 'google', PLAYER);
+    expect(sent).toHaveLength(sentBefore);
   });
 });

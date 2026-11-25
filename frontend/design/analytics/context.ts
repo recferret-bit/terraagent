@@ -5,9 +5,6 @@ export type AnalyticsSurface = (typeof ANALYTICS_SURFACES)[number];
 
 const PATH_GROUPS = ['landing', 'play', 'trade', 'me', 'whitepaper', 'pitchdeck', 'deed', 'hub', 'playground', 'design', 'not_found'] as const;
 const UTM_TOKEN = /^[A-Za-z0-9._-]{1,64}$/;
-const DAY = 86_400;
-const FT_COOKIE = 'ta_ft';
-const FT_SESSION = 'ta_ft_seen';
 
 let bootedSurface: AnalyticsSurface | undefined;
 
@@ -21,9 +18,8 @@ export function currentSurface(): AnalyticsSurface | undefined {
 
 export function readConsentCookie(): 'allow' | 'decline' | 'unknown' {
   const value = getCookie('ta_consent');
-  if (value === 'analytics:1') return 'allow';
   if (value === 'analytics:0') return 'decline';
-  return 'unknown';
+  return 'allow';
 }
 
 export function globalPrivacyControl(): boolean {
@@ -31,7 +27,7 @@ export function globalPrivacyControl(): boolean {
   return (navigator as Navigator & { globalPrivacyControl?: boolean }).globalPrivacyControl === true;
 }
 
-/** Cookieless ping label. GPC forces decline, including when an older allow cookie is still set. */
+/** Cookieless ping label. Active by default; GPC or a legacy opt-out cookie forces decline. */
 export function pingConsent(): 'allow' | 'decline' | 'unknown' {
   if (globalPrivacyControl()) return 'decline';
   return readConsentCookie();
@@ -86,28 +82,12 @@ export function utmProps(search = typeof location !== 'undefined' ? location.sea
   return out;
 }
 
+/** No-op in cookieless mode (never writes cookies or sessionStorage). */
 export function noteFirstTouchSession(): void {
-  try {
-    if (typeof sessionStorage === 'undefined') return;
-    if (!sessionStorage.getItem(FT_SESSION)) sessionStorage.setItem(FT_SESSION, '1');
-  } catch { /* storage is optional */ }
+  // intentionally empty
 }
 
-/** `'1'` the first time a consented browser stores `ta_ft`, else `'0'`. */
-export function firstTouchBit(): '0' | '1' {
-  if (getCookie(FT_COOKIE) === '1') return '0';
-  writeCookie(FT_COOKIE, '1', 180 * DAY);
-  return '1';
-}
-
-function writeCookie(name: string, value: string, maxAge: number): void {
-  if (typeof document === 'undefined' || typeof location === 'undefined') return;
-  const host = location.hostname;
-  const domain = host === 'terraagent.fun' || host.endsWith('.terraagent.fun')
-    ? '; Domain=.terraagent.fun'
-    : host === 'terraagent.com' || host.endsWith('.terraagent.com')
-      ? '; Domain=.terraagent.com'
-      : '';
-  const secure = location.protocol === 'https:' ? '; Secure' : '';
-  document.cookie = `${name}=${value}${domain}; Path=/; Max-Age=${maxAge}; SameSite=Lax${secure}`;
+/** `'1'` for direct/external entry onto TerraAgent, `'0'` for intra-site navigation (cookieless). */
+export function firstTouchBit(referrer?: string): '0' | '1' {
+  return referrerClass(referrer) === 'terraagent' ? '0' : '1';
 }

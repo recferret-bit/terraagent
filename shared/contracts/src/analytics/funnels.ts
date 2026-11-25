@@ -190,7 +190,6 @@ export const ANALYTICS_TRENDS: readonly AnalyticsTrendSpec[] = [
   { id: 'utm-campaigns', title: 'TA · UTM sources', event: 'surface_viewed', math: 'dau', breakdown: 'utm_source', where: [prod], display: 'ActionsTable', dashboard: 'exec', pin: true },
   { id: 'viewport-split', title: 'TA · Desktop vs mobile', event: 'surface_viewed', math: 'dau', breakdown: 'viewport', where: [prod], display: 'ActionsBarValue', dashboard: 'exec', pin: true },
   { id: 'first-touch-visitors', title: 'TA · First-touch vs returning', event: 'surface_viewed', math: 'dau', breakdown: 'first_touch', where: [prod], display: 'ActionsBarValue', dashboard: 'exec', pin: true },
-  { id: 'consent', title: 'TA · Consent granted', event: 'consent_granted', math: 'total', breakdown: 'surface', where: [prod], display: 'ActionsBarValue', dashboard: 'exec', pin: true },
   { id: 'ui-actions-by-surface', title: 'TA · Button & CTA clicks by surface', event: 'ui_action_clicked', math: 'total', breakdown: 'surface', where: [prod], display: 'ActionsBarValue', dashboard: 'exec', pin: true },
   { id: 'ui-actions-top', title: 'TA · Top buttons & CTAs', event: 'ui_action_clicked', math: 'total', breakdown: 'action', where: [prod], display: 'ActionsTable', dashboard: 'gameplay', pin: true },
   { id: 'hud-panels-opened', title: 'TA · In-game HUD panels opened', event: 'hud_panel_opened', math: 'total', breakdown: 'panel', where: [prod], display: 'ActionsBarValue', dashboard: 'gameplay', pin: true },

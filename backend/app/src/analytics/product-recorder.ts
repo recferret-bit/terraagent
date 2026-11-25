@@ -8,6 +8,7 @@ import { z } from 'zod';
 import { APP_ENV, LOGGER, type AppEnv } from '../core/tokens';
 import { PRISMA } from '../db/db.module';
 import { AnalyticsCounters } from './analytics.counters';
+import { dailyCookielessId, hasGpcHeader } from './cookieless-id';
 import { extractGeoContext, type AnalyticsRelayContext } from './geo-context';
 import { PostHogClient, redactAnalyticsText, relayProperties, type RelayEvent } from './posthog-client';
 import { tradeFailReason } from './trade-reason';
@@ -108,7 +109,7 @@ export class ProductRecorder {
     return this.recordServerEvent({
       name: 'auth_completed',
       playerId,
-      anonId: anonIdOf(header(req, 'x-terra-anon')),
+      anonId: this.resolveRequestAnonId(req),
       props: { method, wallet_kind: walletKind(header(req, 'x-terra-wallet'), whenMissing) },
       geo: extractGeoContext(req),
     });
@@ -117,7 +118,7 @@ export class ProductRecorder {
   /** Place only. Pending is not a commit. Cancel and the in-game sim market do not call this. */
   async recordTradePlace(req: IncomingMessage, order: PlaceTradeOrderRequest, outcome: unknown): Promise<void> {
     try {
-      const anonId = anonIdOf(header(req, 'x-terra-anon'));
+      const anonId = this.resolveRequestAnonId(req);
       const geo = extractGeoContext(req);
       const props = tradeProps(order);
       const status = placeStatus(outcome);
@@ -135,6 +136,13 @@ export class ProductRecorder {
     } catch (error) {
       this.warn(error);
     }
+  }
+
+  private resolveRequestAnonId(req: IncomingMessage): string | undefined {
+    if (hasGpcHeader(req)) return undefined;
+    const raw = anonIdOf(header(req, 'x-terra-anon'));
+    if (!raw) return undefined;
+    return dailyCookielessId(req, saltOf(this.env)) ?? raw;
   }
 
   private async write(input: ServerEvent): Promise<void> {

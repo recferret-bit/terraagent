@@ -20,15 +20,14 @@ Order is fixed: add the name in the catalog, then an emitter, then `npm run vali
 
 ## Two planes
 
-- `client`, and the client half of `both`, fire in the browser through `track` from `frontend/game/core/analytics`. `track` is a no-op until the cookie `ta_consent=analytics:1`.
+- `client`, and the client half of `both`, fire in the browser through `track` from `frontend/game/core/analytics`. Cookieless by default (writes zero cookies/storage and mounts no banner); disabled when Global Privacy Control (`navigator.globalPrivacyControl` / `Sec-GPC: 1`) or an explicit opt-out is active.
 - `server`, and the server half of `both`, fire only after a commit, through the recorder in `backend/app/src/analytics/`. The public intake drops server-plane names (`clientMaySend`).
 
 ## Visitors
 
-- Consented people are unique `anonId` values on `surface_viewed`. PostHog math is `dau`, breakdown `surface`, filter `runtime=prod` (the pinned `visitors` trend).
-- Every load, including a refusal, is the cookieless counter `ta_surface_views_total` (`POST /v1/analytics/surface`, labels `surface` and `consent`).
-- The gap between those two is the consent rate.
-- Do not store an IP or a user agent. Do not create the anon cookie before consent.
+- Cookieless visitors are unique daily-rotating server-hashed `anonId` values on `surface_viewed` (`dailyCookielessId`, HMAC of transient IP + User-Agent rotated at UTC midnight, never stored). PostHog math is `dau`, breakdown `surface`, filter `runtime=prod` (the pinned `visitors` trend).
+- Every load, including GPC opt-outs, is the cookieless counter `ta_surface_views_total` (`POST /v1/analytics/surface`, labels `surface` and `consent`).
+- Do not store an IP, user agent, or analytics cookie in the browser or Postgres.
 
 ## Identity
 

@@ -5,6 +5,7 @@ import { ZodPipe } from '../core/errors/zod.pipe';
 import { IpThrottleGuard } from '../core/ip-throttle.guard';
 import { APP_ENV, type AppEnv } from '../core/tokens';
 import { AnalyticsService } from './analytics.service';
+import { dailyCookielessId, hasGpcHeader } from './cookieless-id';
 import { extractGeoContext, type GeoRequestLike } from './geo-context';
 
 /** The slice of the Express request we use (express types are not a direct dependency). */
@@ -34,7 +35,7 @@ export class AnalyticsController {
   @Post('events')
   @HttpCode(204)
   async events(@Req() req: RawRequest, @Body() body: unknown): Promise<void> {
-    if (this.env.ANALYTICS_DISABLED) return; // kill switch: accept and drop
+    if (this.env.ANALYTICS_DISABLED || hasGpcHeader(req)) return; // kill switch or GPC: accept and drop
     let raw = body;
     if (req.is('text/plain')) {
       try {
@@ -44,7 +45,10 @@ export class AnalyticsController {
         throw new CoreException('VALIDATION_ERROR', { status: 400, message: 'body is not valid JSON' });
       }
     }
-    await this.svc.ingest(this.pipe.transform(raw), extractGeoContext(req));
+    const batch = this.pipe.transform(raw);
+    const salt = typeof this.env.POSTHOG_PERSON_SALT === 'string' ? this.env.POSTHOG_PERSON_SALT : undefined;
+    const anonId = dailyCookielessId(req, salt) ?? batch.anonId;
+    await this.svc.ingest({ ...batch, anonId }, extractGeoContext(req));
   }
 
   /** Cookieless load counter. No id, no row. Same per-IP throttle as the auth routes. */

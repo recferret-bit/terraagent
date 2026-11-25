@@ -1,5 +1,5 @@
 import { getConsent } from '../../game/core/analytics';
-import { browserDeps, getCookie } from '../../game/core/analytics/browser';
+import { browserDeps } from '../../game/core/analytics/browser';
 import { currentSurface, runtimeLabel } from './context';
 import { trackProduct } from './trackSafe';
 
@@ -181,5 +181,5 @@ export function consentedAuthHeaders(): Record<string, string> {
 }
 
 function anonId(): string {
-  return getCookie('ta_aid') || browserDeps().anonId();
+  return browserDeps().anonId();
 }

@@ -87,7 +87,6 @@ const legacy = (name: string, plane: AnalyticsPlane = 'client'): AnalyticsEventS
 /** Events the product emits. Legacy rows stay so older call sites keep validating. */
 export const ANALYTICS_EVENTS: readonly AnalyticsEventSpec[] = [
   { name: 'surface_viewed', plane: 'client', surface: 'visitor', props: visit },
-  { name: 'consent_granted', plane: 'client', surface: 'visitor', props: [prop('surface', SURFACE), prop('runtime', RUNTIME)] },
   { name: 'auth_started', plane: 'client', surface: 'auth', props: auth },
   { name: 'auth_failed', plane: 'client', surface: 'auth', props: [...auth, prop('stage', STAGE), prop('reason', AUTH_REASON)] },
   { name: 'auth_succeeded', plane: 'client', surface: 'auth', props: auth },
