@@ -1,9 +1,12 @@
 import * as THREE from 'three';
-import { createPooledInstancedMesh } from './geometries';
+import { ProceduralTextureRegistry } from '../ProceduralTextureRegistry';
+import { createPooledInstancedMesh, getProjectileVfxGeometry } from './geometries';
 import type {
   ActiveAoeDecalSnapshot,
+  ActiveGroundCraterSnapshot,
   ActiveLaserSnapshot,
   ActiveProjectileSnapshot,
+  ActiveShockwaveSnapshot,
   ProjectileVfxActiveCounts,
   ProjectileVfxPoolConfig,
   VfxWeaponKind,
@@ -23,64 +26,49 @@ export interface ProjectileSlot extends ActiveProjectileSnapshot {
 }
 
 export interface SmokePuffSlot {
-  active: boolean;
-  x: number;
-  y: number;
-  z: number;
-  vx: number;
-  vy: number;
-  vz: number;
-  ageS: number;
-  durationS: number;
-  baseScale: number;
+  active: boolean; x: number; y: number; z: number;
+  vx: number; vy: number; vz: number;
+  ageS: number; durationS: number; baseScale: number;
 }
 
 export interface ImpactSlot {
-  active: boolean;
-  x: number;
-  y: number;
-  z: number;
-  ageS: number;
-  durationS: number;
-  maxScale: number;
+  active: boolean; x: number; y: number; z: number;
+  ageS: number; durationS: number; maxScale: number;
 }
 
 export interface DebrisSlot {
-  active: boolean;
-  x: number;
-  y: number;
-  z: number;
-  vx: number;
-  vy: number;
-  vz: number;
-  groundY: number;
-  ageS: number;
-  durationS: number;
+  active: boolean; x: number; y: number; z: number;
+  vx: number; vy: number; vz: number;
+  groundY: number; ageS: number; durationS: number;
 }
 
 export interface CartridgeSlot {
-  active: boolean;
-  x: number;
-  y: number;
-  z: number;
-  vx: number;
-  vy: number;
-  vz: number;
-  rx: number;
-  ry: number;
-  rz: number;
-  vrx: number;
-  vry: number;
-  vrz: number;
-  scale: number;
-  groundY: number;
-  ageS: number;
-  durationS: number;
+  active: boolean; x: number; y: number; z: number;
+  vx: number; vy: number; vz: number;
+  rx: number; ry: number; rz: number;
+  vrx: number; vry: number; vrz: number;
+  scale: number; groundY: number; ageS: number; durationS: number;
 }
 
 export interface MeshPoolEntry {
   mesh: THREE.InstancedMesh;
   material: THREE.Material;
+}
+
+export type ShockwaveSlot = ActiveShockwaveSnapshot;
+
+export interface GroundCraterSlot extends ActiveGroundCraterSnapshot {
+  nx: number;
+  ny: number;
+  nz: number;
+}
+
+export interface NoCraterZone {
+  x: number;
+  z: number;
+  radiusM: number;
+  ageS: number;
+  ownerId?: number;
 }
 
 export interface ProjectileVfxPools {
@@ -96,6 +84,11 @@ export interface ProjectileVfxPools {
   debrisPool: MeshPoolEntry;
   aoeRingPool: MeshPoolEntry;
   aoeDecalPool: MeshPoolEntry;
+  shockwavePool: MeshPoolEntry;
+  shockwaveAlpha: THREE.InstancedBufferAttribute;
+  craterPool: MeshPoolEntry;
+  craterCursor: number;
+  noCraterZones: NoCraterZone[];
   projectiles: ProjectileSlot[];
   lasers: ActiveLaserSnapshot[];
   smokePuffs: SmokePuffSlot[];
@@ -103,6 +96,98 @@ export interface ProjectileVfxPools {
   debris: DebrisSlot[];
   cartridges: CartridgeSlot[];
   aoeDecals: ActiveAoeDecalSnapshot[];
+  shockwaves: ShockwaveSlot[];
+  craters: GroundCraterSlot[];
+}
+
+function createShockwavePool(group: THREE.Group, count: number): {
+  pool: MeshPoolEntry;
+  alpha: THREE.InstancedBufferAttribute;
+  slots: ShockwaveSlot[];
+} {
+  const geo = getProjectileVfxGeometry('shockwave').clone();
+  const alpha = new THREE.InstancedBufferAttribute(new Float32Array(count), 1);
+  geo.setAttribute('aBurstAlpha', alpha);
+  const material = new THREE.MeshStandardMaterial({
+    color: 0xffffff,
+    emissive: new THREE.Color(0xff8c24),
+    emissiveIntensity: 3.8,
+    roughness: 0.25,
+    metalness: 0.05,
+    transparent: true,
+    depthWrite: false,
+  });
+  material.onBeforeCompile = (shader) => {
+    shader.vertexShader = 'attribute float aBurstAlpha; varying float vBurstAlpha;\n'
+      + shader.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvBurstAlpha = aBurstAlpha;');
+    shader.fragmentShader = 'varying float vBurstAlpha;\n'
+      + shader.fragmentShader
+        .replace('#include <color_fragment>', '#include <color_fragment>\ndiffuseColor.a *= vBurstAlpha;')
+        .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance *= vBurstAlpha;');
+  };
+  material.customProgramCacheKey = () => 'projectile-shockwave-alpha-v1';
+  const mesh = new THREE.InstancedMesh(geo, material, count);
+  mesh.frustumCulled = false;
+  mesh.castShadow = false;
+  mesh.receiveShadow = false;
+  mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  DUMMY.scale.setScalar(0);
+  DUMMY.updateMatrix();
+  const baseColor = new THREE.Color(0xffffff);
+  for (let i = 0; i < count; i++) {
+    mesh.setMatrixAt(i, DUMMY.matrix);
+    mesh.setColorAt(i, baseColor);
+  }
+  mesh.instanceMatrix.needsUpdate = true;
+  if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+  group.add(mesh);
+  const slots: ShockwaveSlot[] = Array.from({ length: count }, () => ({
+    active: false, x: 0, y: 0, z: 0, startRadius: 0.3, maxRadius: 2.5, thickness: 1, baseOpacity: 0.9, ageS: 0, durationS: 0.5,
+  }));
+  return { pool: { mesh, material }, alpha, slots };
+}
+
+function createCraterPool(group: THREE.Group, count: number): {
+  pool: MeshPoolEntry;
+  slots: GroundCraterSlot[];
+} {
+  const tex = ProceduralTextureRegistry.get('shellImpactCrater', 256);
+  const geo = getProjectileVfxGeometry('groundCrater');
+  const material = new THREE.MeshStandardMaterial({
+    map: tex.map,
+    normalMap: tex.normalMap,
+    normalScale: new THREE.Vector2(1.25, 1.25),
+    roughnessMap: tex.roughnessMap,
+    roughness: 0.94,
+    metalness: 0.02,
+    opacity: 0.34,
+    transparent: true,
+    depthWrite: false,
+    polygonOffset: true,
+    polygonOffsetFactor: -3,
+    polygonOffsetUnits: -3,
+  });
+  const mesh = new THREE.InstancedMesh(geo, material, count);
+  mesh.name = 'projectile-ground-craters';
+  mesh.renderOrder = 1;
+  mesh.frustumCulled = false;
+  mesh.castShadow = false;
+  mesh.receiveShadow = true;
+  mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  DUMMY.scale.setScalar(0);
+  DUMMY.updateMatrix();
+  const baseColor = new THREE.Color(0xffffff);
+  for (let i = 0; i < count; i++) {
+    mesh.setMatrixAt(i, DUMMY.matrix);
+    mesh.setColorAt(i, baseColor);
+  }
+  mesh.instanceMatrix.needsUpdate = true;
+  if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+  group.add(mesh);
+  const slots: GroundCraterSlot[] = Array.from({ length: count }, () => ({
+    active: false, x: 0, y: 0, z: 0, radiusM: 1, yaw: 0, ageS: 0, nx: 0, ny: 1, nz: 0,
+  }));
+  return { pool: { mesh, material }, slots };
 }
 
 export function createProjectileVfxPools(
@@ -116,6 +201,9 @@ export function createProjectileVfxPools(
   const maxDebris = config.maxDebrisChunks ?? 96;
   const maxCartridges = config.maxCartridges ?? 96;
   const maxAoe = config.maxAoeDecals ?? 48;
+  const maxCraters = config.maxCraters ?? 96;
+  const sw = createShockwavePool(group, maxAoe);
+  const craters = createCraterPool(group, maxCraters);
 
   return {
     bulletPool: createPooledInstancedMesh(
@@ -166,6 +254,11 @@ export function createProjectileVfxPools(
       { key: 'aoeDecal', count: maxAoe, color: 0xffffff, emissive: 0x2a140c, emissiveIntensity: 0.9, roughness: 0.45 },
       group,
     ),
+    shockwavePool: sw.pool,
+    shockwaveAlpha: sw.alpha,
+    craterPool: craters.pool,
+    craterCursor: 0,
+    noCraterZones: [],
     projectiles: Array.from({ length: maxProj }, () => ({
       active: false, weaponKind: 'bullet' as const, scale: 1,
       fromX: 0, fromY: 0, fromZ: 0, toX: 0, toY: 0, toZ: 0,
@@ -191,6 +284,8 @@ export function createProjectileVfxPools(
     aoeDecals: Array.from({ length: maxAoe }, () => ({
       active: false, x: 0, y: 0, z: 0, radiusM: 2, ageS: 0, durationS: 0.65, hideRing: false,
     })),
+    shockwaves: sw.slots,
+    craters: craters.slots,
   };
 }
 
@@ -323,24 +418,57 @@ export function writeAoeMatrices(
 
   const decalScale = dec.radiusM * (1 - u * 0.25);
   DUMMY.position.set(dec.x, dec.y + 0.01, dec.z);
-  DUMMY.scale.set(decalScale, Math.max(0.05, 1 - u), decalScale);
+  DUMMY.rotation.set(0, 0, 0); DUMMY.scale.set(decalScale, Math.max(0.05, 1 - u), decalScale);
   DUMMY.updateMatrix();
   pools.aoeDecalPool.mesh.setMatrixAt(idx, DUMMY.matrix);
   pools.aoeDecalPool.mesh.instanceMatrix.needsUpdate = true;
 }
 
+export function writeShockwaveMatrix(pools: ProjectileVfxPools, idx: number, sw: ShockwaveSlot): void {
+  const u = Math.max(0, Math.min(1, sw.ageS / Math.max(1e-4, sw.durationS)));
+  const ease = 1 - Math.pow(1 - u, 3);
+  const radius = sw.startRadius + (sw.maxRadius - sw.startRadius) * ease;
+  const heightScale = Math.max(0.18, 1 - u * 0.72) * sw.thickness;
+  const alpha = Math.pow(1 - u, 1.35) * sw.baseOpacity;
+  DUMMY.position.set(sw.x, sw.y, sw.z);
+  DUMMY.rotation.set(0, 0, 0);
+  DUMMY.scale.set(radius, heightScale, radius);
+  DUMMY.updateMatrix();
+  pools.shockwavePool.mesh.setMatrixAt(idx, DUMMY.matrix);
+  pools.shockwavePool.mesh.instanceMatrix.needsUpdate = true;
+  pools.shockwaveAlpha.setX(idx, alpha);
+  pools.shockwaveAlpha.needsUpdate = true;
+}
+
+const UP_Y = new THREE.Vector3(0, 1, 0);
+const TMP_YAW_QUAT = new THREE.Quaternion();
+
+export function writeCraterMatrix(pools: ProjectileVfxPools, idx: number, c: GroundCraterSlot): void {
+  TMP_DIR.set(c.nx, c.ny, c.nz);
+  if (TMP_DIR.lengthSq() < 1e-6) TMP_DIR.copy(UP_Y);
+  else TMP_DIR.normalize();
+  TMP_QUAT.setFromUnitVectors(UP_Y, TMP_DIR);
+  TMP_YAW_QUAT.setFromAxisAngle(UP_Y, c.yaw);
+  TMP_QUAT.multiply(TMP_YAW_QUAT);
+  const fade = c.ageS > 2.4 ? Math.max(0, 1 - (c.ageS - 2.4) / 2.6) : 1;
+  const s = c.radiusM * 0.46 * fade;
+  DUMMY.position.set(c.x, c.y + 0.018, c.z);
+  DUMMY.quaternion.copy(TMP_QUAT);
+  DUMMY.scale.set(s, s > 0 ? 1 : 0, s);
+  DUMMY.updateMatrix();
+  pools.craterPool.mesh.setMatrixAt(idx, DUMMY.matrix);
+  pools.craterPool.mesh.instanceMatrix.needsUpdate = true;
+}
+
 export function countActivePools(pools: ProjectileVfxPools): ProjectileVfxActiveCounts {
-  let projectiles = 0;
-  let lasers = 0;
-  let smokePuffs = 0;
-  let impacts = 0;
-  let aoeDecals = 0;
-  let cartridges = 0;
+  let projectiles = 0, lasers = 0, smokePuffs = 0, impacts = 0, aoeDecals = 0, cartridges = 0, shockwaves = 0, craters = 0;
   for (const p of pools.projectiles) if (p.active) projectiles++;
   for (const l of pools.lasers) if (l.active) lasers++;
   for (const s of pools.smokePuffs) if (s.active) smokePuffs++;
   for (const imp of pools.impacts) if (imp.active) impacts++;
   for (const dec of pools.aoeDecals) if (dec.active) aoeDecals++;
   for (const c of pools.cartridges) if (c.active) cartridges++;
-  return { projectiles, lasers, smokePuffs, impacts, aoeDecals, cartridges };
+  for (const sw of pools.shockwaves) if (sw.active) shockwaves++;
+  for (const cr of pools.craters) if (cr.active) craters++;
+  return { projectiles, lasers, smokePuffs, impacts, aoeDecals, cartridges, shockwaves, craters };
 }

@@ -87,6 +87,7 @@ export interface TerraformFeatureHandle extends HudPanelInstance {
   readonly overlay: TileOverlay;
   selectOp(op: TerraformPrimaryOp): void;
   getSelectedOp(): TerraformPrimaryOp;
+  canStrokeTile?(q: number, r: number, opts?: BrushStrokeOptions): boolean;
   strokeTile(q: number, r: number, opts?: BrushStrokeOptions): BrushStrokeSummary;
   /** Cancels the host order `orderId` (default: the active order in the view); false when there is none. */
   cancelOrder(orderId?: string): boolean;
@@ -196,6 +197,7 @@ function buildTerraformHandle(params: {
     overlay,
     selectOp: (op) => { brush.selectOp(op); menu.render(); },
     getSelectedOp: () => brush.getSelectedOp(),
+    canStrokeTile: (q, r, strokeOpts) => brush.canStrokeTile(q, r, strokeOpts),
     strokeTile: (q, r, strokeOpts) => brush.strokeTile(q, r, strokeOpts),
     cancelOrder: (orderId) => brush.cancelOrder(orderId ?? overlay.getActiveOrder()?.orderId),
     getTargetTiles: () => getTargets()?.getTiles() ?? [],

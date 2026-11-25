@@ -1,5 +1,5 @@
 import type { FlagSet } from '@terra/contracts';
-import { DEPOSIT, GEO_BLOCK_TEXT, PREP, TERRAIN, geoBuildBlock, hexDistance, type GeoBlock, type GeoBuildOptions } from '@terra/sim';
+import { DEPOSIT, GEO_BLOCK_TEXT, PREP, TERRAIN, geoBuildBlock, getWreckTileSet, hexDistance, type GeoBlock, type GeoBuildOptions } from '@terra/sim';
 import type { Disposable, FeatureContext, GameView } from '../../core/registry/types';
 import type { ClientTiles } from '../../store/replica/viewCodec';
 import { extractHqFromView } from '../shared/hqView';
@@ -34,6 +34,8 @@ interface FootprintScanResult {
   hasOutOfBounds: boolean;
   hasImpassable: boolean;
   hasOccupied: boolean;
+  hasWreck: boolean;
+  hasMixedDeposit: boolean;
   terrainBlock: GeoBlock | null;
 }
 
@@ -44,15 +46,18 @@ function scanFootprintTiles(
   d: number,
   hIndex: { indexOf(q: number, r: number): number },
   occupied: ReadonlySet<number>,
+  wrecks: ReadonlySet<number>,
   tilesData?: ClientTiles,
   requiresDeposit?: string,
 ): FootprintScanResult {
   const geo: GeoBuildOptions = { linkedPrep: false };
   const tiles: PlacementGhostTile[] = [];
   const coveredDepositIndices: number[] = [];
-  let hasOutOfBounds = false, hasImpassable = false, hasOccupied = false, terrainBlock: GeoBlock | null = null;
+  let hasOutOfBounds = false, hasImpassable = false, hasOccupied = false, hasWreck = false, hasDisallowedDeposit = false, terrainBlock: GeoBlock | null = null;
+  const seenDeposits = new Set<number>();
 
   const reqDepCode = depositCodeForRequired(requiresDeposit);
+  const depositRule = reqDepCode !== undefined ? 'any' : 'forbid';
   const minQ = -Math.floor((w - 1) / 2), minR = -Math.floor((d - 1) / 2);
   for (let dr = 0; dr < d; dr++) {
     for (let dq = 0; dq < w; dq++) {
@@ -60,19 +65,25 @@ function scanFootprintTiles(
       const tileIdx = hIndex.indexOf(tq, tr);
       if (tileIdx < 0) { hasOutOfBounds = true; tiles.push({ q: tq, r: tr, tileIdx: -1, deposit: 0, terrain: 0, prep: 0 }); continue; }
       if (occupied.has(tileIdx)) hasOccupied = true;
+      if (wrecks.has(tileIdx)) hasWreck = true;
       const terrain = tilesData?.terrain ? (tilesData.terrain[tileIdx] ?? TERRAIN.flat) : TERRAIN.flat;
       const prep = tilesData?.prep ? (tilesData.prep[tileIdx] ?? PREP.wild) : PREP.wild;
       const deposit = tilesData?.deposit ? (tilesData.deposit[tileIdx] ?? DEPOSIT.none) : DEPOSIT.none;
       if (tilesData) {
-        // One rule with the host (D-37): trees, rock, slope, hole, water and ridge are terraformed first.
-        terrainBlock ??= geoBuildBlock(terrain, prep, DEPOSIT.none, 'any', geo);
+        // One rule with the host (D-37): non-extractors forbid deposits; extractors allow matching deposit only.
+        terrainBlock ??= geoBuildBlock(terrain, prep, deposit, depositRule, geo);
         if (terrain !== TERRAIN.flat || prep === PREP.ridge || prep === PREP.moat) hasImpassable = true;
-        if (matchesDeposit(deposit, reqDepCode)) coveredDepositIndices.push(tileIdx);
+        if (deposit !== DEPOSIT.none && reqDepCode !== undefined) {
+          seenDeposits.add(deposit);
+          if (matchesDeposit(deposit, reqDepCode)) coveredDepositIndices.push(tileIdx);
+          else hasDisallowedDeposit = true;
+        }
       }
       tiles.push({ q: tq, r: tr, tileIdx, deposit, terrain, prep });
     }
   }
-  return { tiles, coveredDepositIndices, hasOutOfBounds, hasImpassable, hasOccupied, terrainBlock };
+  const hasMixedDeposit = hasDisallowedDeposit || seenDeposits.size > 1;
+  return { tiles, coveredDepositIndices, hasOutOfBounds, hasImpassable, hasOccupied, hasWreck, hasMixedDeposit, terrainBlock };
 }
 
 interface ValidityResult {
@@ -87,19 +98,24 @@ function evaluateValidity(
   hasOutOfBounds: boolean,
   hasImpassable: boolean,
   hasOccupied: boolean,
+  hasWreck: boolean,
+  hasMixedDeposit: boolean,
   terrainBlock: GeoBlock | null,
   requiresDeposit: string | undefined,
   depositCount: number,
 ): ValidityResult {
-  if (!hasTiles && !hasOccupied) return { valid: true, statusColor: 'green', reason: 'valid site', depositCovered: false };
+  if (!hasTiles && !hasOccupied && !hasWreck) return { valid: true, statusColor: 'green', reason: 'valid site', depositCovered: false };
   if (hasOutOfBounds) return { valid: false, statusColor: 'red', reason: 'out of bounds', depositCovered: false };
   if (hasImpassable) return { valid: false, statusColor: 'red', reason: 'impassable terrain', depositCovered: false };
   if (hasOccupied) return { valid: false, statusColor: 'red', reason: 'tile occupied', depositCovered: false };
+  if (hasWreck) return { valid: false, statusColor: 'red', reason: 'wreckage: terraform to clear', depositCovered: false };
   if (terrainBlock) return { valid: false, statusColor: 'red', reason: GEO_BLOCK_TEXT[terrainBlock], depositCovered: false };
   if (requiresDeposit === 'metals' || requiresDeposit === 'minerals' || requiresDeposit === 'oil') {
     if (depositCount === 0) return { valid: false, statusColor: 'red', reason: depositReasonText('', requiresDeposit), depositCovered: false };
+    if (hasMixedDeposit) return { valid: false, statusColor: 'red', reason: 'only one resource type per extractor', depositCovered: false };
     return { valid: true, statusColor: 'green', reason: 'valid site', depositCovered: true };
   }
+  if (hasMixedDeposit) return { valid: false, statusColor: 'red', reason: 'only one resource type per extractor', depositCovered: false };
   return { valid: true, statusColor: 'green', reason: 'valid site', depositCovered: false };
 }
 
@@ -114,10 +130,11 @@ export function evaluatePlacementGhost(opts: EvaluatePlacementGhostOptions, ctx:
   const footprintW = isSwapped ? meta.footprintD : meta.footprintW;
   const footprintD = isSwapped ? meta.footprintW : meta.footprintD;
   const tilesData = (opts.view as { tiles?: ClientTiles } | undefined)?.tiles;
-  const scan = scanFootprintTiles(opts.q, opts.r, footprintW, footprintD, ctx.hIndex, ctx.occupied, tilesData, meta.requiresDeposit);
+  const wrecks = getWreckTileSet(opts.view?.blobs as Record<string, unknown> | undefined);
+  const scan = scanFootprintTiles(opts.q, opts.r, footprintW, footprintD, ctx.hIndex, ctx.occupied, wrecks, tilesData, meta.requiresDeposit);
   const sim = scan.hasOccupied ? null : evaluateSiteWithSim(opts.view, { building: opts.building, q: opts.q, r: opts.r, colonyId: opts.colonyId ?? 0, data: ctx.data, world: ctx.world });
   const val = sim ? { valid: sim.valid, statusColor: sim.valid ? 'green' as const : 'red' as const, reason: sim.reason, depositCovered: sim.valid && scan.coveredDepositIndices.length > 0 }
-    : evaluateValidity(Boolean(tilesData), scan.hasOutOfBounds, scan.hasImpassable, scan.hasOccupied, scan.terrainBlock, meta.requiresDeposit, scan.coveredDepositIndices.length);
+    : evaluateValidity(Boolean(tilesData), scan.hasOutOfBounds, scan.hasImpassable, scan.hasOccupied, scan.hasWreck, scan.hasMixedDeposit, scan.terrainBlock, meta.requiresDeposit, scan.coveredDepositIndices.length);
   const bill = ghostTerraformReadout(val.valid);
 
   return {

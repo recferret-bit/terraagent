@@ -9,6 +9,7 @@ import { setUnitActivity } from './approach';
 import { UnitBook } from './book';
 import { mobileStats, notifyUnitChanged } from './mobility';
 import { cancelMove, getMotion, requestMove, runMovement } from './movement/orchestrator';
+import { findNearestFreeStandTile, isHexStationaryOccupied } from './movement/unitOccupancy';
 import { commandKey, type UnitCommand, type UnitCommandStatus, type UnitCtx, type UnitRegistry, type UnitWorkPhase } from './types';
 
 /**
@@ -179,6 +180,22 @@ export function stepUnits(reg: UnitRegistry, state: PlanetState, ctx: StepContex
         } else {
           setField(e, row, 'state', ENTITY_STATE.idle, ctx.tick);
           notifyUnitChanged(state, row, ctx.tick, ctx.data);
+        }
+      }
+    } else if (
+      !u.record.current &&
+      !u.record.reserve &&
+      (e.cols.state[row] === ENTITY_STATE.idle || e.cols.state[row] === ENTITY_STATE.waiting) &&
+      !getMotion(state, u.id)
+    ) {
+      const curQ = e.cols.q[row], curR = e.cols.r[row];
+      const curIdx = hexIndex(state.grid.radius).indexOf(curQ, curR);
+      if (isHexStationaryOccupied(state, curIdx, u.id, ctx.data, true)) {
+        const free = findNearestFreeStandTile(state, curQ, curR, u.stats.profile, u.id, ctx.data, 2);
+        if (free && (free.q !== curQ || free.r !== curR)) {
+          u.record.current = { kind: 'move', source: 'auto', q: free.q, r: free.r, minDist: 0, maxDist: 0, deoverlap: true };
+          book.touch(false);
+          runCurrent(reg, u, book);
         }
       }
     }

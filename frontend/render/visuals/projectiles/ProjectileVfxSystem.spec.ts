@@ -273,12 +273,12 @@ describe('ProjectileVfxSystem — /boost shells, cartridges, bursts, acid & dyna
     const towerRound = active.find(p => p.weaponId === 'autocannon')!;
     expect(shell.scale).toBeCloseTo(0.56, 3);
     expect(towerRound.scale).toBeGreaterThan(1.5);
-    expect(vfx.getActiveCounts().cartridges).toBe(1);
+    expect(vfx.getActiveCounts().cartridges).toBe(2);
 
     for (let i = 0; i < 6; i++) vfx.update(0.05);
     expect(vfx.getArtilleryTrailCount()).toBeGreaterThan(0);
     expect(vfx.getActiveCounts().smokePuffs).toBeGreaterThan(2);
-    expect(vfx.getActiveCounts().cartridges).toBe(1);
+    expect(vfx.getActiveCounts().cartridges).toBe(2);
     vfx.dispose();
   });
 
@@ -356,9 +356,7 @@ describe('ProjectileVfxSystem — /boost dynamic lights & rocket pods', () => {
 
     vfx.emitInsectDeath({ at: { x: 4, y: 0.4, z: 4 }, groundY: 0, scale: 1 });
     expect(vfx.getBurstCounts()['combat.insectDeath']).toBeGreaterThan(0);
-    const decals = vfx.getActiveAoeDecals();
-    expect(decals.length).toBeGreaterThan(0);
-    expect(decals[0]!.hideRing).toBe(true);
+    expect(vfx.getActiveAoeDecals()).toHaveLength(0);
     expect(u.uProjectorCount.value).toBeGreaterThanOrEqual(6);
 
     vfx.onProjectileFired({
@@ -366,7 +364,7 @@ describe('ProjectileVfxSystem — /boost dynamic lights & rocket pods', () => {
       from: { x: 0, y: 1.5, z: 1.2 }, to: { x: 0, y: 0.6, z: 10 },
       ejectCartridge: true, ejectFrom: { x: 0.28, y: 1.54, z: 0.16 }, ejectGroundY: 0,
     });
-    expect(vfx.getActiveCounts().cartridges).toBe(1);
+    expect(vfx.getActiveCounts().cartridges).toBe(2);
 
     vfx.dispose();
     expect(u.uProjectorCount.value).toBe(1);

@@ -33,6 +33,7 @@ export {
 declare module '../../core/registry/types' {
   interface FeatureServices {
     mouseCursor?: MouseCursorOrchestrator;
+    getSpawnCursorProbe?: () => { readonly valid: boolean } | null;
   }
 }
 
@@ -50,12 +51,12 @@ export function mountMouseCursor(opts: MountMouseCursorOptions = {}): MouseCurso
   const services = opts.services;
   if (services?.mouseCursor) return services.mouseCursor;
 
-  const isToolArmed = () =>
-    isGameInputBlocked() ||
+  const hasSpawnProbe = () => (services?.getSpawnCursorProbe?.() ?? null) !== null;
+  const isToolBlocked = () =>
+    isGameInputBlocked(hasSpawnProbe() ? 'combat-test-spawn' : undefined) ||
     services?.landfall?.isDeployed() === false ||
-    services?.hubPlacement?.isPlacementActive() === true ||
-    (services?.getPlacementGhostState?.() ?? null) !== null ||
-    services?.terraform?.isArmed() === true;
+    (services?.hubPlacement?.isPlacementActive() === true && (services?.getPlacementGhostState?.() ?? null) === null) ||
+    (services?.terraform?.isArmed() === true && typeof services?.terraform?.canStrokeTile !== 'function');
 
   const orchestrator = new MouseCursorOrchestrator({
     surface: opts.surface ?? services?.surface ?? opts.canvas ?? services?.canvas ?? null,
@@ -65,10 +66,15 @@ export function mountMouseCursor(opts: MountMouseCursorOptions = {}): MouseCurso
     getFallbackTiles: () => services?.store?.latestTiles,
     landfall: () => services?.landfall,
     armyOrders: () => services?.armyOrders,
+    getPlacementGhostState: () => services?.getPlacementGhostState?.() ?? null,
+    getSpawnCursorProbe: () => services?.getSpawnCursorProbe?.() ?? null,
+    terraform: () => services?.terraform,
     getColonyId: () => ownColonyIndex(services, opts.ownerColonyIndex),
     isSpectator: () => isReadOnlySpectator(services),
+    isSpectatorVisionAll: () => Boolean(services?.isSpectatorVisionAll?.()),
+    isFullVision: () => Boolean(services?.isFullVision?.()),
     isCombatEnabled: () => Boolean(opts.flags?.has('W07') || services?.armyOrders),
-    isInputBlocked: isToolArmed,
+    isInputBlocked: isToolBlocked,
   });
 
   if (services) {

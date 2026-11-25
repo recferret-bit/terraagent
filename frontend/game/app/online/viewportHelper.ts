@@ -16,6 +16,7 @@ import { createHexTerrain, getDepositVisualStage, hashGroundSeed, parseGroundSee
 
 export { parseGroundSeedInput };
 import type { LocalTransport } from '../../net/LocalTransport';
+import { isGameInputBlocked } from '../../core/input/gameInputBlock';
 import type { ClientTiles, ClientView } from '../../store/replica/viewCodec';
 import { getSavedGraphicsQuality } from '../../ui/parts/settingsModal';
 import { FINAL_POS } from '../../descent/constants';
@@ -104,6 +105,28 @@ export function pickTerrainAt(terrain: HexTerrain | null, vp: ColonyViewport, cl
   const r = vp.renderer.domElement.getBoundingClientRect();
   const ndc = new THREE.Vector2(((clientX - r.left) / r.width) * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1);
   return terrain.pick(ndc, vp.camera); // the session keeps the last one as `__online.lastPick` (no per-move console line)
+}
+
+export function pickSessionAt(
+  terrain: HexTerrain | null,
+  vp: ColonyViewport,
+  entities: { pickAtViewport(vp: ColonyViewport, terrain: HexTerrain | null, cx: number, cy: number): (HexPick & { entityId?: number }) | null },
+  hud: { isMounted: boolean; activeServices: { hubPlacement?: { isPlacementActive?(): boolean }; getPlacementGhostState?(): unknown; terraform?: { isArmed?(): boolean } } | null },
+  clientX: number,
+  clientY: number,
+): (HexPick & { entityId?: number }) | null {
+  const svc = hud.isMounted ? hud.activeServices : null;
+  const preferGround = Boolean(
+    isGameInputBlocked() ||
+    svc?.hubPlacement?.isPlacementActive?.() === true ||
+    (svc?.getPlacementGhostState?.() ?? null) !== null ||
+    svc?.terraform?.isArmed?.() === true,
+  );
+  if (!preferGround) {
+    const entityHit = entities.pickAtViewport(vp, terrain, clientX, clientY);
+    if (entityHit) return entityHit;
+  }
+  return pickTerrainAt(terrain, vp, clientX, clientY);
 }
 
 export function projectTileToScreen(terrain: HexTerrain | null, vp: ColonyViewport, q: number, r: number): { x: number; y: number } | null {

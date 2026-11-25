@@ -210,12 +210,15 @@ describe('Declarative object-to-terrain compatibility across HexTerrain & Planet
     expect(canFitObjectOnTerrain('reeds', edgePointSite)).toBe(false);
     expect(canFitObjectOnTerrain('boulder', edgePointSite)).toBe(false);
 
-    // Dune mesa rock rejects surface ore deposits and spires via declarative substrate rules
+    // Dune mesa rock rejects surface ore deposits, spires, and all mountain flora/cacti via declarative substrate rules
     const duneRockDep = classifyHexTilePropSite(0, 0, HEX_TERRAIN.rock, HEX_PREP.wild, HEX_DEPOSIT.metals, 'dune', 42);
     expect(duneRockDep.substrate).toBe('duneMesaCap');
     expect(canFitObjectOnTerrain('metals', duneRockDep)).toBe(false);
     expect(canFitObjectOnTerrain('spire', duneRockDep)).toBe(false);
-    expect(canFitObjectOnTerrain('barrelCactus', duneRockDep)).toBe(true);
+    expect(canFitObjectOnTerrain('barrelCactus', duneRockDep)).toBe(false);
+    for (const k of ['grassTuft', 'wildflower', 'bush', 'saguaro', 'barrelCactus', 'duneTree', 'pine', 'reeds'] as const) {
+      expect(canFitObjectOnTerrain(k, duneRockDep)).toBe(false);
+    }
 
     expect(GROUND_OBJECT_SPECS.bush.allowedSubstrates).not.toContain('coastalSand');
     expect(GROUND_OBJECT_SPECS.wildflower.allowedSubstrates).not.toContain('coastalSand');

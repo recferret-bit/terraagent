@@ -9,6 +9,7 @@ import { TICKS_PER_SECOND } from '../../kernel/constants';
 import type { StepContext } from '../../kernel/context';
 import { seedStream } from '../../kernel/rng';
 import type { PlanetState } from '../../kernel/state';
+import { isUnitKind } from '../../units/mobility';
 import { emitRaidStarted } from '../combat/events';
 import {
   FAUNA_SPECIES_THREAT_COSTS,
@@ -293,13 +294,14 @@ function activateCohortAndEmitRaid(
   emitRaidStarted(state, raidPayload, ctx);
 
   const stepCtx = ctx ?? createFallbackCtx(state, tick, data);
+  const minDist = isUnitKind(state.entities.cols.kind[target.row]!) ? 1 : 0;
   for (const bugId of memberIds) {
     const bRow = rowOf(state.entities, bugId);
     if (bRow < 0) continue;
     issueUnitCommand(
       state,
       bRow,
-      { kind: 'move', source: 'auto', q: target.q, r: target.r, minDist: 0, maxDist: target.bandMax },
+      { kind: 'move', source: 'auto', q: target.q, r: target.r, minDist, maxDist: Math.max(minDist, target.bandMax) },
       stepCtx,
     );
   }

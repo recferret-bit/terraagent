@@ -1,9 +1,10 @@
 import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
 import { removeRow, rowOf, setField } from '../../ecs/store';
-import { hexDistance, inHex } from '../../grid/hex';
+import { hexDistance, hexIndex, inHex } from '../../grid/hex';
 import { bumpPathEpoch } from '../../grid/tileModel';
 import type { CompiledDataLike } from '../../kernel/config';
 import { setBlob, type PlanetState } from '../../kernel/state';
+import { isMechanicalWreckKind, recordMechanicalWreck } from '../combat/wrecks';
 import { getBuildingJobs, saveBuildingJobs } from '../economy/buildJob';
 import { readConstructionOrders, writeConstructionOrders } from '../construction/orders';
 import { occupiesGround } from '../construction/placement';
@@ -351,6 +352,18 @@ export function destroyHazardEntity(
     if (nextPods.length !== pods.length) {
       setBlob(state, 'landingPods', nextPods, tick);
     }
+  }
+
+  if (kind !== ENTITY_KIND.hq && isMechanicalWreckKind(kind)) {
+    const hx = hexIndex(state.grid.radius);
+    const tileIndices = footprintTilesOfEntity(state, row)
+      .map((t) => hx.indexOf(t.q, t.r))
+      .filter((i) => i >= 0);
+    recordMechanicalWreck(
+      state,
+      { id: entityId, kind, owner, q: Math.round(entQ), r: Math.round(entR), tiles: tileIndices },
+      tick,
+    );
   }
 
   setField(state.entities, row, 'hp', 0, tick);

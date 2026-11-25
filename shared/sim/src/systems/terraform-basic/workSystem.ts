@@ -1,16 +1,19 @@
 import type { ResourceKey } from '@terra/contracts';
 import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
 import { removeRow, rowOf, setField } from '../../ecs/store';
-import { hexDistance, hexIndex } from '../../grid/hex';
+import { isTileUneven } from '../../grid/geo';
+import { hexDistance, hexIndex, hexRound } from '../../grid/hex';
 import { PREP, TERRAIN } from '../../grid/layers';
 import { regionalClearingYields } from '../../economy/regions/sources';
 import { revealAroundChanged, type RevealedDeposit } from '../../grid/subsurface';
 import { bumpPathEpoch, prepKeyFromId, setTilePrep, setTileTerrain, terrainIdFromKey, terrainKeyFromId } from '../../grid/tileModel';
 import type { StepContext } from '../../kernel/context';
-import type { PlanetState } from '../../kernel/state';
+import { touchTile, type PlanetState } from '../../kernel/state';
 import { defineSystem } from '../../kernel/system';
 import { faceTowards } from '../../units/movement/locomotion';
-import { cancelMove, requestMove } from '../../units/movement/orchestrator';
+import { cancelMove, getMotion, requestMove } from '../../units/movement/orchestrator';
+import { isHexStationaryOccupied } from '../../units/movement/unitOccupancy';
+import { clearWrecksAtTile } from '../combat/wrecks';
 import { creditResource, payProgressiveSlice } from '../economy/ledger';
 import { nextCrewShare } from '../dispatch/crew';
 import { autoQueueDamagedStructures, resolveWorkerRepairRate, syncRepairQueueEntries } from './autoRepair';
@@ -99,7 +102,7 @@ function stepRepairWorkJob(state: PlanetState, job: WorkJobRecord, workerRow: nu
  */
 function removedOpOf(job: WorkJobRecord, data: StepContext['data']): string | null {
   if (job.workOp) return job.workOp;
-  if (!job.terrainKey || job.terrainKey === 'pod') return null;
+  if (!job.terrainKey || job.terrainKey === 'pod' || job.terrainKey === 'wreck') return null;
   const op = opForTerrain(terrainIdFromKey(job.terrainKey), data);
   return op && op !== 'grade' ? op : null;
 }
@@ -168,6 +171,19 @@ function completeGroundWork(state: PlanetState, job: WorkJobRecord, ctx: StepCon
     if (L.terrain[job.tileIdx] === TERRAIN.flat) {
       setTilePrep(state.grid, job.tileIdx, PREP.prepared, ctx.tick);
       levelToAdjacentFlat(state, job.tileIdx, ctx.tick);
+    }
+    revealed = [];
+  } else if (job.terrainKey === 'wreck') {
+    const { clearedTiles } = clearWrecksAtTile(state, job.tileIdx, ctx.tick);
+    const targets = clearedTiles.length > 0 ? clearedTiles : [job.tileIdx];
+    prepared = targets.length;
+    for (const ti of targets) {
+      if (L.terrain[ti] === TERRAIN.flat) {
+        setTilePrep(state.grid, ti, PREP.prepared, ctx.tick);
+        levelToAdjacentFlat(state, ti, ctx.tick);
+      } else {
+        touchTile(state, ti, ctx.tick);
+      }
     }
     revealed = [];
   } else {
@@ -347,8 +363,30 @@ function approachJob(
 ): 'arrived' | 'moving' | 'abandoned' {
   const e = state.entities, cols = e.cols;
   const tRow = job.mode !== 'terraform' && job.targetEntityId !== undefined ? rowOf(e, job.targetEntityId) : -1;
-  if (isWorkerAtJob(state, wRow, job.q, job.r, tRow)) return 'arrived';
-  const goal = { q: job.q, r: job.r, minDist: 1, maxDist: workReach(cols.kind[wRow], tRow, state) };
+  const useTerraformStand = job.mode === 'terraform' && cols.kind[wRow] === ENTITY_KIND.hq;
+  const onStand = () => {
+    if (!useTerraformStand) return true;
+    const [wq, wr] = hexRound(cols.q[wRow], cols.r[wRow]);
+    const wi = hexIndex(state.grid.radius).indexOf(wq, wr);
+    return wi >= 0 && state.grid.layers.terrain[wi] === TERRAIN.flat && !isTileUneven(state.grid.radius, wi, state.grid.layers.terrain, state.grid.layers.height);
+  };
+  const workerTileIdx = hexIndex(state.grid.radius).indexOf(cols.q[wRow], cols.r[wRow]);
+  const prevMotion = getMotion(state, job.workerEntityId);
+  const wasStationary = !prevMotion || prevMotion.status !== 'following';
+  if (
+    isWorkerAtJob(state, wRow, job.q, job.r, tRow) &&
+    onStand() &&
+    !isHexStationaryOccupied(state, workerTileIdx, job.workerEntityId, ctx.data, wasStationary)
+  ) {
+    return 'arrived';
+  }
+  const goal = {
+    q: job.q,
+    r: job.r,
+    minDist: 1,
+    maxDist: workReach(cols.kind[wRow], tRow, state),
+    ...(useTerraformStand ? { profile: 'terraform' as const } : {}),
+  };
   if (abandonUnreachableJob(state, job.workerEntityId, wRow, goal, ctx, !job.chain)) {
     dropJob(state, jobs, job, ctx.tick);
     // A chain goes on from the edge inward (`chain.ts` E2); the player hears `no_path` only when its own tile ends the

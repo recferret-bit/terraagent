@@ -315,7 +315,7 @@ function planTacticalAndWorkerInput(
         const pq = scan.anchorQ + slot[0];
         const pr = scan.anchorR + slot[1];
         const idx = hx.indexOf(pq, pr);
-        if ((recon.q === pq && recon.r === pr) || !isReconPatrolGoalPassable(state, recon.q, recon.r, idx, data)) continue;
+        if ((recon.q === pq && recon.r === pr) || !isReconPatrolGoalPassable(state, recon.q, recon.r, idx, data, recon.id)) continue;
         const cmdId = `bot_${tick}_${col.index}_${nextSeq()}`;
         out.push({
           cmd: { colonyIndex: col.index, source: 'bot', commandId: cmdId, kind: 'moveUnit', args: { entityId: recon.id, q: pq, r: pr } },

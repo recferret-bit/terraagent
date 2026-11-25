@@ -4,7 +4,7 @@ import { BREEDS_BY_BIOME, type TreeBreedId, type TreeBreedSpec } from '../../../
 import { foliageTreeTraits, type Place } from '../../../visuals/terrain/Scatter';
 import { HEX_DEPOSIT, HEX_TERRAIN, isClearedPrep, tileHash01, tileHashU32, type HexTileLayers } from '../chunkMesh';
 import { clampToGroundHexagon, HEX_PROP_EDGE_MARGIN_M, hexEdgeMarginM, TILE_M, tileXZ } from '../hexMath';
-import { floraEcotoneFields, inspectTileWaterNeighbors, isDuneWadiSlope } from './terrainCompatibility';
+import { floraEcotoneFields, hasMountainRockNeighbor, inspectTileWaterNeighbors, isDuneWadiSlope } from './terrainCompatibility';
 
 const TREE_RIM_MARGIN_M = Math.max(HEX_PROP_EDGE_MARGIN_M, 1.48);
 
@@ -369,10 +369,14 @@ export function runForestGenerationPipeline(
     const r = hx.r[i]!;
     const t = terrain[i] ?? 0;
     const [cx, cz] = tileXZ(q, r);
+    const rawH = layers.height[i] ?? 0;
+    const mountainBlocked =
+      hasMountainRockNeighbor(hx, i, layers) && (look.kind === 'dune' || rawH >= 1.15);
+    if (mountainBlocked) continue;
     const isWadi =
       look.kind === 'dune' &&
       t === HEX_TERRAIN.slope &&
-      isDuneWadiSlope(q, r, layers.height[i] ?? 0, floraEcotoneFields(cx, cz, seed), seed);
+      isDuneWadiSlope(q, r, rawH, floraEcotoneFields(cx, cz, seed), seed);
     if (t !== HEX_TERRAIN.forest && !isWadi) continue;
 
     const { waterNeighbors } = inspectTileWaterNeighbors(hx, i, layers, look.kind);

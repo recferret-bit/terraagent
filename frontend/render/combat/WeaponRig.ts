@@ -35,6 +35,7 @@ export class WeaponRig {
   private readonly rightDir = new THREE.Vector3(0, 0, 1);
   private readonly sideHeat: [number, number] = [0, 0];
   private updatedTime = 0;
+  private lastWorldYaw: number | null = null;
 
   constructor(readonly mesh: THREE.Object3D, readonly definition: WeaponRigDefinition) {
     this.poseMatrices = Array.from({ length: Math.max(3, 1 + definition.sockets.length) }, () => new THREE.Matrix4());
@@ -104,6 +105,7 @@ export class WeaponRig {
     this.sideHeat[0] = 0;
     this.sideHeat[1] = 0;
     this.updatedTime = 0;
+    this.lastWorldYaw = null;
     (this.mesh.userData as { turretYaw?: number }).turretYaw = 0;
     this.uploadUniforms();
   }
@@ -188,16 +190,26 @@ export class WeaponRig {
     );
   }
 
+  private readWorldYaw(): number {
+    const e = this.mesh.matrixWorld.elements;
+    return Math.atan2(e[8]!, e[10]!);
+  }
+
   private syncTransform(dt: number): void {
     this.mesh.updateWorldMatrix(true, false);
     const def = this.definition;
     const mount = this.evalMount();
     const pivot = this.local(def.pivot);
     const targetLocal = this.target ? this.mesh.worldToLocal(this.target.clone()) : null;
+    const worldYaw = this.readWorldYaw();
 
     let yawErr = 0;
     let pitchErr = 0;
     if (targetLocal) {
+      if (!def.chassisAim && dt > 0 && this.lastWorldYaw !== null) {
+        this.yaw = wrapAngle(this.yaw - wrapAngle(worldYaw - this.lastWorldYaw));
+      }
+      this.lastWorldYaw = worldYaw;
       const dx = targetLocal.x - mount.x;
       const dz = targetLocal.z - mount.z;
       const desiredYaw = Math.atan2(dx, dz);
@@ -219,20 +231,23 @@ export class WeaponRig {
         this.pitch += THREE.MathUtils.clamp(pitchErr, -maxPitch, maxPitch);
         pitchErr = desiredPitch - this.pitch;
       }
-    } else if (dt > 0) {
-      const maxReturnYaw = (def.returnTurnSpeedRadPerS ?? (def.turnSpeedRadPerS ?? 5.0) * 0.65) * dt;
-      const yawToRest = wrapAngle(0 - this.yaw);
-      if (Math.abs(yawToRest) <= maxReturnYaw) {
-        this.yaw = 0;
-      } else {
-        this.yaw = wrapAngle(this.yaw + Math.sign(yawToRest) * maxReturnYaw);
-      }
-      const relaxPitch = 2.5 * dt;
-      const pitchToRest = 0 - this.pitch;
-      if (Math.abs(pitchToRest) <= relaxPitch) {
-        this.pitch = 0;
-      } else {
-        this.pitch += Math.sign(pitchToRest) * relaxPitch;
+    } else {
+      this.lastWorldYaw = null;
+      if (dt > 0) {
+        const maxReturnYaw = (def.returnTurnSpeedRadPerS ?? (def.turnSpeedRadPerS ?? 5.0) * 0.65) * dt;
+        const yawToRest = wrapAngle(0 - this.yaw);
+        if (Math.abs(yawToRest) <= maxReturnYaw) {
+          this.yaw = 0;
+        } else {
+          this.yaw = wrapAngle(this.yaw + Math.sign(yawToRest) * maxReturnYaw);
+        }
+        const relaxPitch = 2.5 * dt;
+        const pitchToRest = 0 - this.pitch;
+        if (Math.abs(pitchToRest) <= relaxPitch) {
+          this.pitch = 0;
+        } else {
+          this.pitch += Math.sign(pitchToRest) * relaxPitch;
+        }
       }
     }
 
@@ -306,6 +321,10 @@ export class WeaponRig {
   /** True when the turret head and next barrel are aligned on the same line as `target`. */
   isAligned(target: THREE.Vector3, launchLift = 0, maxAngleRad = 0.045): boolean {
     this.mesh.updateWorldMatrix(true, false);
+    const walkW = Number(
+      (this.mesh.userData as { uniforms?: { uWalkWeight?: { value?: number } } } | undefined)?.uniforms?.uWalkWeight?.value ?? 0,
+    );
+    const tol = walkW > 0.1 ? Math.max(maxAngleRad, 0.09) : maxAngleRad;
     const barrelIdx = this.nextBarrel % this.definition.sockets.length;
     const muzzle = this.muzzle(barrelIdx);
     const desired = target.clone().sub(muzzle);
@@ -313,11 +332,11 @@ export class WeaponRig {
     if (desired.lengthSq() < 1e-8) return true;
     desired.normalize();
     const current = this.direction(barrelIdx);
-    if (current.dot(desired) < Math.cos(maxAngleRad)) return false;
+    if (current.dot(desired) < Math.cos(tol)) return false;
     const local = this.mesh.worldToLocal(target.clone());
     const mount = this.evalMount();
     const desiredYaw = Math.atan2(local.x - mount.x, local.z - mount.z);
-    return Math.abs(wrapAngle(desiredYaw - this.yaw)) <= maxAngleRad;
+    return Math.abs(wrapAngle(desiredYaw - this.yaw)) <= tol;
   }
 
   /** Immediately sets orientation to aim straight at `target` (used only on initial spawn or direct math tests). */
@@ -325,6 +344,7 @@ export class WeaponRig {
     this.target = target.clone();
     this.launchLift = launchLift;
     this.mesh.updateWorldMatrix(true, false);
+    this.lastWorldYaw = this.readWorldYaw();
     if (this.definition.chassisAim) {
       const world = this.mesh.getWorldPosition(new THREE.Vector3());
       const local = this.mesh.parent ? this.mesh.parent.worldToLocal(target.clone()) : target;
@@ -378,14 +398,21 @@ export class WeaponRig {
   }
 
   /** Returns the turret breech port for spent brass casing ejection + world ground Y beneath the shooter. */
-  ejectOrigin(barrel = 0): { pos: THREE.Vector3; groundY: number } {
+  ejectOrigin(barrel = 0): { pos: THREE.Vector3; dir: THREE.Vector3; groundY: number; scale: number } {
     this.mesh.updateWorldMatrix(true, false);
+    const ports = this.definition.ejectPorts;
+    const port = ports?.length ? ports[barrel % ports.length] : undefined;
     const sock = this.definition.sockets[barrel] ?? this.definition.sockets[0]!;
     const portZ = this.definition.ejectZ ?? this.definition.pivot[2];
-    const localPort = this.local([sock.pivot[0], sock.pivot[1] + 0.06, portZ]);
-    const pos = localPort.applyMatrix4(this.matrices[0]!).applyMatrix4(this.mesh.matrixWorld);
+    const localPort = this.local(port ? port.pos : [sock.pivot[0], sock.pivot[1] + 0.06, portZ]);
+    const headMatrix = this.matrices[0]!;
+    const pos = localPort.applyMatrix4(headMatrix).applyMatrix4(this.mesh.matrixWorld);
+    const dir = new THREE.Vector3(port ? port.localSide : -1, 0, 0)
+      .transformDirection(headMatrix)
+      .transformDirection(this.mesh.matrixWorld)
+      .normalize();
     const groundY = this.mesh.getWorldPosition(new THREE.Vector3()).y;
-    return { pos, groundY };
+    return { pos, dir, groundY, scale: this.definition.ejectScale ?? 1.0 };
   }
 
   direction(barrel = 0): THREE.Vector3 {
@@ -404,3 +431,17 @@ export function attachWeaponRig(mesh: THREE.Object3D, definition: WeaponRigDefin
   return rig;
 }
 export function getWeaponRig(mesh: THREE.Object3D): WeaponRig | undefined { return meshRigs.get(mesh); }
+
+/** Extracts cloned [head, left, right] weapon matrices for a rig so a killed mesh's aim pose survives pool recycling. */
+export function captureWeaponSideMatrices(mesh: THREE.Object3D): THREE.Matrix4[] | null {
+  const rig = getWeaponRig(mesh);
+  if (!rig) return null;
+  const mats = rig.matrices;
+  const def = rig.definition;
+  const leftIdx = def.sockets.findIndex((_, i) => resolveSocketSide(def, i) === 0);
+  const rightIdx = def.sockets.findIndex((_, i) => resolveSocketSide(def, i) === 1);
+  const head = (mats[0] ?? new THREE.Matrix4()).clone();
+  const left = (mats[(leftIdx >= 0 ? leftIdx : 0) + 1] ?? head).clone();
+  const right = (mats[(rightIdx >= 0 ? rightIdx : 0) + 1] ?? left).clone();
+  return [head, left, right];
+}

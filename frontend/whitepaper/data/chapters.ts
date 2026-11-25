@@ -65,12 +65,12 @@ export const STACK_NAV_ITEMS: ReadonlyArray<StackNavItem> = [
 export const ENTITY_NAV_ITEMS: ReadonlyArray<EntityNavItem> = [
   { targetId: 'sec-07', filterGroup: 'robots', group: 'ROBOTS', label: 'Hero, Miner, Builder, Artillery, Tank, Combat, Recon', count: 7 },
   { targetId: 'sec-07', filterGroup: 'orbital', group: 'ORBITAL', label: 'Carrier, Patron Flagship, Drop Pods, Guild Trader, Sats', count: 8 },
-  { targetId: 'sec-07', filterGroup: 'buildings', group: 'BUILDINGS', label: 'HQ (+ Staker Uplink & Gold), Power, Industry, Defense, Rocket', count: 18 },
+  { targetId: 'sec-07', filterGroup: 'buildings', group: 'BUILDINGS', label: 'HQ (+ Staker Uplink & Gold), Power, Industry, Defense, Rocket', count: 19 },
   { targetId: 'sec-08', filterGroup: 'fauna', group: 'FAUNA', label: 'Ant, Beetle, Spitter', count: 3 },
   { targetId: 'sec-08', filterGroup: 'hives', group: 'HIVES', label: 'Ant, Beetle & Spitter Hives', count: 3 },
   { targetId: 'sec-08', filterGroup: 'deposits', group: 'DEPOSITS', label: 'Metal, Crystal & Oil Stages', count: 3 },
   { targetId: 'sec-09', filterGroup: 'work', group: 'WORK FX', label: 'Cutter Beams & 3D Debris Chunks', count: 9 },
-  { targetId: 'sec-09', filterGroup: 'combat', group: 'COMBAT FX', label: 'Laser, Acid, Rocket, Artillery, Rupture', count: 8 },
+  { targetId: 'sec-09', filterGroup: 'combat', group: 'COMBAT FX', label: 'Laser, Acid, Rocket, Explode, Rupture', count: 11 },
   { targetId: 'sec-09', filterGroup: 'hazards', group: 'HAZARDS', label: 'Lightning, Twister, Meteor & Rain', count: 4 },
   { targetId: 'sec-09', filterGroup: 'shaders', group: 'SHADERS', label: 'Water, Unifier, Day/Night, Build, Ruin', count: 7 },
 ];

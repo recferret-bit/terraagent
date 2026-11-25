@@ -65,51 +65,53 @@ function buildBloodPuddleGeometry(
   bodyCenterZ: number,
   splatSpots: readonly THREE.Vector2[],
   template: THREE.BufferGeometry,
+  groundOffsetAt?: (localX: number, localZ: number) => number,
 ): THREE.BufferGeometry | null {
   const tmplColor = template.getAttribute('color');
   const cSize = tmplColor?.itemSize ?? 3;
   const cNorm = tmplColor?.normalized ?? false;
   const cIsUint8 = tmplColor?.array instanceof Uint8Array;
-  const discs: THREE.BufferGeometry[] = [];
-  const addDisc = (cx: number, cz: number, rx: number, rz: number, yaw: number, bright: number) => {
-    const g = new THREE.CylinderGeometry(1, 1.1, 0.01, 9, 1);
+  const drops: THREE.BufferGeometry[] = [];
+  const addDroplet = (cx: number, cz: number, rx: number, rz: number, yaw: number, bright: number) => {
+    // Tiny 3D hemolymph droplet bead (~2 cm, never a flat cylinder disk)
+    const g = new THREE.OctahedronGeometry(1, 0);
     const nonIdx = g.index ? g.toNonIndexed() : g;
-    nonIdx.scale(rx, 1, rz);
+    nonIdx.scale(rx, 0.006, rz);
     nonIdx.rotateY(yaw);
-    nonIdx.translate(cx, 0.0055, cz);
+    const dy = groundOffsetAt ? groundOffsetAt(cx, cz) : 0;
+    nonIdx.translate(cx, 0.009 + dy, cz);
     const count = nonIdx.getAttribute('position').count;
     const scale = cIsUint8 ? 255 : 1;
     const colors = cIsUint8 ? new Uint8Array(count * cSize) : new Float32Array(count * cSize);
     for (let i = 0; i < count; i++) {
-      colors[i * cSize] = (0.14 + bright * 0.18) * scale;
-      colors[i * cSize + 1] = (0.62 + bright * 0.28) * scale;
-      colors[i * cSize + 2] = (0.07 + bright * 0.11) * scale;
+      colors[i * cSize] = (0.14 + bright * 0.14) * scale;
+      colors[i * cSize + 1] = (0.58 + bright * 0.16) * scale;
+      colors[i * cSize + 2] = (0.08 + bright * 0.08) * scale;
       if (cSize >= 4) colors[i * cSize + 3] = scale;
     }
     nonIdx.setAttribute('color', new THREE.BufferAttribute(colors, cSize, cNorm));
-    discs.push(nonIdx);
+    drops.push(nonIdx);
   };
 
-  addDisc(bodyCenterX, bodyCenterZ, 0.56 + 0.18 * Math.abs(Math.sin(seed * 23)), 0.44 + 0.16 * Math.abs(Math.cos(seed * 19)), seed * 4.2, 0.25);
-  for (let i = 0; i < 3; i++) {
-    const ang = seed * 11.7 + i * 2.15;
-    const r = 0.22 + 0.22 * Math.abs(Math.sin(seed * 41 + i * 3.1));
-    addDisc(
+  for (let i = 0; i < 4; i++) {
+    const ang = seed * 11.7 + i * 1.57;
+    const r = 0.04 + 0.06 * Math.abs(Math.sin(seed * 41 + i * 3.1));
+    addDroplet(
       bodyCenterX + Math.cos(ang) * r,
       bodyCenterZ + Math.sin(ang) * r,
-      0.24 + 0.14 * Math.abs(Math.sin(seed * 53 + i)),
-      0.16 + 0.1 * Math.abs(Math.cos(seed * 37 + i)),
+      0.022 + 0.008 * Math.abs(Math.sin(seed * 53 + i)),
+      0.018 + 0.007 * Math.abs(Math.cos(seed * 37 + i)),
       ang,
-      0.55 + 0.3 * (i / 2),
+      0.35 + 0.35 * (i / 3),
     );
   }
-  for (let i = 0; i < Math.min(3, splatSpots.length); i++) {
+  for (let i = 0; i < Math.min(2, splatSpots.length); i++) {
     const sp = splatSpots[i]!;
-    addDisc(sp.x, sp.y, 0.18, 0.13, seed * 7 + i * 1.4, 0.7);
+    addDroplet(sp.x, sp.y, 0.02, 0.016, seed * 7 + i * 1.4, 0.55);
   }
 
-  const merged = mergeGeometries(discs, false);
-  for (const d of discs) d.dispose();
+  const merged = mergeGeometries(drops, false);
+  for (const d of drops) d.dispose();
   if (!merged) return null;
 
   const vCount = merged.getAttribute('position').count;
@@ -130,6 +132,7 @@ function scatterSeveredClusters(
   posAttr: THREE.BufferAttribute,
   normAttr: THREE.BufferAttribute | undefined,
   seed: number,
+  groundOffsetAt?: (localX: number, localZ: number) => number,
 ): THREE.Vector2[] {
   const pos = new THREE.Vector3();
   const nrm = new THREE.Vector3();
@@ -171,11 +174,14 @@ function scatterSeveredClusters(
         }
       }
     }
-    const drop = Number.isFinite(minY) ? -minY + 0.002 : 0;
+    const landX = center.x + shiftX;
+    const landZ = center.z + shiftZ;
+    const terrainOffset = groundOffsetAt ? groundOffsetAt(landX, landZ) : 0;
+    const drop = Number.isFinite(minY) ? -minY + 0.002 + terrainOffset : terrainOffset;
     for (const s of spans) {
       for (let i = s.start; i < s.end; i++) posAttr.setY(i, posAttr.getY(i) + drop);
     }
-    splatSpots.push(new THREE.Vector2(center.x + shiftX, center.z + shiftZ));
+    splatSpots.push(new THREE.Vector2(landX, landZ));
   }
   return splatSpots;
 }
@@ -184,6 +190,7 @@ function bakeCorpseGeometry(
   srcGeo: THREE.BufferGeometry,
   finalPose: InsectPose,
   partRanges: readonly PartRange[],
+  groundOffsetAt?: (localX: number, localZ: number) => number,
 ): THREE.BufferGeometry {
   const baseClone = srcGeo.index ? srcGeo.toNonIndexed() : srcGeo.clone();
   const posAttr = baseClone.getAttribute('position') as THREE.BufferAttribute;
@@ -245,7 +252,7 @@ function bakeCorpseGeometry(
     for (let i = 0; i < vCount; i++) if (bodyVertexMask[i]) posAttr.setY(i, posAttr.getY(i) + lift);
   }
 
-  const splatSpots = scatterSeveredClusters(clusterSpans, posAttr, normAttr, seed);
+  const splatSpots = scatterSeveredClusters(clusterSpans, posAttr, normAttr, seed, groundOffsetAt);
 
   if (animAttr) {
     (animAttr.array as Float32Array).fill(0);
@@ -256,7 +263,7 @@ function bakeCorpseGeometry(
 
   const cx = bodyCount > 0 ? bodySumX / bodyCount : 0;
   const cz = bodyCount > 0 ? bodySumZ / bodyCount : 0;
-  const blood = buildBloodPuddleGeometry(seed, cx, cz, splatSpots, baseClone);
+  const blood = buildBloodPuddleGeometry(seed, cx, cz, splatSpots, baseClone, groundOffsetAt);
   let finalGeo = baseClone;
   if (blood) {
     const combined = mergeGeometries([baseClone, blood], false);
@@ -316,7 +323,11 @@ export class InsectCorpseLayer {
     }
   }
 
-  preserve(sourceMesh: THREE.Object3D, groundY?: number): boolean {
+  preserve(
+    sourceMesh: THREE.Object3D,
+    groundY?: number,
+    groundOffsetAt?: (localX: number, localZ: number) => number,
+  ): boolean {
     const animator = getInsectAnimator(sourceMesh);
     const srcGeo = (sourceMesh as THREE.Mesh).geometry;
     const partRanges = srcGeo?.userData?.partRanges as PartRange[] | undefined;
@@ -331,7 +342,7 @@ export class InsectCorpseLayer {
       hurt: 0,
       death: 1,
     };
-    const baked = bakeCorpseGeometry(srcGeo, finalPose, partRanges);
+    const baked = bakeCorpseGeometry(srcGeo, finalPose, partRanges, groundOffsetAt);
     const bundle = this.getMaterialBundle();
 
     const corpse = new THREE.Mesh(baked, bundle.material);
@@ -339,7 +350,9 @@ export class InsectCorpseLayer {
     corpse.name = `corpse:${(sourceMesh.userData as { archetypeId?: string } | undefined)?.archetypeId ?? 'insect'}`;
     corpse.position.copy(sourceMesh.position);
     if (groundY !== undefined) corpse.position.y = groundY;
-    corpse.rotation.copy(sourceMesh.rotation);
+    // Severed parts & droplets are baked in local ground offsets relative to yaw; avoid double-tilting on slopes.
+    if (groundOffsetAt) corpse.rotation.set(0, sourceMesh.rotation.y, 0);
+    else corpse.rotation.copy(sourceMesh.rotation);
     corpse.scale.copy(sourceMesh.scale);
     corpse.castShadow = true;
     corpse.receiveShadow = true;

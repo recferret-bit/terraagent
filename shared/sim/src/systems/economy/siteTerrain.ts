@@ -5,12 +5,13 @@ import type { PlanetState } from '../../kernel/state';
 import { occupiedGroundTiles } from '../construction/occupancy';
 import { evaluatePlacement, resolvePlacementRule, type PlacementBlock } from '../construction/placement';
 import { placementWorldFromState } from '../construction/placementWorld';
+import { getWreckTileSet } from '../combat/wrecks';
 import { getFootprintTileIndices, resolveBuildingRow } from './construction';
 
 /**
  * Terrain rule for a footprint with no placement row (D-37). Flat ground is a foundation.
- * Trees, rock, slope, hole, water, ridge and moat reject. Linked prep does not make them placeable.
- * Resource deposits are not judged here (an extractor's deposit rule lives on its placement row).
+ * Trees, rock, slope, hole, water, ridge, moat and resource deposits reject. Linked prep does not make them placeable.
+ * Resource deposits for extractors live on their placement rows (checked via `evaluatePlacement`).
  */
 export function footprintTerrainBlock(
   state: PlanetState,
@@ -19,10 +20,10 @@ export function footprintTerrainBlock(
   _colonyId?: number,
   geo: GeoBuildOptions = { linkedPrep: false },
 ): { block: GeoBlock; text: string } | null {
-  const { terrain, prep } = state.grid.layers;
+  const { terrain, prep, deposit } = state.grid.layers;
   const strict: GeoBuildOptions = { ...geo, linkedPrep: false };
   for (const i of indices) {
-    const block = geoBuildBlock(terrain[i], prep[i], DEPOSIT.none, 'any', strict);
+    const block = geoBuildBlock(terrain[i], prep[i], deposit?.[i] ?? DEPOSIT.none, 'forbid', strict);
     if (block) return { block, text: GEO_BLOCK_TEXT[block] };
   }
   return null;
@@ -70,8 +71,10 @@ export function buildingSiteBlock(
     return { code: res.code ?? 'site_blocked', detail: (res.block && SITE_DETAIL[res.block]) ?? res.text };
   }
   const occupied = occupiedGroundTiles(state, data); // buildings, not `anchors` (territory claim count)
+  const wrecks = getWreckTileSet(state);
   const geo: GeoBuildOptions = { linkedPrep: false };
   for (const tileIdx of fpIndices) {
+    if (wrecks.has(tileIdx)) return { code: 'terrain_unbuildable', detail: 'wreckage: terraform to clear' };
     const tb = footprintTerrainBlock(state, [tileIdx], data, site.owner, geo);
     if (tb) return { code: 'terrain_unbuildable', detail: tb.text };
     if (occupied.has(tileIdx)) return { code: 'site_blocked', detail: 'tile occupied' };

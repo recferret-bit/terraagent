@@ -1,4 +1,4 @@
-export type MouseCursorState = 'idle' | 'select' | 'move' | 'attack';
+export type MouseCursorState = 'idle' | 'select' | 'move' | 'attack' | 'prohibited';
 
 export type MouseCursorHoverTarget =
   | 'none'
@@ -13,10 +13,12 @@ export interface MouseCursorContext {
   readonly pointerInside: boolean;
   readonly inputBlocked: boolean;
   readonly cameraDragging?: boolean;
+  readonly boxSelecting?: boolean;
   readonly spectator: boolean;
   readonly attackMoveArmed: boolean;
   readonly hasSelectedMovableUnit: boolean;
   readonly hasSelectedArmedUnit: boolean;
+  readonly canToggleSelectedSelf?: boolean;
   readonly shiftKey: boolean;
   readonly hoverTarget: MouseCursorHoverTarget;
 }
@@ -27,6 +29,7 @@ export const DEFAULT_MOUSE_CURSOR_CONTEXT: MouseCursorContext = {
   pointerInside: false,
   inputBlocked: false,
   cameraDragging: false,
+  boxSelecting: false,
   spectator: false,
   attackMoveArmed: false,
   hasSelectedMovableUnit: false,
@@ -37,23 +40,37 @@ export const DEFAULT_MOUSE_CURSOR_CONTEXT: MouseCursorContext = {
 
 /**
  * Pure deterministic transition function mapping the current pointer/selection context
- * onto one of the 4 gameplay mouse cursor states: `idle`, `select`, `move`, or `attack`.
+ * onto one of the 5 gameplay mouse cursor states: `idle`, `select`, `move`, `attack`, or `prohibited`.
  */
 export function resolveMouseCursorState(ctx: MouseCursorContext): MouseCursorState {
-  if (!ctx.pointerInside || ctx.inputBlocked || ctx.cameraDragging || ctx.hoverTarget === 'none') {
+  if (!ctx.pointerInside || ctx.inputBlocked || ctx.cameraDragging) {
     return 'idle';
   }
 
+  if (ctx.boxSelecting) {
+    return 'select';
+  }
+
+  if (ctx.hoverTarget === 'none') {
+    return 'prohibited';
+  }
+
   if (ctx.spectator) {
-    return ctx.hoverTarget === 'ownSelectable' ? 'select' : 'idle';
+    if (ctx.hoverTarget === 'ownSelectable') return 'select';
+    if (ctx.hoverTarget === 'impassableGround') return 'prohibited';
+    return 'idle';
+  }
+
+  if (ctx.hoverTarget === 'impassableGround') {
+    return 'prohibited';
   }
 
   if (ctx.attackMoveArmed && ctx.hasSelectedArmedUnit) {
     return 'attack';
   }
 
-  if (ctx.hoverTarget === 'hostile' && ctx.hasSelectedArmedUnit) {
-    return 'attack';
+  if (ctx.hoverTarget === 'hostile') {
+    return ctx.hasSelectedArmedUnit ? 'attack' : 'prohibited';
   }
 
   if (ctx.hoverTarget === 'ownSelectable') {
@@ -61,7 +78,8 @@ export function resolveMouseCursorState(ctx: MouseCursorContext): MouseCursorSta
   }
 
   if (ctx.hoverTarget === 'ownSelectedSelf') {
-    return ctx.shiftKey && ctx.hasSelectedArmedUnit ? 'select' : 'idle';
+    const canToggle = ctx.canToggleSelectedSelf ?? ctx.hasSelectedArmedUnit;
+    return ctx.shiftKey && canToggle ? 'select' : 'idle';
   }
 
   if (ctx.hoverTarget === 'deposit') {
@@ -76,7 +94,7 @@ export function resolveMouseCursorState(ctx: MouseCursorContext): MouseCursorSta
 }
 
 /**
- * Explicit state machine managing gameplay mouse cursor state (`idle | select | move | attack`)
+ * Explicit state machine managing gameplay mouse cursor state (`idle | select | move | attack | prohibited`)
  * and notifying subscribers only when the resolved state transitions.
  */
 export class MouseCursorStateMachine {

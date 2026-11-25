@@ -21,6 +21,7 @@ import {
   type SimEvent,
 } from '../../src';
 import { isHostileTargetForAttacker } from '../../src/systems/combat/targeting';
+import { getUnitStanceRecord } from '../../src/systems/combat/stances';
 import { hasActiveTruce, peekDiplomacyBlob } from '../../src/systems/diplomacy/store';
 
 const FLAG_LIST = parseWaves(null).list;
@@ -439,5 +440,50 @@ describe('Combat test diplomacy & PvP shield bypass', () => {
     expect(res.outcomes[0]?.code).toBe('site_blocked');
     expect(res.outcomes[1]?.code).toBe('site_blocked');
     expect(res.outcomes[2]?.code).toBeUndefined();
+  });
+});
+
+describe('Combat test explicit target pursuit', () => {
+  it('keeps explicit attackTarget pursuit alive across ticks in combat test mode outside 6-tile unit sight', () => {
+    const { host, meta } = createCombatTestHost({ planetType: 'desert', seed: 'combat-pursuit-far', botCount: 1 });
+    const playerTile = findDryOffsetNear(host.state, meta.staging.q, meta.staging.r, -6, 0);
+    const enemyTile = findDryOffsetNear(host.state, meta.staging.q, meta.staging.r, 6, 0);
+    expect(hexDistance(playerTile.q, playerTile.r, enemyTile.q, enemyTile.r)).toBeGreaterThanOrEqual(10);
+
+    host.submit(cmd('dev.spawnunit', { unit: 'demoTank', q: playerTile.q, r: playerTile.r, count: 1, owner: 0 }));
+    host.submit(cmd('dev.spawnunit', { unit: 'demoTank', q: enemyTile.q, r: enemyTile.r, count: 1, owner: 1 }));
+    host.step(1);
+
+    const cols = host.state.entities.cols;
+    let pId = -1;
+    let eId = -1;
+    for (let i = 0; i < host.state.entities.count; i++) {
+      if (cols.kind[i] === ENTITY_KIND.demoTank && cols.owner[i] === 0) pId = cols.id[i]!;
+      if (
+        cols.kind[i] === ENTITY_KIND.demoTank &&
+        cols.owner[i] === 1 &&
+        Math.round(cols.q[i]!) === enemyTile.q &&
+        Math.round(cols.r[i]!) === enemyTile.r
+      ) {
+        eId = cols.id[i]!;
+      }
+    }
+    expect(pId).toBeGreaterThan(0);
+    expect(eId).toBeGreaterThan(0);
+
+    const pRowBefore = rowOf(host.state.entities, pId);
+    const startDist = hexDistance(cols.q[pRowBefore]!, cols.r[pRowBefore]!, enemyTile.q, enemyTile.r);
+
+    host.submit(cmd('attackTarget', { entityIds: [pId], targetId: eId }, 0));
+    const orderRes = host.step(1);
+    expect(orderRes.outcomes[0]?.code).toBeUndefined();
+
+    for (let t = 0; t < 8; t++) host.step(1);
+
+    const pRowAfter = rowOf(host.state.entities, pId);
+    const stance = getUnitStanceRecord(host.state, pRowAfter);
+    expect(stance.explicitTargetId).toBe(eId);
+    const endDist = hexDistance(cols.q[pRowAfter]!, cols.r[pRowAfter]!, enemyTile.q, enemyTile.r);
+    expect(endDist).toBeLessThan(startDist);
   });
 });

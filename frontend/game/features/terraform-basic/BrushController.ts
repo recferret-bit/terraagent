@@ -152,6 +152,20 @@ export class BrushController {
     return opts?.colonyId ?? this.sink.getColonyId?.() ?? 0;
   }
 
+  /** Pure read-only check whether the currently selected brush operation can act on `(q, r)`. */
+  canStrokeTile(q: number, r: number, opts?: BrushStrokeOptions): boolean {
+    if (this.sink.isReadOnly?.()) return false;
+    const tile = { q: Math.trunc(q), r: Math.trunc(r) };
+    const op = opts?.op ?? this.selectedOp;
+    const colonyId = this.colonyId(opts);
+    const view = this.resolveView();
+    const hostState = this.sink.host?.state;
+    const entities = extractViewEntities(view, hostState);
+    const data = this.sink.simData?.() ?? null;
+    const workerId = (op === 'terraform' || op === 'cultivate') && opts?.queue ? undefined : this.sink.getWorkerId?.();
+    return planPrimaryOp(op, { view, hostState, entities, colonyId, workerId, data }, tile.q, tile.r).outcome.ok;
+  }
+
   /** One click at `(q, r)`: previews it and dispatches at most one `enqueueTask` order. */
   strokeTile(q: number, r: number, opts?: BrushStrokeOptions): BrushStrokeSummary {
     const tile = { q: Math.trunc(q), r: Math.trunc(r) };

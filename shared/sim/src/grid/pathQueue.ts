@@ -2,7 +2,14 @@ import type { CompiledDataLike } from '../kernel/config';
 import { setBlob, type Blob, type PlanetState } from '../kernel/state';
 import { dropFieldSearch, stepFieldSearch, type FieldRequestData } from './flowField';
 import { hexIndex } from './hex';
-import { pathBlockersFor, type PathProfileId } from './pathProfiles';
+import { rowOf } from '../ecs/store';
+import { isGroundPassable } from './tileModel';
+import {
+  pathBlockersFor,
+  resolveRegisteredUnitOccupancy,
+  type PathProfileId,
+  type UnitHexOccupancy,
+} from './pathProfiles';
 import {
   continueAStarSearch,
   createAStarSearch,
@@ -59,6 +66,8 @@ export interface PathQueueEntry {
   epoch?: number;
   /** Hash of the compiled data the search has explored under; a change (dev `tune`) restarts it like `epoch`. */
   dataHash?: string;
+  /** Plain-data unit occupancy snapshot persisted only when a search pauses mid-flight across ticks (replay parity). */
+  unitOccSnap?: { goals: number[]; transit?: number[]; cross: number[]; avoid: number[] };
 }
 
 export interface PathQueueResult extends HexPathResult {
@@ -153,22 +162,123 @@ export function cancelPathRequest(state: PlanetState, id: string | number, tick:
   const at = queue.findIndex((e) => e.id === id);
   if (at < 0) return false;
   cacheOf(state).delete(id);
+  unitOccCacheOf(state).delete(id);
   dropFieldSearch(state, id);
   const next = queue.slice(0, at).concat(queue.slice(at + 1));
   writeQueue(state, next, { ...getPathStats(state), queueLength: next.length }, tick);
   return true;
 }
 
-function searchFor(state: PlanetState, entry: PathQueueEntry, data?: CompiledDataLike): AStarSearchState {
+const liveUnitOccByReq = new WeakMap<object, Map<string | number, UnitHexOccupancy | null>>();
+
+function unitOccCacheOf(state: PlanetState): Map<string | number, UnitHexOccupancy | null> {
+  let m = liveUnitOccByReq.get(state.grid);
+  if (!m) liveUnitOccByReq.set(state.grid, (m = new Map()));
+  return m;
+}
+
+function hydrateUnitOcc(snap: PathQueueEntry['unitOccSnap']): UnitHexOccupancy | null {
+  if (!snap) return null;
+  return {
+    claimedGoals: new Set(snap.goals),
+    inTransitGoals: new Set(snap.transit ?? []),
+    hostileStationary: new Set(snap.cross),
+    alliedStationary: new Set(snap.avoid),
+  };
+}
+
+function serializeUnitOcc(occ: UnitHexOccupancy | null): PathQueueEntry['unitOccSnap'] | undefined {
+  if (!occ) return undefined;
+  return {
+    goals: [...occ.claimedGoals].sort((a, b) => a - b),
+    ...(occ.inTransitGoals.size > 0 ? { transit: [...occ.inTransitGoals].sort((a, b) => a - b) } : {}),
+    cross: [...occ.hostileStationary].sort((a, b) => a - b),
+    avoid: [...occ.alliedStationary].sort((a, b) => a - b),
+  };
+}
+
+function widenUnitCrowdedBand(
+  state: PlanetState,
+  entry: PathQueueEntry,
+  unitOcc: UnitHexOccupancy | null,
+  effectiveGoalBlocked: ((ti: number) => boolean) | undefined,
+  data?: CompiledDataLike,
+): { minDist: number; maxDist: number } | undefined {
+  const band = entry.band;
+  const entRow = entry.entityId !== undefined && entry.entityId > 0 ? rowOf(state.entities, entry.entityId) : -1;
+  const isColonyWorker = entry.profile === 'worker' && (entRow < 0 || state.entities.cols.owner[entRow]! >= 0);
+  if (!band || band.maxDist <= 0 || !unitOcc || isColonyWorker || entry.profile === 'hover') {
+    return band;
+  }
+  const idx = hexIndex(entry.radius ?? state.grid.radius);
+  const fromIdx = idx.indexOf(entry.from.q, entry.from.r);
+  const terrainOnly = pathBlockersFor(state, entry.profile, fromIdx, data, entry.entityId, null);
+  const ringHas = (minD: number, maxD: number, pred: ((ti: number) => boolean) | undefined): boolean => {
+    for (let dr = -maxD; dr <= maxD; dr++) {
+      for (let dq = Math.max(-maxD, -dr - maxD); dq <= Math.min(maxD, -dr + maxD); dq++) {
+        const d = Math.max(Math.abs(dq), Math.abs(dr), Math.abs(dq + dr));
+        if (d < minD || d > maxD) continue;
+        const ti = idx.indexOf(entry.to.q + dq, entry.to.r + dr);
+        if (ti < 0 || !isGroundPassable(state.grid, ti, data)) continue;
+        if (!(pred?.(ti) ?? false)) return true;
+      }
+    }
+    return false;
+  };
+  if (!ringHas(band.minDist, band.maxDist, terrainOnly?.goalBlocked)) return band;
+  if (ringHas(band.minDist, band.maxDist, effectiveGoalBlocked)) return band;
+  for (let extra = 1; extra <= 3; extra++) {
+    const cand = band.maxDist + extra;
+    if (ringHas(cand, cand, effectiveGoalBlocked)) return { minDist: band.minDist, maxDist: cand };
+  }
+  return band;
+}
+
+function searchFor(
+  state: PlanetState,
+  entry: PathQueueEntry,
+  data?: CompiledDataLike,
+  batchTransit?: ReadonlySet<number>,
+): AStarSearchState {
   const cache = cacheOf(state);
   let search = cache.get(entry.id);
   if (!search) {
-    const blockers = pathBlockersFor(state, entry.profile, hexIndex(entry.radius ?? state.grid.radius).indexOf(entry.from.q, entry.from.r), data);
+    const occCache = unitOccCacheOf(state);
+    let unitOcc =
+      entry.unitOccSnap !== undefined
+        ? hydrateUnitOcc(entry.unitOccSnap)
+        : entry.entityId !== undefined && entry.entityId > 0
+          ? resolveRegisteredUnitOccupancy(state, entry.entityId, data)
+          : null;
+    if (unitOcc && batchTransit && batchTransit.size > 0) {
+      const merged = new Set(unitOcc.inTransitGoals);
+      for (const ti of batchTransit) merged.add(ti);
+      unitOcc = { ...unitOcc, inTransitGoals: merged };
+    }
+    occCache.set(entry.id, unitOcc);
+    const blockers = pathBlockersFor(
+      state,
+      entry.profile,
+      hexIndex(entry.radius ?? state.grid.radius).indexOf(entry.from.q, entry.from.r),
+      data,
+      entry.entityId,
+      unitOcc,
+    );
+    const effectiveGoalBlocked = entry.band
+      ? (blockers?.bandGoalBlocked ?? blockers?.goalBlocked)
+      : blockers?.goalBlocked;
+    const effectiveBand = widenUnitCrowdedBand(state, entry, unitOcc, effectiveGoalBlocked, data);
     search = createAStarSearch(state, entry.from, entry.to, {
       radius: entry.radius,
       data,
-      ...(blockers ? { blocked: blockers.blocked, goalBlocked: blockers.goalBlocked } : {}),
-      band: entry.band,
+      ...(blockers
+        ? {
+            blocked: blockers.blocked,
+            goalBlocked: effectiveGoalBlocked,
+            ...(blockers.avoidPenaltyBp ? { avoidPenaltyBp: blockers.avoidPenaltyBp } : {}),
+          }
+        : {}),
+      band: effectiveBand,
     });
     // Cache miss on a half-done search (restored / cloned state): replay the expansions already paid for.
     if (entry.expansionsUsed > 0) continueAStarSearch(search, entry.expansionsUsed, true);
@@ -203,6 +313,8 @@ export function stepPathQueue(
 
   let expansionsUsed = 0;
   const resolved: PathQueueResult[] = [];
+  const batchTransit = new Set<number>();
+  const gridIdx = hexIndex(state.grid.radius);
 
   while (pending.length > 0 && expansionsUsed < budget) {
     const entry = pending[0];
@@ -212,6 +324,8 @@ export function stepPathQueue(
     if ((entry.epoch ?? 0) !== epoch || costsChanged) {
       // the ground or the step costs changed while this search was paused: start over (deterministic on every host)
       cacheOf(state).delete(entry.id);
+      unitOccCacheOf(state).delete(entry.id);
+      delete entry.unitOccSnap;
       dropFieldSearch(state, entry.id);
       entry.expansionsUsed = 0;
       entry.epoch = epoch;
@@ -238,14 +352,26 @@ export function stepPathQueue(
       });
       continue;
     }
-    const search = searchFor(state, entry, data);
+    const search = searchFor(state, entry, data, batchTransit);
     const stepRes = continueAStarSearch(search, budget - expansionsUsed);
     expansionsUsed += stepRes.used;
     entry.expansionsUsed = search.expansions;
 
-    if (!stepRes.done || !search.result) break;
+    if (!stepRes.done || !search.result) {
+      if (entry.unitOccSnap === undefined && entry.entityId !== undefined) {
+        const snap = serializeUnitOcc(unitOccCacheOf(state).get(entry.id) ?? null);
+        if (snap) entry.unitOccSnap = snap;
+      }
+      break;
+    }
     pending.shift();
     cacheOf(state).delete(entry.id);
+    unitOccCacheOf(state).delete(entry.id);
+    if (entry.entityId !== undefined && search.result.ok && search.result.path.length > 0) {
+      const endPt = search.result.path[search.result.path.length - 1]!;
+      const endIdx = gridIdx.indexOf(endPt.q, endPt.r);
+      if (endIdx >= 0) batchTransit.add(endIdx);
+    }
     resolved.push({
       id: entry.id,
       ...(entry.entityId !== undefined ? { entityId: entry.entityId } : {}),

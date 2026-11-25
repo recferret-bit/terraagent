@@ -1,4 +1,4 @@
-import { ENTITY_STATE } from '../../ecs/columns';
+import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
 import { rowOf } from '../../ecs/store';
 import { hexIndex } from '../../grid/hex';
 import { defineCommandHandler, type SimCommand } from '../../kernel/commands';
@@ -14,6 +14,7 @@ import { cancelWorkerJobs } from '../terraform-basic/workJobs';
 import { canWeaponHitTarget } from './layers';
 import { orderUnitAttackMove, orderUnitAttackTarget, setUnitStance } from './stances';
 import { resolveAttackerWeaponRow } from './targeting';
+import { orderTurretAttackTarget } from './turrets';
 
 function ownEntityRow(state: PlanetState, cmd: SimCommand, id: number): number | string {
   const row = rowOf(state.entities, id);
@@ -210,8 +211,25 @@ export const attackMoveHandler = defineCommandHandler({
         recordW18AttackMoveHostility(state, cols.owner[row]!, tileOwner, args.q, args.r, ctx.tick, ctx.data);
       }
     }
-    if (ctx.flags.has('W18') && ids.length >= 2) {
-      orderRaidGroupFlowMarch(state, ids, { q: args.q, r: args.r }, ctx, 'own');
+    if (ids.length >= 2) {
+      const byProfile = new Map<string, number[]>();
+      for (const id of ids) {
+        const row = rowOf(state.entities, id);
+        if (row < 0) continue;
+        const prof = mobileStats(cols.kind[row]!, ctx.data)?.profile ?? 'ground';
+        const list = byProfile.get(prof);
+        if (list) list.push(id);
+        else byProfile.set(prof, [id]);
+      }
+      for (const groupIds of byProfile.values()) {
+        if (groupIds.length >= 2) {
+          orderRaidGroupFlowMarch(state, groupIds, { q: args.q, r: args.r }, ctx, 'own');
+        } else {
+          const singleId = groupIds[0]!;
+          cancelWorkerJobs(state, singleId, ctx.tick);
+          orderUnitAttackMove(state, singleId, { q: args.q, r: args.r }, ctx);
+        }
+      }
     } else {
       for (const id of ids) {
         cancelWorkerJobs(state, id, ctx.tick);
@@ -272,7 +290,12 @@ export const attackTargetHandler = defineCommandHandler({
         recordHostilityBetween(state, cols.owner[row]!, cols.owner[tRow]!, ctx.tick);
       }
       cancelWorkerJobs(state, id, ctx.tick);
-      orderUnitAttackTarget(state, id, args.targetId, ctx);
+      const kind = row >= 0 ? cols.kind[row]! : 0;
+      if (kind === ENTITY_KIND.autocannon || kind === ENTITY_KIND.laserTower) {
+        orderTurretAttackTarget(state, id, args.targetId, ctx.tick);
+      } else {
+        orderUnitAttackTarget(state, id, args.targetId, ctx);
+      }
     }
     return undefined;
   },

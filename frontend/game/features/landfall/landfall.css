@@ -223,3 +223,19 @@
     max-width: calc(100vw - 376px - 178px);
   }
 }
+
+.ta-marquee-box {
+  position: fixed;
+  z-index: 44;
+  pointer-events: none;
+  box-sizing: border-box;
+  border: 2px solid var(--ta-orange);
+  background: color-mix(in srgb, var(--ta-orange) 16%, transparent);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--ta-void) 82%, transparent),
+    inset 0 0 0 1px color-mix(in srgb, var(--ta-void) 65%, transparent);
+}
+
+.ta-marquee-box[hidden] {
+  display: none !important;
+}

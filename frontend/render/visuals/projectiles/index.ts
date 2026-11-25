@@ -14,8 +14,11 @@ export {
 } from './geometries';
 export type {
   ActiveAoeDecalSnapshot,
+  ActiveGroundCraterSnapshot,
   ActiveLaserSnapshot,
   ActiveProjectileSnapshot,
+  ActiveShockwaveSnapshot,
+  MechanicalDeathVfxInput,
   ProjectileFiredVfxInput,
   ProjectileImpactVfxInput,
   ProjectileVfxActiveCounts,

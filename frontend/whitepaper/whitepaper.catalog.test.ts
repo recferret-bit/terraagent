@@ -95,7 +95,7 @@ describe('TerraAgent whitepaper section ordering & token hygiene', () => {
     }
 
     const allCards = [...FLEET_CARDS, ...ECOLOGY_CARDS, ...EFFECT_CARDS];
-    expect(allCards.length).toBe(70); // W28 adds the uplink + gold hubs and the Lead Patron flagship
+    expect(allCards.length).toBe(74); // W28 adds uplink + gold hubs & Lead Patron flagship; plus sensorArray, dustBurst, bot & building death bursts
     for (const item of ENTITY_NAV_ITEMS) {
       const matching = allCards.filter((c) => c.group === item.filterGroup);
       expect(matching.length, `Entity nav count mismatch for ${item.group}`).toBe(item.count);

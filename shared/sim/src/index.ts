@@ -53,10 +53,16 @@ export * from './systems/hq';
 export { issueUnitCommand, moveUnit, stopUnit, UNIT_REGISTRY, units } from './systems/units';
 export * from './units/types';
 export { getUnitCommand, getUnitRecord, type UnitRecord } from './units/book';
-export { isUnitKind, mobileStats, type MobileStats } from './units/mobility';
+export { isUnitKind, mobileStats, movementProfile, type MobileStats } from './units/mobility';
 export { getMotion, type MoveGoal, type MotionStatus, type UnitMotion } from './units/movement/orchestrator';
 export { advancePose } from './units/movement/locomotion';
 export { assignSlots, ringCoords, type SlotUnit } from './units/movement/slots';
+export {
+  collectUnitOccupancy,
+  findNearestFreeStandTile,
+  isHexClaimedByOtherUnit,
+  isHexStationaryOccupied,
+} from './units/movement/unitOccupancy';
 export type { IssueOpts } from './units/runner';
 export * from './economy';
 // Experiments import the host (SimHost → systems); exported from the root, not from `economy/index`, to avoid an import cycle.

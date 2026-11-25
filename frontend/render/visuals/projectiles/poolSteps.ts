@@ -4,17 +4,20 @@ import {
   meshForProjectileKind,
   writeAoeMatrices,
   writeCartridgeMatrix,
+  writeCraterMatrix,
   writeDebrisMatrix,
   writeImpactMatrix,
   writeLaserMatrix,
+  writeShockwaveMatrix,
   writeSmokeMatrix,
   type ProjectileVfxPools,
 } from './pools';
+import type { VfxPoint3D } from './types';
 
 const TMP_COLOR = new THREE.Color();
 const UP_VEC = new THREE.Vector3(0, 1, 0);
 
-function allocSlot<T extends { active: boolean }>(pool: readonly T[]): number {
+export function allocPoolSlot<T extends { active: boolean }>(pool: readonly T[]): number {
   for (let i = 0; i < pool.length; i++) {
     if (!pool[i]!.active) return i;
   }
@@ -30,7 +33,7 @@ export function spawnSmokePuffInPool(
   scaleMul = 1,
   warm = false,
 ): void {
-  const idx = allocSlot(pools.smokePuffs);
+  const idx = allocPoolSlot(pools.smokePuffs);
   const puff = pools.smokePuffs[idx]!;
   puff.active = true;
   puff.x = x + (nextRand() - 0.5) * 0.14;
@@ -58,37 +61,120 @@ export function ejectCartridgeInPool(
   scale = 1,
   backOffset = -0.52,
   groundY?: number,
+  ejectDir?: THREE.Vector3,
 ): void {
-  const idx = allocSlot(pools.cartridges);
+  const idx = allocPoolSlot(pools.cartridges);
   const c = pools.cartridges[idx]!;
   const dir = forward.clone().normalize();
-  const right = new THREE.Vector3().crossVectors(dir, UP_VEC);
-  if (right.lengthSq() < 1e-4) right.set(1, 0, 0);
-  else right.normalize();
+  let right: THREE.Vector3;
+  if (ejectDir && ejectDir.lengthSq() > 1e-6) {
+    right = ejectDir.clone().normalize();
+  } else {
+    right = new THREE.Vector3().crossVectors(dir, UP_VEC);
+    if (right.lengthSq() < 1e-4) right.set(1, 0, 0);
+    else right.normalize();
+  }
+  const fromPort = backOffset >= 0;
   const ejectOrigin = new THREE.Vector3(fromX, fromY, fromZ)
-    .addScaledVector(dir, backOffset * scale)
-    .addScaledVector(right, 0.22 * scale);
+    .addScaledVector(dir, fromPort ? 0 : backOffset * scale)
+    .addScaledVector(right, (fromPort ? 0.035 : 0.22) * scale);
   c.active = true;
   c.x = ejectOrigin.x;
-  c.y = ejectOrigin.y + 0.08 * scale;
+  c.y = ejectOrigin.y + (fromPort ? 0.02 : 0.08) * scale;
   c.z = ejectOrigin.z;
-  const sideSpd = 2.0 + nextRand() * 1.1;
-  const upSpd = 2.1 + nextRand() * 0.9;
-  const backSpd = 0.4 + nextRand() * 0.6;
+  const isHeavy = scale >= 1.8;
+  const sideSpd = isHeavy ? 1.7 + nextRand() * 0.8 : 2.0 + nextRand() * 1.1;
+  const upSpd = isHeavy ? 1.9 + nextRand() * 0.7 : 2.1 + nextRand() * 0.9;
+  const backSpd = isHeavy ? 0.25 + nextRand() * 0.45 : 0.4 + nextRand() * 0.6;
+  const spinMag = isHeavy ? 20 : 32;
   c.vx = right.x * sideSpd - dir.x * backSpd;
   c.vy = upSpd;
   c.vz = right.z * sideSpd - dir.z * backSpd;
   c.rx = nextRand() * Math.PI * 2;
   c.ry = nextRand() * Math.PI * 2;
   c.rz = nextRand() * Math.PI * 2;
-  c.vrx = (nextRand() - 0.5) * 32;
-  c.vry = (nextRand() - 0.5) * 32;
-  c.vrz = (nextRand() - 0.5) * 32;
+  c.vrx = (nextRand() - 0.5) * spinMag;
+  c.vry = (nextRand() - 0.5) * spinMag;
+  c.vrz = (nextRand() - 0.5) * spinMag;
   c.scale = scale;
   c.groundY = groundY ?? Math.max(0, fromY - 0.88);
   c.ageS = 0;
-  c.durationS = 1.05 + nextRand() * 0.25;
+  c.durationS = isHeavy ? 1.45 + nextRand() * 0.4 : 1.05 + nextRand() * 0.25;
   writeCartridgeMatrix(pools, idx, c);
+}
+
+export function spawnGroundCraterInPool(
+  pools: ProjectileVfxPools,
+  nextRand: () => number,
+  x: number,
+  groundY: number,
+  z: number,
+  radiusM: number,
+  groundNormal?: VfxPoint3D,
+): void {
+  if (pools.craters.length === 0) return;
+  for (const zc of pools.noCraterZones) {
+    const dx = x - zc.x;
+    const dz = z - zc.z;
+    const lim = zc.radiusM + radiusM * 0.5;
+    if (dx * dx + dz * dz <= lim * lim) return;
+  }
+  const idx = pools.craterCursor++ % pools.craters.length;
+  const c = pools.craters[idx]!;
+  c.active = true;
+  c.x = x;
+  c.y = groundY;
+  c.z = z;
+  c.radiusM = Math.max(0.18, radiusM);
+  c.yaw = nextRand() * Math.PI * 2;
+  c.ageS = 0;
+  c.nx = groundNormal?.x ?? 0;
+  c.ny = groundNormal?.y ?? 1;
+  c.nz = groundNormal?.z ?? 0;
+  writeCraterMatrix(pools, idx, c);
+}
+
+/** Hides ground craters overlapping a death site or wreck and blocks late-arriving overkill craters there. */
+export function clearGroundCratersNear(
+  pools: ProjectileVfxPools,
+  x: number,
+  z: number,
+  radiusM: number,
+  ownerId?: number,
+): number {
+  let cleared = 0;
+  const rBase = Math.max(0, radiusM);
+  if (rBase > 0) {
+    if (ownerId !== undefined) {
+      for (let i = pools.noCraterZones.length - 1; i >= 0; i--) {
+        if (pools.noCraterZones[i]!.ownerId === ownerId) pools.noCraterZones.splice(i, 1);
+      }
+    }
+    if (pools.noCraterZones.length >= 96) {
+      const dropIdx = pools.noCraterZones.findIndex((zc) => zc.ownerId === undefined);
+      pools.noCraterZones.splice(dropIdx >= 0 ? dropIdx : 0, 1);
+    }
+    pools.noCraterZones.push({ x, z, radiusM: Math.max(1.1, rBase), ageS: 0, ...(ownerId !== undefined ? { ownerId } : {}) });
+  }
+  for (let i = 0; i < pools.craters.length; i++) {
+    const c = pools.craters[i]!;
+    if (!c.active) continue;
+    const limit = rBase + c.radiusM * 0.65;
+    const dx = c.x - x;
+    const dz = c.z - z;
+    if (dx * dx + dz * dz <= limit * limit) {
+      c.active = false;
+      hideInstance(pools.craterPool.mesh, i);
+      cleared++;
+    }
+  }
+  return cleared;
+}
+
+export function releaseNoCraterZoneByOwner(pools: ProjectileVfxPools, ownerId: number): void {
+  for (let i = pools.noCraterZones.length - 1; i >= 0; i--) {
+    if (pools.noCraterZones[i]!.ownerId === ownerId) pools.noCraterZones.splice(i, 1);
+  }
 }
 
 export function stepAuxiliaryPools(pools: ProjectileVfxPools, dt: number): void {
@@ -150,6 +236,25 @@ export function stepAuxiliaryPools(pools: ProjectileVfxPools, dt: number): void 
     }
     writeDebrisMatrix(pools, i, d);
   }
+  stepCartridges(pools, dt);
+  stepAoeDecals(pools, dt);
+  stepShockwaves(pools, dt);
+  for (let i = pools.noCraterZones.length - 1; i >= 0; i--) {
+    const zc = pools.noCraterZones[i]!;
+    if (zc.ownerId !== undefined) continue;
+    zc.ageS += dt;
+    if (zc.ageS >= 12.0) pools.noCraterZones.splice(i, 1);
+  }
+  for (let i = 0; i < pools.craters.length; i++) {
+    const cr = pools.craters[i]!;
+    if (!cr.active) continue;
+    const prevAge = cr.ageS;
+    cr.ageS += dt;
+    if (cr.ageS > 2.4 && prevAge < 5.0) writeCraterMatrix(pools, i, cr);
+  }
+}
+
+function stepCartridges(pools: ProjectileVfxPools, dt: number): void {
   for (let i = 0; i < pools.cartridges.length; i++) {
     const c = pools.cartridges[i]!;
     if (!c.active) continue;
@@ -166,9 +271,10 @@ export function stepAuxiliaryPools(pools: ProjectileVfxPools, dt: number): void 
     c.rx += c.vrx * dt;
     c.ry += c.vry * dt;
     c.rz += c.vrz * dt;
-    if (c.y <= c.groundY + 0.025) {
-      c.y = c.groundY + 0.025;
-      c.vy = Math.abs(c.vy) * 0.40;
+    const restClearance = 0.025 * c.scale;
+    if (c.y <= c.groundY + restClearance) {
+      c.y = c.groundY + restClearance;
+      c.vy = Math.abs(c.vy) * (c.scale >= 1.8 ? 0.34 : 0.40);
       c.vx *= 0.62;
       c.vz *= 0.62;
       c.vrx *= 0.55;
@@ -177,6 +283,9 @@ export function stepAuxiliaryPools(pools: ProjectileVfxPools, dt: number): void 
     }
     writeCartridgeMatrix(pools, i, c);
   }
+}
+
+function stepAoeDecals(pools: ProjectileVfxPools, dt: number): void {
   for (let i = 0; i < pools.aoeDecals.length; i++) {
     const dec = pools.aoeDecals[i]!;
     if (!dec.active) continue;
@@ -188,6 +297,22 @@ export function stepAuxiliaryPools(pools: ProjectileVfxPools, dt: number): void 
       continue;
     }
     writeAoeMatrices(pools, i, dec);
+  }
+}
+
+function stepShockwaves(pools: ProjectileVfxPools, dt: number): void {
+  for (let i = 0; i < pools.shockwaves.length; i++) {
+    const sw = pools.shockwaves[i]!;
+    if (!sw.active) continue;
+    sw.ageS += dt;
+    if (sw.ageS >= sw.durationS) {
+      sw.active = false;
+      hideInstance(pools.shockwavePool.mesh, i);
+      pools.shockwaveAlpha.setX(i, 0);
+      pools.shockwaveAlpha.needsUpdate = true;
+      continue;
+    }
+    writeShockwaveMatrix(pools, i, sw);
   }
 }
 
@@ -237,6 +362,22 @@ export function clearProjectileVfxPools(pools: ProjectileVfxPools): void {
       hideInstance(pools.aoeDecalPool.mesh, i);
     }
   }
+  for (let i = 0; i < pools.shockwaves.length; i++) {
+    if (pools.shockwaves[i]!.active) {
+      pools.shockwaves[i]!.active = false;
+      hideInstance(pools.shockwavePool.mesh, i);
+      pools.shockwaveAlpha.setX(i, 0);
+      pools.shockwaveAlpha.needsUpdate = true;
+    }
+  }
+  pools.craterCursor = 0;
+  pools.noCraterZones.length = 0;
+  for (let i = 0; i < pools.craters.length; i++) {
+    if (pools.craters[i]!.active) {
+      pools.craters[i]!.active = false;
+      hideInstance(pools.craterPool.mesh, i);
+    }
+  }
 }
 
 export function disposeProjectileVfxPools(pools: ProjectileVfxPools): void {
@@ -253,4 +394,7 @@ export function disposeProjectileVfxPools(pools: ProjectileVfxPools): void {
   pools.debrisPool.material.dispose();
   pools.aoeRingPool.material.dispose();
   pools.aoeDecalPool.material.dispose();
+  pools.shockwavePool.mesh.geometry.dispose();
+  pools.shockwavePool.material.dispose();
+  pools.craterPool.material.dispose();
 }

@@ -287,6 +287,7 @@ export class CombatTestPanel {
     );
     this.armedBannerEl.append(txt, row);
     this.armedBannerEl.hidden = false;
+    this.opts.session.hudServices?.mouseCursor?.refresh();
     this.setStatus(`Armed ${preset.label}: click ground to place`);
   }
 
@@ -295,6 +296,7 @@ export class CombatTestPanel {
     setGameInputBlocked('combat-test-spawn', false);
     for (const btn of this.presetButtons.values()) btn.dataset.armed = 'false';
     this.armedBannerEl.hidden = true;
+    this.opts.session.hudServices?.mouseCursor?.refresh();
   }
 
   private commandContext() {

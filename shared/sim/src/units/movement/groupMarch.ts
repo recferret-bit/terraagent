@@ -8,6 +8,7 @@ import type { StepContext } from '../../kernel/context';
 import { setBlob, type PlanetState } from '../../kernel/state';
 import { mobileStats } from '../mobility';
 import type { MoveGoal, MotionStatus, UnitMotion } from './orchestrator';
+import { isHexStationaryOccupied } from './unitOccupancy';
 
 /**
  * A group order to one hex: each member owns the slot that keeps its place in the group.
@@ -69,10 +70,21 @@ function writeBlob(state: PlanetState, value: GroupMarchBlob, tick: number): voi
   setBlob(state, 'groupMarch', value, tick);
 }
 
-export function reservedSlotTiles(state: PlanetState): Set<number> {
+export function reservedSlotTiles(state: PlanetState, excludeIds?: ReadonlySet<number>): Set<number> {
   const blob = readBlob(state);
   const taken = new Set<number>();
-  for (const march of Object.values(blob.marches)) for (const tile of march.reserved) taken.add(tile);
+  const idx = excludeIds && excludeIds.size > 0 ? hexIndex(state.grid.radius) : null;
+  for (const march of Object.values(blob.marches)) {
+    if (idx && excludeIds) {
+      for (const [key, slot] of Object.entries(march.slots)) {
+        if (excludeIds.has(Number(key))) continue;
+        const ti = idx.indexOf(slot.q, slot.r);
+        if (ti >= 0) taken.add(ti);
+      }
+      continue;
+    }
+    for (const tile of march.reserved) taken.add(tile);
+  }
   return taken;
 }
 
@@ -298,6 +310,11 @@ export function replanGroupMember(
   const slot = march?.slots[String(id)];
   const motion = motions.byId[String(id)];
   if (!march || !slot || !motion) return false;
+  const slotIdx = hexIndex(state.grid.radius).indexOf(slot.q, slot.r);
+  if (slotIdx >= 0 && isHexStationaryOccupied(state, slotIdx, id, ctx.data)) {
+    detachMember(state, id, ctx.tick);
+    return false;
+  }
   const fresh = march.parents !== null && march.epoch === (state.meta.pathEpoch ?? 0);
   const raw = (slot.local || fresh) ? pathToSlot(state, march, row, slot, ctx.data) : null;
   if (raw) {

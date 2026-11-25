@@ -25,6 +25,7 @@ import { syncColonyThreatStage } from '../../progression/threatStage';
 import { resolveHqT1Row, rowNum } from '../../rows';
 import { cancelWorkerJobs } from '../../terraform-basic/workJobs';
 import { noteColonyBuildingDestroyedDuringRaid } from '../events';
+import { recordMechanicalWreck } from '../wrecks';
 import {
   clearEntityDamaged,
   clearWorkerDispatch,
@@ -132,6 +133,31 @@ function resolveEntityFootprintIndices(state: PlanetState, row: number, data?: C
     .filter((i) => i >= 0);
 }
 
+/** Records a solid mechanical wreck in `state.blobs.wrecks` for an entity row destroyed outside `applyDamage` (e.g. non-W07 `dev.damage`). */
+export function recordEntityWreck(
+  state: PlanetState,
+  row: number,
+  data?: CompiledDataLike,
+  tick: number = state.meta.tick,
+): void {
+  if (row < 0 || row >= state.entities.count) return;
+  const cols = state.entities.cols;
+  const kind = cols.kind[row];
+  if (kind === ENTITY_KIND.hq) return;
+  const id = cols.id[row];
+  const owner = cols.owner[row];
+  const q = Math.round(cols.q[row]);
+  const r = Math.round(cols.r[row]);
+  const idx = hexIndex(state.grid.radius);
+  const tiles = isCombatOrWorkerUnitKind(kind)
+    ? (() => {
+        const ti = idx.indexOf(q, r);
+        return ti >= 0 ? [ti] : [];
+      })()
+    : resolveEntityFootprintIndices(state, row, data);
+  recordMechanicalWreck(state, { id, kind, owner, q, r, tiles }, tick);
+}
+
 function emitUnitDestructionEvent(
   state: PlanetState,
   targetId: number,
@@ -221,6 +247,11 @@ export function handleUnitDestruction(
   book.remove(targetId);
   book.flush(tick);
 
+  const unitQ = Math.round(q);
+  const unitR = Math.round(r);
+  const unitTileIdx = hexIndex(state.grid.radius).indexOf(unitQ, unitR);
+  recordMechanicalWreck(state, { id: targetId, kind, owner, q: unitQ, r: unitR, tiles: unitTileIdx >= 0 ? [unitTileIdx] : [] }, tick);
+
   emitUnitDestructionEvent(state, targetId, kind, owner, q, r, opts);
   removeRow(state.entities, targetId, tick);
   return { applied: Math.max(0, prevHp), hpAfter: 0, destroyed: true, clampedHq: false, retreatedHq: false };
@@ -304,6 +335,7 @@ export function handleBuildingDestruction(
       touchTile(state, tileIdx, tick);
     }
   }
+  recordMechanicalWreck(state, { id: targetId, kind, owner, q, r, tiles: tileIndices }, tick);
   if (owner >= 0) {
     noteColonyBuildingDestroyedDuringRaid(state, owner, tick);
     if (

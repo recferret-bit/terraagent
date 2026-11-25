@@ -6,6 +6,10 @@ import { pathBlockersFor } from '../../grid/pathProfiles';
 import { defineCommandHandler, type SimCommand } from '../../kernel/commands';
 import type { PlanetState } from '../../kernel/state';
 import { mobileStats } from '../../units/mobility';
+import {
+  collectUnitOccupancy,
+  findNearestFreeStandTile,
+} from '../../units/movement/unitOccupancy';
 import { commandColony, parseArgs } from '../command';
 import { occupiedGroundTiles } from '../construction/occupancy';
 import { assignWorkerDepositTarget, hasAnyPassableNeighbor, isWorker } from '../harvest';
@@ -65,10 +69,31 @@ export const moveUnit = defineCommandHandler({
         return issueUnitCommand(state, row, { kind: 'move', source: 'player', q, r, minDist: 1, maxDist: 1 }, ctx);
       }
     }
-    const blockers = pathBlockersFor(state, stats.profile, -1, ctx.data);
-    if (blockers?.goalBlocked(tileIdx)) return 'site_blocked'; // uncleared forest / rock / building footprint
+    const fromIdx = hexIndex(state.grid.radius).indexOf(state.entities.cols.q[row], state.entities.cols.r[row]);
+    const terrainBlockers = pathBlockersFor(state, stats.profile, fromIdx, ctx.data, -1, null);
+    if (terrainBlockers?.goalBlocked(tileIdx)) {
+      return 'site_blocked'; // uncleared forest / rock / building footprint / cross-sector
+    }
+    let targetQ = q;
+    let targetR = r;
+    const unitOcc = collectUnitOccupancy(state, args.entityId, undefined, ctx.data);
+    if (unitOcc.hostileStationary.has(tileIdx)) return 'site_blocked';
+    if (unitOcc.claimedGoals.has(tileIdx)) {
+      const unitOwner = state.entities.cols.owner[row]!;
+      const hx = hexIndex(state.grid.radius);
+      for (let rIdx = 0; rIdx < state.entities.count; rIdx++) {
+        if (state.entities.cols.id[rIdx] === args.entityId || state.entities.cols.hp[rIdx]! <= 0) continue;
+        if (hx.indexOf(state.entities.cols.q[rIdx]!, state.entities.cols.r[rIdx]!) === tileIdx && state.entities.cols.owner[rIdx] !== unitOwner) {
+          return 'site_blocked';
+        }
+      }
+      const free = findNearestFreeStandTile(state, q, r, stats.profile, args.entityId, ctx.data, 4, unitOcc.inTransitGoals);
+      if (!free) return 'site_blocked';
+      targetQ = free.q;
+      targetR = free.r;
+    }
     cancelWorkerJobs(state, args.entityId, ctx.tick);
-    return issueUnitCommand(state, row, { kind: 'move', source: 'player', q, r }, ctx);
+    return issueUnitCommand(state, row, { kind: 'move', source: 'player', q: targetQ, r: targetR }, ctx);
   },
 });
 

@@ -1,10 +1,10 @@
-import { combatApproachBand, footprintAttackRange } from '../combat/approachBand';
+import { footprintAttackRange } from '../combat/approachBand';
 import { InsectActionBook } from './insectActions';
 import { Combatant } from '../combat/Combatant';
 import { ENTITY_STATE } from '../../ecs/columns';
 import { rowOf } from '../../ecs/store';
 import { isPreparedGround } from '../../grid/geo';
-import { hexDistance, hexIndex, inHex } from '../../grid/hex';
+import { HEX_DIRS, hexDistance, hexIndex, inHex } from '../../grid/hex';
 import { DEPOSIT, PREP, TERRAIN } from '../../grid/layers';
 import { isGroundPassable } from '../../grid/tileModel';
 import type { StepContext } from '../../kernel/context';
@@ -12,7 +12,10 @@ import { nextInt, seedStream } from '../../kernel/rng';
 import type { PlanetState } from '../../kernel/state';
 import { getUnitCommand } from '../../units/book';
 import { faceTowards } from '../../units/movement/locomotion';
+import { collectUnitOccupancy } from '../../units/movement/unitOccupancy';
 import { applyDamage } from '../combat/damage';
+import { getWreckTileSet } from '../combat/wrecks';
+import { pursueAggressiveBugTarget } from './bugPursuit';
 import { firingRangeUnitRowInRange } from '../combat/firingRange';
 import {
   firingRangeBugPolicy,
@@ -75,6 +78,7 @@ function syncFaunaLiveness(state: PlanetState, fauna: FaunaHivesBlob, tick = sta
 function collectPatrolCandidates(
   state: PlanetState,
   hive: HiveRecord,
+  bugEntityId: number,
   curQ: number,
   curR: number,
   occupied: ReadonlySet<number>,
@@ -82,6 +86,8 @@ function collectPatrolCandidates(
 ): Array<{ q: number; r: number }> {
   const hex = hexIndex(state.grid.radius);
   const { terrain, prep, deposit } = state.grid.layers;
+  const wrecks = getWreckTileSet(state);
+  const unitOcc = collectUnitOccupancy(state, bugEntityId, undefined, ctx.data);
   const rMax = Math.max(2, hive.patrolRadius);
   const out: Array<{ q: number; r: number }> = [];
 
@@ -94,7 +100,7 @@ function collectPatrolCandidates(
       if (q === curQ && r === curR) continue;
       if (!inHex(q, r, state.grid.radius)) continue;
       const ti = hex.indexOf(q, r);
-      if (ti < 0 || occupied.has(ti)) continue;
+      if (ti < 0 || occupied.has(ti) || wrecks.has(ti) || unitOcc.claimedGoals.has(ti) || unitOcc.inTransitGoals.has(ti)) continue;
       const t = terrain[ti];
       const p = prep[ti];
       if (t === TERRAIN.deep || t === TERRAIN.shallow || t === TERRAIN.hole) continue;
@@ -114,14 +120,16 @@ function findClosestProvokedColonyTarget(
   bugRow: number,
   aggressiveColonies: readonly number[],
   maxDist: number,
+  claimedHexes?: ReadonlySet<number>,
+  bugRange = 1,
 ): number {
   if (aggressiveColonies.length === 0) return -1;
   const cols = state.entities.cols;
   const bx = cols.x[bugRow]!;
   const by = cols.y[bugRow]!;
-  let bestRow = -1;
-  let bestDist = Infinity;
-  let bestId = Infinity;
+  const hx = claimedHexes ? hexIndex(state.grid.radius) : null;
+  let bestOpenRow = -1, bestOpenDist = Infinity, bestOpenId = Infinity;
+  let bestAnyRow = -1, bestAnyDist = Infinity, bestAnyId = Infinity;
 
   for (let r = 0; r < state.entities.count; r++) {
     if (r === bugRow) continue;
@@ -132,16 +140,28 @@ function findClosestProvokedColonyTarget(
     if (st === ENTITY_STATE.inert || st === ENTITY_STATE.descending) continue;
 
     const contDist = hexDistance(bx, by, cols.x[r]!, cols.y[r]!);
-    const d = contDist;
-    if (d > footprintAttackRange(maxDist, cols.footprintW[r]) + 1e-4) continue;
+    if (contDist > footprintAttackRange(maxDist, cols.footprintW[r]) + 1e-4) continue;
     const id = cols.id[r]!;
-    if (contDist < bestDist - 1e-5 || (Math.abs(contDist - bestDist) <= 1e-5 && id < bestId)) {
-      bestDist = contDist;
-      bestId = id;
-      bestRow = r;
+    if (contDist < bestAnyDist - 1e-5 || (Math.abs(contDist - bestAnyDist) <= 1e-5 && id < bestAnyId)) {
+      bestAnyDist = contDist;
+      bestAnyId = id;
+      bestAnyRow = r;
+    }
+    if (hx && claimedHexes && bugRange <= 1.5 && contDist > footprintAttackRange(bugRange, cols.footprintW[r]) + 1e-4) {
+      const tq = cols.q[r]!, tr = cols.r[r]!;
+      const hasOpenAdj = HEX_DIRS.some(([dq, dr]) => {
+        const ti = hx.indexOf(tq + dq, tr + dr);
+        return ti >= 0 && !claimedHexes.has(ti) && isGroundPassable(state.grid, ti);
+      });
+      if (!hasOpenAdj) continue;
+    }
+    if (contDist < bestOpenDist - 1e-5 || (Math.abs(contDist - bestOpenDist) <= 1e-5 && id < bestOpenId)) {
+      bestOpenDist = contDist;
+      bestOpenId = id;
+      bestOpenRow = r;
     }
   }
-  return bestRow;
+  return bestOpenRow >= 0 ? bestOpenRow : bestAnyRow;
 }
 
 function stepPassiveBug(
@@ -164,6 +184,7 @@ function stepPassiveBug(
   const candidates = collectPatrolCandidates(
     state,
     hive,
+    bug.entityId,
     cols.q[bugRow]!,
     cols.r[bugRow]!,
     occupied,
@@ -204,51 +225,19 @@ function stepAggressiveBugMovement(
     bug.cohortId !== null
       ? Math.max(256, state.grid.radius * 4)
       : Math.max(16, (hive?.patrolRadius ?? 5) * 4);
+  const unitOcc = collectUnitOccupancy(state, bug.entityId, undefined, ctx.data);
   const targetRow = findClosestProvokedColonyTarget(
     state,
     bugRow,
     bug.aggressiveColonies,
     searchRadius,
+    unitOcc.claimedGoals,
+    cfg.range,
   );
   const cols = state.entities.cols;
 
   if (targetRow >= 0) {
-    const contDist = hexDistance(
-      cols.x[bugRow]!,
-      cols.y[bugRow]!,
-      cols.x[targetRow]!,
-      cols.y[targetRow]!,
-    );
-    const tq = cols.q[targetRow]!;
-    const tr = cols.r[targetRow]!;
-    const dist = contDist;
-    const attackRange = footprintAttackRange(cfg.range, cols.footprintW[targetRow]);
-    if (dist > attackRange + 1e-4) {
-      const bandMax = combatApproachBand(attackRange, 0,
-        hexDistance(cols.q[bugRow], cols.r[bugRow], tq, tr),
-        hexDistance(cols.x[targetRow], cols.y[targetRow], tq, tr)).maxDist;
-      const curCmd = getUnitCommand(state, bug.entityId);
-      const driftAllowance = dist > 3 ? 2 : 1;
-      if (
-        curCmd?.kind !== 'move' ||
-        cols.state[bugRow] !== ENTITY_STATE.moving ||
-        hexDistance(curCmd.q, curCmd.r, tq, tr) > driftAllowance ||
-        (curCmd.maxDist ?? 0) !== bandMax
-      ) {
-        issueUnitCommand(
-          state,
-          bugRow,
-          { kind: 'move', source: 'auto', q: tq, r: tr, minDist: 0, maxDist: bandMax },
-          ctx,
-        );
-      }
-    } else {
-      const curCmd = getUnitCommand(state, bug.entityId);
-      if (curCmd?.kind === 'move') {
-        issueUnitCommand(state, bugRow, { kind: 'stop', source: 'auto' }, ctx);
-      }
-      faceTowards(state, bugRow, tq, tr, ctx.tick);
-    }
+    pursueAggressiveBugTarget(state, bugRow, bug.entityId, targetRow, cfg.range, unitOcc.claimedGoals, ctx);
     return;
   }
 

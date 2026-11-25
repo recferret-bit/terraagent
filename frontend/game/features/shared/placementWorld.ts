@@ -1,4 +1,6 @@
 import {
+  getWreckGroupMap,
+  getWreckTileSet,
   plannedSitesFromQueue,
   placementWorldFromState,
   type PlacementEntity,
@@ -92,16 +94,21 @@ export function viewPlacementWorld(source: WorldSource, fallbackTiles?: ClientTi
   const tiles = v.tiles ?? fallbackTiles ?? null;
   const tiers = maxWorkerTierByColony(v.colonies);
   const landingAnchors = landingAnchorByColonyFromView(v.blobs);
+  const wrecks = getWreckTileSet(v.blobs as Record<string, unknown> | undefined);
+  const radius = typeof v.planet?.radius === 'number' ? v.planet.radius : radiusOfTileCount(tiles?.count ?? 0);
+  const wreckGroups = wrecks.size > 0 ? getWreckGroupMap(radius, v.blobs as Record<string, unknown> | undefined) : undefined;
   const complete = Boolean(tiles?.terrain && tiles.prep && tiles.owner);
   return {
-    radius: typeof v.planet?.radius === 'number' ? v.planet.radius : radiusOfTileCount(tiles?.count ?? 0),
+    radius,
     tileCount: complete ? tiles!.count : 0,
     terrain: tiles?.terrain ?? new Uint8Array(0),
     prep: tiles?.prep ?? new Uint8Array(0),
     deposit: tiles?.deposit ?? null,
+    richness: tiles?.richness ?? null,
     owner: tiles?.owner ?? new Int16Array(0),
     height: tiles?.height ?? null,
     entities: entitiesFromView(v.entities, v.count),
+    ...(wrecks.size > 0 ? { wrecks, wreckGroups } : {}),
     plannedSites: plannedSitesFromQueue(viewQueueEntries(source)),
     ...(tiers ? { maxWorkerTierByColony: tiers } : {}),
     ...(landingAnchors ? { landingAnchorByColony: landingAnchors } : {}),

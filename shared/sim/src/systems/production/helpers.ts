@@ -217,7 +217,36 @@ function spawnPlacedBuildingEntity(
   return id;
 }
 
-/** Validates whether a Metals Extractor T1 can be placed at `(q, r)`. Returns `'site_blocked'` when off deposit. */
+function hasMixedOrDisallowedDeposit(
+  state: PlanetState,
+  q: number,
+  r: number,
+  w: number,
+  d: number,
+  rot: number,
+  allowedDeposits: readonly number[],
+): boolean {
+  const swap = rot % 2 !== 0;
+  const fw = Math.max(1, swap ? d : w);
+  const fd = Math.max(1, swap ? w : d);
+  const idx = hexIndex(state.grid.radius);
+  const deposit = state.grid.layers.deposit;
+  let seen: number = DEPOSIT.none;
+  for (let dr = 0; dr < fd; dr++) {
+    for (let dq = 0; dq < fw; dq++) {
+      const tileIdx = idx.indexOf(q + dq, r + dr);
+      if (tileIdx < 0) continue;
+      const dep = deposit[tileIdx] ?? DEPOSIT.none;
+      if (dep === DEPOSIT.none) continue;
+      if (!allowedDeposits.includes(dep)) return true;
+      if (seen !== DEPOSIT.none && seen !== dep) return true;
+      seen = dep;
+    }
+  }
+  return false;
+}
+
+/** Validates whether a Metals Extractor T1 can be placed at `(q, r)`. Returns `'site_blocked'` when off or spanning mixed deposits. */
 export function validateMetalsExtractorSite(
   state: PlanetState,
   q: number,
@@ -232,10 +261,13 @@ export function validateMetalsExtractorSite(
   const cov = metal.covered ? metal : checkExtractorDepositCoverage(state, q, r, w, d, rot, DEPOSIT.minerals);
   if (cov.invalidTile) return { ok: false, code: 'invalid_args', detail: 'out of bounds' };
   if (!cov.covered) return { ok: false, code: 'site_blocked', detail: 'no deposit' };
+  if (hasMixedOrDisallowedDeposit(state, q, r, w, d, rot, [DEPOSIT.metals, DEPOSIT.minerals])) {
+    return { ok: false, code: 'site_blocked', detail: 'only one resource type per extractor' };
+  }
   return { ok: true, richnessMult: cov.richnessMult };
 }
 
-/** Validates whether a Minerals Quarry T1 can be placed at `(q, r)`. Returns `'site_blocked'` when off a minerals deposit. */
+/** Validates whether a Minerals Quarry T1 can be placed at `(q, r)`. Returns `'site_blocked'` when off or spanning non-minerals deposits. */
 export function validateMineralsQuarrySite(
   state: PlanetState,
   q: number,
@@ -249,6 +281,9 @@ export function validateMineralsQuarrySite(
   const cov = checkExtractorDepositCoverage(state, q, r, w, d, rot, DEPOSIT.minerals);
   if (cov.invalidTile) return { ok: false, code: 'invalid_args', detail: 'out of bounds' };
   if (!cov.covered) return { ok: false, code: 'site_blocked', detail: 'no deposit' };
+  if (hasMixedOrDisallowedDeposit(state, q, r, w, d, rot, [DEPOSIT.minerals])) {
+    return { ok: false, code: 'site_blocked', detail: 'only one resource type per extractor' };
+  }
   return { ok: true, richnessMult: cov.richnessMult };
 }
 

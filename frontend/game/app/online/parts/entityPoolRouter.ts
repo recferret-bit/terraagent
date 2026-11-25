@@ -57,6 +57,9 @@ export function releasePooledEntityMesh(
   archetypeId?: string,
   expectedMesh?: THREE.Object3D,
 ): void {
+  if (expectedMesh) {
+    expectedMesh.rotation.set(0, 0, 0, 'XYZ');
+  }
   if (archetypeId && isBuildingOrHiveArchetypeId(archetypeId)) {
     orchestrators.buildingsOrchestrator.release(id, expectedMesh);
   } else if (archetypeId && isBugArchetypeId(archetypeId)) {

@@ -42,6 +42,10 @@ export interface TerraformWorld {
   occupied?: ReadonlySet<number> | null;
   /** Hex indices carrying a landed own `ENTITY_KIND.pod` eligible to be terraformed/cleared. */
   landedPodTiles?: ReadonlySet<number> | null;
+  /** Hex indices carrying active mechanical wreckage requiring terraform before movement or building. */
+  wreckTiles?: ReadonlySet<number> | null;
+  /** Maps any tile index of an active wreck to all `{ q, r }` tiles of that wreck footprint. */
+  wreckGroups?: ReadonlyMap<number, ReadonlyArray<{ q: number; r: number }>> | null;
 }
 
 export type TerraformCheck = { ok: true } | { ok: false; reason: RejectCode };
@@ -80,6 +84,8 @@ export function terraformWorldFrom(world: PlacementWorld, colonyId: number, data
     maxWorkerTier: colonyMaxWorkerTier(world, colonyId),
     occupied: occupiedTiles(world, data),
     landedPodTiles,
+    wreckTiles: world.wrecks ?? null,
+    wreckGroups: world.wreckGroups ?? null,
   };
 }
 
@@ -110,6 +116,7 @@ export function terraformOwnershipBlock(world: TerraformWorld, colonyId: number,
 
 /** Whether `op` changes tile `i` (its `fromTerrain`; a terrain-keeping op such as Grade/Irrigate/Seed also needs the prep to match/change). */
 function groundBlock(world: TerraformWorld, op: TerraformOpKind, i: number, data?: CompiledDataLike): RejectCode | null {
+  if (world.wreckTiles?.has(i)) return 'site_blocked';
   const spec = getTerraformOpSpec(op, data);
   const terrain = world.terrain[i], prep = world.prep[i];
   // The end of the growth ladder: nothing may be done to a Living hex (it only reverts when a building covers it).
@@ -289,6 +296,7 @@ export function resolveCultivateTileOp(
   const territory = ownershipBlock(world, colonyId, i, q, r, Boolean(opts.allowUnclaimed));
   if (territory) return { ok: false, reason: territory };
   if (world.prep[i] === PREP.living) return { ok: false, reason: 'already_terraformed' };
+  if (world.wreckTiles?.has(i)) return { ok: false, reason: 'site_blocked' };
   if (world.occupied?.has(i)) return { ok: false, reason: 'site_blocked' };
   if (opts.deposit && opts.deposit[i] !== DEPOSIT.none) return { ok: false, reason: 'site_blocked' };
   if (world.terrain[i] !== TERRAIN.flat || isTileUneven(world.radius, i, world.terrain, world.height)) {

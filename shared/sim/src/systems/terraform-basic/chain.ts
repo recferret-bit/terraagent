@@ -7,6 +7,7 @@ import type { CompiledDataLike } from '../../kernel/config';
 import type { StepContext } from '../../kernel/context';
 import type { PlanetState, SimState } from '../../kernel/state';
 import { occupiedGroundTiles } from '../construction/occupancy';
+import { getWreckTileSet } from '../combat/wrecks';
 import { terraformWorldFromState } from './rules';
 import { mobileStats } from '../../units/mobility';
 import { workReach, type WorkJobRecord } from './workJobs';
@@ -44,7 +45,14 @@ import { classifyGroundWorkTile, createGroundWorkJob, primeWorkerForWorkJob, typ
  * not level. Deep water stays in the set; {@link classifyGroundWorkTile} rejects it (`worker_tier_locked`) until a
  * T2+ worker exists, so a locked centre does not stop the shallow shore.
  */
-export function isChainObstacle(radius: number, i: number, terrain: ArrayLike<number>, height?: ArrayLike<number> | null): boolean {
+export function isChainObstacle(
+  radius: number,
+  i: number,
+  terrain: ArrayLike<number>,
+  height?: ArrayLike<number> | null,
+  wrecks?: ReadonlySet<number> | null,
+): boolean {
+  if (wrecks?.has(i)) return true;
   const t = terrain[i];
   if (t === TERRAIN.forest || t === TERRAIN.rock || t === TERRAIN.slope || t === TERRAIN.hole) return true;
   if (t === TERRAIN.shallow || t === TERRAIN.deep) return true;
@@ -73,7 +81,8 @@ export function chainStandRule(state: PlanetState, workerEntityId: number, data?
   if (!stats) return null;
   const hx = hexIndex(state.grid.radius);
   const [wq, wr] = hexRound(cols.q[row], cols.r[row]);
-  const blockers = pathBlockersFor(state, stats.profile, hx.indexOf(wq, wr), data);
+  const standProfile = stats.profile === 'ground' ? 'terraform' : stats.profile;
+  const blockers = pathBlockersFor(state, standProfile, hx.indexOf(wq, wr), data);
   if (!blockers) return null;
   const reach = workReach(cols.kind[row]);
   return (i) => {
@@ -100,12 +109,13 @@ function findNextChainTile(
   stand?: ChainStandRule | null,
 ): { tileIdx: number; ground: GroundWork } | null {
   const opts = { world: terraformWorldFromState(state, colonyId, data), occupied: occupiedGroundTiles(state, data), data };
+  const wrecks = opts.world.wreckTiles;
   const { terrain, height } = state.grid.layers;
   const hx = hexIndex(state.grid.radius);
   let best: { tileIdx: number; ground: GroundWork } | null = null;
   let bestOrigin = Infinity, bestLast = Infinity;
   for (let i = 0; i < state.grid.count; i++) {
-    if (exclude.has(i) || !isChainObstacle(state.grid.radius, i, terrain, height)) continue;
+    if (exclude.has(i) || !isChainObstacle(state.grid.radius, i, terrain, height, wrecks)) continue;
     const q = hx.q[i]!, r = hx.r[i]!;
     const dOrigin = hexDistance(at.origin.q, at.origin.r, q, r);
     if (dOrigin > bestOrigin) continue;
@@ -160,7 +170,7 @@ export function continueWorkChain(
   // or no longer workable) is never picked again: without that the chain would re-work it forever. A follow-up with no
   // path is only skipped until the chain finishes another tile (clearing a forest edge opens the way to its inside).
   const { terrain, height } = state.grid.layers;
-  const stillObstacle = !unreachable && isChainObstacle(state.grid.radius, done.tileIdx, terrain, height);
+  const stillObstacle = !unreachable && isChainObstacle(state.grid.radius, done.tileIdx, terrain, height, getWreckTileSet(state));
   const giveUp = stillObstacle ? [...(done.chainGiveUp ?? []), done.tileIdx] : [...(done.chainGiveUp ?? [])];
   const skipped = unreachable ? [...(done.chainSkipped ?? []), done.tileIdx] : stillObstacle ? [...(done.chainSkipped ?? [])] : [];
   const exclude = new Set<number>([...giveUp, ...skipped, done.tileIdx]);

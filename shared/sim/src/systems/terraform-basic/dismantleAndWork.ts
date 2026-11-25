@@ -14,6 +14,7 @@ import { workCrewRow } from '../dispatch/crew';
 import { buildingKindName, getFootprintTileIndices, resolveBuildingRow } from '../economy/construction';
 import { resolveWorkerRow } from '../harvest';
 import { rowNum } from '../rows';
+import { findWreckAtTile } from '../combat/wrecks';
 import { joinJobAsHelper } from './crewHelpers';
 import { dismantleTargetReject } from './dismantleRule';
 import { createDismantleJob, mirrorDismantleQueueEntry } from './dismantleJob';
@@ -294,10 +295,14 @@ export function enqueueRepairForEntity(
   return storeWorkJob(state, job, tick, opts?.data);
 }
 
-/** A terraform `work` job (not a helper) already targets `(q, r)` for this colony. */
+/** A terraform `work` job (not a helper) already targets `(q, r)` or its multi-tile wreck for this colony. */
 function terraformWorkQueued(state: SimState, colonyId: number, q: number, r: number): boolean {
+  const tileIdx = hexIndex(state.grid.radius).indexOf(q, r);
+  const wreck = tileIdx >= 0 ? findWreckAtTile(state, tileIdx) : undefined;
+  const wreckTiles = wreck ? new Set(wreck.tiles) : null;
   for (const j of Object.values(getWorkJobsMap(state))) {
-    if (j.helpOf === undefined && j.mode === 'terraform' && j.colonyId === colonyId && j.q === q && j.r === r) return true;
+    if (j.helpOf !== undefined || j.mode !== 'terraform' || j.colonyId !== colonyId) continue;
+    if ((j.q === q && j.r === r) || (wreckTiles && wreckTiles.has(j.tileIdx))) return true;
   }
   return false;
 }
@@ -357,6 +362,9 @@ export function enqueueWorkAtTile(
       (row) => cols.kind[row] === ENTITY_KIND.pod && cols.state[row] !== ENTITY_STATE.descending,
     );
     if (podRow !== undefined) job.targetEntityId = cols.id[podRow];
+  } else if (ground.terrainKey === 'wreck') {
+    const wreck = findWreckAtTile(state, tileIdx);
+    if (wreck) job.targetEntityId = wreck.id;
   }
   if (opts?.chain) Object.assign(job, { chain: true, chainSeq: 0 }, rootOf);
   return storeWorkJob(state, job, tick, opts?.data);

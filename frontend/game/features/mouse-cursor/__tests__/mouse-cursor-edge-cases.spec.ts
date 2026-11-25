@@ -169,9 +169,9 @@ describe('Combat selection & PvP/neutral hover edge cases', () => {
     h.canvas.dispatchEvent(new MouseEvent('pointermove', { clientX: 40, clientY: 10, bubbles: true }));
     expect(cursor.getState()).toBe('attack');
     h.canvas.dispatchEvent(new MouseEvent('pointermove', { clientX: 50, clientY: 10, bubbles: true }));
-    expect(cursor.getState()).toBe('idle');
+    expect(cursor.getState()).toBe('prohibited');
     h.canvas.dispatchEvent(new MouseEvent('pointermove', { clientX: 60, clientY: 10, bubbles: true }));
-    expect(cursor.getState()).not.toBe('attack');
+    expect(cursor.getState()).toBe('prohibited');
     h.dispose();
   });
 
@@ -204,7 +204,7 @@ describe('MouseCursorStateMachine sky/void, own-building selection, and squad ho
     document.body.replaceChildren();
   });
 
-  it('keeps cursor idle over off-planet sky/void even when attack-move is armed', () => {
+  it('shows prohibited over off-planet sky/void inside canvas even when attack-move is armed, and idle when pointer leaves', () => {
     expect(
       resolveMouseCursorState({
         pointerInside: true,
@@ -216,7 +216,7 @@ describe('MouseCursorStateMachine sky/void, own-building selection, and squad ho
         shiftKey: false,
         hoverTarget: 'none',
       }),
-    ).toBe('idle');
+    ).toBe('prohibited');
 
     const h = createHarness();
     const cursor = h.services.mouseCursor!;
@@ -226,16 +226,27 @@ describe('MouseCursorStateMachine sky/void, own-building selection, and squad ho
     h.canvas.dispatchEvent(new MouseEvent('pointermove', { clientX: 90, clientY: 90, bubbles: true }));
     expect(cursor.getState()).toBe('attack');
 
-    // Off-planet sky inside canvas (pickTile -> null => hoverTarget: 'none') must be 'idle'
+    // Off-planet sky inside canvas (pickTile -> null => hoverTarget: 'none') must be 'prohibited'
     h.canvas.dispatchEvent(new MouseEvent('pointermove', { clientX: 250, clientY: 250, bubbles: true }));
     expect(cursor.getContext().pointerInside).toBe(true);
     expect(cursor.getContext().hoverTarget).toBe('none');
+    expect(cursor.getState()).toBe('prohibited');
+
+    // Leaving canvas restores 'idle'
+    h.canvas.dispatchEvent(new MouseEvent('pointerleave', { bubbles: true }));
     expect(cursor.getState()).toBe('idle');
 
     // Returning onto planet ground restores 'attack'
     h.canvas.dispatchEvent(new MouseEvent('pointermove', { clientX: 90, clientY: 90, bubbles: true }));
     expect(cursor.getState()).toBe('attack');
     h.dispose();
+  });
+});
+
+describe('MouseCursorStateMachine own-building selection and squad hover parity', () => {
+  afterEach(() => {
+    resetGameInputBlock();
+    document.body.replaceChildren();
   });
 
   it('shows idle over an already-selected player building and agrees on multi-squad hover with or without landfall', () => {
@@ -322,9 +333,9 @@ describe('Mechanical wreckage passability & stationary click refresh', () => {
     const v1 = h.host.sync(true);
     h.hud.update(v1);
     h.cursorRenderer.update(v1, 0.016);
-    expect(cursor.getState()).toBe('idle');
+    expect(cursor.getState()).toBe('prohibited');
 
-    // 2. Deposit at (0, -6) surrounded on all 6 neighbors by mechanical wrecks -> 'idle' for selected worker
+    // 2. Deposit at (0, -6) surrounded on all 6 neighbors by mechanical wrecks -> 'prohibited' for selected worker
     landfall.selectEntity(h.worker1);
     h.canvas.dispatchEvent(new MouseEvent('pointermove', { clientX: 80, clientY: 10, bubbles: true }));
     expect(cursor.getState()).toBe('move');
@@ -335,7 +346,7 @@ describe('Mechanical wreckage passability & stationary click refresh', () => {
     h.hud.update(v2);
     h.cursorRenderer.update(v2, 0.016);
     expect(cursor.getContext().hoverTarget).toBe('impassableGround');
-    expect(cursor.getState()).toBe('idle');
+    expect(cursor.getState()).toBe('prohibited');
 
     // Clearing the wreck ring restores deposit approach -> 'move'
     clearWrecksAtTile(h.host.state, ringIndices[0]!, 3);
@@ -432,10 +443,10 @@ describe('Real unit death (removeRow), cross-sector hover, and stationary camera
     army.selectUnits([h.recon1]);
     // Same sector (4, 4) vs locked adjacent sector (11, 0)
     h.canvas.dispatchEvent(new MouseEvent('pointermove', { clientX: 130, clientY: 10, bubbles: true }));
-    expect(cursor.getState()).toBe('idle');
+    expect(cursor.getState()).toBe('prohibited');
     landfall.selectEntity(h.worker1);
     h.canvas.dispatchEvent(new MouseEvent('pointermove', { clientX: 120, clientY: 10, bubbles: true }));
-    expect(cursor.getState()).toBe('idle');
+    expect(cursor.getState()).toBe('prohibited');
 
     // Stationary pointer repicks when camera zoom/pan shifts (90,90) from passable (2,0) -> hostile (6,0) -> mountain (3,3) -> sky
     army.selectUnits([h.recon1]);
@@ -450,7 +461,7 @@ describe('Real unit death (removeRow), cross-sector hover, and stationary camera
 
     h.coords.set('90,90', { q: 3, r: 3 });
     h.cursorRenderer.update(vAtlas, 0.016);
-    expect(cursor.getState()).toBe('idle');
+    expect(cursor.getState()).toBe('prohibited');
 
     // Capture-consumed pointerdown disarming ghost records pointer sample without needing pointermove
     h.coords.set('90,90', { q: 3, r: 0 });

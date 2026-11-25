@@ -112,6 +112,9 @@ function ensureArmyController(opts: MountArmyOptions): { controller: ArmyOrdersC
   });
   if (services) {
     services.armyOrders = controller;
+    controller.onChange((snap) => {
+      services.syncCombatSelection?.(snap.selectedEntityIds, controller.getOptimisticTargets());
+    });
   }
   return { controller, owned: true };
 }
@@ -121,7 +124,7 @@ export function mountArmy(opts: MountArmyOptions = {}): MountedArmy {
   const { controller, owned } = ensureArmyController(opts);
   const combatHost = opts.selectionCombatHost !== undefined ? opts.selectionCombatHost : (opts.services?.selectionCombatHost ?? null);
   const panel = new ArmyStancePanel(hostEl, controller, combatHost);
-  const scene3d = opts.scene3d ?? opts.services?.scene3d ?? null;
+  const scene3d = opts.scene3d !== undefined ? opts.scene3d : (opts.services?.scene3d ?? null);
   const renderer = scene3d
     ? new OrderMarkersRenderer({
         scene3d,
@@ -175,7 +178,7 @@ export const armyFeature: Feature & { mount(opts?: MountArmyOptions): MountedArm
         slot: 'bottom-left',
         order: 15,
         mount(el, ctx) {
-          return mountArmy({ el, services: ctx.services });
+          return mountArmy({ el, services: ctx.services, scene3d: null });
         },
       },
     ],

@@ -1,5 +1,6 @@
 import type * as THREE from 'three';
 import type { MotionTrack } from '@terra/render/motion/entityMotion';
+import type { UnitSuspensionState } from '@terra/render/motion/terrainSuspension';
 
 export interface EntityMeshRecord {
   id: number; kind: number; owner: number; q: number; r: number; x: number; y: number; rot: number;
@@ -11,6 +12,11 @@ export interface EntityMeshRecord {
   track: MotionTrack;
   /** The drawn pose moved during the last half tick (drives the walk animation, in step with what is drawn). */
   trackMoving: boolean;
+  /** Visual 3D terrain suspension & chassis attitude state for mobile units on sloped ground. */
+  suspension?: UnitSuspensionState;
+  /** Smoothed authoritative world XZ prior to transient visual slope-surge offset. */
+  trackWorldX?: number;
+  trackWorldZ?: number;
   lightLevel?: number; // drawn light level 0..1 (entityVisionSync eases it to the sim's `entityLightLevel`)
 }
 

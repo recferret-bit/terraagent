@@ -275,6 +275,76 @@ export async function dispatchRefillAndReveal(ctx: CombatCommandContext): Promis
   );
 }
 
+const BUILDING_FOOTPRINT_BY_PRESET_ID: Readonly<Record<string, number>> = {
+  roboticsFactory: 3,
+  sensorArray: 2,
+  supplyDepot: 2,
+  autocannon: 1,
+  laserTower: 1,
+  droneControlArray: 1,
+  pylon: 1,
+};
+
+export function isCombatTestSpawnTileValid(
+  session: OnlineSession,
+  preset: CombatSpawnPreset,
+  q: number,
+  r: number,
+): boolean {
+  const radius = session.store.latest?.planet?.radius ?? 0;
+  if (radius <= 0 || !inHex(q, r, radius)) return false;
+  const tiles = session.store.latestTiles as
+    | { terrain: ArrayLike<number>; prep: ArrayLike<number>; owner?: ArrayLike<number> }
+    | null
+    | undefined;
+  const hx = hexIndex(radius);
+  const blocked = collectBlockedClientSpawnTiles(session, radius);
+  if (!tiles) {
+    const ti = hx.indexOf(q, r);
+    return ti >= 0 && !blocked.has(ti);
+  }
+  if (preset.commandKind === 'dev.spawnhive') {
+    return isClientHiveSiteValid(hx, tiles, blocked, q, r, radius >= 5);
+  }
+  if (preset.commandKind === 'dev.spawnbuilding') {
+    const fp = BUILDING_FOOTPRINT_BY_PRESET_ID[preset.id] ?? 1;
+    for (const pt of getBuildingFootprintTiles(q, r, fp)) {
+      if (!inHex(pt.q, pt.r, radius)) return false;
+      const ti = hx.indexOf(pt.q, pt.r);
+      if (ti < 0 || blocked.has(ti)) return false;
+      if (!isTilePassableForSpawn(tiles.terrain[ti] ?? TERRAIN.flat, tiles.prep[ti] ?? PREP.wild, false)) {
+        return false;
+      }
+    }
+    return true;
+  }
+  const ti = hx.indexOf(q, r);
+  if (ti < 0 || blocked.has(ti)) return false;
+  return isTilePassableForSpawn(tiles.terrain[ti] ?? TERRAIN.flat, tiles.prep[ti] ?? PREP.wild, false);
+}
+
+function bindCombatTestCursorProbe(
+  session: OnlineSession,
+  getArmed: () => CombatSpawnPreset | null,
+  getHoveredTile: () => { q: number; r: number } | null,
+): { refresh: () => void; restore: () => void } {
+  const activeServices = session.hudServices ?? null;
+  const prevSpawnProbe = activeServices?.getSpawnCursorProbe;
+  if (activeServices) {
+    activeServices.getSpawnCursorProbe = () => {
+      const armed = getArmed();
+      if (!armed) return prevSpawnProbe?.() ?? null;
+      const hovered = getHoveredTile();
+      if (!hovered) return { valid: false };
+      return { valid: isCombatTestSpawnTileValid(session, armed, hovered.q, hovered.r) };
+    };
+  }
+  return {
+    refresh: () => { activeServices?.mouseCursor?.refresh(); },
+    restore: () => { if (activeServices) activeServices.getSpawnCursorProbe = prevSpawnProbe; },
+  };
+}
+
 export function bindCombatTestPlacement(opts: {
   session: OnlineSession;
   getArmed: () => CombatSpawnPreset | null;
@@ -283,10 +353,18 @@ export function bindCombatTestPlacement(opts: {
   setStatus: (msg: string) => void;
 }): () => void {
   const canvas = opts.session.viewport.renderer.domElement;
-  let suppressLeftUpUntil = 0;
-  let suppressLeftClickUntil = 0;
-  let suppressRightUpUntil = 0;
-  let suppressContextUntil = 0;
+  let hoveredTile: { q: number; r: number } | null = null;
+  const probe = bindCombatTestCursorProbe(opts.session, opts.getArmed, () => hoveredTile);
+  let suppressLeftUpUntil = 0, suppressLeftClickUntil = 0, suppressRightUpUntil = 0, suppressContextUntil = 0;
+
+  const onPointerMove = (e: PointerEvent) => {
+    hoveredTile = opts.session.pickAt(e.clientX, e.clientY);
+    if (opts.getArmed()) probe.refresh();
+  };
+  const onPointerLeave = () => {
+    hoveredTile = null;
+    if (opts.getArmed()) probe.refresh();
+  };
 
   const onPointerDown = (e: PointerEvent) => {
     const armed = opts.getArmed();
@@ -348,12 +426,17 @@ export function bindCombatTestPlacement(opts: {
     opts.disarm();
   };
 
+  canvas.addEventListener('pointermove', onPointerMove, true);
+  canvas.addEventListener('pointerleave', onPointerLeave, true);
   canvas.addEventListener('pointerdown', onPointerDown, true);
   canvas.addEventListener('pointerup', onPointerUp, true);
   canvas.addEventListener('click', onClick, true);
   canvas.addEventListener('contextmenu', onContext, true);
   window.addEventListener('keydown', onKeyDown, true);
   return () => {
+    probe.restore();
+    canvas.removeEventListener('pointermove', onPointerMove, true);
+    canvas.removeEventListener('pointerleave', onPointerLeave, true);
     canvas.removeEventListener('pointerdown', onPointerDown, true);
     canvas.removeEventListener('pointerup', onPointerUp, true);
     canvas.removeEventListener('click', onClick, true);

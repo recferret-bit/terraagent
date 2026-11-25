@@ -81,6 +81,10 @@ export interface PlacementWorld {
    * host publishes `colonies[].maxWorkerTier` on its view). The host leaves it out: its entities carry their tier.
    */
   maxWorkerTierByColony?: Readonly<Record<number, number>>;
+  /** Active mechanical wreck tile indices blocking movement and construction until terraformed. */
+  wrecks?: ReadonlySet<number>;
+  /** Maps any tile index of an active wreck to all `{ q, r }` tiles of that wreck footprint. */
+  wreckGroups?: ReadonlyMap<number, ReadonlyArray<{ q: number; r: number }>>;
   /** Colony landing coordinates preserved from `blobs.landingPods` even if the pod entity was later cleared. */
   landingAnchorByColony?: Readonly<Record<number, { q: number; r: number }>>;
   sectorRadius?: number;
@@ -102,8 +106,8 @@ export interface PlacementRule {
 
 /** Why a placement fails; maps 1:1 to a protocol `RejectCode` and a UI text. */
 export type PlacementBlock =
-  | GeoBlock | 'unprepared' | 'uneven' | 'outOfMap' | 'foreign' | 'unclaimed' | 'occupied' | 'hubExists' | 'noBuilder' | 'builderBusy'
-  | 'tierLocked' | 'badArgs' | 'unknownBuilding' | 'farFromLanding' | 'nearOtherColony' | 'outsidePowerZone';
+  | GeoBlock | 'unprepared' | 'uneven' | 'outOfMap' | 'foreign' | 'unclaimed' | 'occupied' | 'wreck' | 'hubExists' | 'noBuilder' | 'builderBusy'
+  | 'tierLocked' | 'badArgs' | 'unknownBuilding' | 'farFromLanding' | 'nearOtherColony' | 'outsidePowerZone' | 'mixedDeposit';
 
 export interface PlacementTile {
   q: number;
@@ -157,7 +161,7 @@ export interface EvaluatePlacementOpts {
 
 const BLOCK_CODE: Readonly<Record<PlacementBlock, RejectCode>> = {
   water: 'terrain_unbuildable', trees: 'terrain_unbuildable', rock: 'terrain_unbuildable', slope: 'terrain_unbuildable',
-  hole: 'terrain_unbuildable', ridge: 'terrain_unbuildable', uneven: 'terrain_unbuildable', unprepared: 'terrain_unbuildable', deposit: 'terrain_unbuildable', noDeposit: 'site_blocked',
+  hole: 'terrain_unbuildable', ridge: 'terrain_unbuildable', uneven: 'terrain_unbuildable', unprepared: 'terrain_unbuildable', deposit: 'terrain_unbuildable', wreck: 'terrain_unbuildable', noDeposit: 'site_blocked', mixedDeposit: 'site_blocked',
   outOfMap: 'site_blocked', occupied: 'site_blocked', hubExists: 'site_blocked',
   foreign: 'not_own_territory', unclaimed: 'not_own_territory',
   noBuilder: 'worker_tier_locked', builderBusy: 'worker_tier_locked', tierLocked: 'tier_locked', badArgs: 'invalid_args',
@@ -168,14 +172,14 @@ const BLOCK_CODE: Readonly<Record<PlacementBlock, RejectCode>> = {
 const BLOCK_TEXT: Readonly<Record<PlacementBlock, string>> = {
   ...GEO_BLOCK_TEXT,
   uneven: 'uneven ground', unprepared: 'terraform this ground first', outOfMap: 'outside the map', foreign: 'not your territory', unclaimed: 'not your territory',
-  occupied: 'another building is here', hubExists: 'hub already exists', noBuilder: 'requires HQ',
+  occupied: 'another building is here', wreck: 'wreckage: terraform to clear', mixedDeposit: 'only one resource type per extractor', hubExists: 'hub already exists', noBuilder: 'requires HQ',
   builderBusy: 'builder unavailable', tierLocked: 'tier locked', badArgs: 'invalid site', unknownBuilding: 'unknown building',
   farFromLanding: 'too far from your landing', nearOtherColony: 'closer to another colony',
   outsidePowerZone: 'outside the power zone',
 };
 
 /** Tile-level failures, most important first: the footprint's reason is the highest-ranked one among its tiles. */
-const TILE_PRIORITY: readonly PlacementBlock[] = ['outOfMap', 'foreign', 'unclaimed', 'outsidePowerZone', 'occupied', 'water', 'ridge', 'trees', 'rock', 'slope', 'hole', 'unprepared', 'uneven', 'deposit', 'noDeposit'];
+const TILE_PRIORITY: readonly PlacementBlock[] = ['outOfMap', 'foreign', 'unclaimed', 'outsidePowerZone', 'occupied', 'wreck', 'water', 'ridge', 'trees', 'rock', 'slope', 'hole', 'unprepared', 'uneven', 'deposit', 'mixedDeposit', 'noDeposit'];
 
 export const placementRejectCode = (b: PlacementBlock): RejectCode => BLOCK_CODE[b];
 export const placementBlockText = (b: PlacementBlock): string => BLOCK_TEXT[b];
@@ -200,6 +204,7 @@ function evaluateTile(world: PlacementWorld, rule: PlacementRule, ctx: TileConte
   else if (owner < 0 && !rule.allowUnclaimed) block = 'unclaimed';
   else if (zone && !inPowerZone(zone, q, r)) block = 'outsidePowerZone';
   else if (occupied.has(tileIdx)) block = 'occupied';
+  else if (world.wrecks?.has(tileIdx)) block = 'wreck';
   else {
     const isDepleted = deposit !== 0 && world.richness != null && Number(world.richness[tileIdx] ?? 0) <= 0;
     const effectiveDeposit = rule.deposit === 'require' && isDepleted ? 0 : deposit;
@@ -313,7 +318,20 @@ export function evaluatePlacement(world: PlacementWorld, opts: EvaluatePlacement
   }
   for (const b of TILE_PRIORITY) if (tiles.some((t) => t.block === b)) return fail(b, tiles, bill);
   if (footprintSpread(world, tiles) > MAX_FOOTPRINT_SPREAD_M) return fail('uneven', tiles, bill);
-  if (rule.requiresDeposit !== undefined && !tiles.some((t) => coversDeposit(world, t, rule.requiresDeposit!) || (rule.requiresDeposit === DEPOSIT.metals && coversDeposit(world, t, DEPOSIT.minerals)))) return fail('noDeposit', tiles, bill);
+  if (rule.requiresDeposit !== undefined) {
+    if (!tiles.some((t) => coversDeposit(world, t, rule.requiresDeposit!) || (rule.requiresDeposit === DEPOSIT.metals && coversDeposit(world, t, DEPOSIT.minerals)))) {
+      return fail('noDeposit', tiles, bill);
+    }
+    const depositKinds = new Set<number>();
+    let hasDisallowed = false;
+    for (const t of tiles) {
+      if (t.deposit === DEPOSIT.none) continue;
+      depositKinds.add(t.deposit);
+      const allowed = t.deposit === rule.requiresDeposit || (rule.requiresDeposit === DEPOSIT.metals && t.deposit === DEPOSIT.minerals);
+      if (!allowed) hasDisallowed = true;
+    }
+    if (hasDisallowed || depositKinds.size > 1) return fail('mixedDeposit', tiles, bill);
+  }
   const cb = colonyBlock(world, rule, opts);
   if (cb) return fail(cb, tiles, bill);
   const prepared = tiles.filter((t) => t.prepared).length;

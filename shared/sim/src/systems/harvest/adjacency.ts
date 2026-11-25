@@ -13,6 +13,8 @@ import { setBlob, type PlanetState } from '../../kernel/state';
 import { UnitBook } from '../../units/book';
 import { faceTowards } from '../../units/movement/locomotion';
 import { cancelMove, requestMove } from '../../units/movement/orchestrator';
+import { collectUnitOccupancy } from '../../units/movement/unitOccupancy';
+import { getWreckTileSet } from '../combat/wrecks';
 import { occupiedGroundTiles } from '../construction/occupancy';
 import { ensureColonyLedger, familyStock, isFamilyAtCap, type ColonyWithLedger } from '../economy/ledger';
 import { isCrewKind, isWorker } from './unit';
@@ -66,7 +68,7 @@ const tileDepositInfo = (state: PlanetState, i: number) =>
 export function isPassableAdjacentHex(state: PlanetState, tileIdx: number, occupied: ReadonlySet<number> = occupiedGroundTiles(state)): boolean {
   if (tileIdx < 0 || tileIdx >= state.grid.count) return false;
   const { terrain, prep, deposit } = state.grid.layers;
-  if (occupied.has(tileIdx)) return false;
+  if (occupied.has(tileIdx) || getWreckTileSet(state).has(tileIdx)) return false;
   if (deposit[tileIdx] !== DEPOSIT.none) return false;
   const t = terrain[tileIdx];
   const p = prep[tileIdx];
@@ -92,20 +94,19 @@ export function pickFreeAdjacentDepositHex(
 ): { q: number; r: number; tileIdx: number } | null {
   const idx = hexIndex(state.grid.radius);
   const e = state.entities, cols = e.cols;
-  const reserved = new Set<number>();
+  const selfHere = idx.indexOf(unitQ, unitR);
+  const reserved = new Set<number>(collectUnitOccupancy(state, selfEntityId).claimedGoals);
 
   for (let r = 0; r < e.count; r++) {
     if (cols.hp[r] <= 0 || cols.id[r] === selfEntityId) continue;
     const k = cols.kind[r];
     if (!isCrewKind(k)) continue;
-    const uTile = idx.indexOf(cols.q[r], cols.r[r]);
-    if (uTile >= 0 && hexDistance(cols.q[r], cols.r[r], depQ, depR) === 1) {
-      reserved.add(uTile);
-    }
     const a = assignments?.[cols.id[r]];
     if (a && a.standQ !== undefined && a.standR !== undefined && a.q === depQ && a.r === depR) {
       const sTile = idx.indexOf(a.standQ, a.standR);
-      if (sTile >= 0) reserved.add(sTile);
+      if (sTile >= 0 && !(sTile === selfHere && selfEntityId > 0 && cols.id[r] > selfEntityId)) {
+        reserved.add(sTile);
+      }
     }
   }
 

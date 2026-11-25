@@ -9,6 +9,7 @@ interface ScheduledBurstRound {
   targetId?: number;
   weaponId?: string;
   to: THREE.Vector3;
+  targetOrigin?: THREE.Vector3;
   speed?: number;
   delayS: number;
   ageS: number;
@@ -111,6 +112,7 @@ export class CombatShotCoordinator {
         },
       });
       const targetMesh = shot.targetId === undefined ? undefined : this.meshForEntity(shot.targetId);
+      const targetOrigin = targetMesh ? targetMesh.getWorldPosition(new THREE.Vector3()) : undefined;
       const targetArch = (targetMesh?.userData as { archetypeId?: string } | undefined)?.archetypeId ?? targetMesh?.name ?? '';
       const targetIsInsect = targetArch.startsWith('fauna.') && !targetArch.startsWith('fauna.hive.');
       const speed = shot.speed ?? 38;
@@ -120,6 +122,7 @@ export class CombatShotCoordinator {
           targetId: shot.targetId,
           weaponId: shot.weaponId,
           to: targets[r]!,
+          targetOrigin: targetOrigin?.clone(),
           speed,
           delayS: r * 0.068,
           ageS: 0,
@@ -148,7 +151,11 @@ export class CombatShotCoordinator {
       const fired = rig.triggerFire(true, round.heatGain);
       const eject = rig.ejectOrigin(fired.barrel);
       const from = fired.from;
-      const to = round.to;
+      const liveTarget = round.targetId !== undefined ? this.meshForEntity(round.targetId) : undefined;
+      const to =
+        round.targetOrigin && liveTarget
+          ? round.to.clone().add(liveTarget.getWorldPosition(new THREE.Vector3()).sub(round.targetOrigin))
+          : round.to;
       const dir = to.clone().sub(from).normalize();
       this.projectiles.onProjectileFired({
         weaponKind: 'bullet',
@@ -163,7 +170,9 @@ export class CombatShotCoordinator {
         autoImpactOnArrival: true,
         ejectCartridge: true,
         ejectFrom: eject.pos,
+        ejectDir: eject.dir,
         ejectGroundY: eject.groundY,
+        ejectScale: eject.scale,
         source: () => rig.muzzle(fired.barrel),
         direction: () => dir,
       });

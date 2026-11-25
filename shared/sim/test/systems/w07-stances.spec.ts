@@ -406,29 +406,43 @@ describe('W07-12 · stationary defense turrets and HQ auto-turret firing', () =>
     expect(state.entities.cols.hp[ant.row]).toBe(240);
   });
 
-  it('clears battle targetId when enemies die or when a combat unit receives a manual player move order', () => {
+  it('clears battle targetId on enemy death or manual move for normal units, while Recon fires while moving until out of range', () => {
     const { host, state } = makeW07Host('w07-clear-battle-target');
+    const tank = spawnTestEntity(state, { kind: ENTITY_KIND.demoTank, owner: 0, q: -1, r: 0, hp: 520 });
     const recon = spawnTestEntity(state, { kind: ENTITY_KIND.recon, owner: 0, q: 0, r: 0, hp: 200 });
     const ant = spawnTestEntity(state, { kind: ENTITY_KIND.blackAnt, owner: -1, q: 3, r: 0, hp: 500 });
 
     stepTicks(host, 2);
 
     const battleBefore = state.blobs.battle?.value as { byEntityId?: Record<number, { targetId: number | null }> } | undefined;
+    expect(battleBefore?.byEntityId?.[tank.id]?.targetId).toBe(ant.id);
     expect(battleBefore?.byEntityId?.[recon.id]?.targetId).toBe(ant.id);
 
-    // Manual player move order must drop the stale target so client turrets return to default pose.
+    // Non-move-and-fire units immediately clear targetId on manual moveUnit; Recon keeps firing while in range.
+    host.submit({
+      commandId: 'move-tank-away',
+      colonyIndex: 0,
+      source: 'player',
+      kind: 'moveUnit',
+      args: { entityId: tank.id, q: -5, r: 0 },
+    });
     const moveRes = submitAndStep(host, {
       commandId: 'move-recon-away',
       colonyIndex: 0,
       source: 'player',
       kind: 'moveUnit',
-      args: { entityId: recon.id, q: -4, r: 0 },
+      args: { entityId: recon.id, q: -6, r: 0 },
     });
     expect(moveRes.outcomes[0]?.code).toBeUndefined();
     const battleAfterMove = state.blobs.battle?.value as { byEntityId?: Record<number, { targetId: number | null }> } | undefined;
-    expect(battleAfterMove?.byEntityId?.[recon.id]?.targetId).toBeNull();
+    expect(battleAfterMove?.byEntityId?.[tank.id]?.targetId).toBeNull();
+    expect(battleAfterMove?.byEntityId?.[recon.id]?.targetId).toBe(ant.id);
 
-    // When attacking an explicit target that is killed, battle targetId also clears to null.
+    // Once Recon drives outside range 4 of (3, 0), battle targetId clears to null cleanly.
+    stepTicks(host, 5);
+    expect((state.blobs.battle?.value as { byEntityId?: Record<number, { targetId: number | null }> } | undefined)?.byEntityId?.[recon.id]?.targetId).toBeNull();
+
+    // Attacking an explicit target that is killed also clears battle targetId to null.
     submitAndStep(host, {
       commandId: 'atk-ant-kill',
       colonyIndex: 0,
@@ -436,7 +450,7 @@ describe('W07-12 · stationary defense turrets and HQ auto-turret firing', () =>
       kind: 'attackTarget',
       args: { entityIds: [recon.id], targetId: ant.id },
     });
-    stepTicks(host, 2);
+    stepTicks(host, 10);
     expect((state.blobs.battle?.value as { byEntityId?: Record<number, { targetId: number | null }> } | undefined)?.byEntityId?.[recon.id]?.targetId).toBe(ant.id);
     state.entities.cols.hp[ant.row] = 0;
     stepTicks(host, 1);

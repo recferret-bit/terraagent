@@ -9,9 +9,10 @@ import { duneWorkTiles, scaleSlopeWork } from './duneFootprint';
 import { meteorCraterWorkTiles } from './meteorCraterFootprint';
 import { getTerraformOpSpec, groundWorkYields, isTerraformOpCompiled } from './ops';
 import { terraformOwnershipBlock, type TerraformWorld } from './rules';
+import { getWreckGroupCoords } from '../combat/wrecks';
 
 /** Terrain key a `work` job carries (the time-table keys, plus water which is priced from the op spec). */
-export type GroundTerrainKey = TerraformTimeKey | 'shallow' | 'deep' | 'pod';
+export type GroundTerrainKey = TerraformTimeKey | 'shallow' | 'deep' | 'pod' | 'wreck';
 
 /** What terraforming one ground tile by `work` takes. Water uses the `reclaim` / `deepReclaim` spec, not a second table. */
 export type GroundWork = {
@@ -82,6 +83,12 @@ export function evaluateGroundWorkTile(
     if (opts.occupied) return { ok: false, reason: 'site_blocked' };
     return { ...timedGroundWork('dismantle', opts.data), terrainKey: 'pod', yields: {} };
   }
+  if (world.wreckTiles?.has(tileIdx)) {
+    const owner = world.owner[tileIdx];
+    if (owner >= 0 && owner !== colonyId) return { ok: false, reason: 'not_own_territory' };
+    if (opts.occupied) return { ok: false, reason: 'site_blocked' };
+    return { ...timedGroundWork('dismantle', opts.data), terrainKey: 'wreck', yields: groundWorkYields('rock', opts.data) };
+  }
   const territory = terraformOwnershipBlock(world, colonyId, tileIdx, q, r);
   if (territory) return { ok: false, reason: territory };
   if (opts.occupied) return { ok: false, reason: 'site_blocked' };
@@ -151,6 +158,10 @@ export function activeWorkFootprintTiles(
     const crater = meteorCraterWorkTiles(radius, job.q, job.r, terrain, weather);
     return crater.length > 0 ? crater : [{ q: job.q, r: job.r }];
   }
+  if (tKey === 'wreck' || (idx >= 0 && gridOrState.blobs)) {
+    const wreckCoords = idx >= 0 ? getWreckGroupCoords(radius, gridOrState.blobs, idx) : [];
+    if (wreckCoords.length > 0) return wreckCoords;
+  }
   return [{ q: job.q, r: job.r }];
 }
 
@@ -184,6 +195,7 @@ export function planGroundWorkTiles(
       i >= 0 && world.terrain[i] === TERRAIN.hole
         ? meteorCraterWorkTiles(world.radius, t.q, t.r, world.terrain, opts.weather)
         : [];
+    const wreckGroup = i >= 0 ? world.wreckGroups?.get(i) : undefined;
     const alreadyQueued =
       seen.has(key) ||
       Boolean(opts.pending?.has(key)) ||
@@ -191,7 +203,15 @@ export function planGroundWorkTiles(
         craterGroup.some((c) => {
           const ck = `${c.q},${c.r}`;
           return seen.has(ck) || Boolean(opts.pending?.has(ck));
-        }));
+        })) ||
+      Boolean(
+        wreckGroup &&
+          wreckGroup.length > 1 &&
+          wreckGroup.some((w) => {
+            const wk = `${w.q},${w.r}`;
+            return seen.has(wk) || Boolean(opts.pending?.has(wk));
+          }),
+      );
     if (alreadyQueued) {
       skip(t.q, t.r, 'already_queued');
       continue;
@@ -209,6 +229,9 @@ export function planGroundWorkTiles(
     seen.add(key);
     if (craterGroup.length > 1) {
       for (const c of craterGroup) seen.add(`${c.q},${c.r}`);
+    }
+    if (wreckGroup && wreckGroup.length > 1) {
+      for (const w of wreckGroup) seen.add(`${w.q},${w.r}`);
     }
     plan.jobs.push({ q: t.q, r: t.r, op: 'work' });
   }

@@ -12,6 +12,7 @@ import { touchTile, type PlanetState } from '../../kernel/state';
 import { parseArgs } from '../command';
 import { occupiedGroundTiles } from '../construction/occupancy';
 import { OCCUPYING_BUILDING_KINDS } from '../construction/placement';
+import { getWreckTileSet } from '../combat/wrecks';
 import {
   buildingKindName,
   getFootprintTileIndices,
@@ -58,12 +59,38 @@ const BUILDING_ALIASES: Readonly<Record<string, string>> = {
   hub: 'commandHub',
 };
 
-const EXTRACTOR_KINDS = new Set<number>([
+const DEPOSIT_EXTRACTOR_KINDS = new Set<number>([
   ENTITY_KIND.metalsExtractor,
   ENTITY_KIND.mineralsQuarry,
-  ENTITY_KIND.waterExtractor,
   ENTITY_KIND.petroleumWell,
 ]);
+
+function allowedDepositsForEntityKind(entityKind: number): readonly number[] | null {
+  if (entityKind === ENTITY_KIND.metalsExtractor) return [DEPOSIT.metals, DEPOSIT.minerals];
+  if (entityKind === ENTITY_KIND.mineralsQuarry) return [DEPOSIT.minerals];
+  if (entityKind === ENTITY_KIND.petroleumWell) return [DEPOSIT.oil];
+  return null;
+}
+
+function footprintDepositsValid(state: PlanetState, indices: readonly number[], entityKind: number): boolean {
+  const deposit = state.grid.layers.deposit;
+  const richness = state.grid.layers.richness;
+  const allowed = allowedDepositsForEntityKind(entityKind);
+  if (!allowed) {
+    return indices.every((idx) => (deposit[idx] ?? DEPOSIT.none) === DEPOSIT.none);
+  }
+  let seen: number = DEPOSIT.none;
+  let hasActiveMatch = false;
+  for (const idx of indices) {
+    const dep = deposit[idx] ?? DEPOSIT.none;
+    if (dep === DEPOSIT.none) continue;
+    if (!allowed.includes(dep)) return false;
+    if (seen !== DEPOSIT.none && seen !== dep) return false;
+    seen = dep;
+    if (!richness || Number(richness[idx] ?? 0) > 0) hasActiveMatch = true;
+  }
+  return hasActiveMatch;
+}
 
 let cachedSandboxData: CompiledDataLike | null = null;
 function fallbackSandboxData(): CompiledDataLike {
@@ -119,6 +146,7 @@ function isFootprintPlaceable(
   rot: number,
   allowWater: boolean,
   blocked: ReadonlySet<number>,
+  entityKind: number,
 ): number[] | null {
   if (!inHex(q, r, state.grid.radius)) return null;
   const fp = getFootprintTileIndices(state, q, r, w, d, rot);
@@ -130,11 +158,13 @@ function isFootprintPlaceable(
     if (t === TERRAIN.shallow && !allowWater) return null;
     if (blocked.has(tileIdx)) return null;
   }
+  if (!footprintDepositsValid(state, fp.indices, entityKind)) return null;
   return fp.indices;
 }
 
 function collectBlockedBuildingTiles(state: PlanetState): Set<number> {
   const occupied = new Set(occupiedGroundTiles(state));
+  for (const tileIdx of getWreckTileSet(state)) occupied.add(tileIdx);
   const { count, cols } = state.entities;
   for (let row = 0; row < count; row++) {
     if (cols.hp[row]! <= 0) continue;
@@ -162,6 +192,7 @@ function findNearestBuildingSite(
   rot: number,
   allowWater: boolean,
   blocked: ReadonlySet<number>,
+  entityKind: number,
 ): { q: number; r: number; indices: number[] } | null {
   const maxRing = Math.min(state.grid.radius, 24);
   for (let dist = 0; dist <= maxRing; dist++) {
@@ -170,7 +201,7 @@ function findNearestBuildingSite(
         if (hexDistance(0, 0, dq, dr) !== dist) continue;
         const q = centerQ + dq;
         const r = centerR + dr;
-        const indices = isFootprintPlaceable(state, q, r, w, d, rot, allowWater, blocked);
+        const indices = isFootprintPlaceable(state, q, r, w, d, rot, allowWater, blocked, entityKind);
         if (indices) return { q, r, indices };
       }
     }
@@ -189,7 +220,7 @@ function prepareSpawnSiteTiles(
   const prep = state.grid.layers.prep as Uint8Array;
   const height = state.grid.layers.height as Float32Array;
   const deposit = state.grid.layers.deposit;
-  const keepDeposit = EXTRACTOR_KINDS.has(entityKind);
+  const keepDeposit = DEPOSIT_EXTRACTOR_KINDS.has(entityKind);
   let targetH = 0.1;
   if (indices.length > 0) {
     let sum = 0;
@@ -235,9 +266,9 @@ export function spawnCompletedBuilding(
   let r = opts.r;
   let indices: number[] | null;
   if (typeof q === 'number' && typeof r === 'number') {
-    indices = isFootprintPlaceable(state, q, r, w, d, rot, allowWater, blocked);
+    indices = isFootprintPlaceable(state, q, r, w, d, rot, allowWater, blocked, spec.entityKind);
     if (!indices && opts.fallbackNear) {
-      const found = findNearestBuildingSite(state, q, r, w, d, rot, allowWater, blocked);
+      const found = findNearestBuildingSite(state, q, r, w, d, rot, allowWater, blocked, spec.entityKind);
       if (found) {
         q = found.q;
         r = found.r;
@@ -246,7 +277,7 @@ export function spawnCompletedBuilding(
     }
     if (!indices) return { ok: false, code: 'site_blocked' };
   } else {
-    const found = findNearestBuildingSite(state, fallbackAnchor.q, fallbackAnchor.r, w, d, rot, allowWater, blocked);
+    const found = findNearestBuildingSite(state, fallbackAnchor.q, fallbackAnchor.r, w, d, rot, allowWater, blocked, spec.entityKind);
     if (!found) return { ok: false, code: 'site_blocked' };
     q = found.q;
     r = found.r;

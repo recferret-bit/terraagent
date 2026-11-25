@@ -1,12 +1,18 @@
 import { rowOf } from '../../ecs/store';
 import { hexDistance, hexIndex } from '../../grid/hex';
-import { pathBlockedFor } from '../../grid/pathProfiles';
+import { pathBlockedFor, type PathProfileId } from '../../grid/pathProfiles';
 import { cancelPathRequest, enqueuePathRequest, PATH_EXPANSION_BUDGET_PER_STEP, stepPathQueue } from '../../grid/pathQueue';
 import type { StepContext } from '../../kernel/context';
 import { setBlob, type PlanetState } from '../../kernel/state';
 import { mobileStats, movementProfile, notifyUnitChanged } from '../mobility';
 import { applyGroupField, detachMember, groupMotionFor, replanGroupMember } from './groupMarch';
 import { advanceAlongRoute, type Route } from './locomotion';
+import {
+  collectUnitOccupancy,
+  findNearestFreeStandTile,
+  isHexClaimedOrTargetedByOtherUnit,
+  isHexStationaryOccupied,
+} from './unitOccupancy';
 
 /**
  * Movement orchestrator. Unit commands never move a unit themselves: they ask the orchestrator for a move
@@ -24,6 +30,7 @@ export interface MoveGoal {
   r: number;
   minDist: number;
   maxDist: number;
+  profile?: PathProfileId;
 }
 
 export type MotionStatus = 'pending' | 'following' | 'arrived' | 'failed';
@@ -35,6 +42,10 @@ export interface UnitMotion extends Route {
   status: MotionStatus;
   /** Tiles per tick when a group march holds this unit below its data speed. Never written back onto the stat cache. */
   marchSpeed?: number;
+  /** Prevents unbounded exact-goal re-seating if all nearby stand tiles become unreachable. */
+  reseated?: boolean;
+  /** Preserves the pre-reseat goal so `approach()` recognizes the re-seated route without re-issuing the blocked hex. */
+  originalGoal?: MoveGoal;
 }
 
 interface MotionBlobValue {
@@ -58,7 +69,10 @@ function writeMotions(state: PlanetState, value: MotionBlobValue, tick: number):
 }
 
 export const sameGoal = (a: MoveGoal, b: MoveGoal): boolean =>
-  a.q === b.q && a.r === b.r && a.minDist === b.minDist && a.maxDist === b.maxDist;
+  a.q === b.q && a.r === b.r && a.minDist === b.minDist && a.maxDist === b.maxDist && a.profile === b.profile;
+
+export const matchesMotionGoal = (m: UnitMotion, goal: MoveGoal): boolean =>
+  sameGoal(m.goal, goal) || (m.originalGoal !== undefined && sameGoal(m.originalGoal, goal));
 
 /** The unit's current movement (route and status), or `null` if it has none. */
 export function getMotion(state: PlanetState, entityId: number): UnitMotion | null {
@@ -80,14 +94,13 @@ function enqueueFor(state: PlanetState, motions: MotionBlobValue, row: number, g
       from: { q: cols.q[row], r: cols.r[row] },
       to: { q: goal.q, r: goal.r },
       radius: state.grid.radius,
-      profile: movementProfile(cols.kind[row], ctx.data),
+      profile: goal.profile ?? movementProfile(cols.kind[row], ctx.data),
       ...(goal.maxDist > 0 ? { band: { minDist: goal.minDist, maxDist: goal.maxDist } } : {}),
     },
     tick,
   );
   const motion: UnitMotion = { goal: { ...goal }, reqId, status: 'pending', path: [], next: 0 };
   motions.byId[String(id)] = motion;
-  markRouteChange(motions, id, tick);
   return motion;
 }
 
@@ -95,7 +108,7 @@ function enqueueFor(state: PlanetState, motions: MotionBlobValue, row: number, g
 export function requestMove(state: PlanetState, row: number, goal: MoveGoal, ctx: StepContext): void {
   const motions = readMotions(state);
   const prev = motions.byId[String(state.entities.cols.id[row])];
-  if (prev && sameGoal(prev.goal, goal) && prev.status !== 'failed') return;
+  if (prev && matchesMotionGoal(prev, goal) && prev.status !== 'failed') return;
   const joined = groupMotionFor(state, row, goal);
   if (joined) {
     motions.byId[String(state.entities.cols.id[row])] = joined;
@@ -130,10 +143,32 @@ function routeFrom(state: PlanetState, row: number, path: readonly { q: number; 
   const y = cols.y[row];
   const atStart = x === path[0].q && y === path[0].r;
   const towardSecond = path.length > 1 && hexDistance(x, y, path[1].q, path[1].r) < 1 - 1e-6;
-  const startIdx = hexIndex(state.grid.radius).indexOf(path[0].q, path[0].r);
+  const idx = hexIndex(state.grid.radius);
+  const startIdx = idx.indexOf(path[0].q, path[0].r);
+  const here = idx.indexOf(cols.q[row], cols.r[row]);
   const effProfile = movementProfile(cols.kind[row], ctx.data);
-  const startBlocked = path.length > 1 && (pathBlockedFor(state, effProfile, -1, ctx.data)?.(startIdx) ?? false);
+  const startBlocked = path.length > 1 && (pathBlockedFor(state, effProfile, here, ctx.data, cols.id[row])?.(startIdx) ?? false);
   return atStart || towardSecond || startBlocked ? path.slice(1) : path.slice();
+}
+
+function tryReseatClaimedExactGoal(
+  state: PlanetState,
+  motions: MotionBlobValue,
+  entityId: number,
+  m: UnitMotion,
+  ctx: StepContext,
+): boolean {
+  const row = rowOf(state.entities, entityId);
+  if (row < 0 || m.reseated || m.goal.minDist !== 0 || m.goal.maxDist !== 0) return false;
+  if (!isHexClaimedOrTargetedByOtherUnit(state, m.goal.q, m.goal.r, entityId, ctx.data)) return false;
+  const effProfile = m.goal.profile ?? movementProfile(state.entities.cols.kind[row], ctx.data);
+  const occ = collectUnitOccupancy(state, entityId, undefined, ctx.data);
+  const alt = findNearestFreeStandTile(state, m.goal.q, m.goal.r, effProfile, entityId, ctx.data, 4, occ.inTransitGoals);
+  if (!alt) return false;
+  const next = enqueueFor(state, motions, row, { ...m.goal, q: alt.q, r: alt.r }, ctx);
+  next.reseated = true;
+  next.originalGoal = m.originalGoal ? { ...m.originalGoal } : { ...m.goal };
+  return true;
 }
 
 function assignRoutes(state: PlanetState, motions: MotionBlobValue, ctx: StepContext, ended: number[]): boolean {
@@ -151,6 +186,7 @@ function assignRoutes(state: PlanetState, motions: MotionBlobValue, ctx: StepCon
     m.reqId = null;
     markRouteChange(motions, res.entityId, ctx.tick);
     if (!res.ok) {
+      if (tryReseatClaimedExactGoal(state, motions, res.entityId, m, ctx)) continue;
       m.status = 'failed';
       ended.push(res.entityId);
       continue;
@@ -194,8 +230,16 @@ export function runMovement(state: PlanetState, ctx: StepContext): number[] {
     const stepStats = m.marchSpeed !== undefined && m.marchSpeed < stats.speedPerTick ? { ...stats, speedPerTick: m.marchSpeed } : stats;
     const before = m.next;
     const here = hexIndex(state.grid.radius).indexOf(state.entities.cols.q[row], state.entities.cols.r[row]);
-    const effProfile = movementProfile(state.entities.cols.kind[row], ctx.data);
-    const res = advanceAlongRoute(state, row, m, stepStats, ctx, pathBlockedFor(state, effProfile, here, ctx.data));
+    const effProfile = m.goal.profile ?? movementProfile(state.entities.cols.kind[row], ctx.data);
+    const res = advanceAlongRoute(
+      state,
+      row,
+      m,
+      stepStats,
+      ctx,
+      pathBlockedFor(state, effProfile, here, ctx.data, id),
+      (ti) => isHexStationaryOccupied(state, ti, id, ctx.data),
+    );
     if (m.next !== before) changed = true;
     if (res === 'arrived') {
       m.status = 'arrived';
@@ -203,8 +247,47 @@ export function runMovement(state: PlanetState, ctx: StepContext): number[] {
       ended.push(id);
       changed = true;
     } else if (res === 'blocked') {
+      const cols = state.entities.cols;
+      const atTileCentre = cols.x[row] === cols.q[row] && cols.y[row] === cols.r[row];
+      if (
+        m.goal.maxDist > 0 &&
+        atTileCentre &&
+        m.next === m.path.length / 2 - 1 &&
+        !isHexStationaryOccupied(state, here, id, ctx.data) &&
+        hexDistance(cols.q[row], cols.r[row], m.goal.q, m.goal.r) <= m.goal.maxDist + 1
+      ) {
+        m.status = 'arrived';
+        markRouteChange(motions, id, ctx.tick);
+        ended.push(id);
+        changed = true;
+        notifyUnitChanged(state, row, ctx.tick, ctx.data);
+        continue;
+      }
       if (!replanGroupMember(state, motions, row, ctx, (blockedRow, path) => routeFrom(state, blockedRow, path, ctx))) {
-        enqueueFor(state, motions, row, m.goal, ctx); // the map changed under the route: re-plan from here
+        let nextGoal = m.goal;
+        if (
+          m.goal.minDist === 0 &&
+          m.goal.maxDist === 0 &&
+          isHexClaimedOrTargetedByOtherUnit(state, m.goal.q, m.goal.r, id, ctx.data)
+        ) {
+          const occ = collectUnitOccupancy(state, id, undefined, ctx.data);
+          const alt = findNearestFreeStandTile(state, m.goal.q, m.goal.r, effProfile, id, ctx.data, 4, occ.inTransitGoals);
+          if (!alt) {
+            m.status = 'failed';
+            markRouteChange(motions, id, ctx.tick);
+            ended.push(id);
+            changed = true;
+            notifyUnitChanged(state, row, ctx.tick, ctx.data);
+            continue;
+          }
+          nextGoal = { ...m.goal, q: alt.q, r: alt.r };
+        }
+        const prevOrigin = m.originalGoal ?? m.goal;
+        const replanned = enqueueFor(state, motions, row, nextGoal, ctx); // the map or hex occupancy changed under the route
+        if (nextGoal !== m.goal) {
+          replanned.reseated = true;
+          replanned.originalGoal = { ...prevOrigin };
+        }
       }
       changed = true;
     }

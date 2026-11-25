@@ -10,6 +10,7 @@ import { UnitBook } from '../../units/book';
 import { mobileStats, movementProfile } from '../../units/mobility';
 import { commitMarch, reservedSlotTiles, slotDistance, slowestSpeed, type MarchCommit } from '../../units/movement/groupMarch';
 import { assignSlots, diskPath, seatingPath } from '../../units/movement/slots';
+import { collectUnitOccupancy } from '../../units/movement/unitOccupancy';
 import { parseArgs } from '../command';
 import { cancelWorkerJobs } from '../terraform-basic/workJobs';
 import { ownUnitRow } from './handlers';
@@ -67,8 +68,13 @@ function planMarch(state: PlanetState, members: readonly Member[], anchor: { q: 
   const idx = hexIndex(state.grid.radius);
   const seeds = fieldSeeds(state, anchor.q, anchor.r, profile, ctx.data);
   if (seeds.length === 0) return 'site_blocked';
-  const taken = reservedSlotTiles(state);
-  const blockers = pathBlockersFor(state, profile, -1, ctx.data);
+  const memberSet = new Set(members.map((m) => m.id));
+  const taken = reservedSlotTiles(state, memberSet);
+  const unitOcc = collectUnitOccupancy(state, -1, memberSet, ctx.data);
+  for (const claimed of unitOcc.claimedGoals) taken.add(claimed);
+  for (const transit of unitOcc.inTransitGoals) taken.add(transit);
+  const leadIdx = idx.indexOf(members[0].q, members[0].r);
+  const blockers = pathBlockersFor(state, profile, leadIdx, ctx.data, -1, null);
   const blocked = (i: number) => (blockers ? blockers.goalBlocked(i) : false);
   const seedTiles = seeds.map((i) => ({ q: idx.q[i], r: idx.r[i] }));
   const isFree = (q: number, r: number): boolean => {

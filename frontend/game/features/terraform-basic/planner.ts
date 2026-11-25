@@ -5,6 +5,8 @@ import {
   entityFootprint,
   getEntityBaseBuildCost,
   getBuildingFootprintTiles,
+  getWreckGroupCoords,
+  hexIndex,
   occupiedTiles,
   placementWorldFromState,
   planGroundWorkTiles,
@@ -223,8 +225,18 @@ export function hasWorkerEntity(
 /** Tiles already named by a terraform order or a `work` job (the host skips those: never worked twice). */
 function pendingTiles(view: GameView | null | undefined, colonyId: number): Set<string> {
   const out = new Set<string>();
+  const radius = view?.planet?.radius;
+  const hx = typeof radius === 'number' && radius > 0 ? hexIndex(radius) : null;
+  const blobs = view?.blobs as Record<string, unknown> | undefined;
   for (const o of extractColonyOrders(view, colonyId)) for (const j of o.jobs) out.add(`${j.q},${j.r}`);
-  for (const j of colonyWorkJobs(view, colonyId)) if (j.mode === 'terraform') out.add(`${j.q},${j.r}`);
+  for (const j of colonyWorkJobs(view, colonyId)) {
+    if (j.mode !== 'terraform') continue;
+    out.add(`${j.q},${j.r}`);
+    if (j.terrainKey === 'wreck' && hx && blobs) {
+      const idx = hx.indexOf(j.q, j.r);
+      for (const wc of getWreckGroupCoords(radius!, blobs, idx)) out.add(`${wc.q},${wc.r}`);
+    }
+  }
   return out;
 }
 

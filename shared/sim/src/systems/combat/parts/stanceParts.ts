@@ -1,12 +1,18 @@
 import type { Columns } from '../../../ecs/store';
+import { ENTITY_KIND } from '../../../ecs/columns';
 import { hexDistance, hexIndex } from '../../../grid/hex';
 import { pathBlockersFor } from '../../../grid/pathProfiles';
 import { isGroundPassable } from '../../../grid/tileModel';
 import type { CompiledDataLike } from '../../../kernel/config';
 import type { StepContext } from '../../../kernel/context';
 import { setBlob, type PlanetState } from '../../../kernel/state';
-import { mobileStats } from '../../../units/mobility';
-import type { MoveGoal } from '../../../units/movement/orchestrator';
+import { mobileStats, movementProfile } from '../../../units/mobility';
+import { getMotion, type MoveGoal } from '../../../units/movement/orchestrator';
+import {
+  findNearestFreeStandTile,
+  isHexClaimedByOtherUnit,
+  isHexStationaryOccupied,
+} from '../../../units/movement/unitOccupancy';
 import { withoutUnitView } from '../../harvest/unit';
 import { canWeaponHitTarget } from '../layers';
 import { recordStanceChanges } from '../stanceChanges';
@@ -99,7 +105,7 @@ export function findLeashChaseTile(
   const idx = hexIndex(state.grid.radius);
   const here = idx.indexOf(cols.q[unitRow]!, cols.r[unitRow]!);
   const profile = (data ? mobileStats(cols.kind[unitRow]!, data)?.profile : undefined) ?? 'ground';
-  const blockers = pathBlockersFor(state, profile, here, data);
+  const blockers = pathBlockersFor(state, profile, here, data, cols.id[unitRow]!);
 
   let bestQ = anchorQ;
   let bestR = anchorR;
@@ -117,7 +123,7 @@ export function findLeashChaseTile(
       const tileIdx = idx.indexOf(cq, cr);
       if (tileIdx < 0) continue;
       if (profile !== 'hover' && !isGroundPassable(state.grid, tileIdx, data)) continue;
-      if (blockers?.goalBlocked(tileIdx)) continue;
+      if (blockers?.bandGoalBlocked ? blockers.bandGoalBlocked(tileIdx) : blockers?.goalBlocked(tileIdx)) continue;
 
       const dTarget = hexDistance(cq, cr, targetQ, targetR);
       const dAnchor = hexDistance(anchorQ, anchorR, cq, cr);
@@ -174,6 +180,16 @@ export function findClosestHostileInAnchorLeash(
   return bestRow;
 }
 
+export function canUnitMoveAndFire(kind: number, data?: CompiledDataLike): boolean {
+  const combatUnits = data?.tables?.combatUnits as Record<string, { moveAndFire?: unknown } | undefined> | undefined;
+  if (kind === ENTITY_KIND.recon) {
+    const reconRow = combatUnits?.recon;
+    if (reconRow && 'moveAndFire' in reconRow) return Boolean(reconRow.moveAndFire);
+    return true;
+  }
+  return false;
+}
+
 export function resolveAttackMoveGoalBand(
   state: PlanetState,
   row: number,
@@ -185,7 +201,51 @@ export function resolveAttackMoveGoalBand(
   const here = idx.indexOf(cols.q[row]!, cols.r[row]!);
   const goalIdx = idx.indexOf(goal.q, goal.r);
   const profile = (data ? mobileStats(cols.kind[row]!, data)?.profile : undefined) ?? 'ground';
-  const blockers = pathBlockersFor(state, profile, here, data);
+  const blockers = pathBlockersFor(state, profile, here, data, cols.id[row]!);
   const maxDist = goalIdx >= 0 && blockers?.goalBlocked(goalIdx) ? 2 : 0;
   return { q: goal.q, r: goal.r, minDist: 0, maxDist };
+}
+
+export function refreshBlockedDefendAnchor(
+  state: PlanetState,
+  row: number,
+  rec: UnitStanceRecord,
+  data?: CompiledDataLike,
+): { q: number; r: number } | null {
+  const cols = state.entities.cols;
+  const id = cols.id[row]!;
+  if (cols.q[row] === rec.anchorQ && cols.r[row] === rec.anchorR) {
+    const deoverlap = resolveHoldDeoverlapTile(state, row, data);
+    if (deoverlap) {
+      rec.anchorQ = deoverlap.q;
+      rec.anchorR = deoverlap.r;
+      return deoverlap;
+    }
+    return null;
+  }
+  if (getMotion(state, id) === null && isHexClaimedByOtherUnit(state, rec.anchorQ, rec.anchorR, id, data)) {
+    const prof = data ? movementProfile(cols.kind[row]!, data) : 'ground';
+    const alt = findNearestFreeStandTile(state, rec.anchorQ, rec.anchorR, prof, id, data, 3);
+    if (alt) {
+      rec.anchorQ = alt.q;
+      rec.anchorR = alt.r;
+    }
+  }
+  return null;
+}
+
+export function resolveHoldDeoverlapTile(
+  state: PlanetState,
+  row: number,
+  data?: CompiledDataLike,
+): { q: number; r: number } | null {
+  const cols = state.entities.cols;
+  if (cols.state[row] === 2) return null; // ENTITY_STATE.moving
+  const curQ = cols.q[row]!, curR = cols.r[row]!;
+  const entityId = cols.id[row]!;
+  const curIdx = hexIndex(state.grid.radius).indexOf(curQ, curR);
+  if (!isHexStationaryOccupied(state, curIdx, entityId, data, true)) return null;
+  const profile = data ? movementProfile(cols.kind[row]!, data) : 'ground';
+  const free = findNearestFreeStandTile(state, curQ, curR, profile, entityId, data, 2);
+  return free && (free.q !== curQ || free.r !== curR) ? free : null;
 }

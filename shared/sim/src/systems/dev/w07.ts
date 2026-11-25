@@ -7,6 +7,9 @@ import { PREP, TERRAIN } from '../../grid/layers';
 import { defineCommandHandler } from '../../kernel/commands';
 import type { StepContext } from '../../kernel/context';
 import { setBlob, type PlanetState } from '../../kernel/state';
+import { ringCoords } from '../../units/movement/slots';
+import { collectUnitOccupancy } from '../../units/movement/unitOccupancy';
+import { occupiedGroundTiles } from '../construction/occupancy';
 import { isColonyGodMode } from '../combat/damage';
 import { getWreckTileSet } from '../combat/wrecks';
 import { setUnitStance } from '../combat/stances';
@@ -235,6 +238,35 @@ export const devSpawnHive = defineCommandHandler({
   },
 });
 
+function buildOccupiedDevSpawnSet(state: PlanetState, data?: StepContext['data']): Set<number> {
+  const occupied = new Set<number>(occupiedGroundTiles(state, data));
+  for (const w of getWreckTileSet(state)) occupied.add(w);
+  const unitOcc = collectUnitOccupancy(state, -1, undefined, data);
+  for (const c of unitOcc.claimedGoals) occupied.add(c);
+  for (const t of unitOcc.inTransitGoals) occupied.add(t);
+  const idx = hexIndex(state.grid.radius);
+  for (let r = 0; r < state.entities.count; r++) {
+    if (state.entities.cols.hp[r]! <= 0 || state.entities.cols.state[r] === ENTITY_STATE.inert) continue;
+    const ti = idx.indexOf(state.entities.cols.q[r]!, state.entities.cols.r[r]!);
+    if (ti >= 0) occupied.add(ti);
+  }
+  return occupied;
+}
+
+function claimFreeDevSpawnHex(state: PlanetState, occupied: Set<number>, prefQ: number, prefR: number): { q: number; r: number } {
+  const idx = hexIndex(state.grid.radius);
+  for (let ring = 0; ring <= Math.min(14, state.grid.radius); ring++) {
+    for (const [cq, cr] of ringCoords(prefQ, prefR, ring)) {
+      if (!inHex(cq, cr, state.grid.radius)) continue;
+      const ti = idx.indexOf(cq, cr);
+      if (ti < 0 || occupied.has(ti) || !isCombatTestPassableTile(state, cq, cr)) continue;
+      occupied.add(ti);
+      return { q: cq, r: cr };
+    }
+  }
+  return { q: prefQ, r: prefR };
+}
+
 export const devSpawnUnit = defineCommandHandler({
   kind: 'dev.spawnunit',
   wave: 'W07',
@@ -274,10 +306,12 @@ export const devSpawnUnit = defineCommandHandler({
       const cfg = resolveSpeciesConfig(unitRaw, ctx.data);
       const bugMode = args.mode ?? 'passive';
       const targetColony = bugMode === 'aggressive' ? (args.targetColony ?? colonyIndex) : null;
+      const occupiedTiles = buildOccupiedDevSpawnSet(state, ctx.data);
       for (let i = 0; i < count; i++) {
+        const free = claimFreeDevSpawnHex(state, occupiedTiles, baseQ, baseR);
         spawnFaunaBug(
           state,
-          { species: unitRaw, q: baseQ, r: baseR, hp: cfg.hp || fallbackHp[unitRaw], mode: bugMode, targetColony },
+          { species: unitRaw, q: free.q, r: free.r, hp: cfg.hp || fallbackHp[unitRaw], mode: bugMode, targetColony },
           ctx.tick,
           ctx.data,
         );
@@ -295,6 +329,7 @@ export const devSpawnUnit = defineCommandHandler({
       }
     }
 
+    const occupiedTiles = buildOccupiedDevSpawnSet(state, ctx.data);
     for (let i = 0; i < count; i++) {
       let uQ = spreadRow ? baseQ + (i % 6) : baseQ;
       let uR = spreadRow ? baseR + Math.floor(i / 6) : baseR;
@@ -302,6 +337,9 @@ export const devSpawnUnit = defineCommandHandler({
         uQ = baseQ;
         uR = baseR;
       }
+      const chosen = claimFreeDevSpawnHex(state, occupiedTiles, uQ, uR);
+      uQ = chosen.q;
+      uR = chosen.r;
       const entityId = ctx.newEntityId();
       const row = insertRow(state.entities, entityId, ctx.tick);
       const cols = state.entities.cols;

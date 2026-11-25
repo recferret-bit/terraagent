@@ -391,7 +391,7 @@ export function setArchetypeBuildProgress(mesh: THREE.Object3D, progress: number
 }
 
 function bakeStrippedGeometry(oldGeo: THREE.BufferGeometry): THREE.BufferGeometry | null {
-  const ranges = oldGeo.userData?.partRanges as Array<{ role?: string; start: number; count: number }> | undefined;
+  const ranges = oldGeo.userData?.partRanges as Array<{ name: string; role?: string; start: number; count: number }> | undefined;
   if (!ranges || !ranges.some((r) => r.role === 'plinth' || r.role === 'plinthDetail')) return null;
   const kept = ranges.filter((r) => r.role !== 'plinth' && r.role !== 'plinthDetail');
   if (kept.length === 0) return null;
@@ -426,10 +426,15 @@ function bakeStrippedGeometry(oldGeo: THREE.BufferGeometry): THREE.BufferGeometr
       for (let i = 0; i < anim.count; i++) anim.setZ(i, anim.getZ(i) - minY);
     }
   }
+  let offsetVert = 0;
+  const keptRanges = kept.map((r) => { const entry = { ...r, start: offsetVert }; offsetVert += r.count; return entry; });
   newGeo.computeBoundingBox();
   newGeo.computeBoundingSphere();
   // How far the model moved down (model-space anchors such as the grid cable insulators subtract it).
-  newGeo.userData = { stripOffsetY: Number.isFinite(minY) && minY > 0 ? minY : 0 };
+  newGeo.userData = {
+    stripOffsetY: Number.isFinite(minY) && minY > 0 ? minY : 0,
+    partRanges: keptRanges,
+  };
   return newGeo;
 }
 
@@ -471,7 +476,8 @@ export function stripBuildingPlinth(mesh: THREE.Object3D): void {
     if (cached === false) return;
     if (cached) {
       const cloned = cached.clone();
-      cloned.userData = { ...cached.userData };
+      const ranges = cached.userData?.partRanges as Array<{ name: string; role?: string; start: number; count: number }> | undefined;
+      cloned.userData = { ...cached.userData, ...(ranges ? { partRanges: ranges.map((r) => ({ ...r })) } : {}) };
       applyStrippedGeometry(m, oldStrip, cloned);
       return;
     }

@@ -86,6 +86,39 @@ export function mirror(fn: (s: 1 | -1) => void) {
   fn(-1);
 }
 
+export interface EjectionPortOptions {
+  side: -1 | 1;
+  wallX: number;
+  y: number;
+  z: number;
+  height: number;
+  depth: number;
+  frameZone?: Zone;
+  animType?: PartOptions['animType'];
+  animPivot?: V3;
+}
+
+/** Recessed dark cartridge ejection port framed by a bevelled deflector hood, chute lip, and side cheeks. */
+export function ejectionPort(b: KitbashBuilder, opts: EjectionPortOptions): void {
+  const { side, wallX, y, z, height, depth, frameZone = 'frameGunmetal', animType, animPivot } = opts;
+  const anim = animType !== undefined ? { animType, ...(animPivot ? { animPivot } : {}) } : {};
+  // Offset every inner/outer plane by >= 3 mm so adjacent faces never z-fight or graze.
+  b.addPart(new THREE.BoxGeometry(0.032, height, depth), 'rubberDark', {
+    name: 'ejection port opening', position: [side * (wallX - 0.002), y, z], ...anim,
+  });
+  b.addPart(rbox(0.078, 0.034, depth + 0.076, 0.008, 1), frameZone, {
+    name: 'ejection port hood', position: [side * (wallX + 0.015), y + height / 2 + 0.012, z], ...anim,
+  });
+  b.addPart(new THREE.BoxGeometry(0.064, 0.028, depth + 0.060), frameZone, {
+    name: 'ejection port lip', position: [side * (wallX + 0.011), y - height / 2 - 0.010, z], ...anim,
+  });
+  for (const sz of [-1, 1] as const) {
+    b.addPart(new THREE.BoxGeometry(0.064, height + 0.020, 0.028), frameZone, {
+      name: 'ejection port frame', position: [side * (wallX + 0.005), y, z + sz * (depth / 2 + 0.010)], ...anim,
+    });
+  }
+}
+
 /** Jittered low-poly rock (icosahedron). */
 export function rockGeo(radius: number, seed: number, squash = 1, detail = 1) {
   const g = new THREE.IcosahedronGeometry(radius, detail);

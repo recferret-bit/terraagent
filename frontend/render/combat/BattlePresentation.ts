@@ -141,7 +141,8 @@ export class BattlePresentation {
     }
     this.holds.set(attackerId, { target: target.clone(), targetId, kind, arc: input.arc, lift: 4 * arcHeight,
       root: mesh?.getWorldPosition(new THREE.Vector3()) });
-    return { ...input, from, to: target, arcHeight, ejectFrom: eject.pos, ejectGroundY: eject.groundY,
+    return { ...input, from, to: target, arcHeight, ejectFrom: eject.pos, ejectDir: eject.dir,
+      ejectGroundY: eject.groundY, ejectScale: eject.scale,
       targetIsInsect: input.targetIsInsect ?? isInsectTarget,
       source: () => rig.muzzle(fired.barrel), direction: () => rig.direction(fired.barrel) };
   }

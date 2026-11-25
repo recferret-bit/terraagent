@@ -11,6 +11,8 @@ import type { StepContext } from '../../kernel/context';
 import { nextFloat } from '../../kernel/rng';
 import type { PlanetState } from '../../kernel/state';
 import { isUnitKind } from '../../units/mobility';
+import { getWreckTileSet } from '../combat/wrecks';
+import { occupiedGroundTiles } from '../construction/occupancy';
 
 /**
  * The 1 % resource deposit roll of a completed ground terraform job (`terraformFinds.deposit`, owner decision W02).
@@ -110,7 +112,14 @@ export function spawnTerraformDeposit(
 ): DepositSpawn | null {
   const { tileIdx, q, r } = tile;
   const L = state.grid.layers;
-  if (L.deposit[tileIdx] !== DEPOSIT.none || unitStandsOn(state, tileIdx)) return null;
+  if (
+    L.deposit[tileIdx] !== DEPOSIT.none ||
+    unitStandsOn(state, tileIdx) ||
+    occupiedGroundTiles(state).has(tileIdx) ||
+    getWreckTileSet(state).has(tileIdx)
+  ) {
+    return null;
+  }
   // A visible deposit only ever lies on a hex tile (`grid/hexTile.ts`): no roll on wild ground (no rng draw either).
   if (!isHexTile(state.grid.radius, tileIdx, { terrain: L.terrain, prep: L.prep, height: L.height })) return null;
   const spec = terraformFindSpec(ctx.data);

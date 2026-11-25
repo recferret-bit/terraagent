@@ -100,12 +100,13 @@ export function isReconPatrolGoalPassable(
   fromR: number,
   targetIdx: number,
   data?: CompiledDataLike,
+  entityId = -1,
 ): boolean {
   if (targetIdx < 0 || !isGroundPassable(state, targetIdx, data)) return false;
   const fromIdx = hexIndex(state.grid.radius).indexOf(fromQ, fromR);
   const profile = data ? (mobileStats(ENTITY_KIND.recon, data)?.profile ?? 'ground') : 'ground';
-  const blockers = pathBlockersFor(state, profile, fromIdx, data);
-  return !(blockers?.goalBlocked(targetIdx) ?? false);
+  const blockers = pathBlockersFor(state, profile, fromIdx, data, entityId);
+  return !(blockers?.bandGoalBlocked ? blockers.bandGoalBlocked(targetIdx) : blockers?.goalBlocked(targetIdx) ?? false);
 }
 
 export function findNearestPassableDeposit(

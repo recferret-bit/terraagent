@@ -1,4 +1,4 @@
-import { duneWorkTiles, indexOf, meteorCraterWorkTiles, TERRAIN } from '@terra/sim';
+import { duneWorkTiles, getWreckGroupCoords, indexOf, meteorCraterWorkTiles, TERRAIN } from '@terra/sim';
 import type { GameView } from '../../core/registry/types';
 import type { TileCoord } from '../shared/pointer';
 import { extractColonyOrders } from './TileOverlay';
@@ -33,6 +33,8 @@ export function slopeDiscOrTile(view: GameView | null | undefined, tile: TileCoo
     const crater = meteorCraterWorkTiles(radius, tile.q, tile.r, terrain, view.blobs?.weather);
     return crater.length > 0 ? crater : [tile];
   }
+  const wreckCoords = getWreckGroupCoords(radius, view.blobs as Record<string, unknown> | undefined, i);
+  if (wreckCoords.length > 0) return wreckCoords;
   return [tile];
 }
 
@@ -50,7 +52,7 @@ export function terraformTargets(view: GameView | null | undefined, colonyId: nu
   }
   for (const j of colonyWorkJobs(view, colonyId)) {
     if (j.mode !== 'terraform') continue;
-    const expand = j.terrainKey === 'slope' || j.terrainKey === 'hole';
+    const expand = j.terrainKey === 'slope' || j.terrainKey === 'hole' || j.terrainKey === 'wreck';
     const tiles = expand ? slopeDiscOrTile(view, { q: j.q, r: j.r }) : [{ q: j.q, r: j.r }];
     for (const t of tiles) out.push({ q: t.q, r: t.r, id: j.jobId });
   }

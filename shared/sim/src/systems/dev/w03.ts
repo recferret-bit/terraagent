@@ -2,6 +2,7 @@ import { rowOf, setField } from '../../ecs/store';
 import { defineCommandHandler, type SimCommand } from '../../kernel/commands';
 import { setBlob, type PlanetState } from '../../kernel/state';
 import { applyDamage } from '../combat/damage';
+import { recordEntityWreck } from '../combat/parts/damageHelpers';
 import { commandColony } from '../command';
 import { ensureColonyLedger, zeroResource } from '../economy/ledger';
 import { recomputeAllColonyPower, resetThermalTracking } from '../power-core';
@@ -141,6 +142,9 @@ export const devDamage = defineCommandHandler({
     }
     const nextHp = pct >= 100 ? 0 : Math.max(1, Math.round((curHp - dmg) * 100) / 100);
     setField(s.entities, row, 'hp', nextHp, ctx.tick);
+    if (curHp > 0 && nextHp === 0) {
+      recordEntityWreck(s, row, ctx.data, ctx.tick);
+    }
     recomputeAllColonyPower(s, ctx.data, ctx.tick);
   },
 });

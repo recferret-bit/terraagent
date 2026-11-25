@@ -12,6 +12,7 @@ export const COMBAT_TURRETS_BLOB = 'combatTurrets';
 export interface TurretCombatRecord {
   entityId: number;
   targetId?: number | null;
+  explicitTargetId?: number | null;
   lastFiredTick?: number;
   nextShotTick?: number;
   shotIntervalTicks?: number;
@@ -45,6 +46,25 @@ function writeTurretsBlob(
 export function getTurretCombatRecord(state: PlanetState, entityId: number): TurretCombatRecord {
   const existing = readTurretsBlob(state)[entityId];
   return existing ?? { entityId, targetId: null };
+}
+
+/** Assigns an explicit focus-fire target to an autocannon/laser turret (`attackTarget`). */
+export function orderTurretAttackTarget(
+  state: PlanetState,
+  entityId: number,
+  targetId: number,
+  tick = state.meta.tick,
+): boolean {
+  const row = rowOf(state.entities, entityId);
+  const tRow = rowOf(state.entities, targetId);
+  if (row < 0 || tRow < 0 || state.entities.cols.hp[row]! <= 0 || state.entities.cols.hp[tRow]! <= 0) {
+    return false;
+  }
+  const byEntityId = readTurretsBlob(state);
+  const prev = byEntityId[entityId] ?? { entityId, targetId: null };
+  byEntityId[entityId] = { ...prev, explicitTargetId: targetId, targetId };
+  writeTurretsBlob(state, byEntityId, tick);
+  return true;
 }
 
 function isTurretOrHqKind(kind: number): boolean {
@@ -135,13 +155,33 @@ export function stepCombatTurrets(state: PlanetState, ctx: StepContext): void {
     const entityId = cols.id[row]!;
     const rec = byEntityId[entityId] ?? { entityId, targetId: null };
 
-    const targetRow = acquireClosestTargetInRange(state, row, {
-      weaponRow,
-      requireSpotting: true,
-      includePassiveFauna: false,
-      stickyTargetId: rec.targetId ?? undefined,
-      data: ctx.data,
-    });
+    let targetRow = -1;
+    if (rec.explicitTargetId) {
+      const explicitRow = rowOf(state.entities, rec.explicitTargetId);
+      if (
+        explicitRow >= 0 &&
+        isTargetValidInRange(state, row, explicitRow, {
+          weaponRow,
+          requireSpotting: true,
+          includePassiveFauna: true,
+          data: ctx.data,
+        })
+      ) {
+        targetRow = explicitRow;
+      } else {
+        rec.explicitTargetId = null;
+        changed = true;
+      }
+    }
+    if (targetRow < 0) {
+      targetRow = acquireClosestTargetInRange(state, row, {
+        weaponRow,
+        requireSpotting: true,
+        includePassiveFauna: false,
+        stickyTargetId: rec.targetId ?? undefined,
+        data: ctx.data,
+      });
+    }
 
     if (targetRow < 0) {
       if (rec.targetId !== null && rec.targetId !== undefined) {

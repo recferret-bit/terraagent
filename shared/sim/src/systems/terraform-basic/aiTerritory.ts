@@ -15,6 +15,7 @@ import { getColonyPower } from '../power-core';
 import { checkItemUnlockStage, resolveEffectiveUnlockStage } from '../progression/validate';
 import { chainStandRule, isChainObstacle } from './chain';
 import { colonyHasActiveHub } from './dismantleAndWork';
+import { getWreckTileSet } from '../combat/wrecks';
 import { evaluateGroundWorkTile } from './groundWorkRule';
 import { colonyTerraformOrders } from './orders';
 import { resolveCultivateTileOp, terraformWorldFromState, type CultivateOpKind } from './rules';
@@ -242,6 +243,7 @@ export function findTerritoryObstacleToClear(
   const reserved = collectReservedTileSet(state, colonyIndex, opts?.data);
   const gaps = buildGapField(state.grid.radius, reserved);
   const pendingTiles = collectPendingTerraformTiles(state, colonyIndex);
+  const wrecks = getWreckTileSet(state);
   const nearDeposits = collectNearDepositSet(state, anchor, maxRadius);
   const hx = hexIndex(state.grid.radius);
   const { terrain, prep, deposit, height, owner } = state.grid.layers;
@@ -254,7 +256,7 @@ export function findTerritoryObstacleToClear(
     if (dist > maxRadius) continue;
     if (pendingTiles.has(`${q},${r}`) || reserved.has(i)) continue;
 
-    const isObstacle = isChainObstacle(state.grid.radius, i, terrain, height);
+    const isObstacle = isChainObstacle(state.grid.radius, i, terrain, height, wrecks);
     const isWildFlat = opts?.includeWildFlat !== false && terrain[i] === TERRAIN.flat && prep[i] === PREP.wild;
     if (!isObstacle && !isWildFlat) continue;
     if (stand && !stand(i)) continue;

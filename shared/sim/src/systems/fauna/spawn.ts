@@ -8,6 +8,9 @@ import { DEPOSIT, PREP, TERRAIN } from '../../grid/layers';
 import { bumpPathEpoch, isGroundPassable } from '../../grid/tileModel';
 import type { CompiledDataLike } from '../../kernel/config';
 import type { PlanetState } from '../../kernel/state';
+import { ringCoords } from '../../units/movement/slots';
+import { collectUnitOccupancy } from '../../units/movement/unitOccupancy';
+import { getWreckTileSet } from '../combat/wrecks';
 import { occupiedGroundTiles } from '../construction/occupancy';
 import {
   collectBlockedHiveTiles,
@@ -74,11 +77,12 @@ function isTileWalkableForFauna(
   r: number,
   occupied: ReadonlySet<number>,
   data?: CompiledDataLike,
+  wrecks?: ReadonlySet<number>,
 ): boolean {
   if (!inHex(q, r, state.grid.radius)) return false;
   const idx = hexIndex(state.grid.radius).indexOf(q, r);
   if (idx < 0) return false;
-  if (occupied.has(idx)) return false;
+  if (occupied.has(idx) || wrecks?.has(idx)) return false;
   const { terrain, prep, deposit } = state.grid.layers;
   const t = terrain[idx];
   const p = prep[idx];
@@ -87,6 +91,20 @@ function isTileWalkableForFauna(
   if (p === PREP.ridge || p === PREP.moat) return false;
   if (deposit[idx] !== DEPOSIT.none) return false;
   return isGroundPassable(state.grid, idx, data);
+}
+
+function collectFaunaBlockedUnitIndices(state: PlanetState, data?: CompiledDataLike): Set<number> {
+  const idx = hexIndex(state.grid.radius);
+  const unitOcc = collectUnitOccupancy(state, -1, undefined, data);
+  const blocked = new Set<number>(unitOcc.claimedGoals);
+  for (const t of unitOcc.inTransitGoals) blocked.add(t);
+  const cols = state.entities.cols;
+  for (let r = 0; r < state.entities.count; r++) {
+    if (cols.hpMax[r] > 0 && cols.hp[r] <= 0) continue;
+    const ti = idx.indexOf(cols.q[r]!, cols.r[r]!);
+    if (ti >= 0) blocked.add(ti);
+  }
+  return blocked;
 }
 
 /**
@@ -101,18 +119,19 @@ export function findPassableEntranceTile(
   data?: CompiledDataLike,
 ): { q: number; r: number } | null {
   const occupied = occupiedGroundTiles(state, data);
+  const wrecks = getWreckTileSet(state);
   if (
     preferredQ !== undefined &&
     preferredR !== undefined &&
     (preferredQ !== q || preferredR !== r) &&
-    isTileWalkableForFauna(state, preferredQ, preferredR, occupied, data)
+    isTileWalkableForFauna(state, preferredQ, preferredR, occupied, data, wrecks)
   ) {
     return { q: preferredQ, r: preferredR };
   }
   for (const [dq, dr] of HEX_DIRS) {
     const nq = q + dq;
     const nr = r + dr;
-    if (isTileWalkableForFauna(state, nq, nr, occupied, data)) {
+    if (isTileWalkableForFauna(state, nq, nr, occupied, data, wrecks)) {
       return { q: nq, r: nr };
     }
   }
@@ -129,6 +148,7 @@ export function findResidentSpawnTile(
   data?: CompiledDataLike,
 ): { q: number; r: number } | null {
   const occupied = occupiedGroundTiles(state, data);
+  const wrecks = getWreckTileSet(state);
   const candidates: Array<{ q: number; r: number }> = [];
   const seen = new Set<string>();
   const push = (cq: number, cr: number) => {
@@ -136,7 +156,7 @@ export function findResidentSpawnTile(
     const key = `${cq},${cr}`;
     if (seen.has(key)) return;
     seen.add(key);
-    if (isTileWalkableForFauna(state, cq, cr, occupied, data)) {
+    if (isTileWalkableForFauna(state, cq, cr, occupied, data, wrecks)) {
       candidates.push({ q: cq, r: cr });
     }
   };
@@ -148,17 +168,16 @@ export function findResidentSpawnTile(
   for (const [dq, dr] of HEX_DIRS) {
     push(hive.q + dq, hive.r + dr);
   }
+  for (let dr = -2; dr <= 2; dr++) {
+    for (let dq = Math.max(-2, -dr - 2); dq <= Math.min(2, -dr + 2); dq++) {
+      if (hexDistance(0, 0, dq, dr) === 2) push(hive.q + dq, hive.r + dr);
+    }
+  }
   if (candidates.length === 0) return null;
 
-  const cols = state.entities.cols;
-  const occupiedByUnit = new Set<string>();
-  for (let r = 0; r < state.entities.count; r++) {
-    if (cols.hpMax[r] > 0 && cols.hp[r] <= 0) continue;
-    occupiedByUnit.add(`${cols.q[r]},${cols.r[r]}`);
-  }
-
-  const free = candidates.find((c) => !occupiedByUnit.has(`${c.q},${c.r}`));
-  return free ?? candidates[0] ?? null;
+  const hex = hexIndex(state.grid.radius);
+  const blockedUnits = collectFaunaBlockedUnitIndices(state, data);
+  return candidates.find((c) => !blockedUnits.has(hex.indexOf(c.q, c.r))) ?? null;
 }
 
 function pruneDeadResidents(state: PlanetState, hive: HiveRecord): void {
@@ -349,16 +368,36 @@ export function spawnFaunaBug(
 ): number {
   const resolvedData = data ?? defaultFaunaData();
   const cfg = resolveSpeciesConfig(opts.species, resolvedData);
+  const occupied = occupiedGroundTiles(state, resolvedData);
+  const wrecks = getWreckTileSet(state);
+  const hex = hexIndex(state.grid.radius);
+  const blockedUnits = collectFaunaBlockedUnitIndices(state, resolvedData);
+  const cols = state.entities.cols;
+  let spawnQ = opts.q;
+  let spawnR = opts.r;
+  const startIdx = hex.indexOf(spawnQ, spawnR);
+  if (startIdx < 0 || blockedUnits.has(startIdx) || !isTileWalkableForFauna(state, spawnQ, spawnR, occupied, resolvedData, wrecks)) {
+    const maxDist = Math.min(16, state.grid.radius);
+    outer: for (let dist = 0; dist <= maxDist; dist++) {
+      for (const [cq, cr] of ringCoords(opts.q, opts.r, dist)) {
+        const ti = hex.indexOf(cq, cr);
+        if (ti >= 0 && !blockedUnits.has(ti) && isTileWalkableForFauna(state, cq, cr, occupied, resolvedData, wrecks)) {
+          spawnQ = cq;
+          spawnR = cr;
+          break outer;
+        }
+      }
+    }
+  }
   const entityId = state.meta.nextEntityId++;
   const row = insertRow(state.entities, entityId, tick);
-  const cols = state.entities.cols;
   const hp = opts.hp ?? cfg.hp;
   cols.kind[row] = cfg.bugKind;
   cols.owner[row] = -1;
   cols.hp[row] = hp;
   cols.hpMax[row] = hp;
   cols.state[row] = ENTITY_STATE.idle;
-  placeSpawnedEntity(state.entities, row, opts.q, opts.r, tick);
+  placeSpawnedEntity(state.entities, row, spawnQ, spawnR, tick);
 
   const fauna = getFaunaHivesState(state);
   const homeHiveId = opts.homeHiveId ?? Object.values(fauna.hivesById).find((h) => !h.destroyed && h.species === opts.species)?.hiveId ?? 0;

@@ -52,6 +52,8 @@ export interface FeatureServices {
   setFullVision?: (on: boolean) => void;
   /** True when the session is running inside the stripped-down dev `/dev/combat-test/` harness. */
   isCombatTest?: () => boolean;
+  /** Syncs multi-unit/single-unit combat selection + optimistic targets into EntityMeshes for 3D target markers. */
+  syncCombatSelection?(entityIds: readonly number[], optimisticTargets?: ReadonlyMap<number, number>): void;
   /** Switches the HUD & camera inspection target to a specific bot colony. */
   inspectColony?: (colonyIndex: number, focusCamera?: boolean) => void;
 }

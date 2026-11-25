@@ -153,7 +153,7 @@ function collectCandidateHexes(
   const idx = hexIndex(state.grid.radius);
   const fromIdx = idx.indexOf(uq, ur);
   const profile = (data ? mobileStats(cols.kind[unitRow]!, data)?.profile : undefined) ?? 'ground';
-  const blockers = pathBlockersFor(state, profile, fromIdx, data);
+  const blockers = pathBlockersFor(state, profile, fromIdx, data, cols.id[unitRow]!);
 
   const candidates: CandidateHex[] = [];
   for (let dr = -2; dr <= 2; dr++) {
@@ -169,7 +169,7 @@ function collectCandidateHexes(
       const tileIdx = idx.indexOf(cq, cr);
       if (tileIdx < 0) continue;
       if (!isGroundPassable(state.grid, tileIdx, data)) continue;
-      if (blockers?.goalBlocked(tileIdx)) continue;
+      if (blockers?.bandGoalBlocked ? blockers.bandGoalBlocked(tileIdx) : blockers?.goalBlocked(tileIdx)) continue;
 
       const distToTarget = hexDistance(cq, cr, tq, tr);
       if (distToTarget > maxRange) continue;

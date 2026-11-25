@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import type { KitbashBuilder } from '../../KitbashRegistry';
-import { rbox, cyl, lathe, strut, mirror, type V3 } from '../../greebles/unitParts';
+import { rbox, cyl, lathe, strut, mirror, ejectionPort, type V3 } from '../../greebles/unitParts';
 import { register } from './common';
 import { activeReconPalette, stampMercenaryMarks } from './reconFaction';
 
@@ -51,6 +51,7 @@ function armoredBody(b: KitbashBuilder): void {
 function turret(b: KitbashBuilder): void {
   b.addPart(cyl(0.24, 0.24, 0.10, 12), 'frameGunmetal', { name: 'turret bearing', position: [0, 0.74, 0.03] });
   b.addPart(rbox(0.46, 0.22, 0.50, 0.055), 'hullPrimary', { name: 'recon turret housing', position: [0, 0.88, 0.03] });
+  ejectionPort(b, { side: -1, wallX: 0.23, y: 0.88, z: 0.06, height: 0.088, depth: 0.135 });
   b.addPart(cyl(0.10, 0.10, 0.04, 10), 'hullSecondary', { name: 'turret commander hatch', position: [0, 0.995, -0.03] });
   b.addPart(rbox(0.15, 0.09, 0.055, 0.014), 'glassVisor', { name: 'turret sight visor', position: [-0.135, 0.93, 0.275] });
   b.addPart(cyl(0.024, 0.024, 0.04, 8), 'energyCyan', {
@@ -84,7 +85,7 @@ function buildRecon(b: KitbashBuilder): void {
 
 register({
   id: 'robot.recon', label: 'Recon Armored Scout', category: 'robot', footprint: [1, 1],
-  notes: 'Six-wheel light armored recon vehicle: black wheels, rotating turret radar, independent autocannon turret, optics light and twin radio antennas. Holds position while firing. faction=mercenary repaints the hull grey-teal and adds a roof emblem plus an emissive marker.',
+  notes: 'Six-wheel light armored recon vehicle: black wheels, rotating turret radar, independent autocannon turret, optics light and twin radio antennas. Fires on the move via independent 360-degree turret rotation. faction=mercenary repaints the hull grey-teal and adds a roof emblem plus an emissive marker.',
   zones: () => ({
     rubberDark: { color: 0x090b0e, roughness: 0.88, metalness: 0.04, emissiveIntensity: 0 },
     ...activeReconPalette().zones,

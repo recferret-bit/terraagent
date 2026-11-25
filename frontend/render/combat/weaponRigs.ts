@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 
 export interface WeaponSocket { pivot: THREE.Vector3Tuple; muzzle: THREE.Vector3Tuple; side?: 0 | 1 }
+export interface EjectionPortSpec { pos: THREE.Vector3Tuple; localSide: -1 | 1 }
 export interface WeaponRigDefinition {
   pivot: THREE.Vector3Tuple;
   carrier?: 'spider' | 'biped';
@@ -30,19 +31,33 @@ export interface WeaponRigDefinition {
   chassisRecoil?: boolean;
   /** Local Z coordinate on turret housing where spent brass casings eject (defaults to `pivot[2]`). */
   ejectZ?: number;
+  /** Authored breech ejection port locations & local lateral ejection vectors. */
+  ejectPorts?: readonly EjectionPortSpec[];
+  /** Scale multiplier applied to ejected brass cartridge casings. */
+  ejectScale?: number;
   head: readonly string[];
   barrels: readonly string[];
   sockets: readonly WeaponSocket[];
 }
+
+const EJECTION_PORT_PARTS = [
+  'ejection port opening',
+  'ejection port hood',
+  'ejection port lip',
+  'ejection port frame',
+] as const;
 
 const artillerySpider: WeaponRigDefinition = {
   pivot: [0, 1.15, 0.06], carrier: 'spider', turnSpeedRadPerS: 4.4,
   heatScale: 1.0, heatGain: 0.52, heatCooldownPerS: 0.16,
   barrelRecoilM: 0.16, recoilDurationS: 0.42,
   bodyRecoilPushM: 0.12, bodyRecoilDropM: 0.068, bodyRecoilPitchRad: 0.11, chassisRecoil: true,
+  ejectZ: -0.02, ejectScale: 2.15,
+  ejectPorts: [{ pos: [-0.25, 1.155, -0.02], localSide: -1 }],
   head: [
     'turret housing', 'artillery cradle cheek', 'cannon mantlet', 'rangefinder housing',
     'turret optics light', 'radar mast', 'radar dish', 'antenna mast', 'ammo bustle', 'power cable',
+    ...EJECTION_PORT_PARTS,
   ],
   barrels: ['cannon barrel', 'bore evacuator', 'cannon muzzle'],
   sockets: [{ pivot: [0, 1.17, 0.31], muzzle: [0, 1.17, 1.15], side: 0 }],
@@ -72,14 +87,16 @@ const rigs = new Map<string, WeaponRigDefinition>([
   ['robot.tank', rocketSpider],
   ['robot.combat', rocketSpider],
   ['robot.recon', {
-    pivot: [0, 0.78, 0.03], turnSpeedRadPerS: 7.0,
+    pivot: [0, 0.78, 0.03], turnSpeedRadPerS: 10.5,
     heatScale: 1.0, heatGain: 0.30, heatCooldownPerS: 0.24,
     barrelRecoilM: 0.10, recoilDurationS: 0.26,
     bodyRecoilPushM: 0.075, bodyRecoilDropM: 0.032, bodyRecoilPitchRad: 0.065, chassisRecoil: true,
-    ejectZ: 0.12,
+    ejectZ: 0.06, ejectScale: 1.0,
+    ejectPorts: [{ pos: [-0.25, 0.88, 0.06], localSide: -1 }],
     head: [
       'recon turret housing', 'turret commander hatch', 'turret sight visor', 'turret rangefinder light',
       'recon radar mast', 'recon radar dish', 'recon radar feed horn', 'merc emblem', 'merc marker light',
+      ...EJECTION_PORT_PARTS,
     ],
     barrels: ['recon gun mantlet', 'recon cannon barrel', 'recon muzzle brake'],
     sockets: [{ pivot: [0.06, 0.87, 0.29], muzzle: [0.06, 0.87, 0.90], side: 0 }],
@@ -89,8 +106,16 @@ const rigs = new Map<string, WeaponRigDefinition>([
     heatScale: 1.0, heatGain: 0.34, heatCooldownPerS: 0.20,
     barrelRecoilM: 0.14, recoilDurationS: 0.30,
     bodyRecoilPushM: 0.048, bodyRecoilDropM: 0.015, bodyRecoilPitchRad: 0.045, chassisRecoil: false,
-    ejectZ: 0.16,
-    head: ['turret breech housing', 'turret roof carapace', 'cannon mantlet block', 'radar rotor mast', 'targeting radar dish', 'radar lock light'],
+    ejectZ: 0.08, ejectScale: 1.45,
+    ejectPorts: [
+      { pos: [-0.48, 1.50, 0.08], localSide: -1 },
+      { pos: [0.48, 1.50, 0.08], localSide: 1 },
+    ],
+    head: [
+      'turret breech housing', 'turret roof carapace', 'cannon mantlet block',
+      'radar rotor mast', 'targeting radar dish', 'radar lock light',
+      ...EJECTION_PORT_PARTS,
+    ],
     barrels: ['autocannon barrel', 'muzzle accelerator tube', 'barrel cooling collar', 'muzzle flash suppressor light'],
     sockets: [-1, 1].map((s, idx) => ({ pivot: [s * 0.3, 1.49, 0.44], muzzle: [s * 0.3, 1.49, 1.67], side: (idx === 0 ? 0 : 1) as 0 | 1 })),
   }],

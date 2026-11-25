@@ -40,7 +40,7 @@ import { scenarioParam } from './sessionTarget';
 import { normalizeSectorIntent, type SectorIntentInput, type SectorIntentV1 } from '../../ui/lobby/orbitalPickerModel';
 import { bindStoreCombatEvents, ingestHostMessageCombatEvents } from './combatSync';
 import { bindOnlineDayNightSync, type OnlineDayNightSync } from './dayNightSync';
-import { acquireSessionViewport, applyChangedTileList, bindLocalSaveListeners, listSceneEntities, pickTerrainAt, projectTileToScreen, resolveOnlinePlanetLook, resolveSessionPlanetKind, type TileChangePatchItem, writeStoredPlanetKind } from './viewportHelper';
+import { acquireSessionViewport, applyChangedTileList, bindLocalSaveListeners, listSceneEntities, pickSessionAt, projectTileToScreen, resolveOnlinePlanetLook, resolveSessionPlanetKind, type TileChangePatchItem, writeStoredPlanetKind } from './viewportHelper';
 import '../../../design/css/tokens.css';
 import '../../../design/css/base.css';
 
@@ -156,7 +156,7 @@ export class OnlineSession {
       terrain: () => this.terrain, biomeKey: () => this.biomeKey, localHost: () => this.localHost, colonyIndex: () => this.colonyIndex,
       homeColonyId: () => this.colonyId, planetId: () => this.store.currentPlanetId() || this.planetId || null, pickAt: (cx, cy) => this.pickAt(cx, cy),
       camera: () => this.viewport.camera, rtsCamera: () => this.cam, focusTile: (q, r, s) => this.focusTile(q, r, s), pilot: this.pilot, token: () => this.bootTarget.accessToken,
-      renderedEntityPosition: (id) => this.entities.getRecord(id)?.mesh.position ?? null,
+      renderedEntityPosition: (id) => this.entities.getRecord(id)?.mesh.position ?? null, syncCombatSelection: (ids, opts) => this.entities.setSelectedUnitIds(ids, opts),
       deferInitialMount: Boolean(opts.externalFrameLoop && ((this.fromSpaceDescent && !this.skipDescent) || this.deferReveal)),
       isLocalHost: Boolean(rig.local || opts.localHost || (devBuild && q.get('host') === 'local')),
       isSpectator: () => this.spectator, isSpectatorVisionAll: () => this.spectatorVisionAll, setSpectatorVisionAll: (on) => this.setSpectatorVisionAll(on), isCombatTest: () => this.combatTest,
@@ -202,17 +202,15 @@ export class OnlineSession {
 
   get bootPhase(): BootPhase { return this.bootOverlay?.phase ?? 'colony'; }
   get minimap() { return this.hud.activeServices?.maps?.stats ?? null; }
+  get hudServices() { return this.hud.activeServices; }
   setPaused(p: boolean): void { this.pauseOverlay.setPaused(p); if (this.cam) this.cam.enabled = !p; }
+  cancelQueuedTicket(ticketId?: string): Promise<boolean> { return this.guest ? this.guest.cancelQueue(ticketId) : Promise.resolve(false); }
 
   returnToOrbit(): void {
     const kind: PlanetKind = this.planetKind ?? 'forestRock';
     writeStoredPlanetKind(kind);
     if (this.onReturnToOrbit) { this.onReturnToOrbit(kind); return; }
     if (typeof location !== 'undefined') location.href = `/play.html?planet=${kind}`;
-  }
-
-  cancelQueuedTicket(ticketId?: string): Promise<boolean> {
-    return this.guest ? this.guest.cancelQueue(ticketId) : Promise.resolve(false);
   }
 
   /** Updates the active space/atmospheric state (`orbit .. approach`) or hands off to surface (`null`). */
@@ -299,7 +297,7 @@ export class OnlineSession {
   clickTile(q: number, r: number): boolean { return this.landfall.clickTile(q, r); }
   orderMove(q: number, r: number): boolean { return this.landfall.orderMove(q, r); }
   getSelectedEntityId(): number | null { return this.landfall.getSelectedEntityId(); }
-  pickAt(cx: number, cy: number): HexPick | null { return (this.lastPick = pickTerrainAt(this.terrain, this.viewport, cx, cy)); }
+  pickAt(cx: number, cy: number): HexPick | null { return (this.lastPick = pickSessionAt(this.terrain, this.viewport, this.entities, this.hud, cx, cy)); }
   tileToScreen(q: number, r: number): { x: number; y: number } | null { return projectTileToScreen(this.terrain, this.viewport, q, r); }
   entityMeshes(): Array<{ id: number; x: number; y: number; z: number }> { return listSceneEntities(this.viewport.scene); }
   applyTilePatch(patch: { changedTiles?: readonly TileChangePatchItem[] }): void {

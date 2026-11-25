@@ -1,5 +1,7 @@
 // .agents/skills/procedural-texture-synthesis/examples/ProceduralTextureRegistry.ts
 import * as THREE from 'three';
+import { sampleCharredWreckPixel } from './charredWreckTexture';
+import { buildShellCraterTextureBuffers, clampDecalTextureEdge } from './shellCraterTexture';
 
 export interface ProceduralPBRBundle {
   map?: THREE.Texture;
@@ -343,3 +345,17 @@ ProceduralTextureRegistry.register('avianFeatherVane', (size = 256) =>
     };
   }),
 );
+
+ProceduralTextureRegistry.register('charredBurnedWreck', (size = 256) =>
+  buildBufferPbrPreset(size, 3.2, sampleCharredWreckPixel),
+);
+
+ProceduralTextureRegistry.register('shellImpactCrater', (size = 256) => {
+  const { albedo, roughness, height } = buildShellCraterTextureBuffers(size);
+  const map = clampDecalTextureEdge(makeDataTex(albedo, size, true));
+  const normalMap = clampDecalTextureEdge(
+    heightToNormalTexture({ width: size, height: size, data: height }, 3.4),
+  ) as THREE.DataTexture;
+  const roughnessMap = clampDecalTextureEdge(makeDataTex(roughness, size, false));
+  return { map, normalMap, roughnessMap };
+});

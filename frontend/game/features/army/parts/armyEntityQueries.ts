@@ -1,7 +1,8 @@
-import { ENTITY_KIND, ENTITY_STATE, type ViewEntity } from '@terra/sim';
+import { ENTITY_KIND, ENTITY_STATE, hexDistance, type ViewEntity } from '@terra/sim';
 import { forEachEntity, type EntityRow } from '../../../store/replica/viewCodec';
 import { extractHqFromView } from '../../shared/hqView';
 import type { SelectionCombatSummary } from '../../landfall/HqPanel';
+import type { SelectedEntityView } from '../../landfall/selection';
 import {
   BLDG_META,
   COMBAT_UNIT_META,
@@ -49,7 +50,45 @@ export function isEntityAlive(row: EntityRow): boolean {
 }
 
 export function isUnitOnTile(row: EntityRow, q: number, r: number): boolean {
-  return (Math.round(row.x) === q && Math.round(row.y) === r) || (row.q === q && row.r === r) || Math.hypot(row.x - q, row.y - r) <= 0.75;
+  return (
+    (Math.round(row.x) === q && Math.round(row.y) === r) ||
+    (row.q === q && row.r === r) ||
+    Math.hypot(row.x - q, row.y - r) <= 0.75 ||
+    hexDistance(row.x, row.y, q, r) <= 0.85
+  );
+}
+
+export function isStationaryArmedKind(kind: number): boolean {
+  return kind === ENTITY_KIND.autocannon || kind === ENTITY_KIND.laserTower;
+}
+
+export function pruneAndCollectOptimisticTargets(
+  entries: Map<number, { targetId: number; atMs: number }>,
+  nowMs: number,
+  ttlMs = 1200,
+): Map<number, number> {
+  const out = new Map<number, number>();
+  for (const [id, entry] of entries) {
+    if (nowMs - entry.atMs <= ttlMs) out.set(id, entry.targetId);
+    else entries.delete(id);
+  }
+  return out;
+}
+
+export function resolveSelectedArmedIssuers(
+  selectedArmyIds: readonly number[],
+  landfallSel: SelectedEntityView | null | undefined,
+): number[] {
+  if (selectedArmyIds.length > 0) return [...selectedArmyIds];
+  if (!landfallSel) return [];
+  if (
+    isArmyCombatUnitKind(landfallSel.kind) ||
+    landfallSel.kind === ENTITY_KIND.hq ||
+    isStationaryArmedKind(landfallSel.kind)
+  ) {
+    return [landfallSel.entityId];
+  }
+  return [];
 }
 
 export function isTargetCoveringTile(row: EntityRow, q: number, r: number): boolean {
@@ -73,8 +112,20 @@ export function isTargetCoveringTile(row: EntityRow, q: number, r: number): bool
   return isUnitOnTile(row, q, r);
 }
 
-export function findOwnCombatUnitsOnTile(rawView: unknown, owner: number, q: number, r: number): EntityRow[] {
+export function findOwnCombatUnitsOnTile(
+  rawView: unknown,
+  owner: number,
+  q: number,
+  r: number,
+  pickedEntityId?: number,
+): EntityRow[] {
   const rows = collectEntitiesFromView(rawView, owner);
+  if (typeof pickedEntityId === 'number' && pickedEntityId > 0) {
+    const direct = rows.find(
+      (row) => isEntityAlive(row) && row.owner === owner && row.id === pickedEntityId && isSelectableCombatUnitKind(row.kind),
+    );
+    if (direct) return [direct];
+  }
   const armyHits = rows
     .filter((row) => isEntityAlive(row) && row.owner === owner && isArmyCombatUnitKind(row.kind) && isUnitOnTile(row, q, r))
     .sort((a, b) => Math.hypot(a.x - q, a.y - r) - Math.hypot(b.x - q, b.y - r) || a.id - b.id);
@@ -84,18 +135,112 @@ export function findOwnCombatUnitsOnTile(rawView: unknown, owner: number, q: num
   );
 }
 
-export function findHostileOrFaunaTargetOnTile(rawView: unknown, owner: number, q: number, r: number): EntityRow | null {
-  const rows = collectEntitiesFromView(rawView, owner);
-  const candidates = rows.filter((row) => {
-    if (!isEntityAlive(row) || !isTargetCoveringTile(row, q, r)) return false;
-    if (isFaunaOrHiveKind(row.kind)) return true;
-    return (
-      row.owner >= 0 &&
-      row.owner !== owner &&
-      row.kind !== ENTITY_KIND.pod &&
-      row.kind !== ENTITY_KIND.tradeHub
+function unwrapViewBlob<T>(blobs: Record<string, unknown> | undefined, key: string): T | undefined {
+  const raw = blobs?.[key] as { value?: unknown } | undefined;
+  if (!raw || typeof raw !== 'object') return undefined;
+  return ('value' in raw && raw.value !== undefined ? raw.value : raw) as T;
+}
+
+function resolveViewColonySector(colonies: unknown[] | undefined, colonyIndex: number): string | null {
+  const col = colonies?.[colonyIndex] as { foundingSectorId?: unknown; sectorId?: unknown } | undefined;
+  if (!col || typeof col !== 'object') return null;
+  if (typeof col.foundingSectorId === 'string' && col.foundingSectorId.startsWith('sec_')) return col.foundingSectorId;
+  if (typeof col.sectorId === 'string' && col.sectorId.startsWith('sec_')) return col.sectorId;
+  if (typeof col.sectorId === 'number' && Number.isFinite(col.sectorId)) return `sec_${Math.floor(col.sectorId)}_0`;
+  return null;
+}
+
+function isForeignColonyAttackBlocked(rawView: unknown, attackerOwner: number, targetOwner: number): boolean {
+  if (attackerOwner < 0 || targetOwner < 0 || attackerOwner === targetOwner) return false;
+  if (!rawView || typeof rawView !== 'object') return false;
+  const v = rawView as { tick?: unknown; colonies?: unknown[]; blobs?: Record<string, unknown> };
+  const tick = typeof v.tick === 'number' ? v.tick : 0;
+  const combatTest = unwrapViewBlob<{ enabled?: boolean }>(v.blobs, 'combatTest');
+  const pvp = unwrapViewBlob<{
+    crossSectorEnabled?: boolean;
+    byColony?: Record<string, { raidProtectedUntil?: number; shieldDropped?: boolean }>;
+    raidProtectedUntilByColony?: Record<string, number>;
+  }>(v.blobs, 'pvp');
+  const diplomacy = unwrapViewBlob<{
+    truces?: Record<string, {
+      colonyAIndex?: number;
+      colonyBIndex?: number;
+      status?: string;
+      cancelEffectiveTick?: number;
+    }>;
+  }>(v.blobs, 'diplomacy');
+
+  if (!combatTest?.enabled) {
+    const key = String(targetOwner);
+    const pvpRec = pvp?.byColony?.[key];
+    const colRec = v.colonies?.[targetOwner] as { raidProtectedUntil?: unknown } | undefined;
+    const shieldUntil =
+      pvpRec?.raidProtectedUntil ??
+      pvp?.raidProtectedUntilByColony?.[key] ??
+      (typeof colRec?.raidProtectedUntil === 'number' ? colRec.raidProtectedUntil : 0);
+    if (pvpRec?.shieldDropped !== true && typeof shieldUntil === 'number' && shieldUntil > tick) {
+      return true;
+    }
+  }
+
+  if (!pvp && !diplomacy) return false;
+
+  if (pvp && pvp.crossSectorEnabled !== true) {
+    const rivalBlob = unwrapViewBlob<{ rivals?: Record<string, { colonyIndex?: number }> }>(v.blobs, 'rivalAi');
+    const rivalOwners = new Set(
+      Object.values(rivalBlob?.rivals ?? {})
+        .map((rv) => rv?.colonyIndex)
+        .filter((idx): idx is number => typeof idx === 'number'),
     );
-  });
+    if (!rivalOwners.has(attackerOwner) && !rivalOwners.has(targetOwner)) {
+      const secA = resolveViewColonySector(v.colonies, attackerOwner);
+      const secB = resolveViewColonySector(v.colonies, targetOwner);
+      if (secA && secB && secA !== secB) return true;
+    }
+  }
+
+  if (diplomacy?.truces) {
+    for (const t of Object.values(diplomacy.truces)) {
+      const matchesPair =
+        (t.colonyAIndex === attackerOwner && t.colonyBIndex === targetOwner) ||
+        (t.colonyAIndex === targetOwner && t.colonyBIndex === attackerOwner);
+      if (!matchesPair) continue;
+      if (t.status === 'active') return true;
+      if (t.status === 'cancelling' && typeof t.cancelEffectiveTick === 'number' && t.cancelEffectiveTick > tick) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+function isHostileRow(row: EntityRow, owner: number, rawView?: unknown): boolean {
+  if (!isEntityAlive(row)) return false;
+  if (isFaunaOrHiveKind(row.kind)) return true;
+  if (
+    row.owner < 0 ||
+    row.owner === owner ||
+    row.kind === ENTITY_KIND.pod ||
+    row.kind === ENTITY_KIND.tradeHub
+  ) {
+    return false;
+  }
+  return !isForeignColonyAttackBlocked(rawView, owner, row.owner);
+}
+
+export function findHostileOrFaunaTargetOnTile(
+  rawView: unknown,
+  owner: number,
+  q: number,
+  r: number,
+  pickedEntityId?: number,
+): EntityRow | null {
+  const rows = collectEntitiesFromView(rawView, owner);
+  if (typeof pickedEntityId === 'number' && pickedEntityId > 0) {
+    const direct = rows.find((row) => row.id === pickedEntityId && isHostileRow(row, owner, rawView));
+    if (direct) return direct;
+  }
+  const candidates = rows.filter((row) => isHostileRow(row, owner, rawView) && isTargetCoveringTile(row, q, r));
   if (candidates.length === 0) return null;
   candidates.sort((a, b) => {
     const aMobile = !isHiveKind(a.kind) && !BLDG_META[a.kind] ? 0 : 1;

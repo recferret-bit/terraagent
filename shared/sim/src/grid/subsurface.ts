@@ -5,6 +5,8 @@ import { rollRegionalDeposit } from '../economy/regions/sourcePolicy';
 import { hexIndex } from './hex';
 import { hexTileRing, isHexTile } from './hexTile';
 import type { PlanetState } from '../kernel/state';
+import { getWreckTileSet } from '../systems/combat/wrecks';
+import { occupiedGroundTiles } from '../systems/construction/occupancy';
 
 /**
  * Reveals the hidden subsurface of tile `i` (D-38): a deposit buried under trees / rock / dunes (server-only layers
@@ -14,10 +16,17 @@ import type { PlanetState } from '../kernel/state';
  * hidden layers). Returns the revealed deposit key, or `null` when nothing was buried, a deposit is already visible,
  * or the tile is not a hex tile yet (the deposit stays buried until it is: see {@link revealAroundChanged}).
  */
-export function revealSubsurface(state: PlanetState, i: number, tick: number): { deposit: DepositKey; richnessBp: number } | null {
+export function revealSubsurface(
+  state: PlanetState,
+  i: number,
+  tick: number,
+  occupied: ReadonlySet<number> = occupiedGroundTiles(state),
+  wrecks: ReadonlySet<number> = getWreckTileSet(state),
+): { deposit: DepositKey; richnessBp: number } | null {
   const L = state.grid.layers;
   const sub = L.subDeposit as Uint8Array | undefined;
   if (!sub || sub[i] === DEPOSIT.none || L.deposit[i] !== DEPOSIT.none) return null;
+  if (occupied.has(i) || wrecks.has(i)) return null;
   if (!isHexTile(state.grid.radius, i, { terrain: L.terrain, prep: L.prep, height: L.height })) return null;
   const kind = sub[i];
   const view = regionViewOf(state);
@@ -57,9 +66,11 @@ export function revealAroundChanged(state: PlanetState, changed: Iterable<number
   const tiles = new Set<number>();
   for (const i of changed) for (const j of hexTileRing(state.grid.radius, i)) if (sub[j] !== DEPOSIT.none) tiles.add(j);
   const hx = hexIndex(state.grid.radius);
+  const occupied = occupiedGroundTiles(state);
+  const wrecks = getWreckTileSet(state);
   const out: RevealedDeposit[] = [];
   for (const i of [...tiles].sort((a, b) => a - b)) {
-    const found = revealSubsurface(state, i, tick);
+    const found = revealSubsurface(state, i, tick, occupied, wrecks);
     if (found) out.push({ q: hx.q[i]!, r: hx.r[i]!, ...found });
   }
   return out;

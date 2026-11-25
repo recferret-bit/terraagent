@@ -22,6 +22,7 @@ import { deliveredServiceBp, serviceScaled } from '../logistics/state';
 import { UnitBook } from '../../units/book';
 import { faceTowards } from '../../units/movement/locomotion';
 import { cancelMove, requestMove } from '../../units/movement/orchestrator';
+import { isHexStationaryOccupied } from '../../units/movement/unitOccupancy';
 import { commandColony } from '../command';
 import { occupiedGroundTiles } from '../construction/occupancy';
 import { defineSimModule } from '../define';
@@ -244,13 +245,16 @@ function stepWorkerSubJobMove(
 ): void {
   const cols = state.entities.cols;
   const dist = hexDistance(cols.q[row], cols.r[row], cur.q, cur.r);
-  if (dist <= 1) {
+  const curTileIdx = hexIndex(state.grid.radius).indexOf(cols.q[row], cols.r[row]);
+  const sharedStand = isHexStationaryOccupied(state, curTileIdx, id, ctx.data, st === ENTITY_STATE.working);
+  if (dist <= 1 && !sharedStand) {
     cancelMove(state, id, ctx.tick);
     faceTowards(state, row, cur.q, cur.r, ctx.tick);
     if (st !== ENTITY_STATE.working) setField(state.entities, row, 'state', ENTITY_STATE.working, ctx.tick);
   } else {
+    const minDist = sharedStand && cols.q[row] === cur.q && cols.r[row] === cur.r ? 1 : 0;
     if (st !== ENTITY_STATE.moving) setField(state.entities, row, 'state', ENTITY_STATE.moving, ctx.tick);
-    requestMove(state, row, { q: cur.q, r: cur.r, minDist: 0, maxDist: 1 }, ctx);
+    requestMove(state, row, { q: cur.q, r: cur.r, minDist, maxDist: 1 }, ctx);
   }
 }
 
@@ -322,8 +326,11 @@ const standingHarvestAssignSystem = defineSystem({
       if (!cur) continue;
       const distToDep = hexDistance(cols.q[row], cols.r[row], cur.q, cur.r);
       const fracDist = hexDistance(cols.x[row], cols.y[row], cols.q[row], cols.r[row]);
-      // A building placed over its stand tile (construction evacuates it) sends it to another free side of the deposit.
-      const standBuiltOver = occupied.has(hexIndex(state.grid.radius).indexOf(cols.q[row], cols.r[row]));
+      const curTileIdx = hexIndex(state.grid.radius).indexOf(cols.q[row], cols.r[row]);
+      // A building placed over its stand tile or a lower-ID unit sharing the hex sends it to another free side of the deposit.
+      const standBuiltOver =
+        occupied.has(curTileIdx) ||
+        isHexStationaryOccupied(state, curTileIdx, id, ctx.data, st === ENTITY_STATE.harvesting);
       if (distToDep === 1 && fracDist <= 0.15 && !standBuiltOver) {
         cancelMove(state, id, ctx.tick);
         faceTowards(state, row, cur.q, cur.r, ctx.tick);

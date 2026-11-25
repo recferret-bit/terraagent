@@ -11,6 +11,17 @@ import type { LandfallController, StoreLike } from '../landfall/selection';
 import { resolvePointerTile, type TilePickerFn } from '../shared/pointer';
 import { classifyCursorHoverTile, classifyCursorSelection } from './parts/hoverClassifier';
 
+export interface PlacementGhostCursorProbe {
+  readonly q: number;
+  readonly r: number;
+  readonly valid: boolean;
+}
+
+export interface TerraformCursorProbe {
+  isArmed(): boolean;
+  canStrokeTile?(q: number, r: number): boolean;
+}
+
 export interface MouseCursorOrchestratorOptions {
   readonly surface?: HTMLElement | null;
   readonly pickTile?: TilePickerFn;
@@ -19,8 +30,13 @@ export interface MouseCursorOrchestratorOptions {
   readonly getFallbackTiles?: () => unknown;
   readonly landfall?: () => LandfallController | undefined;
   readonly armyOrders?: () => ArmyOrdersController | undefined;
+  readonly getPlacementGhostState?: () => PlacementGhostCursorProbe | null;
+  readonly getSpawnCursorProbe?: () => { readonly valid: boolean } | null;
+  readonly terraform?: () => TerraformCursorProbe | undefined;
   readonly getColonyId?: () => number;
   readonly isSpectator?: () => boolean;
+  readonly isSpectatorVisionAll?: () => boolean;
+  readonly isFullVision?: () => boolean;
   readonly isCombatEnabled?: () => boolean;
   readonly isInputBlocked?: () => boolean;
 }
@@ -35,10 +51,11 @@ export class MouseCursorOrchestrator {
   private readonly applier: SurfaceCursorApplier;
   private readonly cleanups: Array<() => void> = [];
   private latestView: unknown = null;
-  private lastTile: { q: number; r: number } | null = null;
+  private lastTile: { q: number; r: number; entityId?: number } | null = null;
   private lastPointerClient: { clientX: number; clientY: number; target: EventTarget | null } | null = null;
   private pointerInside = false;
   private cameraDragging = false;
+  private boxSelecting = false;
   private shiftKey = false;
   private disposed = false;
   private pendingMicroRefresh = false;
@@ -103,10 +120,12 @@ export class MouseCursorOrchestrator {
         pointerInside: this.pointerInside,
         inputBlocked: this.isBlocked(),
         cameraDragging: this.cameraDragging,
+        boxSelecting: this.boxSelecting,
         spectator: Boolean(this.opts.isSpectator?.()),
         attackMoveArmed: Boolean(this.opts.armyOrders?.()?.isAttackMoveArmed()),
         hasSelectedMovableUnit: sel.hasSelectedMovableUnit,
         hasSelectedArmedUnit: sel.hasSelectedArmedUnit,
+        canToggleSelectedSelf: sel.canToggleSelectedSelf,
         shiftKey: this.shiftKey,
         hoverTarget: 'none',
       });
@@ -132,6 +151,13 @@ export class MouseCursorOrchestrator {
     return this.refresh();
   }
 
+  setBoxSelecting(selecting: boolean): MouseCursorState {
+    if (this.boxSelecting === selecting) return this.machine.getState();
+    this.boxSelecting = selecting;
+    if (selecting) this.pointerInside = true;
+    return this.refresh();
+  }
+
   refresh(): MouseCursorState {
     if (this.disposed) return this.machine.getState();
     this.rebindControllers();
@@ -143,30 +169,72 @@ export class MouseCursorOrchestrator {
     const view = this.latestView ?? this.opts.store?.latest ?? this.opts.getView?.() ?? null;
     const fallbackTiles = this.opts.store?.latestTiles ?? this.opts.getFallbackTiles?.();
     const simData = this.opts.store?.simData?.() ?? null;
+    const ownerColonyIndex = this.opts.getColonyId?.() ?? landfall?.getOwnerColonyIndex() ?? 0;
 
-    if (!this.pointerInside || blocked || this.cameraDragging || !this.lastTile) {
-      const sel = classifyCursorSelection(landfall, armyOrders, combatEnabled);
+    if (!this.pointerInside || blocked || this.cameraDragging || this.boxSelecting || !this.lastTile) {
+      const sel = classifyCursorSelection(landfall, armyOrders, combatEnabled, view, ownerColonyIndex);
       return this.machine.transition({
         pointerInside: this.pointerInside,
         inputBlocked: blocked,
         cameraDragging: this.cameraDragging,
+        boxSelecting: this.boxSelecting,
         spectator,
         attackMoveArmed: Boolean(armyOrders?.isAttackMoveArmed()),
         hasSelectedMovableUnit: sel.hasSelectedMovableUnit,
         hasSelectedArmedUnit: sel.hasSelectedArmedUnit,
+        canToggleSelectedSelf: sel.canToggleSelectedSelf,
         shiftKey: this.shiftKey,
         hoverTarget: 'none',
+      });
+    }
+
+    const ghost = this.opts.getPlacementGhostState?.() ?? this.opts.getSpawnCursorProbe?.() ?? null;
+    if (ghost) {
+      return this.machine.transition({
+        pointerInside: true,
+        inputBlocked: false,
+        cameraDragging: false,
+        boxSelecting: false,
+        spectator,
+        attackMoveArmed: false,
+        hasSelectedMovableUnit: false,
+        hasSelectedArmedUnit: false,
+        canToggleSelectedSelf: false,
+        shiftKey: false,
+        hoverTarget: ghost.valid ? 'ownSelectable' : 'impassableGround',
+      });
+    }
+
+    const tf = this.opts.terraform?.();
+    if (tf?.isArmed() && typeof tf.canStrokeTile === 'function') {
+      const ok = tf.canStrokeTile(this.lastTile.q, this.lastTile.r);
+      return this.machine.transition({
+        pointerInside: true,
+        inputBlocked: false,
+        cameraDragging: false,
+        boxSelecting: false,
+        spectator,
+        attackMoveArmed: false,
+        hasSelectedMovableUnit: false,
+        hasSelectedArmedUnit: false,
+        canToggleSelectedSelf: false,
+        shiftKey: false,
+        hoverTarget: ok ? 'ownSelectable' : 'impassableGround',
       });
     }
 
     const classified = classifyCursorHoverTile({
       q: this.lastTile.q,
       r: this.lastTile.r,
+      entityId: (this.lastTile as { entityId?: number }).entityId,
       view,
       fallbackTiles,
       simData,
-      ownerColonyIndex: this.opts.getColonyId?.() ?? landfall?.getOwnerColonyIndex() ?? 0,
+      ownerColonyIndex,
       spectator,
+      spectatorAllVision: Boolean(this.opts.isSpectatorVisionAll?.()),
+      fullVision: Boolean(this.opts.isFullVision?.()),
+      shiftKey: this.shiftKey,
       combatEnabled,
       landfall,
       armyOrders,
@@ -176,10 +244,12 @@ export class MouseCursorOrchestrator {
       pointerInside: true,
       inputBlocked: false,
       cameraDragging: false,
+      boxSelecting: false,
       spectator,
       attackMoveArmed: Boolean(armyOrders?.isAttackMoveArmed()),
       hasSelectedMovableUnit: classified.hasSelectedMovableUnit,
       hasSelectedArmedUnit: classified.hasSelectedArmedUnit,
+      canToggleSelectedSelf: classified.canToggleSelectedSelf,
       shiftKey: this.shiftKey,
       hoverTarget: classified.hoverTarget,
     });
@@ -192,7 +262,7 @@ export class MouseCursorOrchestrator {
       this.lastPointerClient.clientY,
       this.lastPointerClient.target,
     );
-    this.lastTile = picked ? { q: picked.q, r: picked.r } : null;
+    this.lastTile = picked ? { q: picked.q, r: picked.r, ...(typeof picked.entityId === 'number' ? { entityId: picked.entityId } : {}) } : null;
   }
 
   private capturePointerSample(e: MouseEvent, surface: HTMLElement): void {
@@ -204,7 +274,7 @@ export class MouseCursorOrchestrator {
       this.lastPointerClient = { clientX: e.clientX, clientY: e.clientY, target: e.target ?? surface };
     }
     const pick = resolvePointerTile(e, this.opts.pickTile);
-    this.lastTile = pick ? { q: pick.q, r: pick.r } : null;
+    this.lastTile = pick ? { q: pick.q, r: pick.r, ...(typeof pick.entityId === 'number' ? { entityId: pick.entityId } : {}) } : null;
   }
 
   private scheduleMicroRefresh(): void {
@@ -225,7 +295,8 @@ export class MouseCursorOrchestrator {
   }
 
   private isBlocked(): boolean {
-    return Boolean(this.opts.isInputBlocked?.() || isGameInputBlocked());
+    const hasSpawnProbe = (this.opts.getSpawnCursorProbe?.() ?? null) !== null;
+    return Boolean(this.opts.isInputBlocked?.() || isGameInputBlocked(hasSpawnProbe ? 'combat-test-spawn' : undefined));
   }
 
   private rebindControllers(): void {
@@ -260,6 +331,9 @@ export class MouseCursorOrchestrator {
       this.pointerInside = true;
       this.capturePointerSample(e, surface);
       this.refresh();
+      if (this.opts.getPlacementGhostState?.()) {
+        this.scheduleMicroRefresh();
+      }
     };
 
     const onWheel = (ev: Event) => {
@@ -320,9 +394,10 @@ export class MouseCursorOrchestrator {
       this.scheduleMicroRefresh();
     };
     const onBlur = () => {
-      const changed = this.shiftKey || this.cameraDragging;
+      const changed = this.shiftKey || this.cameraDragging || this.boxSelecting;
       this.shiftKey = false;
       this.cameraDragging = false;
+      this.boxSelecting = false;
       if (changed) this.refresh();
     };
     const cap = { capture: true };

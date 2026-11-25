@@ -4,7 +4,7 @@ import type { ParticleLayerSpec } from './types';
 import type { VfxPoint3D } from '../visuals/projectiles/types';
 
 export interface BurstOrigin {
-  at: THREE.Vector3; normal: THREE.Vector3; groundY: number; scale?: number;
+  at: THREE.Vector3; normal: THREE.Vector3; groundY: number; scale?: number; velocityScale?: number;
   source?: () => VfxPoint3D; direction?: () => VfxPoint3D;
 }
 interface Particle {
@@ -28,7 +28,7 @@ export class BurstLayer {
   private readonly inverseOrientation = new THREE.Quaternion();
 
   constructor(readonly spec: ParticleLayerSpec, parent: THREE.Object3D, name: string) {
-    const capacity = spec.count * 6;
+    const capacity = spec.count * (name.endsWith('Death') || name === 'combat.dustBurst' ? 10 : 6);
     const geometry = getParticleGeometry(spec.geometry).clone();
     geometry.computeBoundingBox();
     this.alpha = new THREE.InstancedBufferAttribute(new Float32Array(capacity), 1);
@@ -65,9 +65,10 @@ export class BurstLayer {
       const angle = random() * Math.PI * 2;
       const cos = 1 - random() * (1 - Math.cos(Math.min(1.45, s.spreadCone)));
       const sin = Math.sqrt(1 - cos * cos);
+      const vScale = input.velocityScale ?? 1;
       const velocity = new THREE.Vector3(Math.cos(angle) * sin, Math.sin(angle) * sin, cos)
-        .applyQuaternion(rotation).multiplyScalar(range(s.speedRange));
-      velocity.y += range(s.upwardBias);
+        .applyQuaternion(rotation).multiplyScalar(range(s.speedRange) * vScale);
+      velocity.y += range(s.upwardBias) * vScale;
       const size = range(s.sizeRange) * (input.scale ?? 1);
       const p: Particle = { age: 0, life: range(s.lifetimeRange), size, spin: random() * 6,
         ground: input.groundY, origin: input.at.clone(), normal: normal.clone(), velocity,
@@ -117,7 +118,12 @@ export class BurstLayer {
     const s = this.spec;
     const u = p.age / p.life;
     const smoke = s.geometry === 'dustCloud';
-    const size = p.size * (smoke ? 0.65 + 1.6 * u : 1 - 0.6 * u * u);
+    const fireball = s.geometry === 'energyOrb' && s.gravity < 0;
+    const size = p.size * (
+      smoke ? 0.65 + 1.6 * u
+      : fireball ? 0.72 + 0.68 * Math.sin(Math.min(1, u * 1.12) * Math.PI)
+      : 1 - 0.6 * u * u
+    );
     this.dummy.position.copy(p.pos);
     this.dummy.scale.setScalar(size);
     if (s.behavior === 'splash') {

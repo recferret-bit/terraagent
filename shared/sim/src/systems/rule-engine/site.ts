@@ -1,6 +1,7 @@
 import { DEPOSIT_MAX_RICHNESS_BP } from '../../data';
 import { geoBuildBlock, isPreparedGround, isTileUneven, MAX_FOOTPRINT_SPREAD_M } from '../../grid/geo';
 import { hexDistance, hexIndex } from '../../grid/hex';
+import { DEPOSIT } from '../../grid/layers';
 import type { CompiledDataLike } from '../../kernel/config';
 import { nextFloat } from '../../kernel/rng';
 import type { Grid, PlanetState } from '../../kernel/state';
@@ -77,6 +78,7 @@ function evaluateFallbackFootprint(
   let preparedCount = 0;
   let ownedCount = 0;
   let hasRequiredDeposit = spec.requiresDeposit === undefined;
+  let seenDeposit: number = DEPOSIT.none;
   let minH = Infinity;
   let maxH = -Infinity;
 
@@ -86,21 +88,27 @@ function evaluateFallbackFootprint(
     const own = world.owner[idx]!;
     if (own >= 0 && own !== colonyIndex) return { ok: false, preparedCount: 0, unpreparedCount: 0, ownedCount: 0 };
     if (own === colonyIndex) ownedCount++;
-    if (occupied.has(idx)) return { ok: false, preparedCount: 0, unpreparedCount: 0, ownedCount: 0 };
+    if (occupied.has(idx) || world.wrecks?.has(idx)) return { ok: false, preparedCount: 0, unpreparedCount: 0, ownedCount: 0 };
 
     const terrain = world.terrain[idx]!;
     const prep = world.prep[idx]!;
     const dep = world.deposit ? world.deposit[idx]! : 0;
     const isDepleted = dep !== 0 && world.richness != null && Number(world.richness[idx] ?? 0) <= 0;
-    const effectiveDep = isDepleted ? 0 : dep;
+    const effectiveDep = spec.requiresDeposit !== undefined && isDepleted ? 0 : dep;
 
-    if (geoBuildBlock(terrain, prep, effectiveDep, spec.depositRule)) {
+    if (geoBuildBlock(terrain, prep, spec.requiresDeposit === undefined ? dep : effectiveDep, spec.depositRule)) {
       return { ok: false, preparedCount: 0, unpreparedCount: 0, ownedCount: 0 };
+    }
+    if (dep !== DEPOSIT.none && spec.requiresDeposit !== undefined) {
+      const allowed = dep === spec.requiresDeposit || (spec.requiresDeposit === DEPOSIT.metals && dep === DEPOSIT.minerals);
+      if (!allowed) return { ok: false, preparedCount: 0, unpreparedCount: 0, ownedCount: 0 };
+      if (seenDeposit !== DEPOSIT.none && seenDeposit !== dep) return { ok: false, preparedCount: 0, unpreparedCount: 0, ownedCount: 0 };
+      seenDeposit = dep;
     }
     if (isTileUneven(world.radius, idx, world.terrain, world.height)) {
       return { ok: false, preparedCount: 0, unpreparedCount: 0, ownedCount: 0 };
     }
-    if (spec.requiresDeposit !== undefined && effectiveDep === spec.requiresDeposit) {
+    if (spec.requiresDeposit !== undefined && (effectiveDep === spec.requiresDeposit || (spec.requiresDeposit === DEPOSIT.metals && effectiveDep === DEPOSIT.minerals))) {
       hasRequiredDeposit = true;
     }
     if (isPreparedGround(prep)) preparedCount++;

@@ -10,6 +10,8 @@ import {
   getHubFootprintTiles,
   hasColonyHub,
   hexIndex,
+  placeMetalsExtractor,
+  placeMineralsQuarry,
   PREP,
   placementWorldFromState,
   rowOf,
@@ -18,6 +20,7 @@ import {
   setTilePrep,
   setTileTerrain,
   SimHost,
+  spawnCompletedBuilding,
   spawnHqUnit,
   startBuildingConstruction,
   TERRAIN,
@@ -254,5 +257,105 @@ describe('shared placement rules: W03 power zone', () => {
     const outside = startBuildingConstruction(h.state, { owner: 0, building: 'solar', q: -9, r: 0, instant: true, costOverride: {}, tick: 0 });
     if (!outside.ok) throw new Error(outside.code);
     expect(buildPowerGraph(h.state, 0, W03).componentByBuildingId.get(outside.entityId)).toBe(-1);
+  });
+});
+
+describe('deposit exclusivity & single-resource-type extractor enforcement', () => {
+  const W03 = compileData(parseWaves('..07'));
+
+  function flatColonyHost() {
+    const h = new SimHost({ flags: parseWaves('..07') });
+    h.load(createPlanet({ type: 'flat', seed: 'dep-exclusivity', radius: 12 }));
+    const idx = hexIndex(h.state.grid.radius);
+    for (let i = 0; i < idx.count; i++) {
+      setTileTerrain(h.state.grid, i, TERRAIN.flat, 0);
+      setTilePrep(h.state.grid, i, PREP.prepared, 0);
+    }
+    spawnHqUnit(h.state, { owner: 0, q: -1, r: 0 });
+    startBuildingConstruction(h.state, { owner: 0, building: 'commandHub', q: 0, r: 0, instant: true, costOverride: {}, tick: 0 });
+    return { h, idx };
+  }
+
+  it('rejects every non-extractor building (solar, waterExtractor, wind, pylon, hub, roboticsFactory, turret) on any deposit tile', () => {
+    const { h, idx } = flatColonyHost();
+    setTileDeposit(h.state.grid, idx.indexOf(3, 1), DEPOSIT.oil, 10000);
+    setTileDeposit(h.state.grid, idx.indexOf(-3, 0), DEPOSIT.metals, 0); // depleted resource spot still blocks non-extractors
+
+    for (const building of ['solar', 'waterExtractor', 'wind', 'pylon', 'autocannon', 'roboticsFactory']) {
+      const q = building === 'pylon' || building === 'autocannon' ? 3 : building === 'roboticsFactory' ? 3 : 2;
+      const r = building === 'pylon' || building === 'autocannon' ? 1 : building === 'roboticsFactory' ? 0 : 0;
+      const res = evaluatePlacement(placementWorldFromState(h.state), { colonyId: 0, building, q, r, requireBuilder: false, data: W03 });
+      expect(res, building).toMatchObject({ ok: false, code: 'terrain_unbuildable', block: 'deposit' });
+    }
+    expect(evaluatePlacement(placementWorldFromState(h.state), { colonyId: 0, building: 'solar', q: -3, r: 0, requireBuilder: false, data: W03 })).toMatchObject({
+      ok: false,
+      code: 'terrain_unbuildable',
+      block: 'deposit',
+    });
+
+    // Even dev.spawnBuilding refuses placing non-extractors onto deposit spots instead of wiping deposits
+    expect(spawnCompletedBuilding(h.state, { owner: 0, building: 'solar', q: 2, r: 0 })).toEqual({ ok: false, code: 'site_blocked' });
+    expect(h.state.grid.layers.deposit[idx.indexOf(3, 1)]).toBe(DEPOSIT.oil);
+  });
+
+  it('rejects placing an extractor onto two different resource types simultaneously (oil+minerals, metals+minerals, metals+oil, or depleted mismatch)', () => {
+    const { h, idx } = flatColonyHost();
+    const world = () => placementWorldFromState(h.state);
+
+    // Screenshot 2 scenario: Resource Extractor (metalsExtractor) spanning minerals + oil
+    setTileDeposit(h.state.grid, idx.indexOf(3, 0), DEPOSIT.minerals, 10000);
+    setTileDeposit(h.state.grid, idx.indexOf(4, 0), DEPOSIT.oil, 10000);
+    expect(evaluatePlacement(world(), { colonyId: 0, building: 'metalsExtractor', q: 3, r: 0, requireBuilder: false, data: W03 })).toMatchObject({
+      ok: false,
+      code: 'site_blocked',
+      block: 'mixedDeposit',
+    });
+    expect(placeMetalsExtractor(h.state, { owner: 0, q: 3, r: 0, data: W03 })).toMatchObject({ ok: false, code: 'site_blocked' });
+    expect(spawnCompletedBuilding(h.state, { owner: 0, building: 'metalsExtractor', q: 3, r: 0 })).toEqual({ ok: false, code: 'site_blocked' });
+
+    // Petroleum Well spanning oil + minerals is rejected
+    expect(evaluatePlacement(world(), { colonyId: 0, building: 'petroleumWell', q: 3, r: 0, requireBuilder: false, data: W03 })).toMatchObject({
+      ok: false,
+      code: 'site_blocked',
+      block: 'mixedDeposit',
+    });
+
+    // Metals + minerals in same 2x2 footprint is rejected even though Resource Extractor handles either individually
+    setTileDeposit(h.state.grid, idx.indexOf(4, 0), DEPOSIT.metals, 10000);
+    expect(evaluatePlacement(world(), { colonyId: 0, building: 'metalsExtractor', q: 3, r: 0, requireBuilder: false, data: W03 })).toMatchObject({
+      ok: false,
+      code: 'site_blocked',
+      block: 'mixedDeposit',
+    });
+    expect(evaluatePlacement(world(), { colonyId: 0, building: 'mineralsQuarry', q: 3, r: 0, requireBuilder: false, data: W03 })).toMatchObject({
+      ok: false,
+      code: 'site_blocked',
+      block: 'mixedDeposit',
+    });
+    expect(placeMineralsQuarry(h.state, { owner: 0, q: 3, r: 0, data: W03 })).toMatchObject({ ok: false, code: 'site_blocked' });
+
+    // Even a depleted secondary deposit of a different type inside the 2x2 footprint is rejected
+    setTileDeposit(h.state.grid, idx.indexOf(4, 0), DEPOSIT.oil, 0);
+    expect(evaluatePlacement(world(), { colonyId: 0, building: 'metalsExtractor', q: 3, r: 0, requireBuilder: false, data: W03 })).toMatchObject({
+      ok: false,
+      code: 'site_blocked',
+      block: 'mixedDeposit',
+    });
+
+    // Clean single-resource placement succeeds once other deposit tile is clear
+    setTileDeposit(h.state.grid, idx.indexOf(4, 0), DEPOSIT.none, 0);
+    expect(evaluatePlacement(world(), { colonyId: 0, building: 'metalsExtractor', q: 3, r: 0, requireBuilder: false, data: W03 }).ok).toBe(true);
+    expect(spawnCompletedBuilding(h.state, { owner: 0, building: 'metalsExtractor', q: 3, r: 0 }).ok).toBe(true);
+  });
+
+  it('spawnCompletedBuilding rejects mismatched single deposit type for Resource Extractor on pure oil', () => {
+    const { h, idx } = flatColonyHost();
+    setTileDeposit(h.state.grid, idx.indexOf(3, 0), DEPOSIT.oil, 10000);
+    expect(evaluatePlacement(placementWorldFromState(h.state), { colonyId: 0, building: 'metalsExtractor', q: 3, r: 0, requireBuilder: false, data: W03 })).toMatchObject({
+      ok: false,
+      block: 'noDeposit',
+    });
+    expect(spawnCompletedBuilding(h.state, { owner: 0, building: 'metalsExtractor', q: 3, r: 0 })).toEqual({ ok: false, code: 'site_blocked' });
+    expect(spawnCompletedBuilding(h.state, { owner: 0, building: 'petroleumWell', q: 3, r: 0 }).ok).toBe(true);
   });
 });

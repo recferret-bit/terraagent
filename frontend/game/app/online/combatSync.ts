@@ -44,6 +44,8 @@ function unwrapImpactsBlob(raw: unknown): ProjectileImpactsBlob | undefined {
   return raw as ProjectileImpactsBlob;
 }
 
+export type EntityDestructionKind = 'bot' | 'building' | 'hive' | 'insect' | 'unknown';
+
 /**
  * Coordinates online combat VFX (`ProjectileVfxSystem`), deduplicates `projectileFired` and `projectileImpact`
  * across prediction (`onRenderEvents`), server (`onServerEvents`), and snapshot/delta `projectileImpacts` blobs,
@@ -57,9 +59,27 @@ export class CombatSyncController {
   private readonly pendingShots = new PendingCombatShots();
   private readonly heldImpacts = new Map<string, Array<() => void>>();
   meshForEntity?: (id: number) => THREE.Object3D | undefined;
+  onEntityDestroyed?: (id: number, kind: EntityDestructionKind) => void;
+  onEntityRevived?: (id: number) => void;
   readonly firedHistory: RecordedProjectileFired[] = [];
   readonly impactHistory: RecordedProjectileImpact[] = [];
-  private readonly health = new CombatHealthTracker(id => this.battle.insects.die(id), id => this.battle.insects.revive(id));
+  readonly explicitDeaths = new Set<number>();
+  private readonly health = new CombatHealthTracker(
+    (id, source) => {
+      this.battle.insects.die(id);
+      if (source === 'event') {
+        this.markExplicitDeath(id);
+      } else if (source === 'zero_hp' && !this.explicitDeaths.has(id)) {
+        this.markExplicitDeath(id);
+        this.onEntityDestroyed?.(id, 'unknown');
+      }
+    },
+    (id) => {
+      this.battle.insects.revive(id);
+      this.explicitDeaths.delete(id);
+      this.onEntityRevived?.(id);
+    },
+  );
   readonly hpByEntityId = this.health.hp;
   readonly confirmedDeaths = this.health.deaths;
   duplicateFiredIgnored = 0;
@@ -281,6 +301,25 @@ export class CombatSyncController {
   }
   private readonly heldFiredKeys = new Set<string>();
 
+  private markExplicitDeath(id: number): void {
+    this.explicitDeaths.add(id);
+    if (this.explicitDeaths.size > 2048) {
+      const oldest = this.explicitDeaths.keys().next().value!;
+      this.explicitDeaths.delete(oldest);
+    }
+  }
+
+  private recordEventDeath(deadId: number, tick: number, kind: EntityDestructionKind): void {
+    if (deadId <= 0) return;
+    const isNew = !this.explicitDeaths.has(deadId);
+    const deadMesh = this.meshForEntity?.(deadId);
+    if (deadMesh) {
+      this.projectiles.clearCratersInRadius(deadMesh.position.x, deadMesh.position.z, kind === 'hive' || kind === 'building' ? 2.6 : 1.8);
+    }
+    this.health.dead(deadId, tick, 'event');
+    if (isNew) this.onEntityDestroyed?.(deadId, kind);
+  }
+
   ingestCombatEvents(
     events: readonly (SimEventWire | { kind?: string; atTick?: number; tick?: number; data?: Record<string, unknown> })[],
     terrain: HexTerrain | null = null,
@@ -297,8 +336,19 @@ export class CombatSyncController {
       ) {
         const d = (ev.data ?? ev) as Record<string, unknown>;
         const deadId = Number(d.entityId ?? d.unitId ?? d.buildingId ?? d.hiveId ?? d.bugId ?? 0);
-        if (deadId > 0) {
-          this.health.dead(deadId, Number(ev.atTick ?? ('tick' in ev ? ev.tick : 0) ?? 0));
+        const tick = Number(ev.atTick ?? ('tick' in ev ? ev.tick : 0) ?? 0);
+        const kind: EntityDestructionKind =
+          ev.kind === 'unitDestroyed' ? 'bot'
+          : ev.kind === 'buildingDestroyed' ? 'building'
+          : ev.kind === 'nestDestroyed' ? 'hive'
+          : 'insect';
+        this.recordEventDeath(deadId, tick, kind);
+      } else if (ev.kind === 'meteorImpact') {
+        const d = (ev.data ?? ev) as Record<string, unknown>;
+        const tick = Number(ev.atTick ?? ('tick' in ev ? ev.tick : 0) ?? 0);
+        const ids = d.destroyedEntityIds;
+        if (Array.isArray(ids)) {
+          for (const rawId of ids) this.recordEventDeath(Number(rawId ?? 0), tick, 'unknown');
         }
       }
     }
@@ -377,6 +427,7 @@ export class CombatSyncController {
     this.firedHistory.length = 0;
     this.impactHistory.length = 0;
     this.health.clear();
+    this.explicitDeaths.clear();
     this.duplicateFiredIgnored = 0;
     this.duplicateImpactIgnored = 0;
     this.vfxFiredSpawnCount = 0;

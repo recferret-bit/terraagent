@@ -54,6 +54,7 @@ export default defineTable({
       hitsAir: false,
       evasive: false,
       evasiveIntervalS: 0.5,
+      moveAndFire: true,
       defaultStance: 'defend',
     },
     {

@@ -8,6 +8,8 @@ import { DEPOSIT, PREP, TERRAIN } from '../../grid/layers';
 import type { CompiledDataLike } from '../../kernel/config';
 import type { StepContext } from '../../kernel/context';
 import { setBlob, type PlanetState } from '../../kernel/state';
+import { findNearestFreeStandTile } from '../../units/movement/unitOccupancy';
+import { getWreckTileSet } from '../combat/wrecks';
 import { buildingFootprints } from '../construction/occupancy';
 import { colonyWho } from '../find';
 import { withoutUnitView } from '../harvest/unit';
@@ -218,6 +220,14 @@ function buildPerimeterCandidates(facQ: number, facR: number, facW: number, facD
       candidates.push({ q: facQ + dq, r: facR + dr });
     }
   }
+  for (let pad = 2; pad <= 4; pad++) {
+    for (let dr = minR - pad; dr <= maxR + pad; dr++) {
+      for (let dq = minQ - pad; dq <= maxQ + pad; dq++) {
+        if (dq >= minQ - (pad - 1) && dq <= maxQ + (pad - 1) && dr >= minR - (pad - 1) && dr <= maxR + (pad - 1)) continue;
+        candidates.push({ q: facQ + dq, r: facR + dr });
+      }
+    }
+  }
   return candidates;
 }
 
@@ -253,20 +263,25 @@ export function findFactoryEdgeSpawnTile(
   const producerEntityId = producerRow >= 0 ? cols.id[producerRow] : producerId;
 
   const idx = hexIndex(state.grid.radius);
-  const occupied = new Set<number>();
+  const occupied = new Set<number>(getWreckTileSet(state));
   for (const fp of buildingFootprints(state, data)) {
     for (const i of fp) occupied.add(i);
   }
   for (let r = 0; r < e.count; r++) {
-    if (cols.kind[r] !== ENTITY_KIND.roboticsFactory || cols.hp[r] <= 0) continue;
-    const w = cols.footprintW[r] || 3, d = cols.footprintD[r] || 3;
-    const minQ = -Math.floor((w - 1) / 2), minR = -Math.floor((d - 1) / 2);
-    for (let dr = minR; dr < minR + d; dr++) {
-      for (let dq = minQ; dq < minQ + w; dq++) {
-        const ti = idx.indexOf(cols.q[r] + dq, cols.r[r] + dr);
-        if (ti >= 0) occupied.add(ti);
+    if (cols.hp[r] <= 0 || cols.state[r] === ENTITY_STATE.inert || cols.state[r] === ENTITY_STATE.descending) continue;
+    if (cols.kind[r] === ENTITY_KIND.roboticsFactory) {
+      const w = cols.footprintW[r] || 3, d = cols.footprintD[r] || 3;
+      const minQ = -Math.floor((w - 1) / 2), minR = -Math.floor((d - 1) / 2);
+      for (let dr = minR; dr < minR + d; dr++) {
+        for (let dq = minQ; dq < minQ + w; dq++) {
+          const ti = idx.indexOf(cols.q[r] + dq, cols.r[r] + dr);
+          if (ti >= 0) occupied.add(ti);
+        }
       }
+      continue;
     }
+    const ti = idx.indexOf(cols.q[r], cols.r[r]);
+    if (ti >= 0) occupied.add(ti);
   }
 
   const layers = state.grid.layers;
@@ -296,6 +311,8 @@ export function findFactoryEdgeSpawnTile(
       return { q: c.q, r: c.r, producerRow, producerEntityId };
     }
   }
+  const fallback = findNearestFreeStandTile(state, facQ + Math.floor(facW / 2) + 1, facR, 'ground', -1, data, 6);
+  if (fallback) return { q: fallback.q, r: fallback.r, producerRow, producerEntityId };
   return { q: facQ + Math.floor(facW / 2) + 1, r: facR, producerRow, producerEntityId };
 }
 
@@ -357,14 +374,19 @@ export function flushPendingRallyMoves(state: PlanetState, ctx: StepContext): vo
     ctx.tick,
   );
   const cols = state.entities.cols;
+  const idx = hexIndex(state.grid.radius);
+  const batchTaken = new Set<number>();
   for (const m of pending) {
     const row = rowOf(state.entities, m.entityId);
     if (row < 0 || cols.hp[row] <= 0) continue;
-    cols.targetQ[row] = m.q;
-    cols.targetR[row] = m.r;
+    const goal = findNearestFreeStandTile(state, m.q, m.r, 'ground', m.entityId, ctx.data, 6, batchTaken) ?? { q: m.q, r: m.r };
+    const gi = idx.indexOf(goal.q, goal.r);
+    if (gi >= 0) batchTaken.add(gi);
+    cols.targetQ[row] = goal.q;
+    cols.targetR[row] = goal.r;
     cols.state[row] = ENTITY_STATE.moving;
     cols.changedAt[row] = ctx.tick;
-    issueUnitCommand(state, row, { kind: 'move', source: 'player', q: m.q, r: m.r }, ctx);
+    issueUnitCommand(state, row, { kind: 'move', source: 'player', q: goal.q, r: goal.r }, ctx);
     syncReconView(state, row, ctx.tick, ctx.data);
   }
 }

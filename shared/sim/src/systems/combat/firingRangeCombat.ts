@@ -1,7 +1,10 @@
 import { combatApproachBand, footprintAttackRange } from './approachBand';
 import { ENTITY_STATE } from '../../ecs/columns';
-import { hexDistance } from '../../grid/hex';
+import { hexDistance, hexIndex } from '../../grid/hex';
+import { isUnitKind } from '../../units/mobility';
 import { faceTowards } from '../../units/movement/locomotion';
+import { getMotion } from '../../units/movement/orchestrator';
+import { isHexStationaryOccupied } from '../../units/movement/unitOccupancy';
 import { rowOf } from '../../ecs/store';
 import type { StepContext } from '../../kernel/context';
 import type { PlanetState } from '../../kernel/state';
@@ -91,17 +94,22 @@ export function orderFiringRangeBug(state: PlanetState, bugRow: number, ctx: Ste
   const attackRange = footprintAttackRange(range, cols.footprintW[target]);
   const distance = hexDistance(cols.x[bugRow]!, cols.y[bugRow]!, cols.x[target]!, cols.y[target]!);
   const cur = getUnitCommand(state, bugId);
-  if (distance <= attackRange + 1e-4) {
+  const minBand = isUnitKind(cols.kind[target]!) ? 1 : 0;
+  const band = combatApproachBand(attackRange, minBand,
+    hexDistance(cols.q[bugRow], cols.r[bugRow], cols.q[target], cols.r[target]),
+    hexDistance(cols.x[target], cols.y[target], cols.q[target], cols.r[target]));
+  const curIdx = hexIndex(state.grid.radius).indexOf(cols.q[bugRow]!, cols.r[bugRow]!);
+  const prevMotion = getMotion(state, bugId);
+  const wasStationary = !prevMotion || prevMotion.status !== 'following';
+  const sharedStand = isHexStationaryOccupied(state, curIdx, bugId, ctx.data, wasStationary);
+  if (distance <= attackRange + 1e-4 && !sharedStand) {
     if (cur?.kind === 'move' || cur?.kind === 'attack') issueUnitCommand(state, bugRow, { kind: 'stop', source: 'player' }, ctx);
     faceTowards(state, bugRow, cols.q[target]!, cols.r[target]!, ctx.tick);
     return;
   }
-  const maxDist = combatApproachBand(attackRange, 0,
-    hexDistance(cols.q[bugRow], cols.r[bugRow], cols.q[target], cols.r[target]),
-    hexDistance(cols.x[target], cols.y[target], cols.q[target], cols.r[target])).maxDist;
-  if (cur?.kind === 'move' && cur.q === cols.q[target] && cur.r === cols.r[target] && cur.maxDist === maxDist) return;
+  if (cur?.kind === 'move' && cur.q === cols.q[target] && cur.r === cols.r[target] && (cur.minDist ?? 0) === band.minDist && cur.maxDist === band.maxDist) return;
   issueUnitCommand(state, bugRow, {
-    kind: 'move', source: 'player', q: cols.q[target]!, r: cols.r[target]!, minDist: 0, maxDist,
+    kind: 'move', source: 'player', q: cols.q[target]!, r: cols.r[target]!, minDist: band.minDist, maxDist: band.maxDist,
   }, ctx);
 }
 

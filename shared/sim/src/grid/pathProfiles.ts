@@ -20,6 +20,35 @@ export function defineGroundOccupancy(fn: GroundOccupancy): void {
   if (!occupancy.includes(fn)) occupancy.push(fn);
 }
 
+export interface UnitHexOccupancy {
+  readonly claimedGoals: ReadonlySet<number>;
+  readonly inTransitGoals: ReadonlySet<number>;
+  readonly hostileStationary: ReadonlySet<number>;
+  readonly alliedStationary: ReadonlySet<number>;
+}
+
+export type UnitOccupancyResolver = (
+  state: PlanetState,
+  entityId: number,
+  data?: CompiledDataLike,
+) => UnitHexOccupancy | null;
+
+export const ALLIED_UNIT_AVOID_COST_BP = 800;
+let unitOccupancyResolver: UnitOccupancyResolver | null = null;
+
+export function defineUnitOccupancy(fn: UnitOccupancyResolver): void {
+  unitOccupancyResolver = fn;
+}
+
+export function resolveRegisteredUnitOccupancy(
+  state: PlanetState,
+  entityId: number,
+  data?: CompiledDataLike,
+): UnitHexOccupancy | null {
+  if (entityId <= 0 || !unitOccupancyResolver) return null;
+  return unitOccupancyResolver(state, entityId, data);
+}
+
 /** Footprint tiles split into those of the footprints containing `fromIdx` (`own`) and all the others. */
 function occupiedTiles(state: PlanetState, fromIdx: number, data?: CompiledDataLike): { own: Set<number>; others: Set<number> } {
   const own = new Set<number>();
@@ -34,7 +63,12 @@ function occupiedTiles(state: PlanetState, fromIdx: number, data?: CompiledDataL
 }
 
 type Predicate = (tileIdx: number) => boolean;
-interface Blockers { blocked: Predicate; goalBlocked: Predicate }
+export interface Blockers {
+  blocked: Predicate;
+  goalBlocked: Predicate;
+  bandGoalBlocked?: Predicate;
+  avoidPenaltyBp?: (tileIdx: number) => number;
+}
 
 /**
  * Named movement profiles for path requests. A request in the path queue is plain data (it lives in a blob), so it
@@ -142,21 +176,78 @@ function crossSectorBlockerFor(state: PlanetState, fromIdx: number): Predicate |
  * The extra-obstacle predicate of `profile` on `state` (undefined for `none`) for a unit at tile `fromIdx` (the
  * footprint it stands in, if any, does not block it). `data`: the step's compiled data (footprint sizes).
  */
-export function pathBlockedFor(state: PlanetState, profile: PathProfileId | undefined, fromIdx = -1, data?: CompiledDataLike): Predicate | undefined {
-  return pathBlockersFor(state, profile, fromIdx, data)?.blocked;
+export function pathBlockedFor(
+  state: PlanetState,
+  profile: PathProfileId | undefined,
+  fromIdx = -1,
+  data?: CompiledDataLike,
+  entityId?: number,
+): Predicate | undefined {
+  return pathBlockersFor(state, profile, fromIdx, data, entityId)?.blocked;
+}
+
+function combineWithUnitOccupancy(
+  base: Blockers | undefined,
+  _fromIdx: number,
+  unitOcc: UnitHexOccupancy | null,
+): Blockers | undefined {
+  if (!unitOcc) return base;
+  const hasGoal = unitOcc.claimedGoals.size > 0;
+  const hasTransit = unitOcc.inTransitGoals.size > 0;
+  const hasAvoid = unitOcc.alliedStationary.size > 0 || unitOcc.hostileStationary.size > 0;
+  if (!hasGoal && !hasTransit && !hasAvoid) return base;
+  const goalUnit: Predicate = (i) => hasGoal && unitOcc.claimedGoals.has(i);
+  const bandGoalUnit: Predicate = (i) => goalUnit(i) || (hasTransit && unitOcc.inTransitGoals.has(i));
+  const avoidPenaltyBp = hasAvoid
+    ? (i: number) =>
+        unitOcc.hostileStationary.has(i)
+          ? ALLIED_UNIT_AVOID_COST_BP * 2
+          : unitOcc.alliedStationary.has(i)
+            ? ALLIED_UNIT_AVOID_COST_BP
+            : 0
+    : undefined;
+  if (!base) {
+    return {
+      blocked: () => false,
+      goalBlocked: goalUnit,
+      bandGoalBlocked: bandGoalUnit,
+      ...(avoidPenaltyBp ? { avoidPenaltyBp } : {}),
+    };
+  }
+  return {
+    blocked: base.blocked,
+    goalBlocked: (i) => base.goalBlocked(i) || goalUnit(i),
+    bandGoalBlocked: (i) => base.goalBlocked(i) || bandGoalUnit(i),
+    ...(avoidPenaltyBp ? { avoidPenaltyBp } : {}),
+  };
 }
 
 /**
  * Both predicates a path search needs, from one pass over the footprints: `blocked` (crossing; the footprint the unit
- * stands in at `fromIdx` is exempt) and `goalBlocked` (ending; no footprint is exempt). Undefined for `none`.
+ * stands in at `fromIdx` is exempt) and `goalBlocked` (ending; no footprint or claimed unit hex is exempt). Undefined for `none` without unit occupancy.
  */
-export function pathBlockersFor(state: PlanetState, profile: PathProfileId | undefined, fromIdx: number, data?: CompiledDataLike): Blockers | undefined {
-  const base = PROFILES[profile ?? 'none']?.(state, fromIdx, data);
+export function pathBlockersFor(
+  state: PlanetState,
+  profile: PathProfileId | undefined,
+  fromIdx: number,
+  data?: CompiledDataLike,
+  entityId?: number,
+  unitOccOverride?: UnitHexOccupancy | null,
+): Blockers | undefined {
+  const unitOcc =
+    unitOccOverride !== undefined
+      ? unitOccOverride
+      : entityId !== undefined && entityId > 0
+        ? resolveRegisteredUnitOccupancy(state, entityId, data)
+        : null;
+  const base = combineWithUnitOccupancy(PROFILES[profile ?? 'none']?.(state, fromIdx, data), fromIdx, unitOcc);
   const crossSec = crossSectorBlockerFor(state, fromIdx);
   if (!crossSec) return base;
   if (!base) return { blocked: crossSec, goalBlocked: crossSec };
   return {
     blocked: (i) => crossSec(i) || base.blocked(i),
     goalBlocked: (i) => crossSec(i) || base.goalBlocked(i),
+    ...(base.bandGoalBlocked ? { bandGoalBlocked: (i) => crossSec(i) || base.bandGoalBlocked!(i) } : {}),
+    ...(base.avoidPenaltyBp ? { avoidPenaltyBp: base.avoidPenaltyBp } : {}),
   };
 }

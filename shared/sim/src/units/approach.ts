@@ -3,7 +3,8 @@ import { setField } from '../ecs/store';
 import { hexDistance, hexIndex } from '../grid/hex';
 import { pathBlockersFor } from '../grid/pathProfiles';
 import { notifyUnitChanged } from './mobility';
-import { getMotion, requestMove, sameGoal, type MoveGoal } from './movement/orchestrator';
+import { cancelMove, getMotion, matchesMotionGoal, requestMove, type MoveGoal } from './movement/orchestrator';
+import { isHexStationaryOccupied } from './movement/unitOccupancy';
 import type { UnitCtx } from './types';
 
 export type ApproachStatus = 'arrived' | 'moving' | 'failed';
@@ -27,20 +28,28 @@ export function setUnitActivity(u: UnitCtx, state: number, targetQ: number, targ
   if (changed) notifyUnitChanged(u.state, u.row, tick, u.ctx.data);
 }
 
-/** Standing on a tile centre within the band, on a tile the unit may stand on (not inside a building footprint). */
+function isSharedWithLowerUnit(u: UnitCtx, tileIdx: number): boolean {
+  return isHexStationaryOccupied(u.state, tileIdx, u.id, u.ctx.data, true);
+}
+
+/** Standing on a tile centre within the band, on a tile the unit may stand on (not inside a building footprint or shared hex). */
 function inBand(u: UnitCtx, goal: MoveGoal): boolean {
   const cols = u.state.entities.cols;
   const atCentre = cols.x[u.row] === cols.q[u.row] && cols.y[u.row] === cols.r[u.row];
   const d = hexDistance(cols.q[u.row], cols.r[u.row], goal.q, goal.r);
   if (!atCentre || d < goal.minDist || d > goal.maxDist) return false;
   const here = hexIndex(u.state.grid.radius).indexOf(cols.q[u.row], cols.r[u.row]);
-  return !(pathBlockersFor(u.state, u.stats.profile, here, u.ctx.data)?.goalBlocked(here) ?? false);
+  if (isSharedWithLowerUnit(u, here)) return false;
+  return !(pathBlockersFor(u.state, u.stats.profile, here, u.ctx.data, u.id)?.goalBlocked(here) ?? false);
 }
 
 /** Without moving anything: is the unit where `approach(goal)` would answer `arrived`? (For `work` phases.) */
 export function atGoal(u: UnitCtx, goal: MoveGoal): boolean {
+  const cols = u.state.entities.cols;
+  const here = hexIndex(u.state.grid.radius).indexOf(cols.q[u.row], cols.r[u.row]);
+  if (isSharedWithLowerUnit(u, here)) return false;
   const motion = getMotion(u.state, u.id);
-  if (motion && sameGoal(motion.goal, goal)) return motion.status === 'arrived';
+  if (motion && matchesMotionGoal(motion, goal)) return motion.status === 'arrived';
   return inBand(u, goal);
 }
 
@@ -52,12 +61,21 @@ export function atGoal(u: UnitCtx, goal: MoveGoal): boolean {
  */
 export function approach(u: UnitCtx, goal: MoveGoal, retarget = 0): ApproachStatus {
   const motion = getMotion(u.state, u.id);
-  const following = motion !== null && (sameGoal(motion.goal, goal) || (retarget > 0 && hexDistance(motion.goal.q, motion.goal.r, goal.q, goal.r) <= retarget && motion.goal.maxDist === goal.maxDist));
+  const following =
+    motion !== null &&
+    (matchesMotionGoal(motion, goal) ||
+      (retarget > 0 && hexDistance(motion.goal.q, motion.goal.r, goal.q, goal.r) <= retarget && motion.goal.maxDist === goal.maxDist));
   if (following && motion) {
     if (motion.status === 'failed') return 'failed';
-    if (motion.status === 'arrived') return 'arrived';
-    setUnitActivity(u, ENTITY_STATE.moving, goal.q, goal.r);
-    return 'moving';
+    if (motion.status === 'arrived') {
+      const cols = u.state.entities.cols;
+      const here = hexIndex(u.state.grid.radius).indexOf(cols.q[u.row], cols.r[u.row]);
+      if (!isSharedWithLowerUnit(u, here)) return 'arrived';
+      cancelMove(u.state, u.id, u.ctx.tick);
+    } else {
+      setUnitActivity(u, ENTITY_STATE.moving, motion.goal.q, motion.goal.r);
+      return 'moving';
+    }
   }
   if (inBand(u, goal)) return 'arrived';
   requestMove(u.state, u.row, goal, u.ctx);

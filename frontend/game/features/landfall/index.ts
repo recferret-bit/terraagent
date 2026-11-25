@@ -1,7 +1,12 @@
+import type * as THREE from 'three';
 import type { ViewEntity } from '@terra/sim';
+import { isGameInputBlocked } from '../../core/input/gameInputBlock';
 import { defineFeature, type Feature, type FeatureContext, type GameView } from '../../core/registry/types';
 import type { SendCommand } from '../../net/commandBus';
+import { isReadOnlySpectator, ownColonyIndex } from '../shared/colony';
+import { isHotkeyPress, isTypingTarget } from '../shared/hotkeys';
 import { HqPanel, type SelectionCombatHost, type SelectionCombatSummary } from './HqPanel';
+import { MarqueeSelectionController, type MarqueeSelectionOptions } from './parts/marqueeSelection';
 import {
   extractHqFromView,
   extractSelectableEntities,
@@ -26,6 +31,8 @@ export {
   extractSelectableEntities,
   hqJobFromStateCode,
   HqPanel,
+  MarqueeSelectionController,
+  type MarqueeSelectionOptions,
   type SelectionCombatHost,
   type SelectionCombatSummary,
   inspectDepositAt,
@@ -52,6 +59,7 @@ declare module '../../core/registry/types' {
     landfall?: LandfallController;
     selectionCombatHost?: SelectionCombatHost;
     canvas?: HTMLElement | null;
+    camera?: THREE.PerspectiveCamera | null;
   }
 }
 
@@ -62,6 +70,8 @@ export interface MountLandfallCtx {
   sendCommand?: SendCommand;
   pickTile?: TilePicker;
   canvas?: HTMLElement | null;
+  surface?: HTMLElement | null;
+  projectEntityClientPoint?: (entity: SelectedEntityView) => { x: number; y: number } | null;
   ownerColonyIndex?: number;
   autoSelect?: boolean;
   onTargetMove?: (q: number, r: number) => void;
@@ -71,11 +81,14 @@ export interface MountLandfallCtx {
 export interface MountedLandfall {
   readonly controller: LandfallController;
   readonly panel: HqPanel;
+  readonly marquee: MarqueeSelectionController | null;
   selectHq(): number | null;
   selectEntity(entityId: number | null): number | null;
+  selectEntities(entityIds: readonly number[]): number[];
   toggleSelectHq(): number | null;
   deselect(): void;
   getSelectedEntityId(): number | null;
+  getSelectedEntityIds(): number[];
   getSelectedEntity(): SelectedEntityView | null;
   getSelectedDeposit(): SelectedDepositView | null;
   getHq(): HqStatusView | null;
@@ -112,14 +125,51 @@ export function mountLandfall(ctx: MountLandfallCtx): MountedLandfall {
     ctx.services.selectionCombatHost = panel;
   }
 
+  const surface = ctx.surface ?? ctx.services?.surface ?? ctx.canvas ?? ctx.services?.canvas ?? null;
+  const services = ctx.services;
+  const marquee = surface
+    ? new MarqueeSelectionController({
+        surface,
+        overlayParent: surface.ownerDocument?.body ?? document.body,
+        landfall: () => services?.landfall ?? controller,
+        armyOrders: () => services?.armyOrders,
+        mouseCursor: () => services?.mouseCursor,
+        getView: () => services?.getView?.() ?? (ctx.store ?? services?.store)?.latest,
+        getColonyId: () => ownColonyIndex(services, ctx.ownerColonyIndex),
+        getCamera: () => services?.camera ?? null,
+        scene3d: () => services?.scene3d,
+        pickTile: ctx.pickTile ?? services?.pickTile,
+        projectEntityClientPoint: ctx.projectEntityClientPoint,
+        isSpectator: () => isReadOnlySpectator(services) || controller.isSpectator(),
+        isInputBlocked: () =>
+          isGameInputBlocked() ||
+          controller.isDeployed() === false ||
+          services?.hubPlacement?.isPlacementActive() === true ||
+          (services?.getPlacementGhostState?.() ?? null) !== null ||
+          services?.terraform?.isArmed() === true,
+      })
+    : null;
+
+  const onKeyDown = (e: KeyboardEvent) => {
+    if (isGameInputBlocked() || isTypingTarget(e)) return;
+    if ((e.code === 'KeyX' || e.key === 'x' || e.key === 'X') && isHotkeyPress(e)) {
+      controller.stopSelected();
+    }
+  };
+  const hasWin = Boolean(surface && typeof window !== 'undefined' && typeof window.addEventListener === 'function');
+  if (hasWin) window.addEventListener('keydown', onKeyDown);
+
   return {
     controller,
     panel,
+    marquee,
     selectHq: () => controller.selectHq(),
     selectEntity: (entityId) => controller.selectEntity(entityId),
+    selectEntities: (entityIds) => controller.selectEntities(entityIds),
     toggleSelectHq: () => controller.toggleSelectHq(),
     deselect: () => controller.deselect(),
     getSelectedEntityId: () => controller.getSelectedEntityId(),
+    getSelectedEntityIds: () => controller.getSelectedEntityIds(),
     getSelectedEntity: () => controller.getSelectedEntity(),
     getSelectedDeposit: () => controller.getSelectedDeposit(),
     getHq: () => controller.getHq(),
@@ -130,6 +180,8 @@ export function mountLandfall(ctx: MountLandfallCtx): MountedLandfall {
     handleRightClick: (q, r) => controller.handleRightClick(q, r),
     update: (view) => controller.onView(view),
     dispose: () => {
+      if (hasWin) window.removeEventListener('keydown', onKeyDown);
+      marquee?.dispose();
       if (ctx.services?.selectionDetails === panel.details) ctx.services.selectionDetails = undefined;
       if (ctx.services?.selectionCombatHost === panel) ctx.services.selectionCombatHost = undefined;
       panel.dispose();

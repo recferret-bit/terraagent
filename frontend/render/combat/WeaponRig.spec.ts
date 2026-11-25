@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { createArchetypeMesh, stripBuildingPlinth, tickArchetypeMesh } from '../kitbash';
 import { BattlePresentation } from './BattlePresentation';
+import { CombatShotCoordinator } from './CombatShotCoordinator';
 import { WeaponRig } from './WeaponRig';
 import { stampWeaponRig, WeaponRigRegistry } from './weaponRigs';
 import { computeBarrelTipHeatMask } from './weaponShader';
@@ -341,7 +342,7 @@ describe('barrel tip plinth, side routing and cold rigs', () => {
     expect(rightSideMesh.userData.uniforms.uWeaponSideHeat.value.x).toBe(0);
     expect(rightSideMesh.userData.uniforms.uWeaponSideHeat.value.y).toBeCloseTo(1, 5);
 
-    for (const coldId of ['robot.tank', 'robot.combat', 'building.laserTower'] as const) {
+      for (const coldId of ['robot.tank', 'robot.combat', 'building.laserTower'] as const) {
       const m = createArchetypeMesh(coldId);
       const rig = new WeaponRig(m, WeaponRigRegistry.get(coldId)!);
       rig.fire(new THREE.Vector3(0, 1, 10));
@@ -350,5 +351,102 @@ describe('barrel tip plinth, side routing and cold rigs', () => {
       expect(m.userData.uniforms.uWeaponHeat.value).toBe(0);
       expect(m.userData.uniforms.uWeaponHeatScale.value).toBe(0);
     }
+  });
+
+  it('exposes cartridge ejection ports in turret heads and computes two-way and scaled eject origins', () => {
+    const turretMesh = createArchetypeMesh('building.turret');
+    const turretParts = turretMesh.geometry.userData.partRanges as { name: string }[];
+    expect(turretParts.filter(p => p.name === 'ejection port opening')).toHaveLength(2);
+    expect(turretParts.filter(p => p.name === 'ejection port hood')).toHaveLength(2);
+    const turretDef = WeaponRigRegistry.get('building.turret')!;
+    expect(turretDef.head).toContain('ejection port opening');
+    expect(turretDef.head).toContain('ejection port hood');
+
+    const turretRig = new WeaponRig(turretMesh, turretDef);
+    turretRig.snapAim(new THREE.Vector3(0, 1.5, 10));
+    const leftEject = turretRig.ejectOrigin(0);
+    const rightEject = turretRig.ejectOrigin(1);
+    expect(leftEject.pos.x).toBeLessThan(-0.4);
+    expect(rightEject.pos.x).toBeGreaterThan(0.4);
+    expect(leftEject.dir.dot(rightEject.dir)).toBeCloseTo(-1, 5);
+    expect(Number.isFinite(turretRig.ejectOrigin(99).pos.x)).toBe(true);
+
+    turretRig.snapAim(new THREE.Vector3(10, 1.5, 0));
+    const turnedLeft = turretRig.ejectOrigin(0);
+    const turnedRight = turretRig.ejectOrigin(1);
+    expect(turnedLeft.dir.dot(turnedRight.dir)).toBeCloseTo(-1, 5);
+    expect(Math.abs(turnedLeft.dir.z)).toBeGreaterThan(0.95);
+
+    const artMesh = createArchetypeMesh('robot.artillery');
+    const artParts = artMesh.geometry.userData.partRanges as { name: string }[];
+    expect(artParts.filter(p => p.name === 'ejection port opening')).toHaveLength(1);
+    const artRig = new WeaponRig(artMesh, WeaponRigRegistry.get('robot.artillery')!);
+    expect(artRig.ejectOrigin(0).scale).toBeGreaterThan(turretRig.ejectOrigin(0).scale);
+
+    const reconMesh = createArchetypeMesh('robot.recon');
+    const reconParts = reconMesh.geometry.userData.partRanges as { name: string }[];
+    expect(reconParts.filter(p => p.name === 'ejection port opening')).toHaveLength(1);
+    const reconRig = new WeaponRig(reconMesh, WeaponRigRegistry.get('robot.recon')!);
+    expect(turretRig.ejectOrigin(0).scale).toBeGreaterThan(reconRig.ejectOrigin(0).scale);
+  });
+});
+
+describe('robot.recon gyro-stabilized move-and-fire turret', () => {
+  it('gyro-stabilizes robot.recon turret on a flank target while driving and cornering and fires 3-round bursts from the moving muzzle', () => {
+    const reconMesh = createArchetypeMesh('robot.recon');
+    const targetMesh = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial());
+    targetMesh.position.set(6, 0.8, 8);
+
+    const battle = new BattlePresentation(id => (id === 1 ? reconMesh : id === 2 ? targetMesh : undefined));
+    const vfx = new ProjectileVfxSystem();
+    const shots = new CombatShotCoordinator(battle, vfx, id => (id === 1 ? reconMesh : id === 2 ? targetMesh : undefined));
+    battle.sync({ byEntityId: { 1: { targetId: 2 } } });
+
+    reconMesh.position.set(0, 0, 0);
+    reconMesh.rotation.y = 0.2;
+    battle.update(0.05);
+    const rig = battle.getRig(1)!;
+    // Let turret lock initially while chassis corners smoothly
+    for (let i = 0; i < 8; i++) {
+      reconMesh.position.x += 0.25;
+      reconMesh.rotation.y += 0.14;
+      tickArchetypeMesh(reconMesh, i * 0.05, 1.0, 0);
+      battle.update(0.05);
+    }
+    const desiredDir = targetMesh.position.clone().sub(rig.muzzle()).normalize();
+    expect(rig.direction().dot(desiredDir)).toBeGreaterThan(0.985);
+    expect(Math.abs(rig.currentYaw)).toBeGreaterThan(0.2);
+
+    const expectedChassisYaw = reconMesh.rotation.y;
+    const shotInput = {
+      weaponKind: 'bullet' as const,
+      weaponId: 'reconGun',
+      from: reconMesh.position.clone(),
+      to: targetMesh.position.clone(),
+      targetId: 2,
+      firedTick: 10,
+      speed: 40,
+    };
+    expect(shots.isReadyToFire(1, shotInput)).toBe(true);
+    shots.dispatchShot(1, shotInput);
+    expect(reconMesh.rotation.y).toBeCloseTo(expectedChassisYaw, 6);
+
+    let maxProjectiles = 0;
+    for (let i = 0; i < 6; i++) {
+      reconMesh.position.x += 0.25;
+      targetMesh.position.z += 0.12;
+      tickArchetypeMesh(reconMesh, 0.5 + i * 0.04, 1.0, 0);
+      battle.update(0.04);
+      shots.update(0.04);
+      vfx.update(0.04);
+      maxProjectiles = Math.max(maxProjectiles, vfx.getActiveCounts().projectiles);
+    }
+    expect(maxProjectiles).toBeGreaterThanOrEqual(2);
+    expect(reconMesh.rotation.y).toBeCloseTo(expectedChassisYaw, 6);
+
+    battle.sync({ byEntityId: { 1: { targetId: null } } });
+    for (let i = 0; i < 40; i++) battle.update(0.05);
+    expect(rig.currentYaw).toBeCloseTo(0, 5);
+    vfx.dispose();
   });
 });

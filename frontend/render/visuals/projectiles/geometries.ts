@@ -13,7 +13,9 @@ export type ProjectileGeometryKey =
   | 'impactFlash'
   | 'impactDebris'
   | 'aoeRing'
-  | 'aoeDecal';
+  | 'aoeDecal'
+  | 'shockwave'
+  | 'groundCrater';
 
 const geoCache = new Map<ProjectileGeometryKey, THREE.BufferGeometry>();
 
@@ -119,10 +121,35 @@ function buildAoeRingGeo(): THREE.BufferGeometry {
 }
 
 function buildAoeDecalGeo(): THREE.BufferGeometry {
-  // Low-poly 3D bevelled scorch/crater disc on XZ plane (unit radius)
-  const rim = new THREE.CylinderGeometry(0.96, 1.0, 0.05, 14, 1, false);
-  rim.translate(0, 0.025, 0);
-  return finalizeGeo(rim);
+  // Scattered tiny 3D splatter droplets (never a flat polygon/cylinder disk on terrain)
+  const drops: THREE.BufferGeometry[] = [];
+  const offsets: ReadonlyArray<[number, number, number]> = [
+    [0.14, -0.09, 1.0],
+    [-0.19, 0.12, 0.85],
+    [0.06, 0.22, 0.78],
+    [-0.11, -0.21, 0.72],
+    [0.25, 0.08, 0.68],
+  ];
+  for (const [ox, oz, s] of offsets) {
+    const bead = new THREE.OctahedronGeometry(0.038 * s, 0);
+    bead.scale(1.15, 0.45, 0.95);
+    bead.translate(ox, 0.018 * s, oz);
+    drops.push(nonIdx(bead));
+  }
+  return finalizeGeo(mergeGeometries(drops, false));
+}
+
+function buildShockwaveGeo(): THREE.BufferGeometry {
+  const torus = new THREE.TorusGeometry(1.0, 0.085, 5, 24);
+  torus.rotateX(-Math.PI / 2);
+  torus.scale(1, 0.42, 1);
+  return finalizeGeo(torus);
+}
+
+function buildGroundCraterGeo(): THREE.BufferGeometry {
+  const plane = new THREE.PlaneGeometry(2, 2, 4, 4);
+  plane.rotateX(-Math.PI / 2);
+  return finalizeGeo(plane);
 }
 
 export function getProjectileVfxGeometry(key: ProjectileGeometryKey): THREE.BufferGeometry {
@@ -165,6 +192,12 @@ export function getProjectileVfxGeometry(key: ProjectileGeometryKey): THREE.Buff
       break;
     case 'aoeDecal':
       geo = buildAoeDecalGeo();
+      break;
+    case 'shockwave':
+      geo = buildShockwaveGeo();
+      break;
+    case 'groundCrater':
+      geo = buildGroundCraterGeo();
       break;
   }
   geoCache.set(key, geo);

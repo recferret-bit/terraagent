@@ -90,6 +90,7 @@ export function advanceAlongRoute(
   stats: MobileStats,
   ctx: StepContext,
   blocked: ((tileIdx: number) => boolean) | undefined,
+  finalBlocked?: (tileIdx: number) => boolean,
 ): LocomotionResult {
   const e = state.entities;
   const cols = e.cols;
@@ -117,9 +118,11 @@ export function advanceAlongRoute(
       startSectorId !== null && globalTileToSector(tx, ty, atlasBlob!.sectorRadius).sectorId !== startSectorId;
     // the tile the unit already stands in never blocks it (it may only walk out), like A*'s exempt start tile
     const inside = tx === prevQ && ty === prevR;
+    const isFinalStep = route.next === waypoints - 1;
     if (
       tileIdx < 0 ||
       crossesSector ||
+      (isFinalStep && (finalBlocked?.(tileIdx) ?? false)) ||
       (!inside && (!isGroundPassable(state.grid, tileIdx, ctx.data) || (blocked?.(tileIdx) ?? false)))
     ) {
       result = 'blocked';

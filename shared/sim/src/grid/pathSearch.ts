@@ -55,6 +55,8 @@ export interface FindHexPathOptions {
   band?: PathGoalBand;
   /** Tiles a band goal may not end on although they can be crossed (the footprint the unit is leaving). Default `blocked`. */
   goalBlocked?: (tileIdx: number) => boolean;
+  /** Optional extra step cost (bp) for soft-avoidance tiles such as parked allied units. */
+  avoidPenaltyBp?: (tileIdx: number) => number;
 }
 
 export interface HexPathResult {
@@ -75,6 +77,7 @@ export interface AStarSearchState {
   readonly data?: CompiledDataLike;
   readonly blocked?: (tileIdx: number) => boolean;
   readonly goalBlocked?: (tileIdx: number) => boolean;
+  readonly avoidPenaltyBp?: (tileIdx: number) => number;
   /** The grid's layers and tile count, resolved once per search (the arrays are live: writes show up). */
   readonly layers: TileLayersLike;
   readonly count: number;
@@ -309,6 +312,7 @@ export function createAStarSearch(grid: GridLike, from: AxialCoord, to: AxialCoo
     data: opts?.data,
     blocked: effectiveBlocked,
     goalBlocked: effectiveGoalBlocked,
+    avoidPenaltyBp: opts?.avoidPenaltyBp,
     layers,
     count,
     costs: stepCostTable(opts?.data),
@@ -334,7 +338,22 @@ export function createAStarSearch(grid: GridLike, from: AxialCoord, to: AxialCoo
 
   const fail: HexPathResult = { ok: false, path: [], expansions: 0, totalCostBp: 0 };
   if (startIdx < 0 || goalIdx < 0 || !isGroundPassable(grid, startIdx, opts?.data)) return finish(s, fail);
-  if (!band && (!isGroundPassable(grid, goalIdx, opts?.data) || (effectiveBlocked?.(goalIdx) ?? false))) return finish(s, fail);
+  if (!band && (!isGroundPassable(grid, goalIdx, opts?.data) || (effectiveGoalBlocked?.(goalIdx) ?? false))) return finish(s, fail);
+  if (band && band.maxDist <= 12) {
+    let anyBandStandable = false;
+    outer: for (let dr = -band.maxDist; dr <= band.maxDist; dr++) {
+      for (let dq = Math.max(-band.maxDist, -dr - band.maxDist); dq <= Math.min(band.maxDist, -dr + band.maxDist); dq++) {
+        const d = Math.max(Math.abs(dq), Math.abs(dr), Math.abs(dq + dr));
+        if (d < band.minDist || d > band.maxDist) continue;
+        const ti = idx.indexOf(to.q + dq, to.r + dr);
+        if (ti >= 0 && searchStepCost(s, ti) > 0 && !(effectiveGoalBlocked?.(ti) ?? false)) {
+          anyBandStandable = true;
+          break outer;
+        }
+      }
+    }
+    if (!anyBandStandable) return finish(s, fail);
+  }
   if (isGoalTile(s, startIdx)) {
     return finish(s, { ok: true, path: [{ q: from.q, r: from.r }], expansions: 0, totalCostBp: 0 });
   }
@@ -362,7 +381,8 @@ function expandNeighbors(s: AStarSearchState, currIdx: number): void {
     if (nIdx < 0 || s.mark[nIdx] === 2) continue;
     const stepCost = searchStepCost(s, nIdx);
     if (stepCost <= 0 || s.blocked?.(nIdx)) continue;
-    const tentativeG = baseG + stepCost;
+    const avoid = s.avoidPenaltyBp ? s.avoidPenaltyBp(nIdx) : 0;
+    const tentativeG = baseG + stepCost + avoid;
     if (s.mark[nIdx] === 0 || tentativeG < s.gScore[nIdx]) {
       s.mark[nIdx] = 1;
       s.cameFrom[nIdx] = currIdx;

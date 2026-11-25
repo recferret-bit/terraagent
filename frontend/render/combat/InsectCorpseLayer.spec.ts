@@ -56,7 +56,7 @@ describe('randomized insect deaths, gore VFX & persistent corpses', () => {
     expect(onDeathSpy).toHaveBeenCalledTimes(1);
     expect(vfx.getBurstCounts()['combat.insectDeath']).toBeGreaterThan(0);
     expect(vfx.getBurstCounts()['combat.acidHit']).toBeGreaterThan(0);
-    expect(vfx.getActiveAoeDecals().length).toBeGreaterThan(0);
+    expect(vfx.getActiveAoeDecals()).toHaveLength(0);
 
     for (let i = 0; i < 15; i++) battle.update(0.1);
     const corpses = new InsectCorpseLayer(parent, 'desert', 2);

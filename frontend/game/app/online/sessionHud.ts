@@ -30,6 +30,7 @@ export interface SessionHudDeps {
   landfall: LandfallController;
   terrain(): HexTerrain | null;
   renderedEntityPosition?(entityId: number): Readonly<THREE.Vector3> | null;
+  syncCombatSelection?(entityIds: readonly number[], optimisticTargets?: ReadonlyMap<number, number>): void;
   biomeKey(): string;
   /** The in-process fallback host, once attached (its dev server and ledger replace the server's). */
   localHost(): LocalHost | null;
@@ -103,6 +104,7 @@ export function createSessionHud(d: SessionHudDeps): FeatureHud {
     isFullVision: d.isFullVision,
     setFullVision: d.setFullVision,
     isCombatTest: d.isCombatTest,
+    syncCombatSelection: d.syncCombatSelection,
     inspectColony: d.inspectColony,
   };
   Object.defineProperties(services, {

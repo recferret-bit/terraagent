@@ -3,6 +3,7 @@
 export interface TileCoord {
   q: number;
   r: number;
+  entityId?: number;
 }
 
 /** Screen point → tile under it (the session's terrain pick), or `null` off the planet. */
@@ -17,8 +18,10 @@ interface PointerLike {
 
 function tileFromDetail(detail: unknown): TileCoord | null {
   if (!detail || typeof detail !== 'object') return null;
-  const d = detail as { q?: unknown; r?: unknown };
-  return typeof d.q === 'number' && typeof d.r === 'number' ? { q: d.q, r: d.r } : null;
+  const d = detail as { q?: unknown; r?: unknown; entityId?: unknown };
+  return typeof d.q === 'number' && typeof d.r === 'number'
+    ? { q: d.q, r: d.r, ...(typeof d.entityId === 'number' ? { entityId: d.entityId } : {}) }
+    : null;
 }
 
 function tileFromDataAttrs(target: EventTarget | null | undefined): TileCoord | null {
@@ -41,7 +44,13 @@ export function resolvePointerTile(ev: PointerLike, pickTile?: TilePickerFn): Ti
   if (fromDetail) return fromDetail;
   if (pickTile) {
     const picked = pickTile(ev.clientX ?? 0, ev.clientY ?? 0, ev.target ?? null);
-    if (picked) return { q: picked.q, r: picked.r };
+    if (picked) {
+      return {
+        q: picked.q,
+        r: picked.r,
+        ...(typeof picked.entityId === 'number' ? { entityId: picked.entityId } : {}),
+      };
+    }
   }
   return tileFromDataAttrs(ev.target);
 }

@@ -52,7 +52,6 @@ export class CommandBus {
    * reconnecting) resolves `not_connected` at once and the command is neither pending nor predicted.
    */
   readonly send: SendCommand = (kind, args = {}, opts) => {
-    notePlayerCommand(kind, args);
     const id = newId('cm');
     return new Promise<CommandResult>((resolve) => {
       const timer = setTimeout(() => {
@@ -68,6 +67,7 @@ export class CommandBus {
         this.settle(id, p, { ok: false, code: 'not_connected', detail: e instanceof Error ? e.message : String(e) });
         return;
       }
+      notePlayerCommand(kind, args);
       if (opts?.predict !== false) this.onSent?.(id, kind, args);
     });
   };

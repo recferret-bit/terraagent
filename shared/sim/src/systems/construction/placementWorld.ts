@@ -1,6 +1,7 @@
 import { globalTileToSector } from '../../atlas/partition';
 import { ENTITY_KIND } from '../../ecs/columns';
 import type { SimState } from '../../kernel/state';
+import { getWreckGroupMap, getWreckTileSet } from '../combat/wrecks';
 import type { PlacementEntity, PlacementTile, PlacementWorld } from './placement';
 
 /** An open queue entry as placement reads it (authoritative `blobs.queue` or a replica's colony queue). */
@@ -64,6 +65,8 @@ export function placementWorldFromState(state: SimState): PlacementWorld {
       }
     }
   }
+  const wrecks = getWreckTileSet(state);
+  const wreckGroups = wrecks.size > 0 ? getWreckGroupMap(state.grid.radius, state) : undefined;
   return {
     radius: state.grid.radius,
     tileCount: state.grid.count,
@@ -75,6 +78,7 @@ export function placementWorldFromState(state: SimState): PlacementWorld {
     height: (L.height as ArrayLike<number> | undefined) ?? null,
     valid: (L as { valid?: ArrayLike<number> }).valid ?? null,
     entities,
+    ...(wrecks.size > 0 ? { wrecks, wreckGroups } : {}),
     plannedSites: plannedSitesFromQueue((state.blobs.queue?.value as { entries?: PlannedQueueEntryLike[] } | undefined)?.entries ?? []),
     ...(Object.keys(landingAnchorByColony).length > 0 ? { landingAnchorByColony } : {}),
     ...(sectorRadius !== undefined ? { sectorRadius, colonyFoundingSectorById: foundingByColony } : {}),

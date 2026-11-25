@@ -49,7 +49,10 @@ export function createUnitControl(d: UnitControlDeps): { landfall: LandfallContr
   const offs = [
     () => { if (hasWindow) window.removeEventListener('keydown', onKey); },
     () => { d.entities.onCorrection = null; },
-    landfall.onChange(({ selectedEntityId }) => d.entities.setSelectedEntityId(selectedEntityId)),
+    landfall.onChange(({ selectedEntityId, selectedEntityIds }) => {
+      if (selectedEntityIds && selectedEntityIds.length > 1) d.entities.setSelectedEntityIds(selectedEntityIds);
+      else d.entities.setSelectedEntityId(selectedEntityId);
+    }),
     d.store.onCommandRejected((r) => { d.netStats.recordRollback(); d.entities.discardPrediction(r.code); }),
   ];
   return { landfall, dispose: () => { for (const off of offs) off(); } };

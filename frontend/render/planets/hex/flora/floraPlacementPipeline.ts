@@ -181,8 +181,6 @@ function enqueueDuneFloraRequests(
   } else if (t === HEX_TERRAIN.forest) {
     if (tileHash01(q, r, mixGroundSeed(planetSeed, 645)) > 0.46) push('bush', 655, 0.28, 0.40);
     push('grassTuft', 675, 0.24, 0.44);
-  } else if (t === HEX_TERRAIN.rock && 0.35 * ecotone.rockiness + 0.65 * tileHash01(q, r, mixGroundSeed(planetSeed, 681)) > 0.60) {
-    push('barrelCactus', 690, 0.26, 0.42);
   }
 }
 
@@ -225,6 +223,7 @@ function enqueueTileFloraRequests(params: {
     });
   };
 
+  if (t === HEX_TERRAIN.rock || t === HEX_TERRAIN.hole || t === HEX_TERRAIN.deep) return;
   if (prep === HEX_PREP.living) {
     if (biome === 'dune') {
       push('grassTuft', 710, 0.30, 0.28);

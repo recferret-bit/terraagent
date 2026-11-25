@@ -1,4 +1,4 @@
-import { rbox, cyl, sph, strut, sag, cable, mirror, lathe, solarPanel, type V3 } from '../../greebles/unitParts';
+import { rbox, cyl, sph, strut, sag, cable, mirror, lathe, solarPanel, ejectionPort, type V3 } from '../../greebles/unitParts';
 import * as THREE from 'three';
 import type { KitbashBuilder } from '../../KitbashRegistry';
 import { register } from './common';
@@ -234,6 +234,7 @@ register({
     const spiderBody = { animType: 9 as const };
     b.addPart(cyl(0.26, 0.3, 0.1, 10), 'frameGunmetal', { name: 'turret ring', position: [0, 1.0, 0.08], ...spiderBody });
     b.addPart(rbox(0.46, 0.24, 0.48, 0.055, 1), 'hullSecondary', { name: 'turret housing', position: [0, 1.15, 0.06], ...spiderBody });
+    ejectionPort(b, { side: -1, wallX: 0.23, y: 1.155, z: -0.02, height: 0.125, depth: 0.19, ...spiderBody });
     mirror((s) => {
       b.addPart(rbox(0.08, 0.16, 0.32, 0.02, 1), 'hullPrimary', { name: 'artillery cradle cheek', position: [0.16 * s, 1.16, 0.15], ...spiderBody });
     });

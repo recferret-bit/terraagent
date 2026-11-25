@@ -288,20 +288,27 @@ export class HqPanel implements SelectionCombatHost {
     }
 
     const combat = this.combatSummary;
-    const isMultiCombat = Boolean(combat && combat.count > 1);
+    const lfMulti = this.controller.getMultiSelectionSummary?.() ?? null;
+    const multiSummary =
+      lfMulti && (!combat || lfMulti.count > combat.count)
+        ? lfMulti
+        : combat && combat.count > 1
+          ? combat
+          : (lfMulti ?? combat);
+    const isMulti = Boolean(multiSummary && multiSummary.count > 1);
     const hasCombatControls = Boolean(combat && combat.count > 0);
 
     this.el.hidden = false;
     this.el.dataset.entityId = String(entity.entityId);
-    this.entityIdEl.hidden = isMultiCombat;
+    this.entityIdEl.hidden = isMulti;
     this.entityIdEl.textContent = `#${entity.entityId}`;
-    this.codeBadgeEl.textContent = isMultiCombat && combat?.code ? combat.code : entity.shortCode;
+    this.codeBadgeEl.textContent = isMulti && multiSummary?.code ? multiSummary.code : entity.shortCode;
     this.countEl.hidden = false;
-    this.countEl.textContent = String(hasCombatControls ? combat!.count : 1);
-    this.titleEl.textContent = isMultiCombat && combat?.title ? combat.title : entity.kindLabel;
+    this.countEl.textContent = String(isMulti ? multiSummary!.count : hasCombatControls ? combat!.count : 1);
+    this.titleEl.textContent = isMulti && multiSummary?.title ? multiSummary.title : entity.kindLabel;
     this.hpKey.textContent = 'HULL HP';
-    const hpVal = isMultiCombat && typeof combat?.hp === 'number' ? combat.hp : entity.hp;
-    const hpMaxVal = isMultiCombat && typeof combat?.hpMax === 'number' ? combat.hpMax : entity.hpMax;
+    const hpVal = isMulti && typeof multiSummary?.hp === 'number' ? multiSummary.hp : entity.hp;
+    const hpMaxVal = isMulti && typeof multiSummary?.hpMax === 'number' ? multiSummary.hpMax : entity.hpMax;
     this.hpText.textContent = `${Math.round(hpVal)} / ${Math.round(hpMaxVal)}`;
     setProgress(this.hpFill, hpVal, hpMaxVal);
 

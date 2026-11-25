@@ -15,6 +15,7 @@ import {
 } from '../../units/movement/groupMarch';
 import { requestMove } from '../../units/movement/orchestrator';
 import { assignSlots, diskPath, seatingPath } from '../../units/movement/slots';
+import { collectUnitOccupancy, findNearestFreeStandTile } from '../../units/movement/unitOccupancy';
 import { readStancesBlob, writeStancesBlob } from '../combat/stanceHelpers';
 import { getUnitStanceRecord, orderUnitAttackMove } from '../combat/stances';
 import { cancelWorkerJobs } from '../terraform-basic/workJobs';
@@ -109,6 +110,10 @@ function buildRaidMarchPlan(
   if (seeds.length === 0) return null;
 
   const taken = reservedSlotTiles(state);
+  const memberSet = new Set(members.map((m) => m.id));
+  for (const claimed of collectUnitOccupancy(state, -1, memberSet, ctx.data).claimedGoals) {
+    taken.add(claimed);
+  }
   const blockers = pathBlockersFor(state, profile, -1, ctx.data);
   const blocked = (i: number) => (blockers ? blockers.goalBlocked(i) : false);
   const seedTiles = seeds.map((i) => ({ q: idx.q[i]!, r: idx.r[i]! }));
@@ -251,10 +256,16 @@ export function orderRaidGroupFlowMarch(
   const { plan, overflow } = built;
   const slotted = dispatchSlottedMarchUnits(state, plan, ctx);
 
+  const overflowTaken = new Set<number>(plan.reserved);
   for (const id of overflow) {
+    const row = rowOf(state.entities, id);
+    const prof = row >= 0 ? movementProfile(state.entities.cols.kind[row]!, ctx.data) : 'ground';
+    const alt = findNearestFreeStandTile(state, anchor.q, anchor.r, prof, id, ctx.data, 8, overflowTaken) ?? anchor;
+    const altIdx = hexIndex(state.grid.radius).indexOf(alt.q, alt.r);
+    if (altIdx >= 0) overflowTaken.add(altIdx);
     cancelWorkerJobs(state, id, ctx.tick);
-    orderUnitAttackMove(state, id, anchor, ctx);
-    slotted[id] = { q: anchor.q, r: anchor.r };
+    orderUnitAttackMove(state, id, alt, ctx);
+    slotted[id] = { q: alt.q, r: alt.r };
   }
 
   return { slotted, usedFlowField: Object.keys(plan.slots).length > 0 };

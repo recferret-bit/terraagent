@@ -1,20 +1,26 @@
-import { ENTITY_KIND, ENTITY_STATE, entityFootprint, getBuildingFootprintTiles, occupiesGround, type CompiledDataLike, type ViewEntity } from '@terra/sim';
+import { ENTITY_KIND, ENTITY_STATE, type CompiledDataLike } from '@terra/sim';
 import type { GameView } from '../../core/registry/types';
 import type { SendCommand } from '../../net/commandBus';
-import { forEachEntity, type ClientView } from '../../store/replica/viewCodec';
+import type { ClientView } from '../../store/replica/viewCodec';
 import { extractHqFromView, type HqStatusView } from '../shared/hqView';
-import { resolvePointerTile, type TilePickerFn } from '../shared/pointer';
+import type { TilePickerFn } from '../shared/pointer';
 import type { ExtractorTierView } from './extractorTierView';
 import {
   extractSelectableEntities,
   isTileNearHq,
   unitFailureFromView,
 } from './parts/selectionEntityBuilder';
+import { dispatchSmartUnitMove, summarizeSelectedMultiUnits } from './parts/multiUnitOrders';
+import {
+  bindLandfallCanvasEvents,
+  checkTileBlockedByBuilding,
+  pickSelectableEntityOnTile,
+  resolveShiftUnitToggle,
+} from './parts/selectionCanvas';
 import {
   enrichHqSelectedView,
   hubUnitsLaneTaskId,
   inspectDepositAt,
-  isBuildingCoveringTile,
   type SelectedDepositView,
 } from './selectionHelpers';
 
@@ -87,6 +93,7 @@ export interface UnitFailureView {
 export type LandfallListener = (snapshot: {
   hq: HqStatusView | null;
   selectedEntityId: number | null;
+  selectedEntityIds: readonly number[];
   selectedEntity: SelectedEntityView | null;
   selectedDeposit: SelectedDepositView | null;
 }) => void;
@@ -96,6 +103,7 @@ export const RIGHT_CLICK_DEDUPE_MS = 400;
 
 export class LandfallController {
   private selectedEntityId: number | null = null;
+  private selectedEntityIds: number[] = [];
   public selectedDeposit: SelectedDepositView | null = null;
   private autoSelect: boolean;
   private spectator: boolean;
@@ -126,22 +134,22 @@ export class LandfallController {
 
   onChange(fn: LandfallListener): () => void {
     this.listeners.add(fn);
-    fn({
-      hq: this.latestHq,
-      selectedEntityId: this.selectedEntityId,
-      selectedEntity: this.getSelectedEntity(),
-      selectedDeposit: this.selectedDeposit,
-    });
+    fn(this.buildSnapshot());
     return () => this.listeners.delete(fn);
   }
 
-  private emit(): void {
-    const snap = {
+  private buildSnapshot() {
+    return {
       hq: this.latestHq,
       selectedEntityId: this.selectedEntityId,
+      selectedEntityIds: this.getSelectedEntityIds(),
       selectedEntity: this.getSelectedEntity(),
       selectedDeposit: this.selectedDeposit,
     };
+  }
+
+  private emit(): void {
+    const snap = this.buildSnapshot();
     for (const fn of this.listeners) fn(snap);
   }
 
@@ -186,6 +194,7 @@ export class LandfallController {
       this.latestHq = null;
       this.entitiesById.clear();
       this.selectedEntityId = null;
+      this.selectedEntityIds = [];
       this.selectedDeposit = null;
       this.emit();
       return;
@@ -216,10 +225,20 @@ export class LandfallController {
         this.autoSelect = true;
       }
     }
+    if (this.selectedEntityIds.length > 0) {
+      this.selectedEntityIds = this.selectedEntityIds.filter(
+        (id) => this.entitiesById.has(id) || (hq !== null && hq.entityId === id),
+      );
+      if (this.selectedEntityId !== null && !this.selectedEntityIds.includes(this.selectedEntityId)) {
+        this.selectedEntityId = this.selectedEntityIds[this.selectedEntityIds.length - 1] ?? null;
+      }
+    }
     if (this.selectedEntityId !== null && !this.entitiesById.has(this.selectedEntityId)) {
       this.selectedEntityId = this.autoSelect && !this.selectedDeposit && fallbackId !== null ? fallbackId : null;
+      this.selectedEntityIds = this.selectedEntityId !== null ? [this.selectedEntityId] : [];
     } else if (this.selectedEntityId === null && !this.selectedDeposit && this.autoSelect && fallbackId !== null) {
       this.selectedEntityId = fallbackId;
+      this.selectedEntityIds = [fallbackId];
     }
     this.reportFailure(view, hq);
     this.emit();
@@ -257,6 +276,7 @@ export class LandfallController {
     this.autoSelect = false;
     this.selectedDeposit = null;
     this.selectedEntityId = entityId;
+    this.selectedEntityIds = [entityId];
     if (
       this.spectator &&
       typeof target.owner === 'number' &&
@@ -273,9 +293,34 @@ export class LandfallController {
     return this.selectedEntityId;
   }
 
+  selectEntities(entityIds: readonly number[]): number[] {
+    if (this.opts.store?.latest && this.opts.store.latest !== this.latestView) {
+      this.onView(this.opts.store.latest);
+    }
+    const valid: number[] = [];
+    for (const rawId of entityIds) {
+      const id = Number(rawId);
+      if (!Number.isInteger(id) || id <= 0 || valid.includes(id)) continue;
+      if (this.entitiesById.has(id) || (this.latestHq && this.latestHq.entityId === id)) {
+        valid.push(id);
+      }
+    }
+    if (valid.length === 0) {
+      this.deselect();
+      return [];
+    }
+    this.autoSelect = false;
+    this.selectedDeposit = null;
+    this.selectedEntityIds = valid;
+    this.selectedEntityId = valid[valid.length - 1] ?? null;
+    this.emit();
+    return [...this.selectedEntityIds];
+  }
+
   selectHq(): number | null {
     if (this.opts.isHqDeployed && !this.opts.isHqDeployed()) {
       this.selectedEntityId = null;
+      this.selectedEntityIds = [];
       this.emit();
       return null;
     }
@@ -283,6 +328,7 @@ export class LandfallController {
     this.selectedDeposit = null;
     if (this.latestHq) {
       this.selectedEntityId = this.latestHq.entityId;
+      this.selectedEntityIds = [this.latestHq.entityId];
     }
     this.emit();
     return this.selectedEntityId;
@@ -299,6 +345,7 @@ export class LandfallController {
   deselect(): void {
     this.autoSelect = false;
     this.selectedEntityId = null;
+    this.selectedEntityIds = [];
     this.selectedDeposit = null;
     this.emit();
   }
@@ -308,6 +355,15 @@ export class LandfallController {
   }
 
   getSelectedEntityId(): number | null { return this.selectedEntityId; }
+  getSelectedEntityIds(): number[] {
+    if (this.selectedEntityIds.length > 0) return [...this.selectedEntityIds];
+    return this.selectedEntityId !== null ? [this.selectedEntityId] : [];
+  }
+  getEntityById(id: number): SelectedEntityView | null {
+    return this.entitiesById.get(id) ?? (this.latestHq?.entityId === id ? enrichHqSelectedView(this.latestHq, this.latestView ?? this.opts.store?.latest) : null);
+  }
+  getAllSelectableEntities(): SelectedEntityView[] { return [...this.entitiesById.values()]; }
+  getMultiSelectionSummary() { return summarizeSelectedMultiUnits(this.getSelectedEntityIds().map((id) => this.getEntityById(id)).filter((e): e is SelectedEntityView => Boolean(e))); }
   getSelectedDeposit(): SelectedDepositView | null { return this.selectedDeposit; }
   getHq(): HqStatusView | null { return this.latestHq; }
 
@@ -322,43 +378,39 @@ export class LandfallController {
   }
 
   isTileBlockedByBuilding(q: number, r: number): boolean {
-    for (const e of this.entitiesById.values()) {
-      if (!e.isUnit && isBuildingCoveringTile(e, q, r)) return true;
-    }
-    const latest = (this.latestView ?? this.opts.store?.latest) as { entities?: Float32Array | ViewEntity[]; count?: number } | null | undefined;
-    if (!latest?.entities || (!(latest.entities instanceof Float32Array) && !Array.isArray(latest.entities))) return false;
-    let hit = false;
-    forEachEntity(latest.entities, latest.count, (e) => {
-      // the sim's ground rule (GP-23): alive buildings only (no drop pod), their row footprint
-      if (hit || !occupiesGround(e)) return;
-      hit = getBuildingFootprintTiles(e.q, e.r, entityFootprint(e.kind, this.opts.store?.simData?.() ?? undefined)).some((p) => p.q === q && p.r === r);
-    });
-    return hit;
+    return checkTileBlockedByBuilding(this.entitiesById.values(), this.latestView ?? this.opts.store?.latest, this.opts.store?.simData?.() ?? undefined, q, r);
+  }
+
+  private sendRawCommand(kind: string, args: Record<string, unknown>): void {
+    if (this.opts.store?.sendCommand) this.opts.store.sendCommand({ type: kind, ...args });
+    else if (this.opts.sendCommand) void this.opts.sendCommand(kind, args);
   }
 
   orderMove(q: number, r: number): boolean {
-    if (this.spectator) return false;
-    if (!Number.isInteger(q) || !Number.isInteger(r)) return false;
-    const sel = this.getSelectedEntity();
-    if (!sel || !sel.isMovable) return false;
-    if (this.isTileBlockedByBuilding(q, r)) return false;
-    const payload = { type: 'moveUnit' as const, entityId: sel.entityId, q, r };
-    if (this.opts.store?.sendCommand) {
-      this.opts.store.sendCommand(payload);
-    } else if (this.opts.sendCommand) {
-      void this.opts.sendCommand('moveUnit', { entityId: sel.entityId, q, r });
-    }
-    this.opts.onTargetMove?.(q, r);
-    return true;
+    if (this.spectator || !Number.isInteger(q) || !Number.isInteger(r)) return false;
+    const movableIds = this.getSelectedEntityIds().filter((id) => this.getEntityById(id)?.isMovable);
+    if (movableIds.length === 0) return false;
+    if (!this.opts.store?.sendCommand && !this.opts.sendCommand) return false;
+    let resolvedQ = q, resolvedR = r;
+    const ok = dispatchSmartUnitMove({
+      unitIds: movableIds, q, r,
+      view: this.latestView ?? this.opts.store?.latest,
+      fallbackTiles: this.opts.store?.latestTiles,
+      simData: this.opts.store?.simData?.() ?? null,
+      ownerColonyIndex: this.ownerColonyIndex ?? 0,
+      isBlockedByBuilding: (tq, tr) => this.isTileBlockedByBuilding(tq, tr),
+      onResolvedTarget: (tq, tr) => { resolvedQ = tq; resolvedR = tr; },
+      send: (kind, args) => this.sendRawCommand(kind, args),
+    });
+    if (ok) this.opts.onTargetMove?.(resolvedQ, resolvedR);
+    return ok;
   }
 
   stopSelected(): boolean {
-    if (this.spectator) return false;
-    const sel = this.getSelectedEntity();
-    if (!sel || !sel.isMovable) return false;
-    if (this.opts.store?.sendCommand) this.opts.store.sendCommand({ type: 'stopUnit', entityId: sel.entityId });
-    else if (this.opts.sendCommand) void this.opts.sendCommand('stopUnit', { entityId: sel.entityId });
-    else return false;
+    if (this.spectator || (!this.opts.store?.sendCommand && !this.opts.sendCommand)) return false;
+    const movableIds = this.getSelectedEntityIds().filter((id) => this.getEntityById(id)?.isMovable);
+    if (movableIds.length === 0) return false;
+    for (const entityId of movableIds) this.sendRawCommand('stopUnit', { entityId });
     return true;
   }
 
@@ -381,42 +433,24 @@ export class LandfallController {
     return Boolean(this.opts.store?.sendCommand || this.opts.sendCommand);
   }
 
-  pickEntityAt(q: number, r: number): SelectedEntityView | null {
-    let bestUnit: SelectedEntityView | null = null;
-    let bestDist = Infinity;
-    for (const e of this.entitiesById.values()) {
-      if (!e.isUnit) continue;
-      const rx = Math.round(e.x);
-      const ry = Math.round(e.y);
-      const euclid = Math.hypot(e.x - q, e.y - r);
-      const onRounded = (rx === q && ry === r) || (e.q === q && e.r === r);
-      if (!onRounded && euclid > 0.75) continue;
-      const d = onRounded ? Math.min(euclid, 0.25) : euclid;
-      const preferOverCurrent = Math.abs(d - bestDist) < 1e-4 && bestUnit?.entityId === this.selectedEntityId && e.entityId !== this.selectedEntityId;
-      if (d < bestDist || preferOverCurrent) {
-        bestDist = d;
-        bestUnit = e;
-      }
-    }
-    if (bestUnit) return bestUnit;
-
-    for (const e of this.entitiesById.values()) {
-      if (e.isUnit) continue;
-      if (isBuildingCoveringTile(e, q, r)) return e;
-    }
-    return null;
+  pickEntityAt(q: number, r: number, pickedEntityId?: number): SelectedEntityView | null {
+    return pickSelectableEntityOnTile(this.entitiesById.values(), this.selectedEntityId, q, r, pickedEntityId);
   }
 
-  clickTile(q: number, r: number, shiftKey = false): boolean {
-    return this.handleLeftClick(q, r, shiftKey);
+  clickTile(q: number, r: number, shiftKey = false, pickedEntityId?: number): boolean {
+    return this.handleLeftClick(q, r, shiftKey, pickedEntityId);
   }
 
-  handleLeftClick(q: number, r: number, shiftKey = false): boolean {
+  handleLeftClick(q: number, r: number, shiftKey = false, pickedEntityId?: number): boolean {
     const sel = this.getSelectedEntity();
+    const hit = this.pickEntityAt(q, r, pickedEntityId);
+    if (shiftKey && hit?.isUnit) {
+      this.selectEntities(resolveShiftUnitToggle(this.selectedEntityIds, this.entitiesById, hit.entityId));
+      return true;
+    }
     if (shiftKey && sel?.isMovable && !this.spectator) {
       return this.orderMove(q, r);
     }
-    const hit = this.pickEntityAt(q, r);
     if (hit) {
       this.selectEntity(hit.entityId);
       return true;
@@ -425,6 +459,7 @@ export class LandfallController {
     if (dep && dep.deposit > 0) {
       this.autoSelect = false;
       this.selectedEntityId = null;
+      this.selectedEntityIds = [];
       this.selectedDeposit = dep;
       this.emit();
       return true;
@@ -444,48 +479,13 @@ export class LandfallController {
 
   bindCanvas(canvas: HTMLElement, pickTile: TilePicker | undefined = this.pickTile): () => void {
     if (pickTile) this.pickTile = pickTile;
-    let down = { x: 0, y: 0, button: -1 };
-    let lastRight = { at: -1000, q: NaN, r: NaN };
-    const orderRight = (q: number, r: number) => {
-      const now = Date.now();
-      if (now - lastRight.at < RIGHT_CLICK_DEDUPE_MS && lastRight.q === q && lastRight.r === r) return;
-      lastRight = { at: now, q, r };
-      this.handleRightClick(q, r);
-    };
-
-    const resolveTile = (e: MouseEvent) => resolvePointerTile(e, this.pickTile);
-
-    const onDown = (e: PointerEvent) => {
-      down = { x: e.clientX ?? 0, y: e.clientY ?? 0, button: e.button ?? 0 };
-    };
-
-    const onUp = (e: PointerEvent) => {
-      const moved = Math.hypot((e.clientX ?? 0) - down.x, (e.clientY ?? 0) - down.y);
-      if (moved > 5) return;
-      const pick = resolveTile(e);
-      if (!pick) return;
-      if (e.button === 0) {
-        this.handleLeftClick(pick.q, pick.r, Boolean(e.shiftKey));
-      } else if (e.button === 2) {
-        orderRight(pick.q, pick.r);
-      }
-    };
-
-    const onContext = (e: MouseEvent) => {
-      e.preventDefault?.();
-      const pick = resolveTile(e);
-      if (pick) orderRight(pick.q, pick.r);
-    };
-
-    canvas.addEventListener('pointerdown', onDown as EventListener);
-    canvas.addEventListener('pointerup', onUp as EventListener);
-    canvas.addEventListener('contextmenu', onContext as EventListener);
-
-    return () => {
-      canvas.removeEventListener('pointerdown', onDown as EventListener);
-      canvas.removeEventListener('pointerup', onUp as EventListener);
-      canvas.removeEventListener('contextmenu', onContext as EventListener);
-    };
+    return bindLandfallCanvasEvents(
+      canvas,
+      () => this.pickTile,
+      RIGHT_CLICK_DEDUPE_MS,
+      (q, r, shift, entityId) => { this.handleLeftClick(q, r, shift, entityId); },
+      (q, r) => { this.handleRightClick(q, r); },
+    );
   }
 
   dispose(): void {

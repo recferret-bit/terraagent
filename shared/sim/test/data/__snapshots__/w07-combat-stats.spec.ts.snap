@@ -176,6 +176,7 @@ exports[`W07 combat stats in play > matches snapshot for combatUnits table 1`] =
     "layer": "ground",
     "minRange": 0,
     "mobility": "ground",
+    "moveAndFire": true,
     "powerDrainPerS": 2,
     "producer": "roboticsFactory",
     "projSpeed": 20,

@@ -2,13 +2,14 @@ import { combatApproachBand, footprintAttackRange } from '../../systems/combat/a
 import { ENTITY_STATE } from '../../ecs/columns';
 import { speciesOfEntityKind } from '../../systems/fauna/types';
 import { rowOf, setField } from '../../ecs/store';
-import { hexDistance } from '../../grid/hex';
+import { hexDistance, hexIndex } from '../../grid/hex';
 import { TICK_MS } from '../../kernel/constants';
 import { applyDamage } from '../../systems/combat/damage';
 import { approach, setUnitActivity } from '../approach';
 import { isUnitKind } from '../mobility';
 import { faceTowards } from '../movement/locomotion';
-import { cancelMove } from '../movement/orchestrator';
+import { cancelMove, getMotion } from '../movement/orchestrator';
+import { isHexStationaryOccupied } from '../movement/unitOccupancy';
 import { defineUnitCommand, type AttackCommand } from '../types';
 
 /**
@@ -39,8 +40,13 @@ export const attackCommand = defineUnitCommand<AttackCommand>({
     if (t < 0 || cols.hp[t] <= 0) return 'done';
     const fauna = speciesOfEntityKind(cols.kind[u.row]) !== null;
     const range = fauna ? footprintAttackRange(u.stats.weaponRange, cols.footprintW[t]) : u.stats.weaponRange;
-    if (hexDistance(cols.x[u.row], cols.y[u.row], cols.x[t], cols.y[t]) > range) {
-      const band = combatApproachBand(range, 0, hexDistance(cols.q[u.row], cols.r[u.row], cols.q[t], cols.r[t]),
+    const minRange = isUnitKind(cols.kind[t]) ? 1 : 0;
+    const curIdx = hexIndex(u.state.grid.radius).indexOf(cols.q[u.row], cols.r[u.row]);
+    const prevMotion = getMotion(u.state, u.id);
+    const wasStationary = !prevMotion || prevMotion.status !== 'following';
+    const sharedHex = isHexStationaryOccupied(u.state, curIdx, u.id, u.ctx.data, wasStationary);
+    if (hexDistance(cols.x[u.row], cols.y[u.row], cols.x[t], cols.y[t]) > range || sharedHex) {
+      const band = combatApproachBand(range, minRange, hexDistance(cols.q[u.row], cols.r[u.row], cols.q[t], cols.r[t]),
         hexDistance(cols.x[t], cols.y[t], cols.q[t], cols.r[t]));
       const status = approach(u, { q: cols.q[t], r: cols.r[t], ...band }, 1);
       if (status === 'arrived') cancelMove(u.state, u.id, u.ctx.tick); // the target drifted out of range: re-plan next step

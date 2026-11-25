@@ -10,6 +10,7 @@ import {
   insertRow,
   placeSpawnedEntity,
   PREP,
+  setBlob,
   setTileDeposit,
   setTilePrep,
   setTileTerrain,
@@ -70,11 +71,20 @@ describe('MouseCursorStateMachine: pure deterministic transitions', () => {
     // Selecting movable unit and hovering passable ground (including non-terraformed dunes) -> move
     expect(sm.transition({ hasSelectedMovableUnit: true, hasSelectedArmedUnit: true, hoverTarget: 'passableGround' })).toBe('move');
 
-    // Hovering impassable ground (mountain / deep water / building) -> idle
-    expect(sm.transition({ hoverTarget: 'impassableGround' })).toBe('idle');
+    // Hovering impassable ground (mountain / deep water / building) -> prohibited
+    expect(sm.transition({ hoverTarget: 'impassableGround' })).toBe('prohibited');
 
-    // Hovering hostile bug / hive with armed unit -> attack
-    expect(sm.transition({ hoverTarget: 'hostile' })).toBe('attack');
+    // Even when attack-move [A] is armed, impassable ground stays prohibited
+    expect(sm.transition({ attackMoveArmed: true, hoverTarget: 'impassableGround' })).toBe('prohibited');
+    expect(sm.transition({ attackMoveArmed: false, hoverTarget: 'hostile' })).toBe('attack');
+
+    // Hovering hostile bug / hive without an armed unit -> prohibited
+    expect(sm.transition({ hasSelectedArmedUnit: false, hoverTarget: 'hostile' })).toBe('prohibited');
+    expect(sm.transition({ hasSelectedArmedUnit: true, hoverTarget: 'hostile' })).toBe('attack');
+
+    // Marquee box-drag -> select
+    expect(sm.transition({ boxSelecting: true, hoverTarget: 'impassableGround' })).toBe('select');
+    expect(sm.transition({ boxSelecting: false, hoverTarget: 'hostile' })).toBe('attack');
 
     // Attack-move armed [A] overrides empty or ownSelectable ground -> attack
     expect(sm.transition({ attackMoveArmed: true, hoverTarget: 'ownSelectable' })).toBe('attack');
@@ -120,14 +130,18 @@ describe('MouseCursorStateMachine: pure deterministic transitions', () => {
     sm.dispose();
   });
 
-  it('generates distinct SVG data-URI CSS cursor values for all 4 states', () => {
-    const states: MouseCursorState[] = ['idle', 'select', 'move', 'attack'];
+  it('generates distinct high-contrast SVG data-URI CSS cursor values for all 5 states', () => {
+    const states: MouseCursorState[] = ['idle', 'select', 'move', 'attack', 'prohibited'];
     const values = states.map((s) => buildCursorCssValue(s));
-    expect(new Set(values).size).toBe(4);
+    expect(new Set(values).size).toBe(5);
     expect(values[0]).toContain('default');
+    expect(decodeURIComponent(values[0]!)).toContain('#F2F4F7');
     expect(values[1]).toContain('pointer');
     expect(values[2]).toContain('crosshair');
+    expect(decodeURIComponent(values[2]!)).toContain('#3DDC84');
     expect(values[3]).toContain('crosshair');
+    expect(decodeURIComponent(values[3]!)).toContain('#FF3B3B');
+    expect(values[4]).toContain('not-allowed');
   });
 });
 
@@ -217,6 +231,7 @@ function setupCursorAndCombatHarness() {
     hud,
     cursorRenderer,
     cursor: services.mouseCursor!,
+    tileByCoord,
     recon1,
     recon2,
     movePtr,
@@ -306,12 +321,12 @@ describe('Live MouseCursorOrchestrator integration', () => {
     movePtr(70, 10);
     expect(cursor.getState()).toBe('select');
 
-    // Select Recon 1: dune -> 'move', mountain -> 'idle', own unit/building -> 'select', bug/hive -> 'attack'
+    // Select Recon 1: dune -> 'move', mountain -> 'prohibited', own unit/building -> 'select', bug/hive -> 'attack'
     clickPtr(10, 10);
     movePtr(50, 10);
     expect(cursor.getState()).toBe('move');
     movePtr(60, 10);
-    expect(cursor.getState()).toBe('idle');
+    expect(cursor.getState()).toBe('prohibited');
     movePtr(20, 10);
     expect(cursor.getState()).toBe('select');
     movePtr(45, 10);
@@ -321,10 +336,16 @@ describe('Live MouseCursorOrchestrator integration', () => {
     movePtr(90, 10);
     expect(cursor.getState()).toBe('attack');
 
-    // Press [A] while hovering empty ground -> 'attack'; Escape -> 'move'
+    // Press [A] while hovering empty ground -> 'attack'; over mountain or own building -> 'prohibited'; Escape -> 'move'
     movePtr(99, 99);
     expect(cursor.getState()).toBe('move');
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', code: 'KeyA', bubbles: true }));
+    expect(cursor.getState()).toBe('attack');
+    movePtr(60, 10);
+    expect(cursor.getState()).toBe('prohibited');
+    movePtr(45, 10);
+    expect(cursor.getState()).toBe('prohibited');
+    movePtr(99, 99);
     expect(cursor.getState()).toBe('attack');
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true }));
     expect(cursor.getState()).toBe('move');
@@ -337,12 +358,119 @@ describe('Live MouseCursorOrchestrator integration', () => {
     canvas.dispatchEvent(new MouseEvent('pointerleave', { bubbles: true }));
     expect(cursor.getState()).toBe('idle');
 
-    // Worker hovering deposit -> 'move'
+    // Unarmed Worker hovering deposit -> 'move', hovering hostile bug -> 'prohibited'
     clickPtr(40, 10);
     movePtr(70, 10);
     expect(cursor.getState()).toBe('move');
+    movePtr(80, 10);
+    expect(cursor.getState()).toBe('prohibited');
+
+    // Build ghost & terraform brush cursor feedback ('select' when valid, 'prohibited' when blocked or off-grid)
+    let ghost: { q: number; r: number; valid: boolean } | null = { q: 4, r: 4, valid: true };
+    services.getPlacementGhostState = () => ghost as never;
+    movePtr(99, 99);
+    expect(cursor.getState()).toBe('select');
+    ghost = { q: 6, r: 0, valid: false };
+    movePtr(60, 10);
+    expect(cursor.getState()).toBe('prohibited');
+    movePtr(220, 220);
+    expect(cursor.getState()).toBe('prohibited');
+    ghost = null;
+
+    let tfArmed = true;
+    services.terraform = {
+      isArmed: () => tfArmed,
+      canStrokeTile: (q: number) => q === 4,
+    } as never;
+    movePtr(99, 99);
+    expect(cursor.getState()).toBe('select');
+    movePtr(60, 10);
+    expect(cursor.getState()).toBe('prohibited');
+    tfArmed = false;
 
     h.dispose();
     expect(canvas.dataset.cursorState).toBeUndefined();
+  });
+});
+
+describe('Newcomer raid-shield & armed combat-test spawner cursor feedback', () => {
+  afterEach(() => {
+    resetGameInputBlock();
+    document.body.replaceChildren();
+  });
+
+  it('shows prohibited over raid-protected foreign colonies and switches combat-test armed spawner between select and prohibited', () => {
+    const h = setupCursorAndCombatHarness();
+    const { host, hud, services, cursor, movePtr, clickPtr } = h;
+    ensureColonyRecord(host.state, 1, 0);
+    spawnEntity(host, { kind: ENTITY_KIND.demoTank, owner: 1, q: 4, r: 4, hp: 500 });
+    setBlob(host.state, 'pvp', {
+      byColony: { '1': { colonyIndex: 1, raidProtectedUntil: 5000, shieldDropped: false } },
+      raidProtectedUntilByColony: { '1': 5000 },
+    }, 1);
+    const vShield = host.sync(true);
+    hud.update(vShield);
+    cursor.onView(vShield);
+
+    // Select Recon 1 at (10,10); foreign colony 1 tank at (99,99 -> q=4,r=4) is raid-protected -> 'prohibited'
+    clickPtr(10, 10);
+    movePtr(99, 99);
+    expect(cursor.getState()).toBe('prohibited');
+
+    // Dropping the newcomer shield restores 'attack'
+    setBlob(host.state, 'pvp', {
+      byColony: { '1': { colonyIndex: 1, raidProtectedUntil: 0, shieldDropped: true } },
+      raidProtectedUntilByColony: { '1': 0 },
+    }, 2);
+    const vUnshield = host.sync(true);
+    hud.update(vUnshield);
+    cursor.onView(vUnshield);
+    expect(cursor.getState()).toBe('attack');
+
+    // Armed combat-test spawner ('combat-test-spawn' + getSpawnCursorProbe) -> 'select' on valid, 'prohibited' on invalid & off-grid, 'idle' outside canvas
+    let spawnValid: boolean | null = true;
+    services.getSpawnCursorProbe = () => (spawnValid === null ? null : { valid: spawnValid });
+    setGameInputBlocked('combat-test-spawn', true);
+    movePtr(50, 10);
+    expect(cursor.getState()).toBe('select');
+    spawnValid = false;
+    cursor.refresh();
+    expect(cursor.getState()).toBe('prohibited');
+    movePtr(220, 220);
+    expect(cursor.getState()).toBe('prohibited');
+    h.canvas.dispatchEvent(new MouseEvent('pointerleave', { bubbles: true }));
+    expect(cursor.getState()).toBe('idle');
+    setGameInputBlocked('combat-test-spawn', false);
+    services.getSpawnCursorProbe = undefined;
+
+    // Shallow water & unrevealed FoW with no selection -> 'prohibited'; with Recon selected -> FoW 'move', shallow water 'prohibited'
+    const hx = hexIndex(host.state.grid.radius);
+    setTileTerrain(host.state.grid, hx.indexOf(0, 5), TERRAIN.shallow, 3);
+    host.state.grid.layers.explored.fill(0);
+    const expByCol = host.state.grid.layers.exploredByColony as unknown as Record<number, Uint8Array> | undefined;
+    expByCol?.[0]?.fill(0);
+    host.state.grid.layers.explored[hx.indexOf(0, 5)] = 1;
+    if (expByCol?.[0]) {
+      const idx = hx.indexOf(0, 5);
+      expByCol[0][idx >> 3] = (expByCol[0][idx >> 3] ?? 0) | (1 << (idx & 7));
+    }
+    h.tileByCoord.set('140,10', { q: 0, r: 5 });
+    h.tileByCoord.set('150,10', { q: -12, r: 12 });
+    const vFog = host.sync(true);
+    hud.update(vFog);
+    cursor.onView(vFog);
+
+    services.landfall!.deselect();
+    movePtr(140, 10);
+    expect(cursor.getState()).toBe('prohibited');
+    movePtr(150, 10);
+    expect(cursor.getState()).toBe('prohibited');
+
+    services.armyOrders!.selectUnits([h.recon1]);
+    movePtr(140, 10);
+    expect(cursor.getState()).toBe('prohibited');
+    movePtr(150, 10);
+    expect(cursor.getState()).toBe('move');
+    h.dispose();
   });
 });

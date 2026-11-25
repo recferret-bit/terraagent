@@ -8,9 +8,12 @@ import type { PlanetState } from '../../kernel/state';
 import { UnitBook } from '../../units/book';
 import { faceTowards } from '../../units/movement/locomotion';
 import { clearEvasiveState } from './evasive';
+import { refreshBlockedDefendAnchor, resolveHoldDeoverlapTile } from './parts/stanceParts';
 import { canWeaponHitTarget } from './layers';
 import { isTargetSpottedByColony } from './vision';
 import {
+  canMaintainExplicitTargetPursuit,
+  canUnitMoveAndFire,
   engageTargetInRangeOrApproach,
   findClosestHostileInAnchorLeash,
   findLeashChaseTile,
@@ -21,6 +24,7 @@ import {
   readStancesBlob,
   resolveAttackMoveGoalBand,
   stepAttackMoveGoal,
+  stepPlayerMoveUnitCombat,
   tryFireUnitWeapon,
   writeStancesBlob,
 } from './stanceHelpers';
@@ -230,7 +234,13 @@ function stepDefendStance(
 
   rec.targetId = null;
   clearEvasiveState(state, cols.id[row]!, ctx.tick);
-  if (cols.q[row] !== rec.anchorQ || cols.r[row] !== rec.anchorR || unitDistFromAnchor > 1e-3) {
+  const deoverlap = refreshBlockedDefendAnchor(state, row, rec, ctx.data);
+  if (deoverlap) {
+    orderCombatUnitMove(state, row, { q: deoverlap.q, r: deoverlap.r, minDist: 0, maxDist: 0 }, ctx);
+    return;
+  }
+  const distAfterAnchor = hexDistance(ax, ay, rec.anchorQ, rec.anchorR);
+  if (cols.q[row] !== rec.anchorQ || cols.r[row] !== rec.anchorR || distAfterAnchor > 1e-3) {
     rec.returningToAnchor = true;
     orderCombatUnitMove(state, row, { q: rec.anchorQ, r: rec.anchorR, minDist: 0, maxDist: 0 }, ctx);
   } else if (rec.returningToAnchor || cols.state[row] === ENTITY_STATE.moving) {
@@ -250,6 +260,13 @@ function stepHoldStance(
   const entityId = cols.id[row]!;
   const minRange = Math.max(0, Number(weaponRow.minRange ?? 0));
   const weaponRange = Math.max(1, Number(weaponRow.range ?? 4));
+  const deoverlap = resolveHoldDeoverlapTile(state, row, ctx.data);
+  if (deoverlap) {
+    rec.anchorQ = deoverlap.q;
+    rec.anchorR = deoverlap.r;
+    orderCombatUnitMove(state, row, { q: deoverlap.q, r: deoverlap.r, minDist: 0, maxDist: 0 }, ctx);
+    return;
+  }
   rec.anchorQ = cols.q[row]!;
   rec.anchorR = cols.r[row]!;
   if (cols.state[row] === ENTITY_STATE.moving) {
@@ -268,7 +285,9 @@ function stepHoldStance(
   });
   if (tRow >= 0) {
     rec.targetId = cols.id[tRow]!;
-    faceTowards(state, row, cols.q[tRow]!, cols.r[tRow]!, ctx.tick);
+    if (!canUnitMoveAndFire(cols.kind[row]!, ctx.data)) {
+      faceTowards(state, row, cols.q[tRow]!, cols.r[tRow]!, ctx.tick);
+    }
     tryFireUnitWeapon(state, row, tRow, weaponRow, rec, ctx);
   } else {
     rec.targetId = null;
@@ -322,16 +341,19 @@ function stepSingleCombatUnit(
   if (uRec?.current?.kind === 'attack' && !rec.explicitTargetId) {
     rec.explicitTargetId = uRec.current.targetId;
   }
+  if (uRec?.current?.kind === 'move' && uRec.current.deoverlap) {
+    rec.anchorQ = uRec.current.q;
+    rec.anchorR = uRec.current.r;
+    stepPlayerMoveUnitCombat(state, row, weaponRow, rec, uRec.current, ctx);
+    return;
+  }
   if (
     uRec?.current?.kind === 'move' &&
     uRec.current.source === 'player' &&
     !rec.attackMoveGoal &&
     !rec.explicitTargetId
   ) {
-    rec.anchorQ = uRec.current.q;
-    rec.anchorR = uRec.current.r;
-    rec.targetId = null;
-    rec.returningToAnchor = false;
+    stepPlayerMoveUnitCombat(state, row, weaponRow, rec, uRec.current, ctx);
     return;
   }
 
@@ -341,7 +363,7 @@ function stepSingleCombatUnit(
       tRow >= 0 &&
       isHostileTargetForAttacker(state, row, tRow, { includePassiveFauna: true }) &&
       canWeaponHitTarget(state, weaponRow, tRow, ctx.data) &&
-      (cols.owner[row] < 0 || isTargetSpottedByColony(state, cols.owner[row], tRow, ctx.data))
+      canMaintainExplicitTargetPursuit(state, row, tRow, ctx.data)
     ) {
       engageTargetInRangeOrApproach(state, row, tRow, weaponRow, rec, ctx, { allowEvasive: true });
       return;
@@ -391,31 +413,18 @@ export function orderUnitAttackMove(
   return true;
 }
 
-/**
- * Orders unit `entityId` to explicitly pursue and attack `targetId` (even if passive fauna/hive).
- */
-export function orderUnitAttackTarget(
-  state: PlanetState,
-  entityId: number,
-  targetId: number,
-  ctx: StepContext,
-): boolean {
+/** Orders unit `entityId` to explicitly pursue and attack `targetId` (even if passive fauna/hive). */
+export function orderUnitAttackTarget(state: PlanetState, entityId: number, targetId: number, ctx: StepContext): boolean {
   const row = rowOf(state.entities, entityId);
   const tRow = rowOf(state.entities, targetId);
-  if (row < 0 || tRow < 0 || state.entities.cols.hp[row]! <= 0 || state.entities.cols.hp[tRow]! <= 0) {
-    return false;
-  }
+  if (row < 0 || tRow < 0 || state.entities.cols.hp[row]! <= 0 || state.entities.cols.hp[tRow]! <= 0) return false;
   const weaponRow = resolveAttackerWeaponRow(state, row, ctx.data);
   if (!weaponRow || !canWeaponHitTarget(state, weaponRow, tRow, ctx.data)) return false;
 
   const byEntityId = readStancesBlob(state);
   const prev = getUnitStanceRecord(state, row);
   const rec: UnitStanceRecord = {
-    ...prev,
-    explicitTargetId: targetId,
-    targetId,
-    attackMoveGoal: null,
-    returningToAnchor: false,
+    ...prev, explicitTargetId: targetId, targetId, attackMoveGoal: null, returningToAnchor: false,
   };
   byEntityId[entityId] = rec;
   writeStancesBlob(state, byEntityId, ctx.tick);
@@ -424,9 +433,7 @@ export function orderUnitAttackTarget(
   return true;
 }
 
-/**
- * Steps all combat unit stances (`hold`, `defend`, `hunt`, `attackMove`, `attackTarget`) in the combat slot.
- */
+/** Steps all combat unit stances (`hold`, `defend`, `hunt`, `attackMove`, `attackTarget`) in the combat slot. */
 export function stepCombatStances(state: PlanetState, ctx: StepContext): void {
   if (applyFiringRangeUnitGate(state, ctx)) return;
   const cols = state.entities.cols;
@@ -456,14 +463,8 @@ export function stepCombatStances(state: PlanetState, ctx: StepContext): void {
     if (!weaponRow) continue;
 
     const rec: UnitStanceRecord = byEntityId[id] ?? {
-      entityId: id,
-      stance: 'defend',
-      anchorQ: cols.q[row]!,
-      anchorR: cols.r[row]!,
-      targetId: null,
-      attackMoveGoal: null,
-      explicitTargetId: null,
-      returningToAnchor: false,
+      entityId: id, stance: 'defend', anchorQ: cols.q[row]!, anchorR: cols.r[row]!,
+      targetId: null, attackMoveGoal: null, explicitTargetId: null, returningToAnchor: false,
     };
     byEntityId[id] = rec;
     stepSingleCombatUnit(state, row, weaponRow, rec, leashRadius, huntRadius, ctx);
@@ -472,16 +473,12 @@ export function stepCombatStances(state: PlanetState, ctx: StepContext): void {
 
   for (const idStr of Object.keys(byEntityId)) {
     const id = Number(idStr);
-    if (rowOf(state.entities, id) < 0) {
-      delete byEntityId[id];
-    }
+    if (rowOf(state.entities, id) < 0) delete byEntityId[id];
   }
   writeStancesBlob(state, byEntityId, ctx.tick);
 }
 
-/**
- * Steps both combat unit stances and stationary defense turrets / HQ auto-turrets in the combat slot (`slot: 10`).
- */
+/** Steps both combat unit stances and stationary defense turrets / HQ auto-turrets in the combat slot (`slot: 10`). */
 export function stepCombatStancesAndTurrets(state: PlanetState, ctx: StepContext): void {
   stepCombatStances(state, ctx);
   stepCombatTurrets(state, ctx);

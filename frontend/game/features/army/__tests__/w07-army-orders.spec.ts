@@ -183,8 +183,7 @@ describe('W07-19: Stance bar and right-click attackTarget / move', () => {
     expect(mounted.controller.getOrderMarkers()[1]).toMatchObject({ kind: 'attackTarget', q: 10, r: -2, targetId: 202 });
 
     expect(mounted.controller.rightClickTile(4, -1)).toBe(true);
-    expect(sendCommand).toHaveBeenCalledWith('moveUnit', { entityId: 21, q: 4, r: -1 });
-    expect(sendCommand).toHaveBeenCalledWith('moveUnit', { entityId: 22, q: 4, r: -1 });
+    expect(sendCommand).toHaveBeenLastCalledWith('moveGroup', { entityIds: [21, 22], q: 4, r: -1 });
     expect(mounted.controller.getOrderMarkers()[2]).toMatchObject({ kind: 'move', q: 4, r: -1 });
 
     mounted.dispose();

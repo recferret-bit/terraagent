@@ -94,7 +94,16 @@ export function canFitObjectFootprint(
     for (const [dx, dz] of FOOTPRINT_PERIMETER_DIRS) {
       const sub = sampleSiteAt(x + dx * rr, z + dz * rr, true).substrate;
       if (center.substrate === 'livingTurf') {
-        if (sub === 'submerged' || sub === 'craterHole' || sub === 'coastalSand' || sub === 'coastalForest') return false;
+        if (
+          sub === 'submerged' ||
+          sub === 'craterHole' ||
+          sub === 'coastalSand' ||
+          sub === 'coastalForest' ||
+          sub === 'rockOutcrop' ||
+          sub === 'duneMesaCap'
+        ) {
+          return false;
+        }
         continue;
       }
       if (!perimSubstrates.includes(sub)) return false;
@@ -111,6 +120,7 @@ export function isDuneWadiSlope(
   ecotone: EcotoneSample,
   planetSeed: number,
 ): boolean {
+  if (rawHeight >= 1.15) return false;
   const bioPatch = latticeHash01(q, r, mixGroundSeed(planetSeed, 771)) * 0.55 + ecotone.moisture * 0.45;
   const wadiMoisture = rawHeight < 0.62 ? 0.14 : 0;
   return bioPatch + wadiMoisture > 0.80;
@@ -238,6 +248,90 @@ export function classifyHexTilePropSite(
   return withSub('meadowTurf');
 }
 
+export function hasMountainRockNeighbor(hx: HexIndex, tileIndex: number, layers: HexTileLayers): boolean {
+  const q = hx.q[tileIndex];
+  const r = hx.r[tileIndex];
+  if (q === undefined || r === undefined) return false;
+  for (const [dq, dr] of HEX_DIRS) {
+    const ni = hx.indexOf(q + dq, r + dr);
+    if (ni >= 0 && (layers.terrain?.[ni] ?? HEX_TERRAIN.flat) === HEX_TERRAIN.rock) return true;
+  }
+  return false;
+}
+
+function classifyNonDuneHexSubstrate(params: {
+  hx: HexIndex;
+  tileIndex: number;
+  x: number;
+  z: number;
+  y: number;
+  t: number;
+  slope: number;
+  layers: HexTileLayers;
+  biome: PlanetKind;
+  waterProx?: TileWaterProximity;
+  isWetlandSlot?: boolean;
+  shoreByTile?: ArrayLike<number>;
+}): TerrainSubstrate {
+  const { hx, tileIndex, x, z, y, t, slope, layers, biome, waterProx, isWetlandSlot, shoreByTile } = params;
+  const prox = waterProx ?? inspectTileWaterNeighbors(hx, tileIndex, layers, biome);
+  if (t === HEX_TERRAIN.shallow) {
+    if (isWetlandSlot && prox.deepNeighbors === 0 && prox.landNeighbors >= 4 && y <= -0.14 && y >= -0.34) {
+      return 'littoralWetland';
+    }
+    return 'submerged';
+  }
+  const onCoastalSandBand =
+    (prox.waterNeighbors >= 1 && (y < HEX_DRY_SAND_MAX_Y || t === HEX_TERRAIN.slope)) ||
+    prox.waterNeighbors >= 3 ||
+    isHexBeachSandAtPoint(hx, x, z, y, layers, biome, shoreByTile);
+  if (onCoastalSandBand) {
+    return t === HEX_TERRAIN.forest ? 'coastalForest' : 'coastalSand';
+  }
+  if (t === HEX_TERRAIN.forest) {
+    if ((hasMountainRockNeighbor(hx, tileIndex, layers) && slope >= 0.36) || slope >= 0.48) return 'rockOutcrop';
+    return 'forestFloor';
+  }
+  if (t === HEX_TERRAIN.slope) {
+    if (hasMountainRockNeighbor(hx, tileIndex, layers) || slope >= 0.45) return 'rockOutcrop';
+    return 'uplandSlope';
+  }
+  if ((hasMountainRockNeighbor(hx, tileIndex, layers) && slope >= 0.36) || slope >= 0.48) return 'rockOutcrop';
+  return 'meadowTurf';
+}
+
+function classifyDuneHexSubstrate(params: {
+  hx: HexIndex;
+  tileIndex: number;
+  q: number;
+  r: number;
+  t: number;
+  y: number;
+  slope: number;
+  layers: HexTileLayers;
+  planetSeed: number;
+  getEcotone: () => EcotoneSample;
+}): TerrainSubstrate {
+  const { hx, tileIndex, q, r, t, y, slope, layers, planetSeed, getEcotone } = params;
+  const rawTileHeight = layers.height?.[tileIndex] ?? 0;
+  const isDuneMountain =
+    hasMountainRockNeighbor(hx, tileIndex, layers) ||
+    slope >= 0.40 ||
+    (t === HEX_TERRAIN.slope && (slope >= 0.36 || rawTileHeight >= 1.15 || y >= 1.25));
+  if (isDuneMountain) {
+    return 'duneMesaCap';
+  }
+  if (t === HEX_TERRAIN.shallow) return 'aridDune';
+  if (t === HEX_TERRAIN.forest) {
+    if (rawTileHeight >= 1.15) return 'duneMesaCap';
+    return 'desertWadi';
+  }
+  if (t === HEX_TERRAIN.slope && isDuneWadiSlope(q, r, rawTileHeight, getEcotone(), planetSeed)) {
+    return 'desertWadi';
+  }
+  return 'aridDune';
+}
+
 /**
  * Classifies the exact `(x, z)` terrain site on a hex planet, matching `HEX_SHORE_BEACH_GLSL` via lattice-interpolated
  * `vHexShore` so coastal beach sand and sandy neighbor-edge bleeds classify as `'coastalSand'` (never spawning bushes,
@@ -275,14 +369,11 @@ export function classifyHexSiteAtPoint(params: {
   const getEcotone = (): EcotoneSample => (cachedEcotone ??= floraEcotoneFields(x, z, planetSeed));
   const y = heightAt(x, z);
   const d = 0.45;
-  const slope = substrateOnly
-    ? 0
-    : Math.max(
-        Math.abs(heightAt(x + d, z) - y),
-        Math.abs(heightAt(x - d, z) - y),
-        Math.abs(heightAt(x, z + d) - y),
-        Math.abs(heightAt(x, z - d) - y),
-      ) / d;
+  const slope =
+    Math.hypot(
+      Math.max(Math.abs(heightAt(x + d, z) - y), Math.abs(heightAt(x - d, z) - y)),
+      Math.max(Math.abs(heightAt(x, z + d) - y), Math.abs(heightAt(x, z - d) - y)),
+    ) / d;
 
   const withSub = (substrate: TerrainSubstrate): TerrainSiteSample => ({
     biome,
@@ -291,8 +382,11 @@ export function classifyHexSiteAtPoint(params: {
     ecotone: substrateOnly ? ZERO_ECOTONE : getEcotone(),
   });
 
+  if (t === HEX_TERRAIN.deep) return withSub('submerged');
+  if (t === HEX_TERRAIN.hole) return withSub('craterHole');
+  if (t === HEX_TERRAIN.rock) return withSub(biome === 'dune' ? 'duneMesaCap' : 'rockOutcrop');
   if (dep === HEX_DEPOSIT.metals || dep === HEX_DEPOSIT.minerals || dep === HEX_DEPOSIT.oil) {
-    return withSub(biome === 'dune' && t === HEX_TERRAIN.rock ? 'duneMesaCap' : 'depositPad');
+    return withSub('depositPad');
   }
   if (prep === HEX_PREP.living) {
     if (biome !== 'dune' && isHexBeachSandAtPoint(hx, x, z, y, layers, biome, params.shoreByTile)) {
@@ -308,38 +402,29 @@ export function classifyHexSiteAtPoint(params: {
   ) {
     return withSub('engineeredPad');
   }
-  if (t === HEX_TERRAIN.deep) return withSub('submerged');
-  if (t === HEX_TERRAIN.hole) return withSub('craterHole');
-  if (t === HEX_TERRAIN.rock) return withSub(biome === 'dune' ? 'duneMesaCap' : 'rockOutcrop');
 
   if (biome === 'dune') {
-    if (t === HEX_TERRAIN.shallow) return withSub('aridDune');
-    if (t === HEX_TERRAIN.forest) return withSub('desertWadi');
-    if (t === HEX_TERRAIN.slope && isDuneWadiSlope(q, r, layers.height[tileIndex] ?? 0, getEcotone(), planetSeed)) {
-      return withSub('desertWadi');
-    }
-    return withSub('aridDune');
+    return withSub(
+      classifyDuneHexSubstrate({ hx, tileIndex, q, r, t, y, slope, layers, planetSeed, getEcotone }),
+    );
   }
 
-  const prox = (sameTile ? params.waterProx : undefined) ?? inspectTileWaterNeighbors(hx, tileIndex, layers, biome);
-  if (t === HEX_TERRAIN.shallow) {
-    if (params.isWetlandSlot && prox.deepNeighbors === 0 && prox.landNeighbors >= 4 && y <= -0.14 && y >= -0.34) {
-      return withSub('littoralWetland');
-    }
-    return withSub('submerged');
-  }
-
-  const onCoastalSandBand =
-    (prox.waterNeighbors >= 1 && (y < HEX_DRY_SAND_MAX_Y || t === HEX_TERRAIN.slope)) ||
-    prox.waterNeighbors >= 3 ||
-    isHexBeachSandAtPoint(hx, x, z, y, layers, biome, params.shoreByTile);
-  if (onCoastalSandBand) {
-    return withSub(t === HEX_TERRAIN.forest ? 'coastalForest' : 'coastalSand');
-  }
-
-  if (t === HEX_TERRAIN.forest) return withSub('forestFloor');
-  if (t === HEX_TERRAIN.slope) return withSub('uplandSlope');
-  return withSub('meadowTurf');
+  return withSub(
+    classifyNonDuneHexSubstrate({
+      hx,
+      tileIndex,
+      x,
+      z,
+      y,
+      t,
+      slope,
+      layers,
+      biome,
+      waterProx: sameTile ? params.waterProx : undefined,
+      isWetlandSlot: params.isWetlandSlot,
+      shoreByTile: params.shoreByTile,
+    }),
+  );
 }
 
 /** Classifies a continuous `PlanetSurface` world coordinate `(x, z)` using the same substrate taxonomy. */
@@ -360,9 +445,9 @@ export function classifySurfaceSite(params: {
   const withSub = (substrate: TerrainSubstrate): TerrainSiteSample => ({ biome, substrate, slope, ecotone });
 
   if (biome === 'dune' || waterLevel === null) {
-    if ((params.rockMask ?? 0) > 0.45 || slope >= 0.62) return withSub('rockOutcrop');
+    if ((params.rockMask ?? 0) > 0.34 || slope >= 0.42) return withSub('rockOutcrop');
     const oasis = ecotone.moisture + (y < 0.85 ? 0.22 : 0);
-    return withSub(oasis > 0.62 && slope < 0.52 ? 'desertWadi' : 'aridDune');
+    return withSub(oasis > 0.62 && slope < 0.42 ? 'desertWadi' : 'aridDune');
   }
 
   const dh = y - waterLevel;
@@ -384,7 +469,7 @@ export function classifySurfaceSite(params: {
     }
     return withSub('coastalSand');
   }
-  if ((params.rockMask ?? 0) > 0.45 || slope >= 0.68) return withSub('rockOutcrop');
+  if ((params.rockMask ?? 0) > 0.45 || slope >= 0.48) return withSub('rockOutcrop');
   if ((params.forestDensity ?? 0) > 0.45) return withSub('forestFloor');
   if (slope > 0.28) return withSub('uplandSlope');
   return withSub('meadowTurf');

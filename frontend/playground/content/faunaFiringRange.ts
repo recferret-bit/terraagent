@@ -3,6 +3,7 @@ import { placeTickPose } from '@terra/render/motion/pose';
 import { BattlePresentation } from '@terra/render/combat/BattlePresentation';
 import { CombatShotCoordinator } from '@terra/render/combat/CombatShotCoordinator';
 import { InsectCorpseLayer } from '@terra/render/combat/InsectCorpseLayer';
+import { WreckageLayer } from '@terra/render/combat/WreckageLayer';
 import * as THREE from 'three';
 import { attachEntityProjectorRig, type EntityProjectorRigState } from '@terra/render/lighting/EntityProjectorRig';
 import { TILE_M } from '@terra/render/planets/hex';
@@ -128,6 +129,8 @@ export class FiringRangeScene {
   readonly battle = new BattlePresentation(id => this.visuals.find(v => v.id === id)?.mesh);
   private readonly shots: CombatShotCoordinator;
   private readonly corpses: InsectCorpseLayer;
+  readonly wrecks: WreckageLayer;
+  private readonly pendingWrecks = new Map<number, SimVisual>();
   private readonly queuedShots: Array<{ attackerId: number; firedTick: number; age: number; input: Parameters<CombatShotCoordinator['dispatchShot']>[1]; speedMps?: number }> = [];
   private readonly heldImpacts = new Map<string, Array<() => void>>();
   private sim: PlanetState | null = null;
@@ -143,6 +146,7 @@ export class FiringRangeScene {
   ) {
     this.shots = new CombatShotCoordinator(this.battle, this.projectiles, id => this.visuals.find(v => v.id === id)?.mesh);
     this.corpses = new InsectCorpseLayer(this.group, this.biomeKey);
+    this.wrecks = new WreckageLayer(this.group, this.biomeKey);
   }
 
   get tick(): number {
@@ -151,11 +155,13 @@ export class FiringRangeScene {
 
   dispose(): void {
     for (const v of this.visuals) this.dropVisual(v, false);
+    this.flushPendingWrecks();
     this.visuals = [];
     this.queuedShots.length = 0;
     this.heldImpacts.clear();
     this.shots.clear();
     this.corpses.clear();
+    this.wrecks.clear();
     this.battle.clear();
     this.sim = null;
     this.pipeline = null;
@@ -166,6 +172,7 @@ export class FiringRangeScene {
     this.mode = mode === 'turrets' || mode === 'units' ? 'gallery' : mode;
     this.biomeKey = biomeKey;
     this.corpses.setBiome(biomeKey);
+    this.wrecks.setBiome(biomeKey);
     this.seed = seed;
     this.pipeline = createRegistryPipeline({ flags: PLANET_FLAGS });
     const state = createPlanet({ type: 'flat', seed: String(seed), radius: RANGE_RADIUS, planetId: 'pg-range' });
@@ -190,6 +197,7 @@ export class FiringRangeScene {
       this.battle.sync(this.sim.blobs.battle);
       this.battle.insects.sync(this.sim.blobs.insectActions, this.sim.meta.tick);
       this.ingest(result.events);
+      this.flushPendingWrecks();
     }
   }
 
@@ -349,9 +357,19 @@ export class FiringRangeScene {
     }
     this.visuals = this.visuals.filter((v) => {
       if (seen.has(v.id)) return true;
+      const arch = archetypeFor(v.kind, this.biomeKey);
+      if (!arch.startsWith('fauna.') && v.kind !== ENTITY_KIND.pod) {
+        this.pendingWrecks.set(v.id, v);
+        return false;
+      }
       if (!this.battle.insects.retire(v.id, () => this.dropVisual(v, true), true)) this.dropVisual(v, false);
       return false;
     });
+  }
+
+  private flushPendingWrecks(): void {
+    for (const v of this.pendingWrecks.values()) this.dropVisual(v, false);
+    this.pendingWrecks.clear();
   }
 
   private upsertVisual(row: number, id: number, snap: boolean): void {
@@ -396,6 +414,31 @@ export class FiringRangeScene {
     for (const ev of events) {
       if (ev.kind === 'projectileFired') this.ingestFired(ev.data, ev.atTick);
       else if (ev.kind === 'projectileImpact') this.ingestImpact(ev.data, ev.atTick);
+      else if (ev.kind === 'nestDestroyed') {
+        const hiveAt = firingRangeWorld(num(ev.data.q), num(ev.data.r), 0.55);
+        this.projectiles.clearCratersInRadius(hiveAt.x, hiveAt.z, 2.9);
+        this.projectiles.emitInsectDeath({ at: hiveAt, groundY: 0, scale: 1.85 });
+      } else if (ev.kind === 'faunaKilled') {
+        const bugAt = firingRangeWorld(num(ev.data.q), num(ev.data.r), 0);
+        this.projectiles.clearCratersInRadius(bugAt.x, bugAt.z, 1.6);
+      } else if (ev.kind === 'unitDestroyed' || ev.kind === 'buildingDestroyed') {
+        const deadId = num(ev.data.entityId ?? ev.data.unitId ?? ev.data.buildingId);
+        if (this.wrecks.has(deadId)) continue;
+        const v = this.visuals.find((x) => x.id === deadId) ?? this.pendingWrecks.get(deadId);
+        if (!v) continue;
+        const arch = archetypeFor(v.kind, this.biomeKey);
+        if (arch.startsWith('fauna.') || v.kind === ENTITY_KIND.pod) continue;
+        const mechKind = ev.kind === 'buildingDestroyed' || arch.startsWith('building.') ? 'building' : 'bot';
+        this.projectiles.emitMechanicalDeath({
+          kind: mechKind,
+          at: { x: v.x, y: mechKind === 'building' ? 0.8 : 0.5, z: v.z },
+          groundY: 0,
+          scale: mechKind === 'building' ? 1.25 : 1.0,
+        });
+        v.mesh.position.set(v.x, 0, v.z);
+        v.mesh.rotation.y = v.yaw;
+        this.wrecks.preserve(v.id, v.mesh, { kind: mechKind, archetypeId: arch, groundY: 0 });
+      }
     }
   }
 

@@ -34,8 +34,12 @@ export interface ProjectileFiredVfxInput {
   ejectCartridge?: boolean;
   /** Optional world breech port for spent brass casing spawn (falls back to muzzle if omitted). */
   ejectFrom?: VfxPoint3D;
+  /** Optional world lateral ejection direction vector from breech port. */
+  ejectDir?: VfxPoint3D;
   /** Ground elevation (world Y) beneath shooter for ejected cartridge bounce. */
   ejectGroundY?: number;
+  /** Optional scale multiplier for ejected brass cartridge casing. */
+  ejectScale?: number;
   /** Suppress initial muzzle burst / light on sub-burst followups if desired. */
   suppressLight?: boolean;
   /** True if intended target is an insect (used by autoImpactOnArrival bursts). */
@@ -53,6 +57,8 @@ export interface ProjectileImpactVfxInput {
   impactTick?: number;
   normal?: VfxPoint3D;
   groundY?: number;
+  /** Surface normal of terrain beneath impact point for sloped ground crater placement. */
+  groundNormal?: VfxPoint3D;
   /** True when the impacted entity is an insect, emitting extra green acid hemolymph splatter. */
   targetIsInsect?: boolean;
 }
@@ -64,6 +70,28 @@ export interface ProjectileVfxActiveCounts {
   impacts: number;
   aoeDecals: number;
   cartridges?: number;
+  shockwaves?: number;
+  craters?: number;
+}
+
+export interface MechanicalDeathVfxInput {
+  at: VfxPoint3D;
+  groundY?: number;
+  kind: 'bot' | 'building';
+  scale?: number;
+}
+
+export interface ActiveShockwaveSnapshot {
+  active: boolean;
+  x: number;
+  y: number;
+  z: number;
+  startRadius: number;
+  maxRadius: number;
+  thickness: number;
+  baseOpacity: number;
+  ageS: number;
+  durationS: number;
 }
 
 export interface ProjectileVfxPoolConfig {
@@ -74,9 +102,20 @@ export interface ProjectileVfxPoolConfig {
   maxDebrisChunks?: number;
   maxAoeDecals?: number;
   maxCartridges?: number;
+  maxCraters?: number;
   tileSizeM?: number;
   /** Toggle publishing active lasers, shells, muzzle flashes and explosions to `ColonyVisionAndLights` (default `true`). */
   emitDynamicLights?: boolean;
+}
+
+export interface ActiveGroundCraterSnapshot {
+  active: boolean;
+  x: number;
+  y: number;
+  z: number;
+  radiusM: number;
+  yaw: number;
+  ageS: number;
 }
 
 export interface ActiveProjectileSnapshot {
@@ -98,6 +137,7 @@ export interface ActiveProjectileSnapshot {
   arcHeight: number;
   aoe: number;
   autoImpactOnArrival: boolean;
+  targetId?: number;
   targetIsInsect?: boolean;
 }
 

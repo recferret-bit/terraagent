@@ -57,7 +57,8 @@ class ParticlePresetRegistryImpl {
       mode === 'constructing' ||
       mode === 'build' ||
       mode === 'dismantle' ||
-      terrain === 'pod'
+      terrain === 'pod' ||
+      terrain === 'wreck'
     ) {
       return 'repair';
     }

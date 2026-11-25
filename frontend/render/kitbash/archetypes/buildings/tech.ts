@@ -1,6 +1,7 @@
 // Tech & defense: drone array, robotics factory, turret.
 import * as THREE from 'three';
 import { KitbashBuilder } from '../../KitbashRegistry';
+import { ejectionPort } from '../../greebles/unitParts';
 import { box, cyl, roundedTank, ring, strut, cable, lamp, glow, dish, plinth, type V3, spin } from './kit';
 
 const PI = Math.PI;
@@ -121,6 +122,9 @@ export function turret() {
   cyl(b, 'frameGunmetal', 0.45, 0.45, 0.22, [0, 1.06, 0], { seg: 10, name: 'azimuth bearing ring' });
   // turret housing (static in mesh; yawed as a whole by game logic)
   box(b, 'hullPrimary', [0.92, 0.52, 1.0], [0, 1.24, 0], { r: 0.1, seg: 1, name: 'turret breech housing' });
+  for (const side of [-1, 1] as const) {
+    ejectionPort(b, { side, wallX: 0.46, y: 1.50, z: 0.08, height: 0.15, depth: 0.21 });
+  }
   box(b, 'hullSecondary', [0.96, 0.12, 0.52], [0, 1.72, -0.15], { r: 0.04, name: 'turret roof carapace' });
   box(b, 'frameGunmetal', [0.88, 0.26, 0.36], [0, 1.36, 0.44], { r: 0.05, name: 'cannon mantlet block' });
   // top radar sensor assembly (rotates 360 deg on roof, clear of barrels below)
